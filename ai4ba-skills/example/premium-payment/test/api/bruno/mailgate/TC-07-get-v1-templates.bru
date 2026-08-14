@@ -1,0 +1,18 @@
+meta {
+  name: TC-07 GET /v1/templates
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{MAILGATE_BASE}}/v1/templates
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.MAILGATE_KEY}}
+}
+
+assert {
+  res.status: eq 200
+}

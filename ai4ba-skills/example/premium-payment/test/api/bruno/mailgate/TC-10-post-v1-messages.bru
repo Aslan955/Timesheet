@@ -1,0 +1,27 @@
+meta {
+  name: TC-10 POST /v1/messages
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{MAILGATE_BASE}}/v1/messages
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.MAILGATE_KEY}}
+}
+
+body:json {
+  {
+    "to": "khongcoemail",
+    "template": "receipt"
+  }
+}
+
+assert {
+  res.status: eq 400
+  res.body.error.code: eq invalid_email
+}

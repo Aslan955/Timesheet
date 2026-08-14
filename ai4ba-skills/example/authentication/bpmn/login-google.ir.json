@@ -1,0 +1,34 @@
+{
+  "process": { "id": "Process_login_google", "title": "Đăng nhập bằng Google" },
+  "lanes": [
+    { "id": "Lane_learner", "name": "Người học" },
+    { "id": "Lane_system",  "name": "Hệ thống auth" },
+    { "id": "Lane_google",  "name": "Google OAuth" }
+  ],
+  "nodes": [
+    { "id": "Start_1",      "kind": "start",   "lane": "Lane_learner", "name": "Người học bấm Đăng nhập với Google" },
+    { "id": "Task_consent", "kind": "task",    "lane": "Lane_google",  "name": "Xác thực + đồng ý ở consent Google" },
+    { "id": "GW_cb",        "kind": "gateway", "lane": "Lane_google",  "name": "Callback Google thành công?" },
+    { "id": "End_fail",     "kind": "end",     "lane": "Lane_google",  "name": "Đăng nhập Google thất bại" },
+    { "id": "GW_exist",     "kind": "gateway", "lane": "Lane_system",  "name": "Email Google đã có account?" },
+    { "id": "Task_link",    "kind": "task",    "lane": "Lane_system",  "name": "Liên kết Google vào account + lưu hồ sơ + audit" },
+    { "id": "Task_create",  "kind": "task",    "lane": "Lane_system",  "name": "Tạo account mới trạng thái verified" },
+    { "id": "Task_session", "kind": "task",    "lane": "Lane_system",  "name": "Tạo phiên đăng nhập" },
+    { "id": "GW_onboard",   "kind": "gateway", "lane": "Lane_system",  "name": "Đã hoàn tất onboarding?" },
+    { "id": "End_app",      "kind": "end",     "lane": "Lane_learner", "name": "Vào app chính" },
+    { "id": "End_onboard",  "kind": "end",     "lane": "Lane_learner", "name": "Chuyển onboarding" }
+  ],
+  "flows": [
+    { "id": "Flow_start",   "src": "Start_1",     "tgt": "Task_consent" },
+    { "id": "Flow_consent", "src": "Task_consent","tgt": "GW_cb" },
+    { "id": "Flow_cb_no",   "src": "GW_cb",       "tgt": "End_fail",    "name": "Thất bại" },
+    { "id": "Flow_cb_yes",  "src": "GW_cb",       "tgt": "GW_exist",    "name": "Thành công" },
+    { "id": "Flow_ex_yes",  "src": "GW_exist",    "tgt": "Task_link",   "name": "Đã có → liên kết" },
+    { "id": "Flow_ex_no",   "src": "GW_exist",    "tgt": "Task_create", "name": "Chưa → tạo mới" },
+    { "id": "Flow_link_ss", "src": "Task_link",   "tgt": "Task_session" },
+    { "id": "Flow_cr_ss",   "src": "Task_create", "tgt": "Task_session" },
+    { "id": "Flow_ses_ob",  "src": "Task_session","tgt": "GW_onboard" },
+    { "id": "Flow_ob_yes",  "src": "GW_onboard",  "tgt": "End_app",     "name": "Rồi" },
+    { "id": "Flow_ob_no",   "src": "GW_onboard",  "tgt": "End_onboard", "name": "Chưa" }
+  ]
+}

@@ -1,0 +1,32 @@
+meta {
+  name: TC-09 POST /v1/messages
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{MAILGATE_BASE}}/v1/messages
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.MAILGATE_KEY}}
+}
+
+body:json {
+  {
+    "to": "bounce@example.com",
+    "template": "receipt",
+    "variables": {
+      "customer_name": "Lan",
+      "amount": 99000,
+      "charge_id": "ch_123"
+    }
+  }
+}
+
+assert {
+  res.status: eq 201
+  res.body.status: eq bounced
+}

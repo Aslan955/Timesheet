@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Def_1" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:collaboration id="Collaboration_1">
+    <bpmn:participant id="Participant_1" name="Đăng nhập bằng email" processRef="Process_login_email"/>
+  </bpmn:collaboration>
+  <bpmn:process id="Process_login_email" isExecutable="false">
+    <bpmn:laneSet id="LaneSet_1">
+      <bpmn:lane id="Lane_learner" name="Người học"><bpmn:flowNodeRef>Start_1</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_enter</bpmn:flowNodeRef><bpmn:flowNodeRef>End_app</bpmn:flowNodeRef><bpmn:flowNodeRef>End_onboard</bpmn:flowNodeRef></bpmn:lane>
+      <bpmn:lane id="Lane_system" name="Hệ thống auth"><bpmn:flowNodeRef>GW_cred</bpmn:flowNodeRef><bpmn:flowNodeRef>GW_lock</bpmn:flowNodeRef><bpmn:flowNodeRef>End_locked</bpmn:flowNodeRef><bpmn:flowNodeRef>GW_verified</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_session</bpmn:flowNodeRef><bpmn:flowNodeRef>GW_onboard</bpmn:flowNodeRef></bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="Start_1" name="Người học muốn đăng nhập"><bpmn:outgoing>Flow_start</bpmn:outgoing></bpmn:startEvent>
+    <bpmn:task id="Task_enter" name="Nhập email + mật khẩu"><bpmn:incoming>Flow_start</bpmn:incoming><bpmn:incoming>Flow_lock_n</bpmn:incoming><bpmn:incoming>Flow_ver_n</bpmn:incoming><bpmn:outgoing>Flow_submit</bpmn:outgoing></bpmn:task>
+    <bpmn:exclusiveGateway id="GW_cred" name="Email + mật khẩu đúng?"><bpmn:incoming>Flow_submit</bpmn:incoming><bpmn:outgoing>Flow_cred_no</bpmn:outgoing><bpmn:outgoing>Flow_cred_y</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:exclusiveGateway id="GW_lock" name="Đã sai ≥5 lần?"><bpmn:incoming>Flow_cred_no</bpmn:incoming><bpmn:outgoing>Flow_lock_y</bpmn:outgoing><bpmn:outgoing>Flow_lock_n</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:endEvent id="End_locked" name="Account bị khóa 24h"><bpmn:incoming>Flow_lock_y</bpmn:incoming></bpmn:endEvent>
+    <bpmn:exclusiveGateway id="GW_verified" name="Account đã verified?"><bpmn:incoming>Flow_cred_y</bpmn:incoming><bpmn:outgoing>Flow_ver_y</bpmn:outgoing><bpmn:outgoing>Flow_ver_n</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:task id="Task_session" name="Tạo phiên đăng nhập"><bpmn:incoming>Flow_ver_y</bpmn:incoming><bpmn:outgoing>Flow_ses_ob</bpmn:outgoing></bpmn:task>
+    <bpmn:exclusiveGateway id="GW_onboard" name="Đã hoàn tất onboarding?"><bpmn:incoming>Flow_ses_ob</bpmn:incoming><bpmn:outgoing>Flow_ob_y</bpmn:outgoing><bpmn:outgoing>Flow_ob_n</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:endEvent id="End_app" name="Vào app chính"><bpmn:incoming>Flow_ob_y</bpmn:incoming></bpmn:endEvent>
+    <bpmn:endEvent id="End_onboard" name="Chuyển onboarding"><bpmn:incoming>Flow_ob_n</bpmn:incoming></bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_start" name="" sourceRef="Start_1" targetRef="Task_enter"/>
+    <bpmn:sequenceFlow id="Flow_submit" name="" sourceRef="Task_enter" targetRef="GW_cred"/>
+    <bpmn:sequenceFlow id="Flow_cred_no" name="Sai" sourceRef="GW_cred" targetRef="GW_lock"/>
+    <bpmn:sequenceFlow id="Flow_lock_y" name="≥5 lần" sourceRef="GW_lock" targetRef="End_locked"/>
+    <bpmn:sequenceFlow id="Flow_lock_n" name="&lt;5, thử lại" sourceRef="GW_lock" targetRef="Task_enter"/>
+    <bpmn:sequenceFlow id="Flow_cred_y" name="Đúng" sourceRef="GW_cred" targetRef="GW_verified"/>
+    <bpmn:sequenceFlow id="Flow_ver_y" name="Đã verified" sourceRef="GW_verified" targetRef="Task_session"/>
+    <bpmn:sequenceFlow id="Flow_ver_n" name="Chưa → gửi lại email" sourceRef="GW_verified" targetRef="Task_enter"/>
+    <bpmn:sequenceFlow id="Flow_ses_ob" name="" sourceRef="Task_session" targetRef="GW_onboard"/>
+    <bpmn:sequenceFlow id="Flow_ob_y" name="Rồi" sourceRef="GW_onboard" targetRef="End_app"/>
+    <bpmn:sequenceFlow id="Flow_ob_n" name="Chưa" sourceRef="GW_onboard" targetRef="End_onboard"/>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="Diagram_1">
+    <bpmndi:BPMNPlane id="Plane_1" bpmnElement="Collaboration_1">
+      <bpmndi:BPMNShape bpmnElement="Participant_1" isHorizontal="false"><dc:Bounds x="0" y="0" width="880" height="920"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="Lane_learner" isHorizontal="false"><dc:Bounds x="0" y="30" width="440" height="890"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="Lane_system" isHorizontal="false"><dc:Bounds x="440" y="30" width="440" height="890"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="Start_1"><dc:Bounds x="107" y="92" width="36" height="36"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="Task_enter"><dc:Bounds x="60" y="195" width="130" height="70"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="GW_cred"><dc:Bounds x="540" y="325" width="50" height="50"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="GW_lock"><dc:Bounds x="540" y="445" width="50" height="50"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="End_locked"><dc:Bounds x="547" y="572" width="36" height="36"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="GW_verified"><dc:Bounds x="730" y="445" width="50" height="50"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="Task_session"><dc:Bounds x="690" y="555" width="130" height="70"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="GW_onboard"><dc:Bounds x="540" y="685" width="50" height="50"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="End_app"><dc:Bounds x="107" y="812" width="36" height="36"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="End_onboard"><dc:Bounds x="297" y="812" width="36" height="36"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge bpmnElement="Flow_start"><di:waypoint x="125" y="128"/><di:waypoint x="125" y="162"/><di:waypoint x="109" y="162"/><di:waypoint x="109" y="195"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_submit"><di:waypoint x="125" y="265"/><di:waypoint x="125" y="295"/><di:waypoint x="565" y="295"/><di:waypoint x="565" y="325"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_cred_no"><di:waypoint x="565" y="375"/><di:waypoint x="565" y="445"/><bpmndi:BPMNLabel><dc:Bounds x="573" y="398" width="24" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_lock_y"><di:waypoint x="565" y="495"/><di:waypoint x="565" y="572"/><bpmndi:BPMNLabel><dc:Bounds x="573" y="518" width="37" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_lock_n"><di:waypoint x="590" y="470"/><di:waypoint x="624" y="470"/><di:waypoint x="624" y="171"/><di:waypoint x="125" y="171"/><di:waypoint x="125" y="195"/><bpmndi:BPMNLabel><dc:Bounds x="383" y="164" width="68" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_cred_y"><di:waypoint x="590" y="350"/><di:waypoint x="610" y="350"/><di:waypoint x="610" y="425"/><di:waypoint x="755" y="425"/><di:waypoint x="755" y="445"/><bpmndi:BPMNLabel><dc:Bounds x="618" y="343" width="25" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_ver_y"><di:waypoint x="755" y="495"/><di:waypoint x="755" y="555"/><bpmndi:BPMNLabel><dc:Bounds x="763" y="518" width="68" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_ver_n"><di:waypoint x="780" y="470"/><di:waypoint x="832" y="470"/><di:waypoint x="832" y="155"/><di:waypoint x="141" y="155"/><di:waypoint x="141" y="195"/><bpmndi:BPMNLabel><dc:Bounds x="495" y="148" width="124" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_ses_ob"><di:waypoint x="755" y="625"/><di:waypoint x="755" y="655"/><di:waypoint x="565" y="655"/><di:waypoint x="565" y="685"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_ob_y"><di:waypoint x="540" y="710"/><di:waypoint x="520" y="710"/><di:waypoint x="520" y="792"/><di:waypoint x="125" y="792"/><di:waypoint x="125" y="812"/><bpmndi:BPMNLabel><dc:Bounds x="488" y="703" width="24" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_ob_n"><di:waypoint x="565" y="735"/><di:waypoint x="565" y="774"/><di:waypoint x="315" y="774"/><di:waypoint x="315" y="812"/><bpmndi:BPMNLabel><dc:Bounds x="573" y="767" width="25" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

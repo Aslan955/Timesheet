@@ -1,0 +1,60 @@
+# Điều khoản sử dụng BA-Kit
+
+Bản quyền © 2026 Hoàng Phan — [hoangphan.blog](https://hoangphan.blog) · [ai4ba.com](https://ai4ba.com)
+
+Bộ BA-Kit (gồm skill, agent, rule, hook, template, script, tài liệu hướng dẫn và ví dụ trong gói này) là sản phẩm thương mại. Giấy phép này áp dụng cho người đã mua bộ tại [ai4ba.com/ba-kit](https://ai4ba.com/ba-kit) hoặc nhận được qua khoá học AI4BA.
+
+---
+
+## Bạn ĐƯỢC làm
+
+- **Dùng cho công việc của mình** — cá nhân hoặc trong công ty đang làm việc, không giới hạn số dự án.
+- **Sửa, cắt bớt, ghép thêm** tuỳ ý cho khớp quy trình của mình. Đây là cách dùng được khuyến khích — xem chương 06 của tài liệu hướng dẫn.
+- **Dùng cho công việc tính phí với khách hàng** — ví dụ bạn là BA/PM freelance, dùng bộ này để làm tài liệu giao cho khách.
+- **Trích dẫn, viết bài, chia sẻ kinh nghiệm** về bộ này, kèm ghi nguồn.
+
+## Bạn KHÔNG được làm
+
+- **Bán lại, cho tặng, hoặc phân phối lại** bộ này (nguyên bản hoặc đã sửa) cho người khác.
+- **Đăng công khai** toàn bộ hoặc phần lớn nội dung gói lên nơi ai cũng tải được (kho mã nguồn công khai, nhóm chia sẻ, ổ đĩa dùng chung công khai).
+- **Dùng làm tài liệu giảng dạy trong khoá học có thu phí** của bạn hoặc tổ chức khác, dù có sửa đổi.
+- **Gỡ bỏ thông tin bản quyền** trong các file của gói.
+- **Dùng tên "BA-Kit", "AI4BA"** để quảng bá sản phẩm hoặc dịch vụ của bạn khi chưa được đồng ý bằng văn bản.
+
+Ranh giới đơn giản: **dùng để làm việc thì thoải mái; dùng để phân phối lại hoặc dạy lại thu phí thì không.**
+
+---
+
+## Không bảo hành
+
+Bộ này được cung cấp "nguyên trạng", không kèm bảo hành dưới bất kỳ hình thức nào.
+
+Tài liệu hướng dẫn đã nói rõ nhiều lần và xin nhắc lại: đây là **bộ tham khảo**, phản ánh cách làm việc của một người trong một số loại dự án. Nó không phải chuẩn ngành, không đúng cho mọi hoàn cảnh, và **cần được tinh chỉnh** trước khi dùng cho công việc thật.
+
+Tác giả không chịu trách nhiệm cho bất kỳ thiệt hại, sai sót hay tổn thất nào phát sinh từ việc sử dụng bộ này — bao gồm nhưng không giới hạn ở: tài liệu sai, yêu cầu bị hiểu nhầm, chi phí sử dụng dịch vụ AI, hoặc quyết định dự án dựa trên output do AI sinh ra.
+
+**Người dùng chịu trách nhiệm kiểm tra và phê duyệt mọi output** trước khi đưa vào sử dụng. AI có thể bịa — bộ này có cơ chế hạn chế điều đó nhưng không loại bỏ được hoàn toàn.
+
+---
+
+## Về chi phí và dữ liệu
+
+Bộ này là các file văn bản chạy trên công cụ AI của bên thứ ba (Claude Code của Anthropic, hoặc công cụ tương đương).
+
+- **Chi phí sử dụng AI** do bạn trả trực tiếp cho nhà cung cấp công cụ đó, không liên quan tới giá mua bộ này.
+- **Chính sách dữ liệu** thuộc về nhà cung cấp công cụ. Bộ BA-Kit không thu thập, không gửi dữ liệu đi đâu — nó chỉ là file hướng dẫn.
+- Cân nhắc kỹ trước khi dùng với **tài liệu nhạy cảm hoặc dữ liệu khách hàng thật**. Đọc điều khoản của nhà cung cấp công cụ trước.
+
+---
+
+## Thư viện của bên thứ ba
+
+Một số skill dùng công cụ hoặc thư viện mã nguồn mở bên ngoài (Mermaid, PlantUML, D2, Bruno, Playwright, các gói Node...). Chúng có giấy phép riêng của chúng, không thuộc phạm vi giấy phép này.
+
+Gói này không kèm sẵn các thư viện đó — bạn tự cài khi cần dùng skill tương ứng.
+
+---
+
+## Liên hệ
+
+Câu hỏi về giấy phép, hoặc muốn dùng ngoài phạm vi trên (đào tạo nội bộ quy mô lớn, phân phối cho khách hàng, dùng trong khoá học): liên hệ qua [ai4ba.com](https://ai4ba.com).

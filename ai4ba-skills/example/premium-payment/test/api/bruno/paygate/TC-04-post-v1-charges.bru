@@ -1,0 +1,28 @@
+meta {
+  name: TC-04 POST /v1/charges
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{PAYGATE_BASE}}/v1/charges
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.PAYGATE_KEY}}
+}
+
+body:json {
+  {
+    "amount": 99000,
+    "currency": "vnd",
+    "source": "tok_declined"
+  }
+}
+
+assert {
+  res.status: eq 402
+  res.body.error.code: eq card_declined
+}

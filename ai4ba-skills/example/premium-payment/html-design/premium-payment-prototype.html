@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thanh toán Premium — Prototype</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --chrome-bg: #f4f4f4; --chrome-panel: #ffffff; --chrome-line: #cccccc;
+      --chrome-ink: #000000; --chrome-muted: #777777;
+    }
+    html { font-size: 14px; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--chrome-bg); color: var(--chrome-ink); min-height: 100vh; }
+    .proto-stage { min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 32px 16px; }
+    .proto-app { width: min(1024px, 100%); min-height: calc(100vh - 64px); background: var(--bg); border-radius: 8px; overflow: hidden; position: relative; box-shadow: 0 8px 32px rgba(0,0,0,.12); display: flex; flex-direction: column; }
+    @media (max-width: 480px) { .proto-stage { padding: 0; } .proto-app { border-radius: 0; min-height: 100vh; box-shadow: none; } }
+    .proto-fab { position: fixed; right: 20px; bottom: 20px; z-index: 900; width: 52px; height: 52px; border-radius: 50%; background: var(--chrome-ink); color: #ffffff; border: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 20px rgba(0,0,0,.3); }
+    .proto-fab svg { width: 24px; height: 24px; stroke: #ffffff; fill: none; stroke-width: 1.7; }
+    .proto-panel { position: fixed; right: 20px; bottom: 84px; z-index: 901; width: 360px; max-width: calc(100vw - 40px); max-height: calc(100vh - 120px); background: var(--chrome-panel); color: var(--chrome-ink); border: 1px solid var(--chrome-ink); border-radius: 12px; overflow: hidden; display: none; flex-direction: column; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+    .proto-panel.open { display: flex; }
+    .proto-panel-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--chrome-line); }
+    .proto-panel-head .feat { font-size: 11px; text-transform: uppercase; letter-spacing: .8px; color: var(--chrome-muted); }
+    .proto-panel-head .close { margin-left: auto; background: none; border: 0; font-size: 18px; cursor: pointer; color: var(--chrome-ink); }
+    .proto-tabs { display: flex; border-bottom: 1px solid var(--chrome-line); }
+    .proto-tab { flex: 1; padding: 9px; background: none; border: 0; border-bottom: 2px solid transparent; font-size: 12px; cursor: pointer; color: var(--chrome-muted); font-family: inherit; }
+    .proto-tab.active { color: var(--chrome-ink); border-bottom-color: var(--chrome-ink); font-weight: 700; }
+    .proto-panel-body { overflow-y: auto; padding: 10px 0; }
+    .proto-pane { display: none; } .proto-pane.active { display: block; }
+    .toc-section { padding: 10px 14px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: .8px; color: var(--chrome-muted); }
+    .toc-link { display: block; width: 100%; padding: 7px 14px; font-size: 13px; color: var(--chrome-ink); background: none; border: 0; border-left: 3px solid transparent; text-align: left; text-decoration: none; cursor: pointer; font-family: inherit; }
+    .toc-link:hover { background: #f4f4f4; }
+    .toc-link.active { border-left-color: #000000; background: #f0f0f0; font-weight: 700; }
+    .toc-link.screen { padding-left: 30px; font-size: 12px; color: #444444; }
+    .toc-link.screen::before { content: "› "; color: var(--chrome-muted); }
+    .toc-section.demo-trigger-head { margin-top: 8px; border-top: 1px dashed var(--chrome-line); padding-top: 12px; }
+    .demo-trigger-note { padding: 0 14px 6px; font-size: 10px; color: var(--chrome-muted); line-height: 1.4; }
+    .toc-link.demo-trigger { font-size: 12px; color: var(--chrome-muted); font-style: italic; }
+    .flowmap { padding: 10px 14px; display: flex; flex-direction: column; gap: 16px; }
+    .flowgroup { border: 1px solid var(--chrome-line); border-radius: 8px; padding: 12px; }
+    .flowgroup h3 { font-size: 13px; margin-bottom: 8px; }
+    .chain { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+    .node { border: 1.5px solid #000000; border-radius: 6px; padding: 6px 9px; font-size: 11px; background: #ffffff; cursor: pointer; text-decoration: none; color: #000000; }
+    .node:hover { background: #f0f0f0; }
+    .node.edge { background: repeating-linear-gradient(45deg,#ffffff,#ffffff 4px,#f0f0f0 4px,#f0f0f0 8px); }
+    .node.error { background: #000000; color: #ffffff; }
+    .arrow { color: var(--chrome-muted); font-size: 13px; }
+    .panel-reset { margin: 6px 14px 12px; padding: 8px; width: calc(100% - 28px); background: none; border: 1px solid var(--chrome-line); border-radius: 6px; cursor: pointer; font-size: 12px; color: var(--chrome-muted); font-family: inherit; }
+    .demo-notice { position: fixed; left: 12px; bottom: 12px; z-index: 700; background: rgba(255,255,255,.9); border: 1px solid var(--chrome-line); color: var(--chrome-muted); font-size: 10px; padding: 3px 9px; border-radius: 9999px; white-space: nowrap; pointer-events: none; opacity: .75; }
+
+    :root {
+      --palette-primary: #FCD535; --palette-primary-active: #f0b90b; --palette-primary-disabled: #3a3a1f;
+      --palette-canvas-dark: #0b0e11; --palette-surface-card-dark: #1e2329; --palette-surface-elevated-dark: #2b3139;
+      --palette-canvas-light: #ffffff; --palette-surface-soft-light: #fafafa; --palette-surface-strong-light: #f5f5f5;
+      --palette-hairline-light: #eaecef; --palette-hairline-dark: #2b3139; --palette-border-strong: #cdd1d6;
+      --palette-ink: #181a20; --palette-body-dark: #eaecef; --palette-muted: #707a8a; --palette-muted-strong: #929aa5;
+      --palette-on-primary: #181a20; --palette-on-dark: #ffffff; --palette-trading-up: #0ecb81; --palette-trading-down: #f6465d; --palette-info: #3b82f6;
+    }
+    :root, [data-theme="light"] { color-scheme: light; --bg: var(--palette-canvas-light); --surface: var(--palette-canvas-light); --surface-soft: var(--palette-surface-soft-light); --surface-strong: var(--palette-surface-strong-light); --ink: var(--palette-ink); --muted: var(--palette-muted); --line: var(--palette-hairline-light); --line-strong: var(--palette-border-strong); --primary: var(--palette-primary); --primary-active: var(--palette-primary-active); --on-primary: var(--palette-on-primary); --success: var(--palette-trading-up); --danger: var(--palette-trading-down); --info: var(--palette-info); --focus-ring: var(--palette-info); }
+    [data-theme="dark"] { color-scheme: dark; --bg: var(--palette-canvas-dark); --surface: var(--palette-surface-card-dark); --surface-soft: var(--palette-surface-elevated-dark); --surface-strong: var(--palette-surface-elevated-dark); --ink: var(--palette-on-dark); --muted: var(--palette-muted-strong); --line: var(--palette-hairline-dark); --line-strong: var(--palette-muted); --primary: var(--palette-primary); --primary-active: var(--palette-primary-active); --on-primary: var(--palette-on-primary); --success: var(--palette-trading-up); --danger: var(--palette-trading-down); --info: var(--palette-info); --focus-ring: var(--palette-primary); }
+    [data-theme] { background: var(--bg); color: var(--ink); }
+    [data-screen] { display: none; flex-direction: column; min-height: calc(100vh - 64px); }
+    [data-screen].active { display: flex; }
+    dialog { margin: auto; border: 0; padding: 0; background: transparent; max-width: calc(100% - 40px); }
+    dialog::backdrop { background: rgba(0,0,0,.5); }
+    button, input, textarea { font: inherit; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+    .app-shell { width: 100%; max-width: 920px; margin: 0 auto; padding: 24px 28px 40px; flex: 1; }
+    .app-topbar { min-height: 64px; padding: 0 28px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 14px; background: var(--surface); }
+    .brand { font-weight: 800; letter-spacing: .4px; font-size: 16px; }
+    .brand-mark { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 6px; background: var(--primary); color: var(--on-primary); margin-right: 8px; }
+    .top-meta { margin-left: auto; color: var(--muted); font-size: 12px; }
+    .back { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); background: none; border: 0; cursor: pointer; font-weight: 600; }
+    .hero { text-align: center; padding: 22px 0 28px; }
+    .eyebrow { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+    h1 { font-size: clamp(27px,4vw,40px); line-height: 1.15; margin-top: 8px; }
+    h2 { font-size: 22px; line-height: 1.3; }
+    h3 { font-size: 16px; }
+    .lead { margin: 10px auto 0; max-width: 620px; color: var(--muted); line-height: 1.55; }
+    .plans { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
+    .plan-card { position: relative; padding: 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); cursor: pointer; min-height: 210px; transition: border-color .15s, transform .15s; }
+    .plan-card:hover { transform: translateY(-2px); }
+    .plan-card.selected { border: 2px solid var(--ink); padding: 21px; }
+    .plan-card input { position: absolute; opacity: 0; }
+    .plan-card .radio-dot { width: 18px; height: 18px; border: 1px solid var(--line-strong); border-radius: 50%; position: absolute; right: 18px; top: 18px; }
+    .plan-card.selected .radio-dot { border: 5px solid var(--primary-active); }
+    .plan-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; background: var(--primary); color: var(--on-primary); font-size: 11px; font-weight: 700; margin-bottom: 20px; }
+    .price { font-family: "IBM Plex Sans", "Segoe UI", sans-serif; font-size: 28px; font-weight: 700; margin: 8px 0; }
+    .plan-copy { color: var(--muted); line-height: 1.5; }
+    .actions { display: flex; gap: 10px; align-items: center; margin-top: 24px; flex-wrap: wrap; }
+    .actions.center { justify-content: center; }
+    .btn { min-height: 42px; padding: 0 20px; border-radius: 6px; border: 1px solid transparent; cursor: pointer; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; }
+    .btn:disabled { opacity: .55; cursor: not-allowed; }
+    .btn-primary { background: var(--primary); color: var(--on-primary); }
+    .btn-primary:hover:not(:disabled) { background: var(--primary-active); }
+    .btn-secondary { background: var(--surface); color: var(--ink); border-color: var(--line); }
+    .btn-danger { background: var(--surface); color: var(--danger); border-color: var(--danger); }
+    .btn-link { background: none; border: 0; color: var(--ink); text-decoration: underline; cursor: pointer; padding: 8px; }
+    .wide { width: 100%; }
+    .spinner { width: 15px; height: 15px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .checkout-grid { display: grid; grid-template-columns: minmax(0,1fr) 310px; gap: 24px; align-items: start; }
+    .card { border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 22px; }
+    .card + .card { margin-top: 14px; }
+    .section-title { margin-bottom: 15px; }
+    .option-row { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 14px; cursor: pointer; }
+    .option-row + .option-row { margin-top: 10px; }
+    .option-row.selected { border-color: var(--ink); background: var(--surface-soft); }
+    .option-row input { accent-color: var(--primary-active); }
+    .option-copy { flex: 1; }
+    .option-copy small { display: block; color: var(--muted); margin-top: 3px; }
+    .card-chip { width: 40px; height: 26px; border-radius: 5px; background: var(--ink); color: var(--surface); display: grid; place-items: center; font-size: 9px; font-weight: 800; }
+    .new-card-fields { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+    .field { display: block; margin-top: 14px; }
+    .field > span:not(.err-inline) { display: block; margin-bottom: 7px; font-weight: 600; font-size: 13px; }
+    .field small { display: block; color: var(--muted); margin-top: 6px; }
+    .input, .textarea { width: 100%; border: 1px solid var(--line); border-radius: 6px; padding: 11px 13px; background: var(--surface); color: var(--ink); }
+    .textarea { min-height: 92px; resize: vertical; }
+    .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .summary-row { display: flex; justify-content: space-between; gap: 20px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .summary-row:last-child { border-bottom: 0; }
+    .summary-row span:first-child { color: var(--muted); }
+    .banner { display: none; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin: 14px 0; line-height: 1.45; }
+    .banner.show { display: block; }
+    .banner.error { color: var(--danger); border-color: var(--danger); background: var(--surface-soft); }
+    .banner.info { color: var(--info); border-color: var(--info); background: var(--surface-soft); }
+    .banner.success { color: var(--success); border-color: var(--success); background: var(--surface-soft); }
+    span.err-inline { display: none; color: var(--danger); font-size: 12px; margin-top: 6px; } span.err-inline.show { display: block; }
+    .result-wrap { max-width: 620px; margin: 30px auto 0; text-align: center; }
+    .result-icon { width: 68px; height: 68px; margin: 0 auto 20px; border-radius: 50%; display: grid; place-items: center; border: 2px solid currentColor; }
+    .result-icon svg { width: 32px; height: 32px; fill: none; stroke: currentColor; stroke-width: 2; }
+    .result-icon.success { color: var(--success); }.result-icon.error { color: var(--danger); }.result-icon.pending { color: var(--info); }
+    .result-detail { text-align: left; margin-top: 24px; }
+    .status { display: inline-flex; align-items: center; gap: 6px; border-radius: 9999px; padding: 4px 9px; background: var(--surface-strong); font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .status.success { color: var(--success); }.status.error { color: var(--danger); }.status.pending { color: var(--info); }
+    .dashboard-grid { display: grid; grid-template-columns: minmax(0,1.35fr) minmax(260px,.65fr); gap: 20px; }
+    .sub-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+    .sub-price { font-size: 26px; font-weight: 700; margin-top: 8px; }
+    .info-list { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-top: 20px; }
+    .info-tile { background: var(--surface-soft); border-radius: 8px; padding: 14px; }
+    .info-tile small { display: block; color: var(--muted); margin-bottom: 6px; }
+    .cancel-note { color: var(--muted); margin-top: 14px; line-height: 1.45; }
+    .transactions { overflow-x: auto; }
+    .tx-table { width: 100%; border-collapse: collapse; min-width: 690px; }
+    .tx-table th { text-align: left; padding: 11px 12px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; border-bottom: 1px solid var(--line); }
+    .tx-table td { padding: 14px 12px; border-bottom: 1px solid var(--line); }
+    .tx-table tbody tr { cursor: pointer; }
+    .tx-table tbody tr:hover { background: var(--surface-soft); }
+    .money { font-family: "IBM Plex Sans", "Segoe UI", sans-serif; font-weight: 700; }
+    .empty { display: none; text-align: center; color: var(--muted); padding: 40px 20px; }.empty.show { display: block; }
+    .refund-layout { display: grid; grid-template-columns: minmax(0,1fr) 330px; gap: 20px; align-items: start; }
+    .receipt { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 22px; }
+    .receipt-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; overflow-wrap: anywhere; }
+    .modal { width: min(440px,100%); background: var(--surface); color: var(--ink); border-radius: 12px; border: 1px solid var(--line); padding: 24px; box-shadow: 0 16px 48px rgba(0,0,0,.2); }
+    .modal p { color: var(--muted); line-height: 1.55; margin-top: 10px; }
+    .toast { position: fixed; top: 20px; left: 50%; transform: translate(-50%,-16px); z-index: 1000; background: var(--ink); color: var(--surface); padding: 11px 16px; border-radius: 7px; opacity: 0; pointer-events: none; transition: .2s; box-shadow: 0 8px 28px rgba(0,0,0,.22); }
+    .toast.show { opacity: 1; transform: translate(-50%,0); }
+    @media (max-width: 760px) { .plans, .checkout-grid, .dashboard-grid, .refund-layout { grid-template-columns: 1fr; } .info-list { grid-template-columns: 1fr; } .app-shell { padding: 20px 18px 34px; } .app-topbar { padding: 0 18px; } .top-meta { display: none; } }
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="ic-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="ic-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="ic-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/></symbol>
+  </svg>
+
+  <div class="proto-stage" data-device="desktop">
+    <main class="proto-app">
+      <section data-screen="plan-selection" data-theme="light">
+        <header class="app-topbar"><div class="brand"><span class="brand-mark">P</span>English Premium</div><div class="top-meta">Nâng cấp tài khoản</div></header>
+        <div class="app-shell">
+          <div class="hero"><div class="eyebrow">Premium</div><h1>Mở khóa toàn bộ hành trình học</h1><p class="lead">Truy cập mọi bài học nâng cao và chấm phát âm không giới hạn. Chọn hình thức phù hợp với bạn.</p></div>
+          <div class="plans" id="plans"></div>
+          <div class="actions center"><button id="plan-continue" class="btn btn-primary" onclick="continueFromPlan()">Tiếp tục</button><button class="btn btn-link" onclick="showToast('Bạn có thể tiếp tục dùng gói Free.')">Để sau</button></div>
+        </div>
+      </section>
+
+      <section data-screen="payment-method" data-theme="light">
+        <header class="app-topbar"><button class="back" onclick="goto('plan-selection')">← Chọn lại gói</button><div class="top-meta" id="pay-top-meta"></div></header>
+        <div class="app-shell">
+          <div class="hero" style="text-align:left;padding-top:10px"><div class="eyebrow">Thanh toán bảo mật</div><h1>Chọn phương thức thanh toán</h1><p class="lead" style="margin-left:0">Thông tin thẻ mới chỉ dùng trong lượt thử nghiệm hiện tại và không được lưu.</p></div>
+          <div class="checkout-grid">
+            <div class="card">
+              <h2 class="section-title">Phương thức thanh toán</h2>
+              <label class="option-row selected" id="saved-option"><input type="radio" name="card-mode" value="saved" onchange="setCardMode('saved')"><span class="card-chip">VISA</span><span class="option-copy"><strong>Visa •••• 4242</strong><small>Hết hạn 12/29</small></span><span>✓</span></label>
+              <label class="option-row" id="new-option"><input type="radio" name="card-mode" value="new" onchange="setCardMode('new')"><span class="card-chip">NEW</span><span class="option-copy"><strong>Dùng thẻ mới</strong><small>Nhập số thẻ, ngày hết hạn và CVC</small></span></label>
+              <div class="new-card-fields" id="new-card-fields" hidden>
+                <label class="field"><span>Số thẻ</span><input id="card-number" class="input" type="text" inputmode="numeric" autocomplete="cc-number" placeholder="1234 5678 9012 3456" maxlength="19" aria-invalid="false" aria-describedby="card-number-error"><span class="err-inline" id="card-number-error">Nhập đủ 16 chữ số trên thẻ.</span></label>
+                <div class="field-grid">
+                  <label class="field"><span>Hết hạn</span><input id="card-expiry" class="input" type="text" inputmode="numeric" autocomplete="cc-exp" placeholder="MM/YY" maxlength="5" aria-invalid="false" aria-describedby="card-expiry-error"><span class="err-inline" id="card-expiry-error">Nhập ngày hết hạn hợp lệ.</span></label>
+                  <label class="field"><span>CVC</span><input id="card-cvc" class="input" type="password" inputmode="numeric" autocomplete="cc-csc" placeholder="•••" maxlength="4" aria-invalid="false" aria-describedby="card-cvc-error"><span class="err-inline" id="card-cvc-error">Nhập 3 hoặc 4 chữ số.</span></label>
+                </div>
+              </div>
+              <div class="banner error" id="payment-banner"></div>
+            </div>
+            <aside class="card"><h2 class="section-title">Tóm tắt đơn hàng</h2><div id="order-summary"></div><button id="pay-submit" class="btn btn-primary wide" onclick="submitPayment()">Thanh toán</button><p class="cancel-note">Bạn chỉ được kích hoạt Premium sau khi thanh toán được xác nhận thành công.</p></aside>
+          </div>
+        </div>
+      </section>
+
+      <section data-screen="payment-result" data-theme="light">
+        <header class="app-topbar"><div class="brand"><span class="brand-mark">P</span>English Premium</div><div class="top-meta">Kết quả thanh toán</div></header>
+        <div class="app-shell"><div class="result-wrap" id="payment-result-content"></div></div>
+      </section>
+
+      <section data-screen="subscription-manage" data-theme="light">
+        <header class="app-topbar"><button class="back" onclick="goto('plan-selection')">← Premium</button><div class="top-meta">Tài khoản của tôi</div></header>
+        <div class="app-shell">
+          <div class="hero" style="text-align:left;padding-top:10px"><div class="eyebrow">Thuê bao</div><h1>Gói của tôi</h1><p class="lead" style="margin-left:0">Theo dõi kỳ gia hạn, trạng thái thanh toán và quyền Premium.</p></div>
+          <div class="dashboard-grid"><div class="card" id="subscription-card"></div><aside class="card"><h3>Thao tác</h3><div class="actions" style="flex-direction:column;align-items:stretch"><button class="btn btn-secondary" onclick="goto('transaction-history')">Xem lịch sử giao dịch</button><button id="cancel-subscription" class="btn btn-danger" onclick="openCancelModal()">Hủy gói</button></div><p class="cancel-note">Hủy giữa kỳ không hoàn phần thời gian còn lại. Premium tiếp tục đến hết kỳ đã trả.</p></aside></div>
+        </div>
+      </section>
+
+      <section data-screen="transaction-history" data-theme="light">
+        <header class="app-topbar"><button class="back" onclick="goto('subscription-manage')">← Gói của tôi</button><div class="top-meta">Thanh toán và hoàn tiền</div></header>
+        <div class="app-shell">
+          <div class="hero" style="text-align:left;padding-top:10px"><div class="eyebrow">Giao dịch</div><h1>Lịch sử giao dịch</h1><p class="lead" style="margin-left:0">Chọn một giao dịch để xem trạng thái và yêu cầu hoàn tiền nếu đủ điều kiện.</p></div>
+          <div class="card transactions"><table class="tx-table"><thead><tr><th>Ngày</th><th>Gói</th><th>Mã giao dịch</th><th>Số tiền</th><th>Trạng thái</th></tr></thead><tbody id="transaction-rows"></tbody></table><div class="empty" id="transaction-empty">Chưa có giao dịch nào.</div></div>
+          <div class="actions center"><button id="load-more" class="btn btn-secondary" onclick="loadMoreTransactions()">Tải thêm</button></div>
+        </div>
+      </section>
+
+      <section data-screen="refund-request" data-theme="light">
+        <header class="app-topbar"><button class="back" onclick="goto('transaction-history')">← Lịch sử giao dịch</button><div class="top-meta">Hoàn tiền</div></header>
+        <div class="app-shell">
+          <div class="hero" style="text-align:left;padding-top:10px"><div class="eyebrow">Hỗ trợ giao dịch</div><h1>Yêu cầu hoàn tiền</h1><p class="lead" style="margin-left:0">Kiểm tra giao dịch trước khi xác nhận. Prototype áp dụng hoàn toàn bộ số tiền.</p></div>
+          <div class="refund-layout"><div class="card"><h2 class="section-title">Lý do hoàn tiền</h2><label class="field"><span>Mô tả lý do</span><textarea id="refund-reason" class="textarea" placeholder="Nhập lý do cần hoàn tiền"></textarea><span class="err-inline" id="refund-reason-error">Vui lòng nhập lý do hoàn tiền.</span></label><div class="banner error" id="refund-banner"></div><div class="banner success" id="refund-success"></div><div class="actions"><button id="refund-submit" class="btn btn-primary" onclick="submitRefund()">Xác nhận hoàn tiền</button><button class="btn btn-secondary" onclick="goto('transaction-history')">Hủy</button></div></div><aside class="receipt" id="refund-transaction"></aside></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <button class="proto-fab" onclick="togglePanel()" title="Điều hướng" aria-label="Mở điều hướng"><svg viewBox="0 0 24 24"><path d="M3 12h18M3 6h18M3 18h18"/></svg></button>
+  <aside class="proto-panel" id="proto-panel">
+    <div class="proto-panel-head"><div><div class="feat">premium-payment</div><strong>Điều hướng · 4 flow · 6 màn</strong></div><button class="close" onclick="togglePanel(false)" aria-label="Đóng">✕</button></div>
+    <div class="proto-tabs"><button class="proto-tab active" onclick="switchPane('toc',this)">Mục lục</button><button class="proto-tab" onclick="switchPane('flow',this)">Sơ đồ luồng</button></div>
+    <div class="proto-panel-body">
+      <div class="proto-pane active" id="pane-toc">
+        <div class="toc-section">Flow 1 · Mua Premium 1 lần</div><a class="toc-link" data-goto="plan-selection">Chọn gói</a><a class="toc-link screen" data-goto="payment-method">Phương thức thanh toán</a><a class="toc-link screen" data-goto="payment-result">Kết quả thanh toán</a>
+        <div class="toc-section">Flow 2 · Đăng ký thuê bao</div><a class="toc-link" data-goto="plan-selection">Chọn gói</a><a class="toc-link screen" data-goto="payment-method">Phương thức thanh toán</a><a class="toc-link screen" data-goto="subscription-manage">Quản lý thuê bao</a>
+        <div class="toc-section">Flow 3 · Quản lý / hủy</div><a class="toc-link" data-goto="subscription-manage">Quản lý thuê bao</a><a class="toc-link screen" data-goto="transaction-history">Lịch sử giao dịch</a>
+        <div class="toc-section">Flow 4 · Hoàn tiền</div><a class="toc-link" data-goto="transaction-history">Lịch sử giao dịch</a><a class="toc-link screen" data-goto="refund-request">Yêu cầu hoàn tiền</a>
+        <div class="toc-section demo-trigger-head">Bước ngoài màn hình (mô phỏng)</div><p class="demo-trigger-note">PayGate xác nhận kết quả và hệ thống polling đối soát ngoài thao tác trực tiếp trên màn hình.</p>
+        <button class="toc-link demo-trigger" onclick="setNextPaymentOutcome('succeeded')">Lần thanh toán tới: thành công</button>
+        <button class="toc-link demo-trigger" onclick="setNextPaymentOutcome('card_declined')">Lần thanh toán tới: thẻ bị từ chối</button>
+        <button class="toc-link demo-trigger" onclick="setNextPaymentOutcome('insufficient_funds')">Lần thanh toán tới: số dư không đủ</button>
+        <button class="toc-link demo-trigger" onclick="setNextPaymentOutcome('processing_error')">Lần thanh toán tới: hệ thống bận</button>
+        <button class="toc-link demo-trigger" onclick="simulateReconciliation()">Polling xác nhận giao dịch đang xử lý</button>
+        <button class="toc-link demo-trigger" onclick="simulatePastDue()">Gia hạn thất bại: chuyển sang cần thanh toán</button>
+      </div>
+      <div class="proto-pane" id="pane-flow"><div class="flowmap">
+        <div class="flowgroup"><h3>Flow 1 — Mua Premium 1 lần</h3><div class="chain"><a class="node" data-goto="plan-selection">Chọn gói</a><span class="arrow">→</span><a class="node" data-goto="payment-method">Thanh toán</a><span class="arrow">→</span><a class="node" data-goto="payment-result">Kết quả</a></div></div>
+        <div class="flowgroup"><h3>Flow 2 — Đăng ký thuê bao</h3><div class="chain"><a class="node" data-goto="plan-selection">Chọn gói</a><span class="arrow">→</span><a class="node" data-goto="payment-method">Thanh toán</a><span class="arrow">→</span><a class="node" data-goto="subscription-manage">Thuê bao</a></div></div>
+        <div class="flowgroup"><h3>Flow 3 — Quản lý / hủy</h3><div class="chain"><a class="node" data-goto="subscription-manage">Thuê bao</a><span class="arrow">→</span><a class="node edge" data-goto="transaction-history">Giao dịch</a></div></div>
+        <div class="flowgroup"><h3>Flow 4 — Hoàn tiền</h3><div class="chain"><a class="node" data-goto="transaction-history">Giao dịch</a><span class="arrow">→</span><a class="node error" data-goto="refund-request">Hoàn tiền</a></div></div>
+      </div></div>
+    </div>
+    <button class="panel-reset" onclick="resetPrototypeData()">↺ Reset dữ liệu demo</button>
+  </aside>
+
+  <dialog id="cancel-dialog"><div class="modal" data-theme="light"><h2>Xác nhận hủy thuê bao?</h2><p>Premium vẫn còn hiệu lực đến hết kỳ đã trả. Gói sẽ không tự gia hạn vào kỳ tiếp theo.</p><div class="actions"><button id="confirm-cancel" class="btn btn-danger" onclick="confirmCancelSubscription()">Xác nhận hủy</button><button class="btn btn-secondary" onclick="document.getElementById('cancel-dialog').close()">Giữ thuê bao</button></div></div></dialog>
+  <div class="toast" id="toast"></div><div class="demo-notice">Demo — dữ liệu lưu local browser, không gửi đâu</div>
+
+  <script>
+    const FEATURE = 'premium-payment';
+    const STORE_KEY = 'proto:premium-payment:v1';
+    const SCREENS = ['plan-selection','payment-method','payment-result','subscription-manage','transaction-history','refund-request'];
+    const DEFAULT_SCREEN = 'plan-selection';
+    const ENTRY_SCREENS = ['plan-selection','payment-method','refund-request'];
+    const DEMO = {
+      plans: [
+        { id:'one-time', name:'Premium 1 tháng', short:'1 tháng', price:99000, priceLabel:'99.000đ', note:'Thanh toán một lần' },
+        { id:'monthly', name:'Premium tháng', short:'Gói tháng', price:99000, priceLabel:'99.000đ/tháng', note:'Tự gia hạn mỗi tháng', featured:true },
+        { id:'yearly', name:'Premium năm', short:'Gói năm', price:990000, priceLabel:'990.000đ/năm', note:'Tự gia hạn mỗi năm' }
+      ],
+      savedCard: { brand:'Visa', last4:'4242', expiry:'12/29' },
+      subscription: { id:'sub_demo_2026', planId:'monthly', status:'active', periodEnd:'25/06/2026', accessEnd:'25/06/2026', cardLast4:'4242' },
+      transactions: [
+        { id:'ch_da12ebdb58a14009', date:'26/05/2026', time:'14:31', planId:'monthly', amount:99000, status:'succeeded' },
+        { id:'ch_25042026a113', date:'25/04/2026', time:'09:15', planId:'monthly', amount:99000, status:'succeeded' },
+        { id:'ch_25032026b881', date:'25/03/2026', time:'11:03', planId:'monthly', amount:99000, status:'refunded' },
+        { id:'ch_24022026c204', date:'24/02/2026', time:'08:42', planId:'monthly', amount:99000, status:'failed' }
+      ],
+      moreTransactions: [
+        { id:'ch_25012026d751', date:'25/01/2026', time:'10:12', planId:'monthly', amount:99000, status:'succeeded' },
+        { id:'ch_25122025e337', date:'25/12/2025', time:'15:44', planId:'monthly', amount:99000, status:'succeeded' }
+      ]
+    };
+    const DEFAULT_STATE = {
+      selectedPlanId: 'monthly', cardMode:'saved', nextPaymentOutcome:'succeeded', paymentResult:null,
+      subscription: structuredClone(DEMO.subscription), transactions: structuredClone(DEMO.transactions), hasMore:true,
+      selectedTransactionId:'ch_da12ebdb58a14009', premiumActive:true, reconciliationPending:false
+    };
+    const store = {
+      state:null,
+      load(){ Object.keys(localStorage).forEach(k=>{ if(k.startsWith('proto:premium-payment:')&&k!==STORE_KEY)localStorage.removeItem(k); }); try { const raw=localStorage.getItem(STORE_KEY); this.state=raw?Object.assign(structuredClone(DEFAULT_STATE),JSON.parse(raw)):structuredClone(DEFAULT_STATE); } catch { this.state=structuredClone(DEFAULT_STATE); } },
+      save(){ localStorage.setItem(STORE_KEY,JSON.stringify(this.state)); },
+      update(patch){ Object.assign(this.state,patch); this.save(); }
+    };
+    store.load();
+    const $ = id => document.getElementById(id);
+    const formatMoney = amount => new Intl.NumberFormat('vi-VN').format(amount)+'đ';
+    const planById = id => DEMO.plans.find(p=>p.id===id) || DEMO.plans[1];
+    const statusLabel = status => ({succeeded:'Đã kích hoạt',refunded:'Đã hoàn tiền',failed:'Thất bại',pending:'Đang xử lý'}[status]||status);
+    const statusClass = status => status==='succeeded'?'success':status==='pending'?'pending':'error';
+    function goto(slug){ if(location.hash.slice(1)===slug) showScreen(slug); else location.hash=slug; }
+    function showScreen(slug){ if(!SCREENS.includes(slug))slug=DEFAULT_SCREEN; document.querySelectorAll('[data-screen]').forEach(s=>s.classList.remove('active')); const target=document.querySelector('[data-screen="'+slug+'"]'); if(target)target.classList.add('active'); if(ENTRY_SCREENS.includes(slug))clearFormInputs(slug); renderScreen(slug); document.querySelectorAll('.toc-link[data-goto]').forEach(a=>a.classList.toggle('active',a.dataset.goto===slug)); }
+    function clearFormInputs(slug){ const section=document.querySelector('[data-screen="'+slug+'"]'); if(!section)return; section.querySelectorAll('input[type="text"],input[type="email"],input[type="password"],textarea').forEach(el=>{el.value='';delete el.dataset.touched;el.setAttribute('aria-invalid','false');}); section.querySelectorAll('input[type="checkbox"],input[type="radio"]').forEach(el=>el.checked=false); section.querySelectorAll('.banner').forEach(el=>{el.classList.remove('show','error','info','success');el.textContent='';}); section.querySelectorAll('.err-inline').forEach(el=>el.classList.remove('show')); delete section.dataset.submitted; }
+    // ════ FORM HELPERS (pristine → touched → submitted; format luôn chạy trước validate — xem SKILL nguyên tắc 7) ════
+    function digitsOnly(value,max){ const d=(value||'').replace(/\D/g,''); return max?d.slice(0,max):d; }
+    function formatCardNumber(value){ return digitsOnly(value,16).replace(/(.{4})/g,'$1 ').trim(); }
+    function formatCardExpiry(value){ const d=digitsOnly(value,4); return d.length>2?d.slice(0,2)+'/'+d.slice(2):d; }
+    function markFieldTouched(el){ el.dataset.touched='1'; }
+    function isFieldTouched(el){ return el.dataset.touched==='1'; }
+    function setFieldError(inputEl,errorEl,show){ if(errorEl)errorEl.classList.toggle('show',!!show); inputEl.setAttribute('aria-invalid',show?'true':'false'); }
+    function bindFormattedField(inputEl,errorEl,formatter,validator){
+      inputEl.addEventListener('input',()=>{ const formatted=formatter(inputEl.value); if(formatted!==inputEl.value)inputEl.value=formatted; if(isFieldTouched(inputEl))setFieldError(inputEl,errorEl,!validator(formatted)); });
+      inputEl.addEventListener('blur',()=>{ markFieldTouched(inputEl); setFieldError(inputEl,errorEl,!validator(inputEl.value)); });
+    }
+    function isCardNumberValid(v){ return digitsOnly(v).length===16; }
+    function isCardExpiryValid(v){ return /^(0[1-9]|1[0-2])\/\d{2}$/.test(v); }
+    function isCardCvcValid(v){ return /^\d{3,4}$/.test(v); }
+    bindFormattedField($('card-number'),$('card-number-error'),formatCardNumber,isCardNumberValid);
+    bindFormattedField($('card-expiry'),$('card-expiry-error'),formatCardExpiry,isCardExpiryValid);
+    bindFormattedField($('card-cvc'),$('card-cvc-error'),v=>digitsOnly(v,4),isCardCvcValid);
+    function renderScreen(slug){ ({'plan-selection':renderPlans,'payment-method':renderPaymentMethod,'payment-result':renderPaymentResult,'subscription-manage':renderSubscription,'transaction-history':renderTransactions,'refund-request':renderRefund}[slug]||(()=>{}))(); }
+    function renderPlans(){ $('plans').innerHTML=DEMO.plans.map(p=>`<label class="plan-card ${p.id===store.state.selectedPlanId?'selected':''}" onclick="selectPlan('${p.id}')"><input type="radio" name="plan" ${p.id===store.state.selectedPlanId?'checked':''}><span class="radio-dot"></span>${p.featured?'<span class="plan-badge">Phổ biến</span>':'<span style="display:block;height:27px"></span>'}<h3>${p.short}</h3><div class="price">${p.priceLabel}</div><p class="plan-copy">${p.note}</p></label>`).join(''); }
+    function selectPlan(id){ store.update({selectedPlanId:id}); renderPlans(); }
+    function continueFromPlan(){ goto('payment-method'); }
+    function setCardMode(mode){ const wasNew=store.state.cardMode==='new'; store.update({cardMode:mode}); if(mode==='new'&&!wasNew){ ['card-number','card-expiry','card-cvc'].forEach(id=>{ const el=$(id); el.value=''; delete el.dataset.touched; setFieldError(el,$(id+'-error'),false); }); } renderPaymentMethod(); }
+    function renderPaymentMethod(){ const plan=planById(store.state.selectedPlanId); $('pay-top-meta').textContent=plan.name+' · '+plan.priceLabel; $('saved-option').classList.toggle('selected',store.state.cardMode==='saved'); $('new-option').classList.toggle('selected',store.state.cardMode==='new'); $('saved-option').querySelector('input').checked=store.state.cardMode==='saved'; $('new-option').querySelector('input').checked=store.state.cardMode==='new'; $('new-card-fields').hidden=store.state.cardMode!=='new'; $('order-summary').innerHTML=`<div class="summary-row"><span>Gói</span><strong>${plan.name}</strong></div><div class="summary-row"><span>Hình thức</span><strong>${plan.id==='one-time'?'Một lần':'Tự gia hạn'}</strong></div><div class="summary-row"><span>Tổng cộng</span><strong class="money">${formatMoney(plan.price)}</strong></div>`; $('pay-submit').textContent='Thanh toán '+formatMoney(plan.price); }
+    function validateNewCard(){ let ok=true; const fields=[[$('card-number'),$('card-number-error'),isCardNumberValid],[$('card-expiry'),$('card-expiry-error'),isCardExpiryValid],[$('card-cvc'),$('card-cvc-error'),isCardCvcValid]]; fields.forEach(([el,errEl,validator])=>{ markFieldTouched(el); const valid=validator(el.value); setFieldError(el,errEl,!valid); if(!valid)ok=false; }); return ok; }
+    function setLoading(btn,text,on){ if(on){btn.dataset.label=btn.textContent;btn.disabled=true;btn.innerHTML='<span class="spinner"></span>'+text;}else{btn.disabled=false;btn.textContent=btn.dataset.label||btn.textContent;} }
+    function submitPayment(){ if(store.state.cardMode==='new'&&!validateNewCard())return; const btn=$('pay-submit'); setLoading(btn,'Đang thanh toán...',true); setTimeout(()=>{ const outcome=store.state.nextPaymentOutcome; const plan=planById(store.state.selectedPlanId); const payment={status:outcome,amount:plan.price,id:'ch_demo_20072026',date:'20/07/2026',time:'10:20',planId:plan.id}; if(outcome==='succeeded'){ const tx={id:payment.id,date:payment.date,time:payment.time,planId:plan.id,amount:plan.price,status:'succeeded'}; const transactions=[tx,...store.state.transactions.filter(t=>t.id!==tx.id)]; const patch={paymentResult:payment,transactions,nextPaymentOutcome:'succeeded',premiumActive:true,reconciliationPending:false}; if(plan.id!=='one-time')patch.subscription={id:'sub_demo_20072026',planId:plan.id,status:'active',periodEnd:plan.id==='yearly'?'20/07/2027':'20/08/2026',accessEnd:plan.id==='yearly'?'20/07/2027':'20/08/2026',cardLast4:store.state.cardMode==='saved'?'4242':'8888'}; store.update(patch); goto(plan.id==='one-time'?'payment-result':'subscription-manage'); } else if(outcome==='processing_error'){ store.update({paymentResult:{...payment,status:'pending'},reconciliationPending:true,nextPaymentOutcome:'succeeded'}); goto('payment-result'); } else { store.update({paymentResult:payment,nextPaymentOutcome:'succeeded'}); goto('payment-result'); } setLoading(btn,'',false); },600); }
+    function renderPaymentResult(){ const r=store.state.paymentResult; if(!r){ $('payment-result-content').innerHTML=`<div class="result-icon pending"><svg><use href="#ic-clock"/></svg></div><h1>Chưa có giao dịch</h1><p class="lead">Hãy chọn gói và hoàn tất thanh toán để xem kết quả.</p><div class="actions center"><button class="btn btn-primary" onclick="goto('plan-selection')">Chọn gói Premium</button></div>`;return;} if(r.status==='succeeded'){ $('payment-result-content').innerHTML=`<div class="result-icon success"><svg><use href="#ic-check"/></svg></div><div class="eyebrow">Thanh toán thành công</div><h1>Đã kích hoạt Premium!</h1><p class="lead">Biên nhận đã được tạo. Bạn có thể bắt đầu học ngay.</p><div class="card result-detail"><div class="summary-row"><span>Trạng thái</span><span class="status success">Đã kích hoạt</span></div><div class="summary-row"><span>Số tiền</span><strong class="money">${formatMoney(r.amount)}</strong></div><div class="summary-row"><span>Mã giao dịch</span><span class="receipt-code">${r.id}</span></div><div class="summary-row"><span>Thời gian</span><strong>${r.date} ${r.time}</strong></div></div><div class="actions center"><button class="btn btn-primary" onclick="showToast('Premium đã sẵn sàng. Đây là điểm rời khỏi feature thanh toán.')">Bắt đầu học Premium</button><button class="btn btn-secondary" onclick="goto('transaction-history')">Xem lịch sử giao dịch</button></div>`;return;} if(r.status==='pending'){ $('payment-result-content').innerHTML=`<div class="result-icon pending"><svg><use href="#ic-clock"/></svg></div><div class="eyebrow">Đang đối soát</div><h1>Thanh toán đang được xử lý</h1><p class="lead">Hệ thống chưa nhận được kết quả cuối cùng. Premium chưa được kích hoạt và bạn không cần thanh toán lại lúc này.</p><div class="banner info show">Kết quả sẽ được cập nhật sau khi PayGate xác nhận.</div><div class="actions center"><button class="btn btn-secondary" onclick="goto('transaction-history')">Xem lịch sử giao dịch</button></div>`;return;} const messages={card_declined:['Thẻ bị từ chối','Thẻ của bạn bị từ chối bởi ngân hàng. Hãy thử thẻ khác.'],insufficient_funds:['Số dư không đủ','Số dư không đủ để hoàn tất thanh toán. Hãy dùng thẻ khác.'],expired_card:['Thẻ đã hết hạn','Hãy cập nhật ngày hết hạn hoặc dùng thẻ khác.'],incorrect_cvc:['Sai mã CVC','Kiểm tra lại mã CVC và thử lại.']}; const msg=messages[r.status]||['Thanh toán thất bại','Hệ thống bận, vui lòng thử lại sau.']; $('payment-result-content').innerHTML=`<div class="result-icon error"><svg><use href="#ic-x"/></svg></div><div class="eyebrow">Thanh toán không thành công</div><h1>${msg[0]}</h1><p class="lead">${msg[1]}</p><div class="actions center"><button class="btn btn-primary" onclick="goto('payment-method')">Thử thẻ khác</button><button class="btn btn-secondary" onclick="goto('plan-selection')">Quay lại chọn gói</button></div>`; }
+    function renderSubscription(){ const s=store.state.subscription; const plan=planById(s.planId); const labels={active:'Đang hoạt động',past_due:'Cần thanh toán',canceled:'Đã hủy'}; const cls=s.status==='active'?'success':s.status==='past_due'?'error':'pending'; const warning=s.status==='past_due'?'<div class="banner error show">Thanh toán kỳ này thất bại. Cập nhật thẻ trước 28/06/2026 để giữ Premium.</div>':s.status==='canceled'?`<div class="banner info show">Đã hủy. Premium còn hiệu lực đến ${s.accessEnd}.</div>`:''; $('subscription-card').innerHTML=`<div class="sub-head"><div><div class="eyebrow">${plan.short}</div><div class="sub-price">${plan.priceLabel}</div></div><span class="status ${cls}">${labels[s.status]}</span></div>${warning}<div class="info-list"><div class="info-tile"><small>${s.status==='canceled'?'Hiệu lực đến':'Gia hạn vào'}</small><strong>${s.status==='canceled'?s.accessEnd:s.periodEnd}</strong></div><div class="info-tile"><small>Thanh toán</small><strong>Visa •••• ${s.cardLast4}</strong></div><div class="info-tile"><small>Quyền truy cập</small><strong>${store.state.premiumActive?'Premium':'Free'}</strong></div></div>`; const btn=$('cancel-subscription'); btn.disabled=s.status==='canceled'; btn.textContent=s.status==='canceled'?'Thuê bao đã hủy':'Hủy gói'; }
+    function openCancelModal(){ if(store.state.subscription.status==='canceled')return; openModal($('cancel-dialog')); }
+    function openModal(el){ const cur=document.querySelector('[data-screen].active'); const theme=cur?cur.getAttribute('data-theme')||'light':'light'; el.querySelector('.modal').setAttribute('data-theme',theme); el.showModal(); }
+    function confirmCancelSubscription(){ const btn=$('confirm-cancel'); setLoading(btn,'Đang hủy...',true); setTimeout(()=>{ store.update({subscription:{...store.state.subscription,status:'canceled'}}); $('cancel-dialog').close(); setLoading(btn,'',false); renderSubscription(); showToast('Đã hủy. Premium còn hiệu lực đến hết kỳ hiện tại.'); },600); }
+    function renderTransactions(){ const rows=$('transaction-rows'); rows.innerHTML=store.state.transactions.map(t=>{const plan=planById(t.planId);return `<tr tabindex="0" onclick="openTransaction('${t.id}')" onkeydown="if(event.key==='Enter')openTransaction('${t.id}')"><td>${t.date}</td><td>${plan.short}</td><td class="receipt-code">${t.id}</td><td class="money">${formatMoney(t.amount)}</td><td><span class="status ${statusClass(t.status)}">${statusLabel(t.status)}</span></td></tr>`;}).join(''); $('transaction-empty').classList.toggle('show',store.state.transactions.length===0); $('load-more').hidden=!store.state.hasMore; }
+    function openTransaction(id){ store.update({selectedTransactionId:id}); goto('refund-request'); }
+    function loadMoreTransactions(){ const btn=$('load-more'); setLoading(btn,'Đang tải...',true); setTimeout(()=>{ const existing=new Set(store.state.transactions.map(t=>t.id)); const added=DEMO.moreTransactions.filter(t=>!existing.has(t.id)); store.update({transactions:[...store.state.transactions,...structuredClone(added)],hasMore:false}); renderTransactions(); setLoading(btn,'',false); },600); }
+    function renderRefund(){ const t=store.state.transactions.find(x=>x.id===store.state.selectedTransactionId); if(!t){ $('refund-transaction').innerHTML='<h3>Không tìm thấy giao dịch</h3><p class="cancel-note">Quay lại lịch sử để chọn một giao dịch.</p>'; $('refund-submit').disabled=true; return; } const plan=planById(t.planId); $('refund-transaction').innerHTML=`<div class="eyebrow">Giao dịch</div><h2 style="margin-top:7px">${plan.short}</h2><div class="summary-row"><span>Mã</span><span class="receipt-code">${t.id}</span></div><div class="summary-row"><span>Số tiền</span><strong class="money">${formatMoney(t.amount)}</strong></div><div class="summary-row"><span>Ngày</span><strong>${t.date}</strong></div><div class="summary-row"><span>Trạng thái</span><span class="status ${statusClass(t.status)}">${statusLabel(t.status)}</span></div>`; const eligible=t.status==='succeeded'; $('refund-submit').disabled=!eligible; if(!eligible){ $('refund-banner').textContent=t.status==='refunded'?'Giao dịch này đã được hoàn tiền.':'Chỉ giao dịch đã kích hoạt mới có thể hoàn tiền.'; $('refund-banner').classList.add('show','error'); } }
+    function submitRefund(){ const reason=$('refund-reason').value.trim(); const err=$('refund-reason-error'); err.classList.toggle('show',!reason); if(!reason)return; const t=store.state.transactions.find(x=>x.id===store.state.selectedTransactionId); if(!t||t.status!=='succeeded'){renderRefund();return;} const btn=$('refund-submit'); setLoading(btn,'Đang hoàn tiền...',true); setTimeout(()=>{ const transactions=store.state.transactions.map(x=>x.id===t.id?{...x,status:'refunded',refundReason:reason}:x); const premiumActive=t.id===store.state.paymentResult?.id?false:store.state.premiumActive; store.update({transactions,premiumActive}); $('refund-success').textContent='Đã hoàn tiền. Trạng thái giao dịch đã được cập nhật và quyền Premium liên quan đã được thu hồi.'; $('refund-success').classList.add('show','success'); $('refund-reason').value=''; setLoading(btn,'',false); renderRefund(); },600); }
+    function setNextPaymentOutcome(outcome){ store.update({nextPaymentOutcome:outcome}); togglePanel(false); showToast('Đã đặt kết quả mô phỏng cho lần thanh toán tiếp theo.'); }
+    function simulateReconciliation(){ const r=store.state.paymentResult; if(!store.state.reconciliationPending||!r||r.status!=='pending'){togglePanel(false);showToast('Không có giao dịch đang chờ đối soát.');return;} const succeeded={...r,status:'succeeded'}; const tx={id:r.id,date:r.date,time:r.time,planId:r.planId,amount:r.amount,status:'succeeded'}; store.update({paymentResult:succeeded,transactions:[tx,...store.state.transactions.filter(t=>t.id!==tx.id)],premiumActive:true,reconciliationPending:false}); togglePanel(false); goto('payment-result'); showToast('Polling đã xác nhận thanh toán thành công.'); }
+    function simulatePastDue(){ store.update({subscription:{...store.state.subscription,status:'past_due'}}); togglePanel(false); goto('subscription-manage'); showToast('Đã mô phỏng thanh toán gia hạn thất bại.'); }
+    function showToast(message){ const t=$('toast'); t.textContent=message;t.classList.add('show');clearTimeout(showToast.timer);showToast.timer=setTimeout(()=>t.classList.remove('show'),2200); }
+    function togglePanel(force){ const p=$('proto-panel'); const open=force===undefined?!p.classList.contains('open'):force;p.classList.toggle('open',open); }
+    function switchPane(name,btn){ document.querySelectorAll('.proto-tab').forEach(t=>t.classList.remove('active'));btn.classList.add('active');$('pane-toc').classList.toggle('active',name==='toc');$('pane-flow').classList.toggle('active',name==='flow'); }
+    document.querySelectorAll('[data-goto]').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();goto(a.dataset.goto);togglePanel(false);}));
+    document.addEventListener('keydown',e=>{if(e.key==='Escape')togglePanel(false);});
+    window.addEventListener('hashchange',()=>showScreen(location.hash.slice(1)));
+    function resetPrototypeData(){ if(!confirm('Xóa toàn bộ dữ liệu demo và làm mới? Không thể hoàn tác.'))return;localStorage.removeItem(STORE_KEY);store.state=structuredClone(DEFAULT_STATE);history.replaceState(null,'',location.pathname+location.search);location.reload(); }
+    showScreen(location.hash.slice(1)||DEFAULT_SCREEN);
+  </script>
+</body>
+</html>

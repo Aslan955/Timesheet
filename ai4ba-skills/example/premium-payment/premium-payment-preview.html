@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Premium Payment — SRS Preview</title>
+  <script src="https://cdn.jsdelivr.net/npm/markdown-it@14/dist/markdown-it.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+  <style>
+    :root {
+      --color-primary: #FCD535;
+      --color-canvas: #ffffff;
+      --color-surface: #fafafa;
+      --color-surface-strong: #f3f3f5;
+      --color-ink: #181a20;
+      --color-muted: #707a8a;
+      --color-hairline: #eaecef;
+      --color-link: #2563eb;
+      --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: var(--font-body);
+      color: var(--color-ink);
+      background: var(--color-surface);
+      margin: 0;
+      padding: 0;
+      line-height: 1.6;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      min-height: 100vh;
+    }
+    aside {
+      position: sticky;
+      top: 0;
+      align-self: start;
+      height: 100vh;
+      overflow-y: auto;
+      background: var(--color-canvas);
+      border-right: 1px solid var(--color-hairline);
+      padding: 24px 16px;
+    }
+    aside h2 { font-size: 14px; text-transform: uppercase; color: var(--color-muted); margin: 0 0 12px; letter-spacing: .03em; }
+    aside nav ol, aside nav ul { list-style: none; padding: 0; margin: 0; }
+    .toc-controls { display: flex; gap: 6px; margin-bottom: 12px; }
+    .toc-controls button {
+      flex: 1; font-size: 11px; color: var(--color-muted); background: var(--color-surface);
+      border: 1px solid var(--color-hairline); border-radius: 6px; padding: 5px 8px; cursor: pointer;
+    }
+    .toc-controls button:hover { background: var(--color-surface-strong); color: var(--color-ink); }
+    /* TOC nested đa cấp (H2→H3→H4) — thụt lề + cỡ chữ theo cấp. */
+    aside nav li.toc-item { list-style: none; }
+    aside nav li.toc-item > .toc-row { display: flex; align-items: flex-start; border-radius: 6px; }
+    aside nav li.toc-item > .toc-row:hover { background: var(--color-surface); }
+    aside nav li.toc-item > .toc-row > a { flex: 1; display: block; text-decoration: none; padding: 5px 8px; line-height: 1.4; }
+    aside nav .toc-children { margin: 0; padding: 0; }
+    aside nav li.collapsed > .toc-children { display: none; }
+    /* Cấp 2 (section chính) */
+    aside nav > li.toc-item { margin-top: 12px; }
+    aside nav > li.toc-item:first-child { margin-top: 0; }
+    aside nav > li.toc-item[data-level="2"] > .toc-row > a { font-weight: 600; font-size: 13px; color: var(--color-ink); }
+    aside nav > li.toc-item[data-level="2"].active > .toc-row { background: var(--color-primary); }
+    /* Cấp 3 */
+    aside nav li.toc-item[data-level="3"] { margin-left: 12px; border-left: 2px solid var(--color-hairline); }
+    aside nav li.toc-item[data-level="3"] > .toc-row > a { font-size: 12px; color: var(--color-muted); }
+    /* Cấp 4 */
+    aside nav li.toc-item[data-level="4"] { margin-left: 22px; border-left: 2px solid var(--color-hairline); }
+    aside nav li.toc-item[data-level="4"] > .toc-row > a { font-size: 11.5px; color: var(--color-muted); opacity: .9; }
+    aside nav li.toc-item.active > .toc-row > a { color: var(--color-ink); font-weight: 600; }
+    aside nav .toggle { cursor: pointer; user-select: none; color: var(--color-muted); width: 14px; flex: 0 0 14px; text-align: center; padding-top: 5px; transition: transform .15s; }
+    aside nav .toggle.leaf { visibility: hidden; }
+    aside nav li.collapsed > .toc-row > .toggle { transform: rotate(-90deg); }
+    main { padding: 40px 60px; max-width: 1100px; }
+    main h1 { font-size: 32px; border-bottom: 2px solid var(--color-ink); padding-bottom: 12px; }
+    main h2 { font-size: 24px; margin-top: 40px; border-bottom: 1px solid var(--color-hairline); padding-bottom: 6px; }
+    main h3 { font-size: 18px; margin-top: 28px; color: var(--color-ink); }
+    main h4 { font-size: 16px; margin-top: 20px; }
+    main p, main li { font-size: 14px; }
+    main code { font-family: var(--font-mono); font-size: 13px; background: var(--color-surface); padding: 2px 6px; border-radius: 4px; }
+    main pre { background: var(--color-surface); border: 1px solid var(--color-hairline); border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 13px; }
+    main pre.mermaid { background: var(--color-canvas); text-align: center; }
+    main .mermaid svg { cursor: zoom-in; transition: filter .15s; max-width: 100%; }
+    main .mermaid svg:hover { filter: drop-shadow(0 0 6px rgba(252, 213, 53, .5)); }
+    main table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 13px; }
+    main th, main td { border: 1px solid var(--color-hairline); padding: 8px 12px; text-align: left; vertical-align: top; }
+    main th { background: var(--color-surface); font-weight: 600; }
+    main a { color: var(--color-link); text-decoration: none; }
+    main a:hover { text-decoration: underline; }
+    main hr { border: none; border-top: 1px solid var(--color-hairline); margin: 32px 0; }
+    main blockquote { border-left: 4px solid var(--color-primary); margin: 16px 0; padding: 8px 16px; background: var(--color-surface); color: var(--color-muted); }
+    main details.inline-screen { border: 1px solid var(--color-hairline); border-radius: 8px; padding: 0; margin: 16px 0; background: var(--color-canvas); overflow: hidden; }
+    main details.inline-screen[open] { box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+    main details.inline-screen > summary { cursor: pointer; padding: 12px 16px; background: var(--color-surface); font-size: 14px; user-select: none; border-bottom: 1px solid transparent; }
+    main details.inline-screen[open] > summary { border-bottom-color: var(--color-hairline); }
+    main details.inline-screen > summary:hover { background: var(--color-surface-strong); }
+    main details.inline-screen > summary code { background: var(--color-canvas); border: 1px solid var(--color-hairline); }
+    main details.inline-screen > *:not(summary) { padding-left: 16px; padding-right: 16px; }
+    main details.inline-screen pre { margin: 8px 0; }
+    .wf-src-tag { font-size: 10px; font-weight: 700; color: #fff; background: #000; border-radius: 3px; padding: 1px 6px; margin-left: 6px; vertical-align: middle; }
+    /* HTML wireframe embed — CSS chi tiết đến từ style GỐC của file wireframe (scope .wf-embed,
+       xem extract_scoped_wireframe_css) nên font-size/spacing GIỐNG bản /wireframe-html. Ở đây chỉ
+       reset kế thừa + layout container để không bị body preview đè. */
+    main .wf-embed { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #000; font-size: 12px; line-height: 1.4; }
+    main .wf-embed * { box-sizing: border-box; }
+    main .wf-embed .wf-screen { display: inline-block; vertical-align: top; max-width: 100%; }
+    main .wf-embed .wf-step-badge { display: none; }
+    .meta { color: var(--color-muted); font-size: 13px; margin-bottom: 24px; }
+    /* Cover page (export) — khối bìa căn giữa, viền dưới ngăn cách với nội dung. */
+    main .cover { text-align: center; padding: 48px 24px 40px; margin-bottom: 24px; border-bottom: 2px solid var(--color-hairline); }
+    main .cover h1 { border: none; font-size: 34px; }
+    main .cover h2 { border: none; color: var(--color-muted); font-weight: 500; font-size: 17px; margin-top: 4px; }
+    main .cover p { font-size: 15px; line-height: 2; }
+
+    /* Mermaid zoom modal */
+    .mermaid-modal {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+      display: none; align-items: center; justify-content: center;
+      z-index: 9999; animation: fadeIn 0.2s ease-out;
+    }
+    .mermaid-modal.open { display: flex; }
+    .modal-svg {
+      width: 95vw; height: 90vh; border-radius: 8px;
+      background: var(--color-canvas); padding: 2rem; box-sizing: border-box;
+      overflow: hidden;
+    }
+    .modal-svg svg { display: block; max-width: none !important; max-height: none !important; width: 100% !important; height: 100% !important; }
+    .modal-toolbar {
+      position: fixed; top: 1rem; right: 1rem; display: flex; gap: 0.5rem; z-index: 10000;
+    }
+    .modal-toolbar button {
+      width: 40px; height: 40px; background: var(--color-canvas); border: 1px solid var(--color-hairline);
+      border-radius: 6px; font-size: 1.2rem; cursor: pointer; color: var(--color-ink);
+    }
+    .modal-toolbar button:hover { background: var(--color-surface); }
+    @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+
+    footer { padding: 24px 60px; border-top: 1px solid var(--color-hairline); color: var(--color-muted); font-size: 13px; background: var(--color-canvas); }
+    footer code { font-family: var(--font-mono); background: var(--color-surface); padding: 2px 6px; border-radius: 4px; }
+
+    @media (max-width: 768px) {
+      .layout { grid-template-columns: 1fr; }
+      aside { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--color-hairline); }
+      main { padding: 24px; }
+      footer { padding: 16px 24px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside>
+      <h2>Premium Payment</h2>
+      <div class="meta">SRS Preview · 2026-07-19</div>
+      <nav>
+        <div class="toc-controls">
+          <button type="button" onclick="setAllTocCollapsed(false)">Expand all</button>
+          <button type="button" onclick="setAllTocCollapsed(true)">Collapse all</button>
+        </div>
+        <ol id="toc"></ol>
+      </nav>
+    </aside>
+    <main id="content"></main>
+  </div>
+
+  <!-- Mermaid zoom modal -->
+  <div id="mermaid-modal" class="mermaid-modal" onclick="if(event.target===this)closeMermaidModal()">
+    <div class="modal-toolbar">
+      <button onclick="modalPanZoom && modalPanZoom.zoomIn()" title="Zoom in">＋</button>
+      <button onclick="modalPanZoom && modalPanZoom.zoomOut()" title="Zoom out">－</button>
+      <button onclick="modalPanZoom && (modalPanZoom.resetZoom(), modalPanZoom.center(), modalPanZoom.fit())" title="Reset">⟲</button>
+      <button onclick="closeMermaidModal()" title="Close (ESC)">✕</button>
+    </div>
+    <div class="modal-svg"></div>
+  </div>
+
+  <footer><p>Workflow: edit MD source → save → chạy <code>python3 _scripts/build-preview.py premium-payment</code> để regen → refresh browser.</p></footer>
+
+  <script>
+    const OFFLINE = false;
+    let modalPanZoom = null;
+
+    // === Markdown parsing (CHỈ online — offline đã render sẵn server-side) ===
+    if (!OFFLINE) {
+      const MD_SOURCE = "# Premium Payment — SRS Preview\n\n> Active work viewer · Generated 2026-07-19\n\n## 1. Tổng quan nhanh\n\n> Liếc nhanh quy mô SRS. Chi tiết từng mục ở section **SRS Spec** bên dưới.\n\n| Loại | Số lượng |\n|---|---|\n| Functional Requirements (FR) | 12 (P0: 5 / P1: 6 / P2: 1) |\n| Non-Functional Requirements (NFR) | 5 |\n| Business Rules (BR) | 5 |\n| Error codes | 9 |\n| Success Criteria | — |\n| Actors | — |\n| Screens | 6 |\n\n\n## 2. Giới thiệu & Mô tả chung\n\n### Definitions / Glossary\n\n## Glossary\n| Thuật ngữ | Định nghĩa | Xuất hiện ở | Aliases |\n|---|---|---|---|\n| **Learner (Người học)** | Người dùng cuối của app — học/ôn tiếng Anh. Là persona chính. Thay cho \"User\" (dùng \"Learner\" thống nhất). | authentication, payment, premium-payment, vocabulary-flashcard | User, Student (tránh dùng) |\n| **Admin** | Người dùng có quyền nâng cao (quản trị). Phân biệt với Learner. | — | — |\n| **Premium** | Gói trả phí mở khóa tính năng nâng cao — mua một lần hoặc thuê bao tháng/năm. | payment, premium-payment, group, vocabulary-flashcard | — |\n| **PayGate** | Cổng thanh toán đối tác (mô hình kiểu Stripe: customers/cards/charges/subscriptions/refunds). App uỷ thác toàn bộ thu thẻ + thuê bao tự gia hạn cho PayGate. Không dùng Sepay/Stripe. | payment, premium-payment | — |\n| **MailGate** | Dịch vụ gửi email đối tác — biên nhận thanh toán, cảnh báo, email hệ thống. | payment, premium-payment | — |\n| **Session (Phiên đăng nhập)** | Phiên một thiết bị đã đăng nhập. Không giới hạn số thiết bị, không tự hết hạn. Đặt lại mật khẩu thu hồi mọi phiên (BR-authentication-008); đăng xuất chỉ tác động thiết bị hiện tại. | authentication, vocabulary-flashcard | — |\n| **OAuth (Đăng nhập Google/GitHub)** | Đăng nhập bằng tài khoản bên thứ ba (Google, GitHub). Tự liên kết với tài khoản email trùng (account linking). | authentication | — |\n| **Onboarding** | Màn thiết lập hiển thị sau khi Learner đăng nhập lần đầu, trước khi vào app chính. | authentication, vocabulary-flashcard | — |\n| **Flashcard / Card (Thẻ)** | Thẻ lật từ vựng. Vòng đời trạng thái: `learning → review → mastered` theo lịch ôn. | vocabulary-flashcard, group | — |\n| **Deck (Bộ thẻ)** | Bộ thẻ từ vựng. System deck (do hệ thống cung cấp, Learner clone được) và user deck (tự tạo hoặc import từ file JSON). | vocabulary-flashcard | — |\n| **SRS / Spaced Repetition (Lặp lại ngắt quãng)** | Thuật toán xếp lịch ôn: hệ thống tự tính interval và sắp thẻ cần ôn theo ngày, dựa trên mức nhớ Learner tự đánh giá. | vocabulary-flashcard | — |\n| **Mức nhớ: Nhớ rõ / Nhớ mờ / Chưa nhớ** | 3 bậc Learner tự chấm sau mỗi lần ôn thẻ: - **Nhớ rõ** — interval tăng; đạt 7 ngày liên tục → chuyển `review`, ≥30 ngày → `mastered`. - **Nhớ mờ** — interval hiện tại × 1.5 (tối thiểu 1 ngày). - **Chưa nhớ** — reset về hôm nay (ôn lại ngay/sáng sớm mai), hạ trạng thái về `learning`. | vocabulary-flashcard | — |\n| **CEFR** | Khung tham chiếu trình độ tiếng Anh A1–C2. Deck hệ thống phân loại theo mức này (A1–B2 ở MVP). | vocabulary-flashcard | — |\n| **Subscription (Thuê bao)** | Gói Premium trả phí định kỳ tự gia hạn (tháng/năm) qua PayGate. Khi một lần thu (Charge) của thuê bao thất bại → gửi email cảnh báo, sau 3 ngày hạ về Free. Learner xem kỳ gia hạn + hủy bất cứ lúc nào. | premium-payment | — |\n| **Charge (Lần thu thẻ)** | Một lần thu tiền qua thẻ trên PayGate — mua Premium một lần hoặc kỳ gia hạn của thuê bao. Charge `succeeded` thì kích hoạt Premium; `failed` thì hiện màn lỗi theo từng loại lỗi thẻ. | premium-payment | — |\n| **Refund (Hoàn tiền)** | Trả lại tiền của một Charge đã thu qua PayGate. Đây là tính năng mức ưu tiên thấp (P2). | premium-payment | — |\n| **Lockout (Khóa tạm tài khoản)** | Cơ chế chống dò mật khẩu: sau ≥5 lần đăng nhập sai, tài khoản bị khóa tạm thời, Learner phải chờ trước khi thử lại. Khác với account `locked` vĩnh viễn do Admin. | authentication | — |\n\n---\n\n### Operating Environment\n\n#### Nền tảng đích\n\n- **Web responsive** (desktop + mobile), một codebase phục vụ cả 2.\n- Mobile breakpoint nhỏ nhất **375px** (iPhone SE). Test 2 viewport phổ biến: **375×667** và **414×896**.\n- Tablet: chưa cam kết riêng (responsive web tự co giãn).\n\n#### Trình duyệt hỗ trợ\n\n- Chrome, Safari, Firefox, Edge — **2 phiên bản major mới nhất**.\n- Mobile: **iOS Safari** + **Android Chrome**.\n\n#### Lưu ý mobile (rút từ test suite authentication)\n\n- Font input **≥16px** để tránh iOS auto-zoom khi focus.\n- Touch target **≥44px** (nút, link).\n- Bàn phím mobile **không che** field đang focus (auto-scroll khi focus).\n- Mọi form **không scroll ngang** ở viewport mobile.\n\n#### Người dùng & ngôn ngữ\n\n- Người dùng chính: **Learner** học/ôn tiếng Anh (xem **Learner-Người-học**).\n- Giao diện **tiếng Việt mặc định**. Toàn bộ wording lỗi/thành công/thông tin bằng tiếng Việt (NFR-authentication-005).\n\n#### Đối tác tích hợp ngoài\n\n| Đối tác | Vai trò |\n|---------|---------|\n| **PayGate** | Thu thẻ một lần (Charge), thuê bao tự gia hạn (Subscription), hoàn tiền (Refund), polling events |\n| **MailGate** | Email giao dịch: biên nhận, cảnh báo thanh toán thất bại, email xác nhận |\n| **Google OAuth** | Đăng nhập/đăng ký bằng tài khoản Google + auto-link theo email |\n| **GitHub OAuth** | Đăng nhập/đăng ký bằng tài khoản GitHub + auto-link theo email |\n\n#### Giả định mạng & phiên\n\n- **Online-first.**\n- Đăng nhập **đa thiết bị**, không giới hạn số phiên, phiên **không tự hết hạn**.\n- Đặt lại mật khẩu thu hồi mọi phiên (BR-authentication-008); đăng xuất chỉ tác động thiết bị hiện tại.\n\n#### Bảo mật vận hành\n\n- Khóa đối tác (PayGate/MailGate) lưu ở **secret store phía server** — KHÔNG nhúng client, KHÔNG log (NFR-premium-payment-004).\n- Mật khẩu lưu dạng hash, không bao giờ log plaintext; audit log mọi sự kiện auto-link social (NFR-authentication-001).\n\n---\n\n### Conventions\n\n#### Standard page elements\n- Page max width: 1200px\n- Required field marker: `*`\n- Currency format: `#,###,###.## VND` (or your locale)\n\n#### Notation in docs\n- `Required` field labels in tables\n- `Default: X` for default values\n- `Max: N chars` for length limits\n\n\n## <a id=\"sec-spec\"></a>3. SRS Spec\n\n### 1. Phạm vi kỹ thuật\n\nApp tích hợp 2 đối tác: **PayGate** (thanh toán: charges, subscriptions, refunds, events) và **MailGate** (email giao dịch). App lưu bản sao nghiệp vụ (Payment, Subscription, EmailMessage) để hiển thị + đối soát.\n\n### 2. Functional Requirements\n\n| ID | Yêu cầu | Ưu tiên |\n|---|---|---|\n| FR-premium-payment-001 | Hiển thị danh sách gói (one-time / thuê bao tháng / năm) kèm giá | P0 |\n| FR-premium-payment-002 | Nhập thẻ mới và thanh toán 1 lần qua PayGate `POST /v1/charges` | P0 |\n| FR-premium-payment-003 | Thanh toán bằng thẻ đã lưu (`payment_method`) | P1 |\n| FR-premium-payment-004 | Kích hoạt Premium khi charge `succeeded` | P0 |\n| FR-premium-payment-005 | Hiển thị màn kết quả (thành công / từng loại lỗi thẻ) | P0 |\n| FR-premium-payment-006 | Gửi email biên nhận qua MailGate template `receipt` sau khi thành công | P0 |\n| FR-premium-payment-007 | Tạo thuê bao định kỳ qua `POST /v1/subscriptions` | P1 |\n| FR-premium-payment-008 | Polling `GET /v1/events` để cập nhật trạng thái charge/subscription | P1 |\n| FR-premium-payment-009 | Khi `charge.failed` của thuê bao: gửi email `payment_failed`, sau 3 ngày hạ cấp Free | P1 |\n| FR-premium-payment-010 | Lịch sử giao dịch (list charges, phân trang) + tra trạng thái 1 charge | P1 |\n| FR-premium-payment-011 | Quản lý thuê bao: xem kỳ gia hạn, hủy (`/cancel`) | P1 |\n| FR-premium-payment-012 | Hoàn tiền qua `POST /v1/refunds` | P2 |\n\n### 3. Non-Functional Requirements\n\n| ID | Yêu cầu |\n|---|---|\n| NFR-premium-payment-001 | Phản hồi thanh toán < 3s (P95) |\n| NFR-premium-payment-002 | Khi gặp `429 rate_limited` → tự retry với backoff, không báo lỗi cứng cho user ngay |\n| NFR-premium-payment-003 | Dùng `Idempotency-Key` cho mọi lần tạo charge để chống thu trùng |\n| NFR-premium-payment-004 | Khóa đối tác (PayGate/MailGate) lưu ở secret store phía server; KHÔNG nhúng client, KHÔNG log |\n| NFR-premium-payment-005 | Polling sự kiện tối đa mỗi 1 phút; không bỏ sót event (lưu con trỏ event cuối đã xử lý) |\n\n### 4. Business Rules\n\n| ID | Quy tắc |\n|---|---|\n| BR-premium-payment-001 | Premium chỉ kích hoạt khi charge `status = succeeded` |\n| BR-premium-payment-002 | Thuê bao thanh toán thất bại liên tục 3 ngày → tự hạ cấp về Free |\n| BR-premium-payment-003 | Chỉ hoàn tiền charge đang `succeeded` (không hoàn charge `failed`/đã `refunded`) |\n| BR-premium-payment-004 | Giá: premium_monthly = 99.000đ; premium_yearly = 990.000đ |\n| BR-premium-payment-005 | Email biên nhận gửi sau khi (và chỉ khi) charge `succeeded` |\n\n### 5. Error Matrix\n\n| ID | Nguồn | Mã đối tác (HTTP) | Ý nghĩa nghiệp vụ | Xử lý UI |\n|---|---|---|---|---|\n| E-premium-payment-001 | PayGate | `card_declined` (402) | Thẻ bị từ chối | Màn kết quả lỗi + \"Thử thẻ khác\" |\n| E-premium-payment-002 | PayGate | `insufficient_funds` (402) | Số dư không đủ | \"Số dư không đủ, dùng thẻ khác\" |\n| E-premium-payment-003 | PayGate | `expired_card` (402) | Thẻ hết hạn | \"Thẻ đã hết hạn\" + sửa thẻ |\n| E-premium-payment-004 | PayGate | `incorrect_cvc` (402) | Sai CVC | \"Sai mã CVC\" + nhập lại |\n| E-premium-payment-005 | PayGate | `processing_error` (500) | Lỗi tạm phía cổng | \"Hệ thống bận, thử lại\" + auto retry |\n| E-premium-payment-006 | PayGate | `rate_limited` (429) | Quá nhiều request | Retry/backoff, ẩn với user |\n| E-premium-payment-007 | PayGate/MailGate | `unauthorized` (401) | Sai khóa (lỗi cấu hình) | KHÔNG hiện user; log + cảnh báo dev |\n| E-premium-payment-008 | MailGate | `bounced` (status) | Email bị trả về | Tra trạng thái; hiển thị biên nhận trong app làm fallback |\n| E-premium-payment-009 | MailGate | `invalid_email` (400) | Email sai định dạng | Bắt validate trước khi gửi |\n\n### 6. Data Entities (cho ERD)\n\nUser, Customer, PaymentMethod, Payment, Subscription, Refund, EmailMessage. Chi tiết quan hệ xem [erd](#sec-erd).\n\n### 7. Tham chiếu\n\n- Luồng: [flows](#sec-flows) · Trạng thái: [states](#sec-states)\n- API đối tác: **api-summary-paygate**, **api-summary-mailgate**\n- Mapping field: **api-map**\n\n\n## <a id=\"sec-erd\"></a>4. ERD\n\n> Data model nghiệp vụ. App lưu bản sao của dữ liệu PayGate/MailGate để hiển thị + đối soát.\n\n```mermaid\nerDiagram\n    USER ||--o{ PAYMENT : \"thực hiện\"\n    USER ||--o| SUBSCRIPTION : \"có thể có\"\n    USER ||--o{ PAYMENT_METHOD : \"lưu\"\n    CUSTOMER ||--o{ PAYMENT_METHOD : \"sở hữu\"\n    USER ||--|| CUSTOMER : \"ánh xạ\"\n    PAYMENT ||--o| REFUND : \"có thể có\"\n    SUBSCRIPTION ||--o{ PAYMENT : \"sinh ra theo kỳ\"\n    PAYMENT ||--o| EMAIL_MESSAGE : \"kèm biên nhận\"\n\n    USER {\n        string id PK\n        string email\n        string plan \"free | premium\"\n        date premium_until\n    }\n    CUSTOMER {\n        string id PK \"map cus_ của PayGate\"\n        string user_id FK\n        string email\n    }\n    PAYMENT_METHOD {\n        string id PK \"map pm_\"\n        string customer_id FK\n        string brand\n        string last4\n        string exp\n    }\n    PAYMENT {\n        string id PK \"map ch_\"\n        string user_id FK\n        string subscription_id FK \"null nếu mua 1 lần\"\n        int amount \"đồng VND\"\n        string status \"pending|succeeded|failed|refunded\"\n        string failure_code \"null nếu thành công\"\n        datetime created\n    }\n    SUBSCRIPTION {\n        string id PK \"map sub_\"\n        string user_id FK\n        string plan \"premium_monthly|premium_yearly\"\n        int amount\n        string status \"active|past_due|canceled\"\n        datetime current_period_end\n    }\n    REFUND {\n        string id PK \"map re_\"\n        string payment_id FK\n        int amount\n        string status\n    }\n    EMAIL_MESSAGE {\n        string id PK \"map msg_ của MailGate\"\n        string payment_id FK\n        string template \"receipt|payment_failed|welcome_premium\"\n        string status \"queued|delivered|bounced|failed\"\n    }\n```\n\n\n## <a id=\"sec-flows\"></a>5. System Flows\n\n> Sequence diagram các luồng tích hợp PayGate + MailGate. Review từ file rendered (IDE/Obsidian/GitHub).\n\n### Flow: Mua Premium 1 lần\n\n**Trigger**: User bấm \"Mua Premium\" (gói 1 tháng).\n**Related screens**: [payment-result](#sec-wireframes)\n**Related API**: PayGate `POST /v1/charges`, MailGate `POST /v1/messages`\n\n```mermaid\nsequenceDiagram\n    actor User\n    participant App as English App\n    participant Pay as PayGate\n    participant Mail as MailGate\n    participant DB as App DB\n\n    User->>App: Chọn gói + nhập thẻ\n    App->>Pay: POST /v1/charges (amount, source, Idempotency-Key)\n    alt Thẻ hợp lệ\n        Pay-->>App: 201 status=succeeded\n        App->>DB: Lưu Payment + plan=premium\n        App->>Mail: POST /v1/messages (template=receipt)\n        Mail-->>App: 201 status=delivered\n        App-->>User: Màn kết quả \"Đã kích hoạt Premium\"\n    else Thẻ lỗi\n        Pay-->>App: 402 (card_declined / insufficient_funds / ...)\n        App-->>User: Màn kết quả lỗi + hướng xử lý\n    end\n```\n\n### Flow: Đăng ký thuê bao định kỳ\n\n**Trigger**: User chọn gói thuê bao (tháng/năm).\n**Related API**: PayGate `POST /v1/customers`, `POST /v1/payment_methods`, `POST /v1/subscriptions`\n\n```mermaid\nsequenceDiagram\n    actor User\n    participant App as English App\n    participant Pay as PayGate\n    participant Mail as MailGate\n\n    User->>App: Chọn gói định kỳ + nhập thẻ\n    App->>Pay: POST /v1/customers (email)\n    Pay-->>App: 201 customer\n    App->>Pay: POST /v1/payment_methods (customer, card)\n    Pay-->>App: 201 payment_method\n    App->>Pay: POST /v1/subscriptions (customer, plan)\n    Pay-->>App: 201 status=active, current_period_end\n    App->>Mail: POST /v1/messages (template=welcome_premium)\n    App-->>User: \"Đã kích hoạt gói định kỳ, gia hạn ngày ...\"\n```\n\n### Flow: Gia hạn thất bại → cảnh báo → hạ cấp (sự kiện bất đồng bộ)\n\n**Trigger**: PayGate thu định kỳ thất bại, sinh event `charge.failed`.\n**Related API**: PayGate `GET /v1/events`, MailGate `POST /v1/messages`\n**Related rules**: BR-premium-payment-002 (3 ngày), FR-premium-payment-009\n\n```mermaid\nsequenceDiagram\n    participant Pay as PayGate\n    participant App as English App\n    participant Mail as MailGate\n    participant DB as App DB\n\n    Note over App,Pay: App polling sự kiện mỗi ~1 phút (NFR-005)\n    App->>Pay: GET /v1/events?type=charge.failed\n    Pay-->>App: event charge.failed (subscription)\n    App->>DB: subscription.status = past_due\n    App->>Mail: POST /v1/messages (template=payment_failed)\n    Mail-->>App: 201 (kiểm tra status delivered/bounced)\n    alt Thu lại OK trong 3 ngày\n        App->>Pay: GET /v1/events?type=subscription.renewed\n        Pay-->>App: event renewed\n        App->>DB: status = active\n    else Quá 3 ngày\n        App->>DB: status = canceled, plan = free\n        App->>Mail: POST /v1/messages (hạ cấp)\n    end\n```\n\n### Flow: Hoàn tiền\n\n**Trigger**: CSKH/User yêu cầu hoàn tiền 1 charge.\n**Related API**: PayGate `POST /v1/refunds`\n\n```mermaid\nsequenceDiagram\n    actor CSKH\n    participant App as English App\n    participant Pay as PayGate\n    participant DB as App DB\n\n    CSKH->>App: Yêu cầu hoàn tiền charge ch_x\n    App->>Pay: POST /v1/refunds (charge=ch_x)\n    alt Charge đang succeeded\n        Pay-->>App: 201 refund succeeded\n        App->>DB: Payment.status = refunded\n        App-->>CSKH: \"Đã hoàn tiền\"\n    else Charge không hợp lệ\n        Pay-->>App: 400 charge_not_refundable / 404\n        App-->>CSKH: Thông báo không hoàn được\n    end\n```\n\n\n## <a id=\"sec-states\"></a>6. State Diagrams\n\n### State: Subscription\n\n```mermaid\nstateDiagram-v2\n    [*] --> active: tạo thành công (charge đầu OK)\n    active --> active: gia hạn OK (event subscription.renewed)\n    active --> past_due: gia hạn thất bại (charge.failed)\n    past_due --> active: thu lại thành công trong 3 ngày\n    past_due --> canceled: quá 3 ngày chưa thu được (hạ cấp Free)\n    active --> canceled: user hủy gói (/cancel)\n    canceled --> [*]\n```\n\n### State: Payment (charge)\n\n```mermaid\nstateDiagram-v2\n    [*] --> pending: gửi POST /v1/charges\n    pending --> succeeded: thẻ hợp lệ\n    pending --> failed: thẻ lỗi (declined/insufficient/expired/cvc)\n    succeeded --> refunded: hoàn tiền (POST /v1/refunds)\n    failed --> [*]\n    refunded --> [*]\n    succeeded --> [*]\n```\n\n\n## <a id=\"sec-functions\"></a>7. Functions\n\n### Use Cases Index\n\n#### Use cases\n\n| Slug | Tên | Actor chính | FR liên quan | Screens | Ưu tiên |\n|---|---|---|---|---|---|\n| [uc-buy-onetime](#uc-uc-buy-onetime) | Mua Premium 1 lần | Người học | FR-002/004/005/006 | plan-selection, payment-method, payment-result | P0 |\n| [uc-subscribe](#uc-uc-subscribe) | Đăng ký thuê bao | Người học | FR-007 | plan-selection, payment-method, subscription-manage | P1 |\n| [uc-manage-subscription](#uc-uc-manage-subscription) | Quản lý / hủy thuê bao | Người học | FR-011 | subscription-manage | P1 |\n| [uc-refund](#uc-uc-refund) | Hoàn tiền | CSKH | FR-012 | refund-request, transaction-history | P2 |\n\n\n---\n\n### <a id=\"uc-uc-buy-onetime\"></a>UC: Mua Premium 1 lần\n\n#### a. Giới thiệu\nNgười học Free mua gói Premium 1 tháng (thanh toán một lần) để mở khóa nội dung nâng cao.\n\n#### b. Actors\n- Chính: Người học (Free).\n- Phụ (hệ thống ngoài): PayGate (thu tiền), MailGate (gửi biên nhận).\n\n#### c. Pre-conditions\n- Đã đăng nhập.\n- Đang ở gói Free.\n\n#### d. Kết quả mong đợi (các bước)\n1. Người học mở màn chọn gói, chọn \"1 tháng\", bấm Tiếp tục.\n2. Nhập thẻ, bấm Thanh toán.\n3. Hệ thống gọi PayGate tạo charge (kèm Idempotency-Key).\n4. PayGate trả `succeeded` → hệ thống kích hoạt Premium, lưu Payment.\n5. Hệ thống gửi email biên nhận qua MailGate.\n6. Màn kết quả hiển thị \"Đã kích hoạt Premium\".\n\n**Nhánh thất bại:** ở bước 4, PayGate trả lỗi thẻ (`card_declined`/`insufficient_funds`/`expired_card`/`incorrect_cvc`) → màn kết quả hiển thị thông báo tương ứng + hướng xử lý; KHÔNG kích hoạt Premium.\n\n**Nhánh hệ thống bận:** `rate_limited`/`processing_error` → retry ngầm; nếu vẫn lỗi báo \"thử lại sau\".\n\n#### e. Activity diagram\n(không bắt buộc — luồng tuyến tính, xem [flows.md](#sec-flows) \"Mua Premium 1 lần\")\n\n#### f. Screens involved\nplan-selection → payment-method → payment-result.\n\n#### g. Related FR\nFR-premium-payment-002, 004, 005, 006. Error: E-001..006.\n\n#### h. Câu hỏi mở\n(không)\n\n\n---\n\n### <a id=\"uc-uc-manage-subscription\"></a>UC: Quản lý / hủy thuê bao\n\n#### a. Giới thiệu\nNgười học xem thông tin gói thuê bao và hủy khi không dùng nữa.\n\n#### b. Actors\n- Chính: Người học (Premium thuê bao).\n- Phụ: PayGate (subscriptions).\n\n#### c. Pre-conditions\n- Đang có subscription `active` hoặc `past_due`.\n\n#### d. Kết quả mong đợi (các bước)\n1. Người học mở màn \"Gói của tôi\".\n2. Hệ thống hiển thị tên gói, trạng thái, ngày gia hạn, thẻ.\n3. Người học bấm \"Hủy gói\", xác nhận.\n4. Hệ thống gọi PayGate `/cancel` → trạng thái `canceled`.\n5. Hiển thị \"Đã hủy. Premium còn hiệu lực đến hết kỳ hiện tại\".\n\n**Nhánh past_due:** hiển thị cảnh báo thanh toán kỳ này thất bại + nhắc cập nhật thẻ trước hạn hạ cấp (3 ngày).\n\n#### e. Activity diagram\n(không bắt buộc)\n\n#### f. Screens involved\nsubscription-manage.\n\n#### g. Related FR\nFR-premium-payment-011. Quy tắc BR-002 (hạ cấp sau 3 ngày past_due).\n\n#### h. Câu hỏi mở\n- Hủy giữa kỳ có hoàn tiền pro-rate không? (xem URD OQ-2)\n\n\n---\n\n### <a id=\"uc-uc-refund\"></a>UC: Hoàn tiền\n\n#### a. Giới thiệu\nCSKH hoàn tiền cho một giao dịch đã thành công khi khách đủ điều kiện.\n\n#### b. Actors\n- Chính: CSKH.\n- Phụ: PayGate (refunds).\n\n#### c. Pre-conditions\n- Có giao dịch `succeeded` cần hoàn.\n- CSKH có quyền hoàn tiền.\n\n#### d. Kết quả mong đợi (các bước)\n1. CSKH mở giao dịch từ lịch sử, bấm \"Hoàn tiền\".\n2. Nhập lý do, xác nhận.\n3. Hệ thống gọi PayGate `POST /v1/refunds`.\n4. PayGate trả refund `succeeded` → cập nhật Payment `refunded`, thu hồi Premium.\n5. Hiển thị \"Đã hoàn tiền\".\n\n**Nhánh không hợp lệ:** charge `failed`/đã `refunded` → PayGate trả `400 charge_not_refundable`; charge không tồn tại → `404`. Hệ thống báo lỗi, không đổi trạng thái.\n\n#### e. Activity diagram\n(không bắt buộc — xem [flows.md](#sec-flows) \"Hoàn tiền\")\n\n#### f. Screens involved\ntransaction-history → refund-request.\n\n#### g. Related FR\nFR-premium-payment-012. Quy tắc BR-003 (chỉ hoàn charge succeeded).\n\n#### h. Câu hỏi mở\n(không)\n\n\n---\n\n### <a id=\"uc-uc-subscribe\"></a>UC: Đăng ký thuê bao Premium\n\n#### a. Giới thiệu\nNgười học đăng ký gói Premium tự gia hạn (tháng/năm) để không phải mua lại mỗi kỳ.\n\n#### b. Actors\n- Chính: Người học.\n- Phụ: PayGate (customer, payment_method, subscription), MailGate (email chào mừng).\n\n#### c. Pre-conditions\n- Đã đăng nhập.\n\n#### d. Kết quả mong đợi (các bước)\n1. Người học chọn gói định kỳ (tháng/năm), bấm Tiếp tục.\n2. Nhập thẻ để lưu.\n3. Hệ thống tạo customer + payment_method trên PayGate.\n4. Hệ thống tạo subscription → PayGate trả `active` + ngày gia hạn.\n5. Gửi email chào mừng (template welcome_premium).\n6. Hiển thị \"Đã kích hoạt gói định kỳ, gia hạn ngày ...\".\n\n**Nhánh thất bại tạo customer/charge đầu:** dừng, báo lỗi tương ứng, không tạo subscription.\n\n#### e. Activity diagram\n(không bắt buộc — xem [flows.md](#sec-flows) \"Đăng ký thuê bao định kỳ\")\n\n#### f. Screens involved\nplan-selection → payment-method → subscription-manage.\n\n#### g. Related FR\nFR-premium-payment-007. Quy tắc giá BR-004.\n\n#### h. Câu hỏi mở\n(không)\n\n\n## 8. Screens (catalog)\n\n| # | Screen | Status | Used by (flow) | Mô tả |\n|---|---|---|---|---|\n| 1 | plan-selection | draft | Mua 1 lần / Thuê bao | — |\n| 2 | payment-method | draft | Mua / Lưu thẻ | — |\n| 3 | payment-result | draft | Mua Premium 1 lần | — |\n| 4 | subscription-manage | draft | Quản lý/hủy thuê bao | — |\n| 5 | transaction-history | draft | Lịch sử giao dịch | — |\n| 6 | refund-request | draft | Hoàn tiền | — |\n\n\n## <a id=\"sec-wireframes\"></a>9. Wireframes\n\n#### Flow: payment-method\n\n**ASCII wireframe + mô tả:**\n\n### 1. Wireframe (ASCII)\n\n```\n┌─────────────────────────────────────────────┐\n│  ← Thanh toán — Gói tháng (99.000đ/tháng)     │\n├─────────────────────────────────────────────┤\n│  Thẻ đã lưu:                                  │\n│   (•) Visa •••• 4242   hết hạn 12/29          │\n│   ( ) Dùng thẻ mới                            │\n│                                               │\n│  ── hoặc nhập thẻ mới ──                      │\n│  Số thẻ   : [ ____ ____ ____ ____ ]           │\n│  Hết hạn  : [ MM/YY ]   CVC: [ ___ ]          │\n│                                               │\n│  ⚠ Thẻ đã hết hạn. Vui lòng dùng thẻ khác.    │\n│                                               │\n│           [   Thanh toán 99.000đ   ]          │\n└─────────────────────────────────────────────┘\n```\n\n### 2. Screen description\n\n| # | Thành phần | Mô tả & logic | Nguồn dữ liệu / API |\n|---|---|---|---|\n| 1 | Thẻ đã lưu | • Liệt kê thẻ của customer dạng \"Visa •••• 4242\"<br>• KHÔNG hiện full số thẻ | `payment_method.brand/last4` |\n| 2 | Nhập thẻ mới | • Số thẻ / hết hạn / CVC<br>• Validate cơ bản trước khi gọi API | — |\n| 3 | Khối lỗi | • Hiện theo mã lỗi từ charge: `expired_card`→\"Thẻ đã hết hạn\"; `incorrect_cvc`→\"Sai mã CVC\" | `charge.failure_code` (E-003/E-004) |\n| 4 | Nút Thanh toán | • Gọi `POST /v1/charges` (source thẻ mới hoặc `payment_method` thẻ đã lưu)<br>• Kèm `Idempotency-Key` (NFR-003)<br>• Sang `payment-result` | PayGate charges |\n\n---\n\n#### Flow: payment-result\n\n**ASCII wireframe + mô tả:**\n\n### 1. Wireframe (ASCII)\n\n```\n┌─────────────────────────────────────────────┐\n│              Kết quả thanh toán               │\n├─────────────────────────────────────────────┤\n│                                               │\n│                  ✓  (icon)                    │\n│           Đã kích hoạt Premium!               │\n│                                               │\n│   Trạng thái   :  [ Đã kích hoạt ]            │\n│   Số tiền      :  99.000đ                      │\n│   Mã giao dịch :  ch_da12ebdb58a14009         │\n│   Thời gian    :  26/05/2026 14:31            │\n│                                               │\n│        [   Bắt đầu học Premium   ]            │\n│        [   Xem lịch sử giao dịch  ]           │\n│                                               │\n└─────────────────────────────────────────────┘\n\n  (state lỗi — thẻ bị từ chối)\n┌─────────────────────────────────────────────┐\n│              Kết quả thanh toán               │\n├─────────────────────────────────────────────┤\n│                  ✕  (icon)                    │\n│             Thanh toán thất bại               │\n│   Thẻ của bạn bị từ chối bởi ngân hàng.       │\n│                                               │\n│        [     Thử thẻ khác     ]               │\n│        [        Quay lại        ]             │\n└─────────────────────────────────────────────┘\n```\n\n### 2. Screen description\n\n| # | Thành phần | Mô tả & logic | Nguồn dữ liệu / API |\n|---|---|---|---|\n| 1 | Badge trạng thái | • Hiển thị nhãn theo `charge.status`<br>• `succeeded`→**\"Đã kích hoạt\"** (xanh)<br>• `failed`/`card_declined`→**\"Thất bại\"** (đỏ)<br>• `pending`→\"Đang xử lý\" | `charge.status` (PayGate) |\n| 2 | Số tiền | • Định dạng nghìn + \"đ\"<br>• vd `99000`→**\"99.000đ\"**<br>• KHÔNG chia 100 (VND không có đơn vị lẻ) | `charge.amount` |\n| 3 | Mã giao dịch | • Hiển thị nguyên `charge.id`<br>• Dùng để tra cứu / hỗ trợ | `charge.id` |\n| 4 | Thời gian | • Đổi unix timestamp sang giờ địa phương | `charge.created` |\n| 5 | Nút hành động (state thành công) | • **\"Bắt đầu học Premium\"** → vào bài học<br>• \"Xem lịch sử giao dịch\" | — |\n| 6 | Khối lỗi (state thất bại) | • Hiện khi `402 card_declined`<br>• Thông báo \"Thẻ bị từ chối\" + nút **\"Thử thẻ khác\"** | `error.code` (PayGate) |\n\n---\n\n#### Flow: plan-selection\n\n**ASCII wireframe + mô tả:**\n\n### 1. Wireframe (ASCII)\n\n```\n┌─────────────────────────────────────────────┐\n│  ← Nâng cấp Premium                           │\n├─────────────────────────────────────────────┤\n│  Mở khóa toàn bộ bài học & chấm phát âm       │\n│                                               │\n│  ┌─────────────┐ ┌─────────────┐ ┌─────────┐ │\n│  │ 1 THÁNG     │ │ THÁNG ⭐     │ │ NĂM     │ │\n│  │ 99.000đ     │ │ 99.000đ/th  │ │990.000đ │ │\n│  │ mua 1 lần   │ │ tự gia hạn  │ │ /năm    │ │\n│  │ ( ) chọn    │ │ (•) chọn    │ │ ( )chọn │ │\n│  └─────────────┘ └─────────────┘ └─────────┘ │\n│                                               │\n│            [   Tiếp tục   ]                   │\n└─────────────────────────────────────────────┘\n```\n\n### 2. Screen description\n\n| # | Thành phần | Mô tả & logic | Nguồn dữ liệu |\n|---|---|---|---|\n| 1 | Thẻ gói | • 3 lựa chọn: one-time, thuê bao tháng (mặc định chọn), thuê bao năm<br>• Giá: **99.000đ** / **99.000đ/tháng** / **990.000đ/năm** (BR-004) | bảng giá phía app |\n| 2 | Nhãn gói | • Tên hiển thị tiếng Việt, KHÔNG hiện mã `premium_monthly` | app dịch mã→tên (api-map gap 2) |\n| 3 | Nút Tiếp tục | • Sang màn `payment-method`<br>• Mang theo loại gói đã chọn | — |\n\n---\n\n#### Flow: refund-request\n\n**ASCII wireframe + mô tả:**\n\n### 1. Wireframe (ASCII)\n\n```\n┌─────────────────────────────────────────────┐\n│  ← Hoàn tiền giao dịch                         │\n├─────────────────────────────────────────────┤\n│  Giao dịch : ch_da12ebdb58a14009              │\n│  Số tiền   : 99.000đ                           │\n│  Ngày      : 26/05/2026                        │\n│  Trạng thái: Đã kích hoạt                      │\n│                                               │\n│  Lý do hoàn: [ ____________________ ]          │\n│                                               │\n│           [   Xác nhận hoàn tiền   ]          │\n│                                               │\n│  ✓ Đã hoàn tiền. Premium sẽ bị thu hồi.        │\n└─────────────────────────────────────────────┘\n```\n\n### 2. Screen description\n\n| # | Thành phần | Mô tả & logic | Nguồn dữ liệu / API |\n|---|---|---|---|\n| 1 | Thông tin giao dịch | • Hiển thị charge cần hoàn (id, số tiền, ngày, trạng thái) | `GET /v1/charges/{id}` |\n| 2 | Điều kiện hoàn | • Chỉ cho hoàn khi `status=succeeded` (BR-003)<br>• Charge `failed`/`refunded` → ẩn/khóa nút | `charge.status` |\n| 3 | Nút Xác nhận | • Gọi `POST /v1/refunds {charge}`<br>• Thành công → cập nhật trạng thái \"Đã hoàn tiền\" | PayGate refunds |\n| 4 | Thông báo lỗi | • `charge_not_refundable` (400) → \"Giao dịch không thể hoàn\"<br>• `resource_missing` (404) → \"Không tìm thấy giao dịch\" | error PayGate |\n\n---\n\n#### Flow: subscription-manage\n\n**ASCII wireframe + mô tả:**\n\n### 1. Wireframe (ASCII)\n\n```\n┌─────────────────────────────────────────────┐\n│  Gói của tôi                                  │\n├─────────────────────────────────────────────┤\n│  Gói tháng — 99.000đ/tháng                    │\n│  Trạng thái : [ Đang hoạt động ]              │\n│  Gia hạn vào: 25/06/2026                       │\n│  Thẻ        : Visa •••• 4242                   │\n│                                               │\n│  [ Xem lịch sử giao dịch ]                    │\n│  [ Hủy gói ]                                   │\n│                                               │\n│  ⚠ (nếu past_due) Thanh toán kỳ này thất bại. │\n│     Cập nhật thẻ trước 28/06 để giữ Premium.  │\n└─────────────────────────────────────────────┘\n```\n\n### 2. Screen description\n\n| # | Thành phần | Mô tả & logic | Nguồn dữ liệu / API |\n|---|---|---|---|\n| 1 | Tên gói + giá | • Dịch `plan` sang tên tiếng Việt + giá | `subscription.plan` |\n| 2 | Trạng thái | • active→\"Đang hoạt động\"; past_due→\"Cần thanh toán\"; canceled→\"Đã hủy\" | `subscription.status` |\n| 3 | Gia hạn vào | • Ngày từ `current_period_end` (unix→ngày) | `subscription.current_period_end` |\n| 4 | Cảnh báo past_due | • Hiện khi `status=past_due`<br>• Nhắc cập nhật thẻ trước hạn hạ cấp (3 ngày — BR-002) | event `charge.failed` |\n| 5 | Nút Hủy gói | • Gọi `POST /v1/subscriptions/{id}/cancel`<br>• Xác nhận trước khi hủy | PayGate subscriptions |\n\n---\n\n#### Flow: transaction-history\n\n**ASCII wireframe + mô tả:**\n\n### 1. Wireframe (ASCII)\n\n```\n┌─────────────────────────────────────────────┐\n│  Lịch sử giao dịch                            │\n├─────────────────────────────────────────────┤\n│  26/05  Gói tháng     99.000đ  [Đã kích hoạt] │\n│  25/04  Gói tháng     99.000đ  [Đã kích hoạt] │\n│  25/03  Gói tháng     99.000đ  [Đã hoàn tiền] │\n│  24/02  Gói tháng     99.000đ  [Thất bại]     │\n│                                               │\n│            [  Tải thêm  ]                      │\n└─────────────────────────────────────────────┘\n```\n\n### 2. Screen description\n\n| # | Thành phần | Mô tả & logic | Nguồn dữ liệu / API |\n|---|---|---|---|\n| 1 | Dòng giao dịch | • Ngày + tên gói + số tiền + badge trạng thái | `GET /v1/charges` (list) |\n| 2 | Badge | • succeeded→\"Đã kích hoạt\"; refunded→\"Đã hoàn tiền\"; failed→\"Thất bại\" | `charge.status` |\n| 3 | Số tiền | • Định dạng \"99.000đ\" | `charge.amount` |\n| 4 | Tải thêm | • Hiện khi `has_more=true`<br>• Gọi tiếp với `starting_after=<id cuối>` (phân trang cursor) | `list.has_more` |\n| 5 | Bấm 1 dòng | • Sang chi tiết / tra trạng thái `GET /v1/charges/{id}` | PayGate charges |\n\n\n## 10. Designs\n\n| Screen | Status | Figma frame | HTML prototype | Updated |\n|---|---|---|---|---|\n| `` | draft | — | — | 2026-05-26 |\n| `` | draft | — | — | 2026-05-26 |\n| `` | draft | — | — | 2026-05-26 |\n| `` | draft | — | — | 2026-05-26 |\n| `` | draft | — | — | 2026-05-26 |\n| `` | draft | — | — | 2026-05-26 |\n\n\n## <a id=\"sec-openq\"></a>11. Open Questions (tổng hợp)\n\n_Không còn câu hỏi mở — tất cả đã resolved (hoặc các mục đều `(none)`)._\n\n";
+      const md = window.markdownit({ html: true, linkify: true, breaks: false });
+      const defaultFence = md.renderer.rules.fence.bind(md.renderer.rules);
+      md.renderer.rules.fence = (tokens, idx, options, env, slf) => {
+        const token = tokens[idx];
+        if (token.info.trim() === 'mermaid') {
+          return `<pre class="mermaid">${token.content}</pre>`;
+        }
+        return defaultFence(tokens, idx, options, env, slf);
+      };
+      document.getElementById('content').innerHTML = md.render(MD_SOURCE);
+    }
+
+    // === Build nested TOC đa cấp (H2 → H3 → H4) theo đúng phân cấp heading ===
+    const toc = document.getElementById('toc');
+    // Lấy H2/H3/H4 (bỏ heading trong cover page). H4 cho thấy mục con sâu (vd
+    // "## Screen: ..." trong wireframe demote thành H4) — TOC nest đúng theo cấp.
+    const headings = Array.from(document.querySelectorAll('main h2, main h3, main h4'))
+                          .filter(h => !h.closest('.cover'));
+    // Stack các <ul> theo cấp: stack[L] = ul chứa item cấp L. Gốc toc = cấp 1 (giữ H2).
+    const listStack = { 1: toc };   // toc là <ol> gốc
+    let counter = 0;
+
+    headings.forEach((h) => {
+      const level = parseInt(h.tagName[1], 10);   // 2 | 3 | 4
+      const id = `sec-${++counter}`;
+      h.id = id;
+
+      const li = document.createElement('li');
+      li.className = 'toc-item';
+      li.dataset.level = level;
+      const row = document.createElement('div');
+      row.className = 'toc-row';
+      const toggle = document.createElement('span');
+      toggle.className = 'toggle leaf';   // 'leaf' cho tới khi có con
+      toggle.textContent = '▾';
+      const a = document.createElement('a');
+      a.href = '#' + id;
+      a.textContent = h.textContent;
+      row.appendChild(toggle);
+      row.appendChild(a);
+      li.appendChild(row);
+      const childUl = document.createElement('ul');
+      childUl.className = 'toc-children';
+      li.appendChild(childUl);
+
+      // Gắn vào parent = ul của cấp NGAY TRÊN đang mở (level-1); không có thì leo lên tiếp.
+      let parentUl = null;
+      for (let L = level - 1; L >= 1; L--) { if (listStack[L]) { parentUl = listStack[L]; break; } }
+      (parentUl || toc).appendChild(li);
+      // Parent li không còn là leaf → hiện toggle.
+      const parentLi = (parentUl || toc).closest('li.toc-item');
+      if (parentLi) parentLi.querySelector(':scope > .toc-row > .toggle').classList.remove('leaf');
+
+      // Cấp hiện tại giờ mở childUl này; xóa mọi cấp sâu hơn khỏi stack.
+      listStack[level] = childUl;
+      for (let L = level + 1; L <= 6; L++) delete listStack[L];
+
+      toggle.addEventListener('click', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        li.classList.toggle('collapsed');
+      });
+    });
+
+    function setAllTocCollapsed(collapsed) {
+      // Chỉ gập/mở các item CÓ con (leaf giữ nguyên).
+      toc.querySelectorAll('li.toc-item').forEach(li => {
+        const t = li.querySelector(':scope > .toc-row > .toggle');
+        if (t && !t.classList.contains('leaf')) li.classList.toggle('collapsed', collapsed);
+      });
+    }
+
+    // === Click link nội bộ #anchor (TOC LẪN trong nội dung) → cuộn mượt tới mục ===
+    // Bắt ở document để phủ cả link "chi tiết ở erd.md" (đã đổi thành #sec-erd) trong
+    // content, không chỉ TOC. Anchor có thể là <a id> động (sec-N) hoặc cố định (sec-erd...).
+    document.addEventListener('click', (e) => {
+      const a = e.target.closest('a[href^="#"]');
+      if (!a) return;
+      const id = a.getAttribute('href').slice(1);
+      const target = document.getElementById(id) ||
+                     document.querySelector(`main [id="${id}"]`);
+      if (target) {
+        e.preventDefault();
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        history.replaceState(null, '', '#' + id);
+      }
+    });
+
+    // === Scroll-spy: highlight mục đang xem + mọi tổ tiên của nó ===
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          toc.querySelectorAll('li.active').forEach(el => el.classList.remove('active'));
+          const link = toc.querySelector(`a[href="#${entry.target.id}"]`);
+          if (link) {
+            // Đánh dấu item hiện tại + leo lên mọi cấp cha (nested).
+            let li = link.closest('li.toc-item');
+            while (li) { li.classList.add('active'); li = li.parentElement.closest('li.toc-item'); }
+          }
+        }
+      });
+    }, { rootMargin: '-10% 0px -70% 0px', threshold: 0 });
+    document.querySelectorAll('main h2, main h3, main h4').forEach(h => obs.observe(h));
+
+    // === Mermaid render (CHỈ online) + zoom modal ===
+    if (!OFFLINE && window.mermaid) {
+      mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
+      (async () => {
+        const blocks = Array.from(document.querySelectorAll('pre.mermaid'));
+        for (let i = 0; i < blocks.length; i++) {
+          const el = blocks[i];
+          const code = el.textContent;
+          try {
+            const { svg } = await mermaid.render(`mmd-${i}`, code);
+            el.innerHTML = svg;
+            el.dataset.processed = '1';
+          } catch (err) {
+            console.error(`Mermaid block #${i} failed:`, err.message || err);
+            el.innerHTML = `<div style="color:#b00;font-family:monospace;font-size:12px;padding:8px;border:1px solid #b00;border-radius:4px;text-align:left;">⚠ Mermaid render lỗi: ${(err.message||err).toString().split('\n')[0]}<br><pre style="white-space:pre-wrap;margin-top:8px;">${code.replace(/</g,'&lt;')}</pre></div>`;
+          }
+        }
+        attachMermaidZoom();
+      })();
+    } else {
+      // offline: SVG đã inline sẵn server-side, chỉ cần gắn click-zoom.
+      attachMermaidZoom();
+    }
+
+    function attachMermaidZoom() {
+      document.querySelectorAll('.mermaid svg, pre.mermaid svg').forEach(svg => {
+        if (svg.dataset.zoomAttached) return;
+        svg.dataset.zoomAttached = '1';
+        svg.addEventListener('click', () => openMermaidModal(svg));
+      });
+    }
+
+    function openMermaidModal(svg) {
+      const modal = document.getElementById('mermaid-modal');
+      const inner = modal.querySelector('.modal-svg');
+      const clone = svg.cloneNode(true);
+      clone.style.maxWidth = 'none';
+      clone.style.maxHeight = 'none';
+      clone.setAttribute('width', '100%');
+      clone.setAttribute('height', '100%');
+      inner.innerHTML = '';
+      inner.appendChild(clone);
+      modal.classList.add('open');
+      // svg-pan-zoom chỉ có online (CDN). Offline: hiển thị to trong modal, không pan/zoom lib
+      // (degrade nhẹ — vẫn xem được full diagram, ESC/click nền để đóng).
+      if (!OFFLINE && window.svgPanZoom) {
+        requestAnimationFrame(() => {
+          modalPanZoom = svgPanZoom(clone, {
+            zoomEnabled: true, controlIconsEnabled: false,
+            fit: true, center: true, minZoom: 0.3, maxZoom: 20,
+            zoomScaleSensitivity: 0.3
+          });
+        });
+      }
+    }
+
+    function closeMermaidModal() {
+      const modal = document.getElementById('mermaid-modal');
+      if (modalPanZoom) { modalPanZoom.destroy(); modalPanZoom = null; }
+      modal.querySelector('.modal-svg').innerHTML = '';
+      modal.classList.remove('open');
+    }
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && document.getElementById('mermaid-modal').classList.contains('open')) {
+        closeMermaidModal();
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,66 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  /* Quy tắc: toàn trang chỉ dùng 1 font. Trỏ mono/serif về cùng Inter để
+     các tiện ích font-mono / font-serif không tạo ra font thứ hai. */
+  --font-mono: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  font-family: var(--font-sans);
+  @apply antialiased text-slate-800 bg-[#f4f7f9] overflow-hidden;
+}
+
+/* Chốt chặn: mọi phần tử dùng đúng 1 font. */
+*,
+*::before,
+*::after {
+  font-family: var(--font-sans);
+}
+
+/* Form controls: trình duyệt mặc định dùng font hệ thống → ép kế thừa Inter. */
+input,
+button,
+select,
+textarea,
+optgroup {
+  font-family: inherit;
+}
+
+/* Custom sleek scrollbar style to make it super premium and remove horizontal scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
+}
+
+/* Firefox scrollbar support */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+}
+
+.no-scrollbar-x {
+  overflow-x: hidden !important;
+}
+
+/* Custom scroll area styles to prevent any sudden layout flashing */
+html {
+  scroll-behavior: smooth;
+  overflow-x: hidden;
+}

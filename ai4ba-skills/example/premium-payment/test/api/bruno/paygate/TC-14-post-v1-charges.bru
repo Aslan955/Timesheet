@@ -1,0 +1,27 @@
+meta {
+  name: TC-14 POST /v1/charges
+  type: http
+  seq: 14
+}
+
+post {
+  url: {{PAYGATE_BASE}}/v1/charges
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.PAYGATE_KEY}}
+}
+
+body:json {
+  {
+    "amount": 99000,
+    "currency": "vnd"
+  }
+}
+
+assert {
+  res.status: eq 400
+  res.body.error.code: eq missing_field
+}

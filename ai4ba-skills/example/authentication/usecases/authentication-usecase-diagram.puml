@@ -1,0 +1,39 @@
+@startuml
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+
+actor "Học viên" as Learner
+actor "Người dùng quay lại" as Returning
+actor "Người dùng ưu tiên Google" as GoogleUser
+actor "Vận hành / hỗ trợ" as Support
+actor "Google OAuth" as Google
+actor "Dịch vụ gửi email" as Email
+
+rectangle "System: authentication" {
+  usecase "Đăng ký bằng email + mật khẩu" as UC1
+  usecase "Xác nhận email" as UC2
+  usecase "Đăng nhập bằng email + mật khẩu" as UC3
+  usecase "Đăng ký / đăng nhập bằng Google" as UC4
+  usecase "Quên mật khẩu" as UC5
+  usecase "Gỡ liên kết Google" as UC6
+}
+
+Learner --> UC1
+Learner --> UC3
+Returning --> UC3
+Returning --> UC5
+GoogleUser --> UC4
+Learner --> UC6
+
+UC1 --> Email
+UC2 --> Email
+UC5 --> Email
+UC4 --> Google
+
+UC2 ..> UC1 : extend
+UC6 ..> UC4 : extend
+
+Support ..> UC3 : theo dõi khóa tài khoản
+Support ..> UC4 : theo dõi auto-link
+@enduml

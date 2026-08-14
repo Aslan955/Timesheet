@@ -1,0 +1,27 @@
+meta {
+  name: TC-16 POST /v1/subscriptions
+  type: http
+  seq: 16
+}
+
+post {
+  url: {{PAYGATE_BASE}}/v1/subscriptions
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.PAYGATE_KEY}}
+}
+
+body:json {
+  {
+    "customer": "cus_fake",
+    "plan": "premium_weekly"
+  }
+}
+
+assert {
+  res.status: eq 400
+  res.body.error.code: eq invalid_plan
+}

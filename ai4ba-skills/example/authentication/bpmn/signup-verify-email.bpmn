@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Def_1" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:collaboration id="Collaboration_1">
+    <bpmn:participant id="Participant_1" name="Đăng ký + xác nhận email" processRef="Process_signup_verify"/>
+  </bpmn:collaboration>
+  <bpmn:process id="Process_signup_verify" isExecutable="false">
+    <bpmn:laneSet id="LaneSet_1">
+      <bpmn:lane id="Lane_learner" name="Người học mới"><bpmn:flowNodeRef>Start_1</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_enter</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_sent</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_click</bpmn:flowNodeRef><bpmn:flowNodeRef>End_active</bpmn:flowNodeRef></bpmn:lane>
+      <bpmn:lane id="Lane_system" name="Hệ thống auth"><bpmn:flowNodeRef>GW_pw</bpmn:flowNodeRef><bpmn:flowNodeRef>GW_dup</bpmn:flowNodeRef><bpmn:flowNodeRef>End_dup</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_create</bpmn:flowNodeRef><bpmn:flowNodeRef>GW_token</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_verify</bpmn:flowNodeRef></bpmn:lane>
+      <bpmn:lane id="Lane_email" name="Email service"><bpmn:flowNodeRef>Task_send</bpmn:flowNodeRef></bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="Start_1" name="Người học bắt đầu đăng ký"><bpmn:outgoing>Flow_start</bpmn:outgoing></bpmn:startEvent>
+    <bpmn:task id="Task_enter" name="Nhập email + mật khẩu, submit"><bpmn:incoming>Flow_start</bpmn:incoming><bpmn:incoming>Flow_pw_no</bpmn:incoming><bpmn:outgoing>Flow_submit</bpmn:outgoing></bpmn:task>
+    <bpmn:exclusiveGateway id="GW_pw" name="Mật khẩu đạt chính sách?"><bpmn:incoming>Flow_submit</bpmn:incoming><bpmn:outgoing>Flow_pw_no</bpmn:outgoing><bpmn:outgoing>Flow_pw_yes</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:exclusiveGateway id="GW_dup" name="Email đã được đăng ký?"><bpmn:incoming>Flow_pw_yes</bpmn:incoming><bpmn:outgoing>Flow_dup_y</bpmn:outgoing><bpmn:outgoing>Flow_dup_n</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:endEvent id="End_dup" name="Email đã được đăng ký (dừng)"><bpmn:incoming>Flow_dup_y</bpmn:incoming></bpmn:endEvent>
+    <bpmn:task id="Task_create" name="Tạo account unverified + verify link 24h"><bpmn:incoming>Flow_dup_n</bpmn:incoming><bpmn:outgoing>Flow_tosend</bpmn:outgoing></bpmn:task>
+    <bpmn:task id="Task_send" name="Gửi email xác nhận tới hộp thư"><bpmn:incoming>Flow_tosend</bpmn:incoming><bpmn:incoming>Flow_tk_no</bpmn:incoming><bpmn:outgoing>Flow_tosent</bpmn:outgoing></bpmn:task>
+    <bpmn:task id="Task_sent" name="Xem màn Đã gửi email xác nhận"><bpmn:incoming>Flow_tosent</bpmn:incoming><bpmn:outgoing>Flow_toclick</bpmn:outgoing></bpmn:task>
+    <bpmn:task id="Task_click" name="Mở email, click link xác nhận"><bpmn:incoming>Flow_toclick</bpmn:incoming><bpmn:outgoing>Flow_totoken</bpmn:outgoing></bpmn:task>
+    <bpmn:exclusiveGateway id="GW_token" name="Token còn hạn &amp; chưa dùng?"><bpmn:incoming>Flow_totoken</bpmn:incoming><bpmn:outgoing>Flow_tk_no</bpmn:outgoing><bpmn:outgoing>Flow_tk_yes</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:task id="Task_verify" name="Đổi account sang verified"><bpmn:incoming>Flow_tk_yes</bpmn:incoming><bpmn:outgoing>Flow_tover</bpmn:outgoing></bpmn:task>
+    <bpmn:endEvent id="End_active" name="Tài khoản đã kích hoạt"><bpmn:incoming>Flow_tover</bpmn:incoming></bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_start" name="" sourceRef="Start_1" targetRef="Task_enter"/>
+    <bpmn:sequenceFlow id="Flow_submit" name="" sourceRef="Task_enter" targetRef="GW_pw"/>
+    <bpmn:sequenceFlow id="Flow_pw_no" name="Không đạt" sourceRef="GW_pw" targetRef="Task_enter"/>
+    <bpmn:sequenceFlow id="Flow_pw_yes" name="Đạt" sourceRef="GW_pw" targetRef="GW_dup"/>
+    <bpmn:sequenceFlow id="Flow_dup_y" name="Đã có" sourceRef="GW_dup" targetRef="End_dup"/>
+    <bpmn:sequenceFlow id="Flow_dup_n" name="Chưa có" sourceRef="GW_dup" targetRef="Task_create"/>
+    <bpmn:sequenceFlow id="Flow_tosend" name="" sourceRef="Task_create" targetRef="Task_send"/>
+    <bpmn:sequenceFlow id="Flow_tosent" name="" sourceRef="Task_send" targetRef="Task_sent"/>
+    <bpmn:sequenceFlow id="Flow_toclick" name="" sourceRef="Task_sent" targetRef="Task_click"/>
+    <bpmn:sequenceFlow id="Flow_totoken" name="" sourceRef="Task_click" targetRef="GW_token"/>
+    <bpmn:sequenceFlow id="Flow_tk_no" name="Hết hạn → gửi lại" sourceRef="GW_token" targetRef="Task_send"/>
+    <bpmn:sequenceFlow id="Flow_tk_yes" name="Hợp lệ" sourceRef="GW_token" targetRef="Task_verify"/>
+    <bpmn:sequenceFlow id="Flow_tover" name="" sourceRef="Task_verify" targetRef="End_active"/>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="Diagram_1">
+    <bpmndi:BPMNPlane id="Plane_1" bpmnElement="Collaboration_1">
+      <bpmndi:BPMNShape bpmnElement="Participant_1" isHorizontal="false"><dc:Bounds x="0" y="0" width="940" height="1400"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="Lane_learner" isHorizontal="false"><dc:Bounds x="0" y="30" width="250" height="1370"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="Lane_system" isHorizontal="false"><dc:Bounds x="250" y="30" width="440" height="1370"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="Lane_email" isHorizontal="false"><dc:Bounds x="690" y="30" width="250" height="1370"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="Start_1"><dc:Bounds x="107" y="92" width="36" height="36"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="Task_enter"><dc:Bounds x="60" y="195" width="130" height="70"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="GW_pw"><dc:Bounds x="350" y="325" width="50" height="50"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="GW_dup"><dc:Bounds x="350" y="445" width="50" height="50"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="End_dup"><dc:Bounds x="357" y="572" width="36" height="36"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="Task_create"><dc:Bounds x="500" y="555" width="130" height="70"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="Task_send"><dc:Bounds x="750" y="675" width="130" height="70"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="Task_sent"><dc:Bounds x="60" y="795" width="130" height="70"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="Task_click"><dc:Bounds x="60" y="915" width="130" height="70"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="GW_token"><dc:Bounds x="350" y="1045" width="50" height="50"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="Task_verify"><dc:Bounds x="310" y="1155" width="130" height="70"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="End_active"><dc:Bounds x="107" y="1292" width="36" height="36"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge bpmnElement="Flow_start"><di:waypoint x="125" y="128"/><di:waypoint x="125" y="162"/><di:waypoint x="117" y="162"/><di:waypoint x="117" y="195"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_submit"><di:waypoint x="125" y="265"/><di:waypoint x="125" y="295"/><di:waypoint x="375" y="295"/><di:waypoint x="375" y="325"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_pw_no"><di:waypoint x="400" y="350"/><di:waypoint x="434" y="350"/><di:waypoint x="434" y="171"/><di:waypoint x="133" y="171"/><di:waypoint x="133" y="195"/><bpmndi:BPMNLabel><dc:Bounds x="292" y="164" width="56" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_pw_yes"><di:waypoint x="375" y="375"/><di:waypoint x="375" y="445"/><bpmndi:BPMNLabel><dc:Bounds x="383" y="398" width="24" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_dup_y"><di:waypoint x="375" y="495"/><di:waypoint x="375" y="572"/><bpmndi:BPMNLabel><dc:Bounds x="383" y="518" width="31" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_dup_n"><di:waypoint x="400" y="470"/><di:waypoint x="420" y="470"/><di:waypoint x="420" y="535"/><di:waypoint x="565" y="535"/><di:waypoint x="565" y="555"/><bpmndi:BPMNLabel><dc:Bounds x="428" y="463" width="43" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_tosend"><di:waypoint x="565" y="625"/><di:waypoint x="565" y="650"/><di:waypoint x="807" y="650"/><di:waypoint x="807" y="675"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_tosent"><di:waypoint x="815" y="745"/><di:waypoint x="815" y="770"/><di:waypoint x="125" y="770"/><di:waypoint x="125" y="795"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_toclick"><di:waypoint x="125" y="865"/><di:waypoint x="125" y="915"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_totoken"><di:waypoint x="125" y="985"/><di:waypoint x="125" y="1015"/><di:waypoint x="375" y="1015"/><di:waypoint x="375" y="1045"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_tk_no"><di:waypoint x="400" y="1070"/><di:waypoint x="434" y="1070"/><di:waypoint x="434" y="651"/><di:waypoint x="823" y="651"/><di:waypoint x="823" y="675"/><bpmndi:BPMNLabel><dc:Bounds x="637" y="644" width="105" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_tk_yes"><di:waypoint x="375" y="1095"/><di:waypoint x="375" y="1155"/><bpmndi:BPMNLabel><dc:Bounds x="383" y="1118" width="37" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_tover"><di:waypoint x="375" y="1225"/><di:waypoint x="375" y="1259"/><di:waypoint x="125" y="1259"/><di:waypoint x="125" y="1292"/></bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

@@ -1,0 +1,79 @@
+{
+  "entities": {
+    "Employee": {
+      "title": "Employee",
+      "description": "Information about a company employee",
+      "type": "object",
+      "properties": {
+        "employeeId": { "type": "string" },
+        "fullName": { "type": "string" },
+        "email": { "type": "string" },
+        "department": { "type": "string" },
+        "position": { "type": "string" },
+        "level": { "type": "string" },
+        "status": { "type": "string", "enum": ["Active", "Probation", "Resigned"] },
+        "joinDate": { "type": "string", "format": "date-time" }
+      },
+      "required": ["employeeId", "fullName", "email"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Details of a company project",
+      "type": "object",
+      "properties": {
+        "projectId": { "type": "string" },
+        "name": { "type": "string" },
+        "customer": { "type": "string" },
+        "status": { "type": "string", "enum": ["Running", "Paused", "Closed"] },
+        "budget": { "type": "number" },
+        "startDate": { "type": "string", "format": "date-time" },
+        "endDate": { "type": "string", "format": "date-time" }
+      }
+    },
+    "LeaveRequest": {
+      "title": "Leave Request",
+      "description": "A request for time off by an employee",
+      "type": "object",
+      "properties": {
+        "employeeId": { "type": "string" },
+        "fullName": { "type": "string" },
+        "leaveType": { "type": "string" },
+        "startDate": { "type": "string", "format": "date-time" },
+        "endDate": { "type": "string", "format": "date-time" },
+        "totalHours": { "type": "number" },
+        "status": { "type": "string", "enum": ["Requested", "Approved", "Rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Timesheet": {
+      "title": "Timesheet Entry",
+      "description": "Weekly log of hours worked on projects",
+      "type": "object",
+      "properties": {
+        "employeeId": { "type": "string" },
+        "projectId": { "type": "string" },
+        "weekEnding": { "type": "string", "format": "date" },
+        "hoursPerDay": { "type": "array", "items": { "type": "number" } },
+        "status": { "type": "string", "enum": ["Draft", "Submitted", "Approved"] }
+      }
+    }
+  },
+  "firestore": {
+    "/employees/{employeeId}": {
+      "schema": "Employee",
+      "description": "Main collection for employee profiles"
+    },
+    "/projects/{projectId}": {
+      "schema": "Project",
+      "description": "Collection for all projects tracked in the system"
+    },
+    "/leaves/{leaveId}": {
+      "schema": "LeaveRequest",
+      "description": "Leave requests submitted by employees"
+    },
+    "/timesheets/{timesheetId}": {
+      "schema": "Timesheet",
+      "description": "Weekly work logs for employees"
+    }
+  }
+}

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>authentication — Đăng ký + xác nhận email | Wireframe</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f4f4f4; color: #000; padding: 32px 24px; }
+    .wf-page { max-width: 1400px; margin: 0 auto; }
+    .wf-breadcrumb { max-width: 1400px; margin: 0 auto 16px; }
+    .wf-breadcrumb a { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #000; text-decoration: none; border: 1px solid #000; border-radius: 4px; padding: 6px 12px; background: #fff; }
+    .wf-breadcrumb a:hover { background: #f0f0f0; }
+    html.in-iframe .wf-breadcrumb { display: none; }
+    .wf-header { margin-bottom: 28px; border-bottom: 2px solid #000; padding-bottom: 14px; background: #fff; padding: 16px 20px; }
+    .wf-feature-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #888; }
+    .wf-flow-title { font-size: 22px; font-weight: 700; margin-top: 4px; }
+    .wf-flow-meta { font-size: 12px; color: #888; margin-top: 6px; }
+    .wf-flow-desc { font-size: 13px; color: #444; margin-top: 8px; line-height: 1.5; }
+    .wf-rows { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 24px 16px; }
+    .wf-screen { flex: 0 0 auto; }
+    .wf-page[data-device="desktop"] .wf-screen { width: 1024px; max-width: 100%; }
+    .wf-device-tag { display: inline-block; font-size: 10px; color: #555; border: 1px solid #ccc; border-radius: 3px; padding: 1px 6px; margin-bottom: 6px; }
+    .wf-step-badge { font-size: 10px; font-weight: 700; color: #fff; background: #000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; margin-bottom: 6px; }
+    .wf-screen-label { text-align: center; font-size: 11px; color: #555; margin-top: 6px; }
+    .wf-shared-badge { font-size: 9px; color: #888; border: 1px solid #ccc; border-radius: 3px; padding: 0 4px; margin-left: 4px; }
+    .wf-screen-frame { border: 2px solid #000; border-radius: 8px; overflow: hidden; background: #fff; }
+    .wf-screen-bar { background: #f0f0f0; border-bottom: 1px solid #000; padding: 6px 10px; display: flex; align-items: center; gap: 5px; }
+    .wf-dot { width: 8px; height: 8px; border-radius: 50%; border: 1px solid #888; background: #fff; flex-shrink: 0; }
+    .wf-bar-title { font-size: 11px; font-weight: 600; flex: 1; text-align: center; }
+    .wf-screen-content { padding: 20px 18px; display: flex; flex-direction: column; gap: 12px; }
+    .wf-app-brand { text-align: center; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; color: #000; padding-bottom: 4px; }
+    .wf-form { max-width: 400px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 12px; }
+    .wf-screen-title { font-size: 16px; font-weight: 700; text-align: center; margin-bottom: 6px; }
+    .field { display: flex; flex-direction: column; gap: 3px; }
+    .field label { font-size: 11px; font-weight: 600; }
+    .field input { border: 1px solid #000; border-radius: 3px; padding: 8px 10px; font-size: 12px; width: 100%; background: #fff; color: #000; }
+    .field input::placeholder { color: #aaa; }
+    .input-pw { position: relative; }
+    .input-pw input { padding-right: 48px; }
+    .input-pw .eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); font-size: 10px; cursor: pointer; color: #555; border: 1px solid #ccc; border-radius: 3px; padding: 1px 4px; }
+    label.checkbox { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+    label.checkbox input { width: 14px; height: 14px; flex-shrink: 0; }
+    .btn-primary { display: block; width: 100%; padding: 10px 12px; background: #000; color: #fff; border: 2px solid #000; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; }
+    .btn-secondary { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 10px 12px; background: #fff; color: #000; border: 2px solid #000; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .g-icon { font-size: 11px; font-weight: 900; border: 1px solid #000; border-radius: 3px; padding: 0 4px; }
+    .wf-link { font-size: 12px; color: #000; text-decoration: underline; cursor: pointer; }
+    .links-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px; }
+    .links-center { text-align: center; font-size: 12px; }
+    .state-hint { font-size: 10px; color: #888; font-style: italic; margin-top: 2px; }
+    .captcha-box { border: 1px dashed #888; border-radius: 4px; padding: 8px; text-align: center; font-size: 10px; color: #888; background: #f8f8f8; }
+    .policy-note { font-size: 10px; color: #666; line-height: 1.4; }
+    .meter { display: flex; flex-direction: column; gap: 2px; }
+    .meter-track { height: 8px; border: 1px solid #000; border-radius: 3px; background: #fff; overflow: hidden; }
+    .meter-fill { height: 100%; background: repeating-linear-gradient(45deg,#000,#000 3px,#fff 3px,#fff 6px); }
+    .meter-label { font-size: 10px; color: #555; }
+    .result-icon { width: 44px; height: 44px; border: 2px solid #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; margin: 0 auto 4px; }
+    .result-text { text-align: center; font-size: 12px; color: #333; line-height: 1.5; }
+    .info-block { text-align: center; font-size: 12px; color: #333; line-height: 1.5; }
+    .info-block strong { display: block; font-size: 13px; margin: 2px 0; }
+    .wf-footer { margin-top: 36px; padding-top: 12px; border-top: 1px solid #ccc; font-size: 10px; color: #aaa; display: flex; justify-content: space-between; }
+    .wf-desc-section { margin-top: 32px; }
+    .wf-desc-title { font-size: 14px; font-weight: 700; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid #000; }
+    .wf-desc-table { width: 100%; border-collapse: collapse; background: #fff; font-size: 12px; }
+    .wf-desc-table th, .wf-desc-table td { border: 1px solid #000; padding: 6px 8px; text-align: left; vertical-align: top; }
+    .wf-desc-table th { background: #f0f0f0; font-weight: 700; font-size: 11px; text-transform: uppercase; }
+    .wf-desc-table td:first-child, .wf-desc-table th:first-child { width: 34px; text-align: center; }
+    .wf-desc-table td:nth-child(2) { width: 150px; }
+    .wf-desc-table td:nth-child(3) { width: 110px; }
+    .wf-desc-table td:nth-child(4) { width: 90px; }
+    .wf-desc-screen-header td { background: #000; color: #fff; font-weight: 700; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="wf-breadcrumb"><a href="authentication-wireframe.html">← Mục lục wireframe (tất cả flow)</a></div>
+<div class="wf-page" data-device="desktop">
+
+  <div class="wf-header">
+    <div class="wf-feature-label">Feature: authentication / Wireframe</div>
+    <div class="wf-flow-title">Đăng ký + xác nhận email</div>
+    <div class="wf-flow-meta">4 màn hình · Device: desktop 1024 · Cập nhật: 2026-07-17 · Nguồn: srs/authentication-userflow.md + ascii-wireframe/signup-verify.md</div>
+    <div class="wf-flow-desc">Người học tạo tài khoản bằng email + mật khẩu (policy 8-20 ký tự, cấm chứa phần đầu email), nhận email xác nhận hạn 24h, rồi click link. Hai trạng thái kết quả loại trừ nhau (thành công / hết hạn) tách 2 màn riêng theo ba-conventions Mục 8. Gửi lại có cooldown 60 giây, tối đa 5 lần/ngày.</div>
+  </div>
+
+  <div class="wf-rows">
+
+    <div class="wf-screen" id="s1">
+      <div class="wf-step-badge">1</div>
+      <div class="wf-device-tag">desktop · 1024px</div>
+      <div class="wf-screen-frame">
+        <div class="wf-screen-bar"><div class="wf-dot"></div><div class="wf-dot"></div><div class="wf-dot"></div><span class="wf-bar-title">Tạo tài khoản mới</span></div>
+        <div class="wf-screen-content">
+          <div class="wf-app-brand">english-ai-demo</div>
+          <div class="wf-form">
+            <div class="wf-screen-title">Tạo tài khoản mới</div>
+            <div class="field">
+              <label>Email [1]</label>
+              <input type="email" placeholder="ban@email.com">
+              <span class="state-hint">Bắt buộc · lỗi trùng E-001 inline (FR-002)</span>
+            </div>
+            <div class="field">
+              <label>Mật khẩu [2]</label>
+              <div class="input-pw"><input type="password"><span class="eye">Hiện</span></div>
+            </div>
+            <div class="meter">
+              <span class="meter-label">Độ mạnh [3]: Trung bình</span>
+              <div class="meter-track"><div class="meter-fill" style="width:50%"></div></div>
+            </div>
+            <div class="policy-note">8-20 ký tự, có chữ hoa/thường/ký tự đặc biệt; không chứa phần đầu email (FR-003, E-002)</div>
+            <div class="captcha-box">[4] Captcha chống bot (FR-031)</div>
+            <button class="btn-primary">Đăng ký [5]</button>
+            <div class="links-center">Đã có tài khoản? <a class="wf-link">Đăng nhập [6]</a></div>
+          </div>
+        </div>
+      </div>
+      <div class="wf-screen-label">signup</div>
+    </div>
+
+    <div class="wf-screen" id="s2">
+      <div class="wf-step-badge">2</div>
+      <div class="wf-device-tag">desktop · 1024px</div>
+      <div class="wf-screen-frame">
+        <div class="wf-screen-bar"><div class="wf-dot"></div><div class="wf-dot"></div><div class="wf-dot"></div><span class="wf-bar-title">Kiểm tra hộp thư</span></div>
+        <div class="wf-screen-content">
+          <div class="wf-app-brand">english-ai-demo</div>
+          <div class="wf-form">
+            <div class="wf-screen-title">Kiểm tra hộp thư của bạn</div>
+            <div class="info-block">
+              Đã gửi email xác nhận tới
+              <strong>ban@email.com [1]</strong>
+              Bấm link trong email để kích hoạt tài khoản. Link có hạn 24 giờ. [2]
+            </div>
+            <div class="links-center" style="color:#888;font-size:11px;">Chưa nhận được email? (kiểm tra cả thư rác)</div>
+            <button class="btn-secondary">Gửi lại email xác nhận [3]</button>
+            <div class="state-hint" style="text-align:center;">Có thể gửi lại sau 60 giây · tối đa 5 lần/ngày (E-007)</div>
+            <div class="links-center">Quay lại <a class="wf-link">Đăng nhập [4]</a></div>
+          </div>
+        </div>
+      </div>
+      <div class="wf-screen-label">verify-sent</div>
+    </div>
+
+    <div class="wf-screen" id="s3">
+      <div class="wf-step-badge">3</div>
+      <div class="wf-device-tag">desktop · 1024px</div>
+      <div class="wf-screen-frame">
+        <div class="wf-screen-bar"><div class="wf-dot"></div><div class="wf-dot"></div><div class="wf-dot"></div><span class="wf-bar-title">Xác nhận thành công</span></div>
+        <div class="wf-screen-content">
+          <div class="wf-app-brand">english-ai-demo</div>
+          <div class="wf-form">
+            <div class="result-icon">&#10003;</div>
+            <div class="wf-screen-title">Xác nhận email thành công!</div>
+            <div class="result-text">[1] Tài khoản đã được kích hoạt. Vui lòng đăng nhập để bắt đầu.</div>
+            <button class="btn-primary">Đến trang đăng nhập [2]</button>
+          </div>
+        </div>
+      </div>
+      <div class="wf-screen-label">verify-result-success</div>
+    </div>
+
+    <div class="wf-screen" id="s4">
+      <div class="wf-step-badge">4</div>
+      <div class="wf-device-tag">desktop · 1024px</div>
+      <div class="wf-screen-frame">
+        <div class="wf-screen-bar"><div class="wf-dot"></div><div class="wf-dot"></div><div class="wf-dot"></div><span class="wf-bar-title">Link hết hạn</span></div>
+        <div class="wf-screen-content">
+          <div class="wf-app-brand">english-ai-demo</div>
+          <div class="wf-form">
+            <div class="result-icon">!</div>
+            <div class="wf-screen-title">Link đã hết hạn hoặc đã dùng</div>
+            <div class="result-text">[1] Link xác nhận này không còn hợp lệ (E-006). Gửi lại link mới để tiếp tục.</div>
+            <button class="btn-primary">Gửi lại link xác nhận [2]</button>
+            <div class="links-center">Quay lại <a class="wf-link">Đăng nhập [3]</a></div>
+          </div>
+        </div>
+      </div>
+      <div class="wf-screen-label">verify-result-expired</div>
+    </div>
+
+  </div>
+
+  <div class="wf-desc-section">
+    <div class="wf-desc-title">Mô tả màn hình</div>
+    <table class="wf-desc-table">
+      <thead><tr><th>#</th><th>Items</th><th>Control type</th><th>Data type</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr class="wf-desc-screen-header"><td colspan="5">Screen 1: signup — Tạo tài khoản mới</td></tr>
+        <tr><td>1</td><td>Email</td><td>Textbox</td><td>Text (email)</td><td>• <strong>Mục đích</strong>: định danh tài khoản mới (BR-authentication-002).<br>• <strong>Validation</strong>: bắt buộc; kiểm định dạng; auto-focus.<br>• <strong>Error trùng</strong>: E-authentication-001 inline "Email này đã được đăng ký. Bạn muốn [đăng nhập] hoặc [quên mật khẩu]?" (FR-002) — chặn tạo trùng.<br>• <strong>Placeholder</strong> "ban@email.com".</td></tr>
+        <tr><td>2</td><td>Mật khẩu</td><td>Textbox (password)</td><td>Text</td><td>• <strong>Mục đích</strong>: đặt mật khẩu cho phương thức email.<br>• <strong>Validation (FR-003)</strong>: 8-20 ký tự, ≥1 chữ hoa, ≥1 chữ thường, ≥1 ký tự đặc biệt, KHÔNG chứa phần đầu email (local-part ≥3 ký tự).<br>• <strong>Error</strong>: E-authentication-002 inline real-time.<br>• <strong>States</strong>: masked + Hiện/Ẩn; validate real-time.</td></tr>
+        <tr><td>3</td><td>Độ mạnh mật khẩu</td><td>Meter</td><td>ReadOnly</td><td>• <strong>Mục đích</strong>: gợi ý đặt mật khẩu mạnh hơn (FR-029, P1).<br>• <strong>Display</strong>: cập nhật real-time; Yếu/Trung bình/Mạnh (gợi ý, không thay validation cứng FR-003).</td></tr>
+        <tr><td>4</td><td>Captcha chống bot</td><td>Widget</td><td>ReadOnly (challenge)</td><td>• <strong>Mục đích</strong>: chống đăng ký hàng loạt bằng bot (FR-031, P1).<br>• <strong>Validation</strong>: phải pass mới cho submit.<br>• <strong>Note</strong>: khác captcha login (login hiện sau 3 lần sai).</td></tr>
+        <tr><td>5</td><td>Đăng ký</td><td>Button (Primary)</td><td>Click/Submit</td><td>• <strong>Mục đích</strong>: tạo tài khoản unverified + kích hoạt gửi email xác nhận (FR-001, FR-004).<br>• <strong>Enable</strong>: disabled khi field chưa hợp lệ / captcha chưa pass.<br>• <strong>Success</strong>: gửi email xác nhận link hạn 24h → sang màn verify-sent.<br>• <strong>Business rule</strong>: phải xác nhận email trước khi truy cập nội dung học (BR-001).<br>• <strong>Edge</strong>: tài khoản unverified quá 24h bị tự xóa (FR-028, BR-010).</td></tr>
+        <tr><td>6</td><td>Đăng nhập</td><td>Link</td><td>Navigate</td><td>• <strong>Navigate</strong> sang màn login.</td></tr>
+
+        <tr class="wf-desc-screen-header"><td colspan="5">Screen 2: verify-sent — Đã gửi email xác nhận</td></tr>
+        <tr><td>1</td><td>Địa chỉ email đã gửi</td><td>Label</td><td>ReadOnly</td><td>• <strong>Mục đích</strong>: xác nhận email đã gửi tới đúng địa chỉ (FR-004).<br>• <strong>Nội dung</strong>: hiển thị email vừa nhập; nhắc kiểm tra spam.</td></tr>
+        <tr><td>2</td><td>Ghi chú hạn link</td><td>Label</td><td>ReadOnly</td><td>• <strong>Nội dung</strong>: "Link có hạn 24 giờ" (FR-004).</td></tr>
+        <tr><td>3</td><td>Gửi lại email xác nhận</td><td>Button (Secondary)</td><td>Click</td><td>• <strong>Mục đích</strong>: gửi lại link mới (FR-007).<br>• <strong>Ràng buộc</strong>: cooldown 60 giây; tối đa 5 lần/ngày.<br>• <strong>States</strong>: enabled → disabled (đếm ngược) → enabled.<br>• <strong>Error</strong>: E-authentication-007 khi trong cooldown hoặc đủ 5 lần/ngày.<br>• <strong>OQ</strong>: mốc reset quota "5 lần/ngày" chưa chốt — userflow OQ-2.</td></tr>
+        <tr><td>4</td><td>Đăng nhập</td><td>Link</td><td>Navigate</td><td>• <strong>Navigate</strong> sang màn login.</td></tr>
+
+        <tr class="wf-desc-screen-header"><td colspan="5">Screen 3: verify-result-success — Xác nhận email thành công</td></tr>
+        <tr><td>1</td><td>Thông báo thành công</td><td>Label</td><td>ReadOnly</td><td>• <strong>Mục đích</strong>: xác nhận link còn hạn + chưa dùng được chấp nhận, tài khoản sang verified (FR-005).<br>• <strong>Nội dung</strong>: "Xác nhận email thành công! Vui lòng đăng nhập."<br>• <strong>Trigger</strong>: bấm link xác nhận hợp lệ trong 24h; link đánh dấu đã dùng.</td></tr>
+        <tr><td>2</td><td>Đến trang đăng nhập</td><td>Button (Primary)</td><td>Click/Navigate</td><td>• <strong>Navigate</strong> sang màn login.<br>• <strong>Edge</strong>: 2 thiết bị cùng bấm 1 link — lần đầu thành công, lần sau rơi "đã dùng" → xem verify-result-expired.</td></tr>
+
+        <tr class="wf-desc-screen-header"><td colspan="5">Screen 4: verify-result-expired — Link xác nhận hết hạn</td></tr>
+        <tr><td>1</td><td>Thông báo hết hạn</td><td>Label</td><td>ReadOnly</td><td>• <strong>Mục đích</strong>: báo link đã quá 24h hoặc đã dùng, bị từ chối (FR-006).<br>• <strong>Error</strong>: E-authentication-006 "Link đã hết hạn hoặc đã được sử dụng."<br>• <strong>Trigger</strong>: bấm link không còn hợp lệ (gồm thiết bị thứ 2 bấm lại cùng link).</td></tr>
+        <tr><td>2</td><td>Gửi lại link xác nhận</td><td>Button (Primary)</td><td>Click</td><td>• <strong>Mục đích</strong>: phát hành link mới (FR-007).<br>• <strong>Ràng buộc</strong>: cùng cooldown 60s + tối đa 5 lần/ngày.<br>• <strong>Error</strong>: E-authentication-007 khi vượt cooldown/giới hạn.<br>• <strong>Success</strong>: gửi lại xong → quay về verify-sent.</td></tr>
+        <tr><td>3</td><td>Đăng nhập</td><td>Link</td><td>Navigate</td><td>• <strong>Navigate</strong> sang màn login.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="wf-footer"><span>authentication / signup-verify</span><span>Tạo bởi /wireframe-html · 2026-07-20</span></div>
+</div>
+<script>if (window.self !== window.top) document.documentElement.classList.add('in-iframe');</script>
+</body>
+</html>

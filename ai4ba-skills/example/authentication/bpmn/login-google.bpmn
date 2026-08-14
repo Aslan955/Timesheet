@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Def_1" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:collaboration id="Collaboration_1">
+    <bpmn:participant id="Participant_1" name="Đăng nhập bằng Google" processRef="Process_login_google"/>
+  </bpmn:collaboration>
+  <bpmn:process id="Process_login_google" isExecutable="false">
+    <bpmn:laneSet id="LaneSet_1">
+      <bpmn:lane id="Lane_learner" name="Người học"><bpmn:flowNodeRef>Start_1</bpmn:flowNodeRef><bpmn:flowNodeRef>End_app</bpmn:flowNodeRef><bpmn:flowNodeRef>End_onboard</bpmn:flowNodeRef></bpmn:lane>
+      <bpmn:lane id="Lane_system" name="Hệ thống auth"><bpmn:flowNodeRef>GW_exist</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_link</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_create</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_session</bpmn:flowNodeRef><bpmn:flowNodeRef>GW_onboard</bpmn:flowNodeRef></bpmn:lane>
+      <bpmn:lane id="Lane_google" name="Google OAuth"><bpmn:flowNodeRef>Task_consent</bpmn:flowNodeRef><bpmn:flowNodeRef>GW_cb</bpmn:flowNodeRef><bpmn:flowNodeRef>End_fail</bpmn:flowNodeRef></bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="Start_1" name="Người học bấm Đăng nhập với Google"><bpmn:outgoing>Flow_start</bpmn:outgoing></bpmn:startEvent>
+    <bpmn:task id="Task_consent" name="Xác thực + đồng ý ở consent Google"><bpmn:incoming>Flow_start</bpmn:incoming><bpmn:outgoing>Flow_consent</bpmn:outgoing></bpmn:task>
+    <bpmn:exclusiveGateway id="GW_cb" name="Callback Google thành công?"><bpmn:incoming>Flow_consent</bpmn:incoming><bpmn:outgoing>Flow_cb_no</bpmn:outgoing><bpmn:outgoing>Flow_cb_yes</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:endEvent id="End_fail" name="Đăng nhập Google thất bại"><bpmn:incoming>Flow_cb_no</bpmn:incoming></bpmn:endEvent>
+    <bpmn:exclusiveGateway id="GW_exist" name="Email Google đã có account?"><bpmn:incoming>Flow_cb_yes</bpmn:incoming><bpmn:outgoing>Flow_ex_yes</bpmn:outgoing><bpmn:outgoing>Flow_ex_no</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:task id="Task_link" name="Liên kết Google vào account + lưu hồ sơ + audit"><bpmn:incoming>Flow_ex_yes</bpmn:incoming><bpmn:outgoing>Flow_link_ss</bpmn:outgoing></bpmn:task>
+    <bpmn:task id="Task_create" name="Tạo account mới trạng thái verified"><bpmn:incoming>Flow_ex_no</bpmn:incoming><bpmn:outgoing>Flow_cr_ss</bpmn:outgoing></bpmn:task>
+    <bpmn:task id="Task_session" name="Tạo phiên đăng nhập"><bpmn:incoming>Flow_link_ss</bpmn:incoming><bpmn:incoming>Flow_cr_ss</bpmn:incoming><bpmn:outgoing>Flow_ses_ob</bpmn:outgoing></bpmn:task>
+    <bpmn:exclusiveGateway id="GW_onboard" name="Đã hoàn tất onboarding?"><bpmn:incoming>Flow_ses_ob</bpmn:incoming><bpmn:outgoing>Flow_ob_yes</bpmn:outgoing><bpmn:outgoing>Flow_ob_no</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:endEvent id="End_app" name="Vào app chính"><bpmn:incoming>Flow_ob_yes</bpmn:incoming></bpmn:endEvent>
+    <bpmn:endEvent id="End_onboard" name="Chuyển onboarding"><bpmn:incoming>Flow_ob_no</bpmn:incoming></bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_start" name="" sourceRef="Start_1" targetRef="Task_consent"/>
+    <bpmn:sequenceFlow id="Flow_consent" name="" sourceRef="Task_consent" targetRef="GW_cb"/>
+    <bpmn:sequenceFlow id="Flow_cb_no" name="Thất bại" sourceRef="GW_cb" targetRef="End_fail"/>
+    <bpmn:sequenceFlow id="Flow_cb_yes" name="Thành công" sourceRef="GW_cb" targetRef="GW_exist"/>
+    <bpmn:sequenceFlow id="Flow_ex_yes" name="Đã có → liên kết" sourceRef="GW_exist" targetRef="Task_link"/>
+    <bpmn:sequenceFlow id="Flow_ex_no" name="Chưa → tạo mới" sourceRef="GW_exist" targetRef="Task_create"/>
+    <bpmn:sequenceFlow id="Flow_link_ss" name="" sourceRef="Task_link" targetRef="Task_session"/>
+    <bpmn:sequenceFlow id="Flow_cr_ss" name="" sourceRef="Task_create" targetRef="Task_session"/>
+    <bpmn:sequenceFlow id="Flow_ses_ob" name="" sourceRef="Task_session" targetRef="GW_onboard"/>
+    <bpmn:sequenceFlow id="Flow_ob_yes" name="Rồi" sourceRef="GW_onboard" targetRef="End_app"/>
+    <bpmn:sequenceFlow id="Flow_ob_no" name="Chưa" sourceRef="GW_onboard" targetRef="End_onboard"/>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="Diagram_1">
+    <bpmndi:BPMNPlane id="Plane_1" bpmnElement="Collaboration_1">
+      <bpmndi:BPMNShape bpmnElement="Participant_1" isHorizontal="false"><dc:Bounds x="0" y="0" width="1130" height="1040"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="Lane_learner" isHorizontal="false"><dc:Bounds x="0" y="30" width="440" height="1010"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="Lane_system" isHorizontal="false"><dc:Bounds x="440" y="30" width="440" height="1010"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="Lane_google" isHorizontal="false"><dc:Bounds x="880" y="30" width="250" height="1010"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="Start_1"><dc:Bounds x="107" y="92" width="36" height="36"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="Task_consent"><dc:Bounds x="940" y="195" width="130" height="70"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="GW_cb"><dc:Bounds x="980" y="325" width="50" height="50"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="End_fail"><dc:Bounds x="987" y="452" width="36" height="36"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="GW_exist"><dc:Bounds x="540" y="445" width="50" height="50"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="Task_link"><dc:Bounds x="500" y="555" width="130" height="70"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="Task_create"><dc:Bounds x="690" y="555" width="130" height="70"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="Task_session"><dc:Bounds x="500" y="675" width="130" height="70"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="GW_onboard"><dc:Bounds x="540" y="805" width="50" height="50"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="End_app"><dc:Bounds x="107" y="932" width="36" height="36"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="End_onboard"><dc:Bounds x="297" y="932" width="36" height="36"/></bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge bpmnElement="Flow_start"><di:waypoint x="125" y="128"/><di:waypoint x="125" y="162"/><di:waypoint x="1005" y="162"/><di:waypoint x="1005" y="195"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_consent"><di:waypoint x="1005" y="265"/><di:waypoint x="1005" y="325"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_cb_no"><di:waypoint x="1005" y="375"/><di:waypoint x="1005" y="452"/><bpmndi:BPMNLabel><dc:Bounds x="1013" y="398" width="50" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_cb_yes"><di:waypoint x="980" y="350"/><di:waypoint x="960" y="350"/><di:waypoint x="960" y="425"/><di:waypoint x="565" y="425"/><di:waypoint x="565" y="445"/><bpmndi:BPMNLabel><dc:Bounds x="890" y="343" width="62" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_ex_yes"><di:waypoint x="565" y="495"/><di:waypoint x="565" y="555"/><bpmndi:BPMNLabel><dc:Bounds x="573" y="518" width="99" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_ex_no"><di:waypoint x="590" y="470"/><di:waypoint x="610" y="470"/><di:waypoint x="610" y="535"/><di:waypoint x="755" y="535"/><di:waypoint x="755" y="555"/><bpmndi:BPMNLabel><dc:Bounds x="618" y="463" width="87" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_link_ss"><di:waypoint x="565" y="625"/><di:waypoint x="565" y="650"/><di:waypoint x="557" y="650"/><di:waypoint x="557" y="675"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_cr_ss"><di:waypoint x="755" y="625"/><di:waypoint x="755" y="650"/><di:waypoint x="573" y="650"/><di:waypoint x="573" y="675"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_ses_ob"><di:waypoint x="565" y="745"/><di:waypoint x="565" y="805"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_ob_yes"><di:waypoint x="540" y="830"/><di:waypoint x="520" y="830"/><di:waypoint x="520" y="912"/><di:waypoint x="125" y="912"/><di:waypoint x="125" y="932"/><bpmndi:BPMNLabel><dc:Bounds x="488" y="823" width="24" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="Flow_ob_no"><di:waypoint x="565" y="855"/><di:waypoint x="565" y="894"/><di:waypoint x="315" y="894"/><di:waypoint x="315" y="932"/><bpmndi:BPMNLabel><dc:Bounds x="573" y="887" width="25" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>authentication — Prototype</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ══════════ LỚP 1: VỎ CHROME (neutral) ══════════ */
+    :root {
+      --chrome-bg: #f4f4f4; --chrome-panel: #fff; --chrome-line: #ccc;
+      --chrome-ink: #000; --chrome-muted: #777;
+    }
+    html { font-size: 14px; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--chrome-bg); color: var(--chrome-ink); min-height: 100vh;
+    }
+    .proto-stage { min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 32px 16px; }
+    .proto-app {
+      width: min(1024px, 100%); min-height: calc(100vh - 64px);
+      background: var(--bg); border-radius: 8px; overflow: hidden; position: relative;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.12); display: flex; flex-direction: column;
+    }
+    @media (max-width: 480px) {
+      .proto-stage { padding: 0; }
+      .proto-app { border-radius: 0; min-height: 100vh; box-shadow: none; }
+    }
+
+    /* Floating nav */
+    .proto-fab { position: fixed; right: 20px; bottom: 20px; z-index: 900; width: 52px; height: 52px;
+      border-radius: 50%; background: var(--chrome-ink); color: #fff; border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
+    .proto-fab svg { width: 24px; height: 24px; stroke: #fff; fill: none; stroke-width: 1.6; }
+    .proto-panel { position: fixed; right: 20px; bottom: 84px; z-index: 901; width: 340px;
+      max-width: calc(100vw - 40px); max-height: calc(100vh - 120px); background: var(--chrome-panel);
+      color: var(--chrome-ink); border: 1px solid var(--chrome-ink); border-radius: 12px; overflow: hidden;
+      display: none; flex-direction: column; box-shadow: 0 12px 40px rgba(0,0,0,0.25); }
+    .proto-panel.open { display: flex; }
+    .proto-panel-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--chrome-line); }
+    .proto-panel-head .feat { font-size: 11px; text-transform: uppercase; letter-spacing: .8px; color: var(--chrome-muted); }
+    .proto-panel-head .close { margin-left: auto; background: none; border: none; font-size: 18px; cursor: pointer; color: var(--chrome-ink); }
+    .proto-tabs { display: flex; border-bottom: 1px solid var(--chrome-line); }
+    .proto-tab { flex: 1; padding: 9px; background: none; border: none; border-bottom: 2px solid transparent; font-size: 12px; cursor: pointer; color: var(--chrome-muted); font-family: inherit; }
+    .proto-tab.active { color: var(--chrome-ink); border-bottom-color: var(--chrome-ink); font-weight: 700; }
+    .proto-panel-body { overflow-y: auto; padding: 10px 0; }
+    .proto-pane { display: none; } .proto-pane.active { display: block; }
+    .toc-section { padding: 10px 14px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: .8px; color: var(--chrome-muted); }
+    .toc-link { display: block; padding: 6px 14px; font-size: 13px; color: var(--chrome-ink); text-decoration: none; border-left: 3px solid transparent; cursor: pointer; }
+    .toc-link:hover { background: #f4f4f4; }
+    .toc-link.active { border-left-color: #000; background: #f0f0f0; font-weight: 700; }
+    .toc-link.screen { padding-left: 30px; font-size: 12px; color: #444; }
+    .toc-link.screen::before { content: "› "; color: var(--chrome-muted); }
+    /* demo triggers — bước ngoài màn hình, thuộc lớp VỎ chrome (không phải app UI) */
+    .toc-section.demo-trigger-head { margin-top: 8px; border-top: 1px dashed var(--chrome-line); padding-top: 12px; }
+    .demo-trigger-note { padding: 0 14px 6px; font-size: 10px; color: var(--chrome-muted); line-height: 1.4; }
+    .toc-link.demo-trigger { font-size: 12px; color: var(--chrome-muted); font-style: italic; }
+    .toc-link.demo-trigger:hover { color: var(--chrome-ink); background: #f4f4f4; }
+    .flowmap { padding: 10px 14px; display: flex; flex-direction: column; gap: 16px; }
+    .flowgroup { border: 1px solid var(--chrome-line); border-radius: 8px; padding: 12px; }
+    .flowgroup h3 { font-size: 13px; margin-bottom: 8px; }
+    .chain { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+    .node { border: 1.5px solid #000; border-radius: 6px; padding: 6px 10px; font-size: 11px; background: #fff; cursor: pointer; text-decoration: none; color: #000; }
+    .node:hover { background: #f0f0f0; }
+    .node.edge { background: repeating-linear-gradient(45deg,#fff,#fff 4px,#f0f0f0 4px,#f0f0f0 8px); }
+    .node.error { background: #000; color: #fff; }
+    .arrow { color: var(--chrome-muted); font-size: 13px; }
+    .panel-reset { margin: 6px 14px 12px; padding: 8px; width: calc(100% - 28px); background: none; border: 1px solid var(--chrome-line); border-radius: 6px; cursor: pointer; font-size: 12px; color: var(--chrome-muted); font-family: inherit; }
+    .panel-reset:hover { border-color: #000; color: #000; }
+    .demo-notice { position: fixed; left: 12px; bottom: 12px; z-index: 700; background: rgba(255,255,255,0.9);
+      border: 1px solid var(--chrome-line); color: var(--chrome-muted); font-size: 10px; padding: 3px 9px;
+      border-radius: 999px; white-space: nowrap; pointer-events: none; opacity: 0.75; }
+
+    /* ══════════ LỚP 2: APP (design tokens — Binance transactional = light) ══════════ */
+    :root {
+      --palette-primary: #FCD535; --palette-primary-active: #f0b90b; --palette-primary-disabled: #e9e4c9;
+      --palette-canvas-light: #ffffff; --palette-soft-light: #fafafa; --palette-strong-light: #f5f5f5;
+      --palette-hairline: #eaecef; --palette-ink: #1e2026; --palette-ink-2: #474d57; --palette-muted: #929aa5;
+      --palette-up: #0ecb81; --palette-down: #f6465d;
+    }
+    :root, [data-theme="light"] {
+      --bg: var(--palette-soft-light); --surface: var(--palette-canvas-light); --surface-2: var(--palette-strong-light);
+      --ink: var(--palette-ink); --ink-2: var(--palette-ink-2); --muted: var(--palette-muted);
+      --line: var(--palette-hairline); --primary: var(--palette-primary); --primary-active: var(--palette-primary-active);
+      --primary-disabled: var(--palette-primary-disabled); --ok: var(--palette-up); --err: var(--palette-down);
+    }
+    [data-theme="dark"] {
+      --bg: #0b0e11; --surface: #1e2329; --surface-2: #2b3139; --ink: #eaecef; --ink-2: #b7bdc6; --muted: #848e9c;
+      --line: #2b3139; --primary: var(--palette-primary); --primary-active: var(--palette-primary-active);
+      --primary-disabled: #3a3a1f; --ok: var(--palette-up); --err: var(--palette-down);
+    }
+    [data-theme] { background-color: var(--bg); color: var(--ink); }
+    dialog { margin: auto; border: none; padding: 0; background: transparent; max-width: calc(100% - 40px); }
+    dialog::backdrop { background: rgba(0,0,0,0.5); }
+    [data-screen] { display: none; flex-direction: column; min-height: 100%; overflow-y: auto; }
+    [data-screen].active { display: flex; }
+
+    /* App components */
+    .app-top { display: flex; align-items: center; gap: 8px; padding: 16px 24px; border-bottom: 1px solid var(--line); background: var(--surface); }
+    .brand { font-weight: 800; font-size: 15px; color: var(--ink); }
+    .brand b { color: var(--primary-active); }
+    .app-body { flex: 1; display: flex; align-items: flex-start; justify-content: center; padding: 48px 16px; }
+    .wf-form { width: 100%; max-width: 420px; background: var(--surface); border: 1px solid var(--line);
+      border-radius: 12px; padding: 32px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
+    .wf-form h1 { font-size: 22px; font-weight: 700; margin-bottom: 6px; color: var(--ink); }
+    .wf-sub { font-size: 13px; color: var(--muted); margin-bottom: 20px; line-height: 1.5; }
+    .fld { margin-bottom: 16px; }
+    .fld label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-2); margin-bottom: 6px; }
+    .fld .input-wrap { display: flex; align-items: stretch; }
+    .fld input[type=email], .fld input[type=password], .fld input[type=text] {
+      flex: 1; width: 100%; padding: 11px 12px; font-size: 14px; font-family: inherit;
+      border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+    .fld input:focus { outline: none; border-color: var(--primary-active); }
+    .fld input.invalid { border-color: var(--err); }
+    .fld .input-wrap input { border-radius: 8px 0 0 8px; border-right: none; }
+    .fld .toggle { border: 1px solid var(--line); border-radius: 0 8px 8px 0; background: var(--surface-2);
+      color: var(--ink-2); font-size: 12px; padding: 0 12px; cursor: pointer; font-family: inherit; }
+    .hint { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
+    .err-inline { font-size: 12px; color: var(--err); margin-top: 6px; display: none; }
+    .err-inline.show { display: block; }
+    .err-inline a { color: var(--err); font-weight: 600; }
+    .meter { height: 6px; border-radius: 3px; background: var(--surface-2); margin-top: 8px; overflow: hidden; }
+    .meter > i { display: block; height: 100%; width: 0; background: var(--err); transition: width .2s, background .2s; }
+    .meter-label { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .row-between { display: flex; align-items: center; justify-content: space-between; margin: 14px 0; font-size: 13px; }
+    .chk { display: flex; align-items: center; gap: 7px; color: var(--ink-2); cursor: pointer; }
+    .chk input { width: 15px; height: 15px; accent-color: var(--primary-active); }
+    a.link { color: var(--primary-active); text-decoration: none; font-weight: 600; cursor: pointer; }
+    a.link:hover { text-decoration: underline; }
+    .captcha { display: none; align-items: center; gap: 8px; padding: 12px; margin: 12px 0; border: 1px dashed var(--muted);
+      border-radius: 8px; background: var(--surface-2); font-size: 12px; color: var(--ink-2); }
+    .captcha.show { display: flex; }
+    .captcha input { width: 15px; height: 15px; accent-color: var(--primary-active); }
+    .btn { width: 100%; padding: 12px; font-size: 15px; font-weight: 700; font-family: inherit;
+      border: none; border-radius: 8px; cursor: pointer; margin-top: 6px; }
+    .btn.primary { background: var(--primary); color: #1e2026; }
+    .btn.primary:hover { background: var(--primary-active); }
+    .btn.primary:disabled { background: var(--primary-disabled); color: var(--muted); cursor: not-allowed; }
+    .btn.google { background: var(--surface); color: var(--ink); border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .btn.google:hover { background: var(--surface-2); }
+    .btn.google svg { width: 18px; height: 18px; }
+    .divider { display: flex; align-items: center; gap: 12px; margin: 18px 0; color: var(--muted); font-size: 12px; }
+    .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+    .foot-note { text-align: center; font-size: 13px; color: var(--ink-2); margin-top: 18px; }
+    .banner { padding: 12px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; line-height: 1.5; display: none; }
+    .banner.show { display: block; }
+    .banner.err { background: rgba(246,70,93,.1); color: var(--err); border: 1px solid rgba(246,70,93,.3); }
+    .banner.ok { background: rgba(14,203,129,.1); color: var(--ok); border: 1px solid rgba(14,203,129,.3); }
+    .banner.info { background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); }
+    .banner .link { color: inherit; text-decoration: underline; }
+    .result-icon { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 18px; }
+    .result-icon.ok { background: rgba(14,203,129,.12); } .result-icon.ok svg { stroke: var(--ok); }
+    .result-icon.err { background: rgba(246,70,93,.12); } .result-icon.err svg { stroke: var(--err); }
+    .result-icon svg { width: 28px; height: 28px; fill: none; stroke-width: 2.2; }
+    .center { text-align: center; }
+    .app-card { width: 100%; max-width: 480px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 28px; }
+    .sec-row { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--line); }
+    .sec-row:last-child { border-bottom: none; }
+    .sec-row .t { font-size: 14px; font-weight: 600; color: var(--ink); }
+    .sec-row .d { font-size: 12px; color: var(--muted); margin-top: 3px; }
+    .btn-sm { padding: 7px 14px; font-size: 13px; font-weight: 600; font-family: inherit; border-radius: 7px; cursor: pointer; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+    .btn-sm.danger { color: var(--err); border-color: rgba(246,70,93,.4); }
+    .btn-sm.danger:hover { background: rgba(246,70,93,.08); }
+    .app-home { text-align: center; padding: 60px 20px; }
+    .app-home h1 { font-size: 26px; margin-bottom: 10px; }
+    .app-home p { color: var(--muted); margin-bottom: 24px; }
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M3 12h18M3 6h18M3 18h18"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+    <symbol id="i-google" viewBox="0 0 24 24" style="stroke:none">
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0012 23z"/>
+      <path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 010-4.2V7.06H2.18a11 11 0 000 9.88l3.66-2.84z"/>
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z"/>
+    </symbol>
+  </svg>
+
+  <div class="proto-stage" data-device="desktop">
+    <div class="proto-app">
+
+      <!-- ═══ login (flow login-email + google-oauth) ═══ -->
+      <section data-screen="login" data-theme="light">
+        <div class="app-top"><span class="brand">english-<b>ai</b>-demo</span></div>
+        <div class="app-body"><div class="wf-form">
+          <h1>Đăng nhập tài khoản</h1>
+          <p class="wf-sub">Chào mừng quay lại. Đăng nhập để tiếp tục học.</p>
+          <div class="banner" id="login-banner"></div>
+          <div class="fld">
+            <label for="login-email">Email</label>
+            <input type="email" id="login-email" placeholder="ban@email.com" autocomplete="off" oninput="onLoginInput()">
+          </div>
+          <div class="fld">
+            <label for="login-pw">Mật khẩu</label>
+            <div class="input-wrap">
+              <input type="password" id="login-pw" oninput="onLoginInput()">
+              <button type="button" class="toggle" onclick="togglePw('login-pw', this)">Hiện</button>
+            </div>
+          </div>
+          <div class="captcha" id="login-captcha">
+            <input type="checkbox" id="login-captcha-chk" onchange="onLoginInput()">
+            <label for="login-captcha-chk">Tôi không phải là robot (captcha hiện sau 3 lần sai)</label>
+          </div>
+          <div class="row-between">
+            <label class="chk"><input type="checkbox" id="login-remember"> Ghi nhớ đăng nhập</label>
+            <a class="link" data-goto="forgot-password">Quên mật khẩu?</a>
+          </div>
+          <button class="btn primary" id="login-submit" onclick="doLogin()" disabled>Đăng nhập</button>
+          <div class="divider">hoặc</div>
+          <button class="btn google" onclick="doGoogle()"><svg><use href="#i-google"/></svg> Đăng nhập với Google</button>
+          <p class="foot-note">Chưa có tài khoản? <a class="link" data-goto="signup">Đăng ký</a></p>
+        </div></div>
+      </section>
+
+      <!-- ═══ signup ═══ -->
+      <section data-screen="signup" data-theme="light">
+        <div class="app-top"><span class="brand">english-<b>ai</b>-demo</span></div>
+        <div class="app-body"><div class="wf-form">
+          <h1>Tạo tài khoản mới</h1>
+          <p class="wf-sub">Đăng ký để đồng bộ tiến độ học trên mọi thiết bị.</p>
+          <div class="fld">
+            <label for="su-email">Email</label>
+            <input type="email" id="su-email" placeholder="ban@email.com" autocomplete="off" oninput="onSignupInput()">
+            <div class="err-inline" id="su-email-err">Email này đã được đăng ký. Bạn muốn <a class="link" data-goto="login">đăng nhập</a> hoặc <a class="link" data-goto="forgot-password">quên mật khẩu</a>?</div>
+          </div>
+          <div class="fld">
+            <label for="su-pw">Mật khẩu</label>
+            <div class="input-wrap">
+              <input type="password" id="su-pw" oninput="onSignupInput()">
+              <button type="button" class="toggle" onclick="togglePw('su-pw', this)">Hiện</button>
+            </div>
+            <div class="meter"><i id="su-meter"></i></div>
+            <div class="meter-label" id="su-meter-label">Độ mạnh: —</div>
+            <div class="hint">8-20 ký tự, có chữ hoa, chữ thường và ký tự đặc biệt; không chứa phần đầu email.</div>
+            <div class="err-inline" id="su-pw-err">Mật khẩu cần 8-20 ký tự, có chữ hoa, chữ thường và ký tự đặc biệt, và không chứa phần đầu email của bạn.</div>
+          </div>
+          <div class="captcha show" id="su-captcha">
+            <input type="checkbox" id="su-captcha-chk" onchange="onSignupInput()">
+            <label for="su-captcha-chk">Tôi không phải là robot (captcha chống bot)</label>
+          </div>
+          <button class="btn primary" id="su-submit" onclick="doSignup()" disabled>Đăng ký</button>
+          <p class="foot-note">Đã có tài khoản? <a class="link" data-goto="login">Đăng nhập</a></p>
+        </div></div>
+      </section>
+
+      <!-- ═══ verify-sent ═══ -->
+      <section data-screen="verify-sent" data-theme="light">
+        <div class="app-top"><span class="brand">english-<b>ai</b>-demo</span></div>
+        <div class="app-body"><div class="wf-form center">
+          <div class="result-icon ok"><svg><use href="#i-check"/></svg></div>
+          <h1>Kiểm tra hộp thư của bạn</h1>
+          <p class="wf-sub">Đã gửi email xác nhận tới <strong id="vs-email">ban@email.com</strong>. Bấm link trong email để kích hoạt tài khoản. Link có hạn 24 giờ. (Nhớ kiểm tra cả mục spam.)</p>
+          <div class="banner err" id="vs-banner"></div>
+          <button class="btn primary" id="vs-resend" onclick="doResend()">Gửi lại email xác nhận</button>
+          <p class="hint" id="vs-cooldown" style="text-align:center">Có thể gửi lại sau 60 giây.</p>
+          <div class="divider"></div>
+          <p class="foot-note"><a class="link" data-goto="login">Quay lại đăng nhập</a></p>
+        </div></div>
+      </section>
+
+      <!-- ═══ verify-result-success ═══ -->
+      <section data-screen="verify-result-success" data-theme="light">
+        <div class="app-top"><span class="brand">english-<b>ai</b>-demo</span></div>
+        <div class="app-body"><div class="wf-form center">
+          <div class="result-icon ok"><svg><use href="#i-check"/></svg></div>
+          <h1>Xác nhận email thành công!</h1>
+          <p class="wf-sub">Tài khoản của bạn đã được kích hoạt. Vui lòng đăng nhập để tiếp tục.</p>
+          <button class="btn primary" data-goto="login">Đăng nhập</button>
+        </div></div>
+      </section>
+
+      <!-- ═══ verify-result-expired ═══ -->
+      <section data-screen="verify-result-expired" data-theme="light">
+        <div class="app-top"><span class="brand">english-<b>ai</b>-demo</span></div>
+        <div class="app-body"><div class="wf-form center">
+          <div class="result-icon err"><svg><use href="#i-x"/></svg></div>
+          <h1>Link đã hết hạn</h1>
+          <p class="wf-sub">Link xác nhận đã hết hạn hoặc đã được sử dụng. Gửi lại link xác nhận để tiếp tục.</p>
+          <button class="btn primary" onclick="doResend(); goto('verify-sent')">Gửi lại link xác nhận</button>
+          <p class="foot-note"><a class="link" data-goto="login">Quay lại đăng nhập</a></p>
+        </div></div>
+      </section>
+
+      <!-- ═══ forgot-password ═══ -->
+      <section data-screen="forgot-password" data-theme="light">
+        <div class="app-top"><span class="brand">english-<b>ai</b>-demo</span></div>
+        <div class="app-body"><div class="wf-form">
+          <h1>Quên mật khẩu</h1>
+          <p class="wf-sub">Nhập email tài khoản, chúng tôi sẽ gửi link đặt lại mật khẩu.</p>
+          <div class="banner info" id="fp-banner">Nếu email tồn tại trong hệ thống, chúng tôi đã gửi link đặt lại mật khẩu.</div>
+          <div class="fld">
+            <label for="fp-email">Email</label>
+            <input type="email" id="fp-email" placeholder="ban@email.com" autocomplete="off" oninput="onFpInput()">
+          </div>
+          <button class="btn primary" id="fp-submit" onclick="doForgot()" disabled>Gửi link đặt lại</button>
+          <p class="foot-note">Nhớ mật khẩu rồi? <a class="link" data-goto="login">Đăng nhập</a></p>
+        </div></div>
+      </section>
+
+      <!-- ═══ reset-password ═══ -->
+      <section data-screen="reset-password" data-theme="light">
+        <div class="app-top"><span class="brand">english-<b>ai</b>-demo</span></div>
+        <div class="app-body"><div class="wf-form">
+          <h1>Đặt mật khẩu mới</h1>
+          <p class="wf-sub">Nhập mật khẩu mới cho tài khoản. Sau khi đặt lại, mọi phiên đăng nhập sẽ bị thu hồi.</p>
+          <div class="fld">
+            <label for="rp-pw">Mật khẩu mới</label>
+            <div class="input-wrap">
+              <input type="password" id="rp-pw" oninput="onResetInput()">
+              <button type="button" class="toggle" onclick="togglePw('rp-pw', this)">Hiện</button>
+            </div>
+            <div class="hint">8-20 ký tự, có chữ hoa, chữ thường và ký tự đặc biệt.</div>
+            <div class="err-inline" id="rp-pw-err">Mật khẩu chưa đạt yêu cầu.</div>
+          </div>
+          <div class="fld">
+            <label for="rp-pw2">Nhập lại mật khẩu mới</label>
+            <input type="password" id="rp-pw2" oninput="onResetInput()">
+            <div class="err-inline" id="rp-pw2-err">Hai mật khẩu không khớp.</div>
+          </div>
+          <button class="btn primary" id="rp-submit" onclick="doReset()" disabled>Đặt lại mật khẩu</button>
+        </div></div>
+      </section>
+
+      <!-- ═══ reset-result-success ═══ -->
+      <section data-screen="reset-result-success" data-theme="light">
+        <div class="app-top"><span class="brand">english-<b>ai</b>-demo</span></div>
+        <div class="app-body"><div class="wf-form center">
+          <div class="result-icon ok"><svg><use href="#i-check"/></svg></div>
+          <h1>Đặt lại mật khẩu thành công</h1>
+          <p class="wf-sub">Mọi phiên đăng nhập trên các thiết bị đã bị thu hồi. Vui lòng đăng nhập lại bằng mật khẩu mới.</p>
+          <button class="btn primary" data-goto="login">Đăng nhập lại</button>
+        </div></div>
+      </section>
+
+      <!-- ═══ account-security (flow unlink-google) ═══ -->
+      <section data-screen="account-security" data-theme="light">
+        <div class="app-top"><span class="brand">english-<b>ai</b>-demo</span></div>
+        <div class="app-body"><div class="app-card">
+          <h1 style="font-size:20px;margin-bottom:4px">Bảo mật tài khoản</h1>
+          <p class="wf-sub">Quản lý phương thức đăng nhập và thiết bị.</p>
+          <div class="banner" id="as-banner"></div>
+          <div class="sec-row">
+            <div><div class="t">Mật khẩu</div><div class="d" id="as-pw-state">Chưa đặt — tài khoản đăng ký qua Google</div></div>
+            <button class="btn-sm" id="as-setpw" onclick="openSetPw()">Tạo mật khẩu</button>
+          </div>
+          <div class="sec-row">
+            <div><div class="t">Liên kết Google</div><div class="d" id="as-google-state">Đã liên kết</div></div>
+            <button class="btn-sm danger" id="as-unlink" onclick="doUnlink()">Gỡ liên kết</button>
+          </div>
+          <div class="sec-row">
+            <div><div class="t">Thiết bị đang đăng nhập</div><div class="d">2 thiết bị (Chrome · macOS, Safari · iPhone) — P1</div></div>
+            <button class="btn-sm" onclick="alert('Danh sách thiết bị là tính năng P1 — chưa trong bản ra mắt.')">Xem</button>
+          </div>
+        </div></div>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- set-password modal -->
+  <dialog id="setpw-modal">
+    <div class="wf-form" style="max-width:380px" data-theme="light">
+      <h1 style="font-size:18px">Tạo mật khẩu trước khi gỡ Google</h1>
+      <p class="wf-sub">Tài khoản chưa có mật khẩu. Đặt mật khẩu để vẫn đăng nhập được sau khi gỡ liên kết Google.</p>
+      <div class="fld">
+        <label for="sp-pw">Mật khẩu</label>
+        <input type="password" id="sp-pw" oninput="onSetPwInput()">
+        <div class="err-inline" id="sp-pw-err">Mật khẩu chưa đạt yêu cầu (8-20, hoa/thường/đặc biệt).</div>
+      </div>
+      <button class="btn primary" id="sp-submit" onclick="doSetPw()" disabled>Lưu mật khẩu</button>
+      <button class="btn google" style="margin-top:8px" onclick="document.getElementById('setpw-modal').close()">Hủy</button>
+    </div>
+  </dialog>
+
+  <button class="proto-fab" onclick="togglePanel()" title="Điều hướng"><svg viewBox="0 0 24 24"><use href="#i-menu"/></svg></button>
+  <div class="proto-panel" id="proto-panel">
+    <div class="proto-panel-head">
+      <div><div class="feat">authentication</div><strong>Điều hướng · 5 flow · 9 màn</strong></div>
+      <button class="close" onclick="togglePanel(false)" aria-label="Đóng">✕</button>
+    </div>
+    <div class="proto-tabs">
+      <button class="proto-tab active" onclick="switchPane('toc', this)">Mục lục</button>
+      <button class="proto-tab" onclick="switchPane('flow', this)">Sơ đồ luồng</button>
+    </div>
+    <div class="proto-panel-body">
+      <div class="proto-pane active" id="pane-toc">
+        <div class="toc-section">Flow 1 · Đăng ký + xác nhận email</div>
+        <a class="toc-link" data-goto="signup">signup</a>
+        <a class="toc-link screen" data-goto="verify-sent">verify-sent</a>
+        <a class="toc-link screen" data-goto="verify-result-success">verify-result-success</a>
+        <a class="toc-link screen" data-goto="verify-result-expired">verify-result-expired</a>
+        <div class="toc-section">Flow 2 · Đăng nhập email</div>
+        <a class="toc-link" data-goto="login">login</a>
+        <div class="toc-section">Flow 3 · Đăng nhập/đăng ký Google</div>
+        <a class="toc-link" data-goto="login">login (nút Google)</a>
+        <div class="toc-section">Flow 4 · Quên mật khẩu / đặt lại</div>
+        <a class="toc-link" data-goto="forgot-password">forgot-password</a>
+        <a class="toc-link screen" data-goto="reset-password">reset-password</a>
+        <a class="toc-link screen" data-goto="reset-result-success">reset-result-success</a>
+        <div class="toc-section">Flow 5 · Gỡ liên kết Google</div>
+        <a class="toc-link" data-goto="account-security">account-security</a>
+
+        <div class="toc-section demo-trigger-head">Bước ngoài màn hình (mô phỏng)</div>
+        <p class="demo-trigger-note">Các bước xảy ra bên ngoài app thật (bấm link trong email, thời gian trôi qua). Trong prototype, kích hoạt tại đây thay cho hộp thư.</p>
+        <a class="toc-link demo-trigger" onclick="simVerify(true); togglePanel(false)">✉ Bấm link xác nhận email (còn hạn) → thành công</a>
+        <a class="toc-link demo-trigger" onclick="simVerify(false); togglePanel(false)">✉ Bấm link xác nhận (hết hạn / đã dùng)</a>
+        <a class="toc-link demo-trigger" onclick="simResetLink(); togglePanel(false)">✉ Mở link đặt lại mật khẩu (còn hạn)</a>
+      </div>
+      <div class="proto-pane" id="pane-flow">
+        <div class="flowmap">
+          <div class="flowgroup"><h3>Flow 1 — Đăng ký + xác nhận email</h3><div class="chain">
+            <a class="node" data-goto="signup">signup</a><span class="arrow">→</span>
+            <a class="node" data-goto="verify-sent">verify-sent</a><span class="arrow">→</span>
+            <a class="node" data-goto="verify-result-success">success</a><span class="arrow">/</span>
+            <a class="node error" data-goto="verify-result-expired">expired</a>
+          </div></div>
+          <div class="flowgroup"><h3>Flow 2 — Đăng nhập email</h3><div class="chain">
+            <a class="node" data-goto="login">login</a><span class="arrow">→</span>
+            <a class="node edge" data-goto="login">captcha ≥3 / khóa ≥5</a>
+          </div></div>
+          <div class="flowgroup"><h3>Flow 3 — Google OAuth</h3><div class="chain">
+            <a class="node" data-goto="login">login (Google)</a><span class="arrow">→</span>
+            <a class="node" data-goto="account-security">app / auto-link</a>
+          </div></div>
+          <div class="flowgroup"><h3>Flow 4 — Quên mật khẩu</h3><div class="chain">
+            <a class="node" data-goto="forgot-password">forgot-password</a><span class="arrow">→</span>
+            <a class="node" data-goto="reset-password">reset-password</a><span class="arrow">→</span>
+            <a class="node" data-goto="reset-result-success">success</a>
+          </div></div>
+          <div class="flowgroup"><h3>Flow 5 — Gỡ liên kết Google</h3><div class="chain">
+            <a class="node" data-goto="account-security">account-security</a><span class="arrow">→</span>
+            <a class="node edge" data-goto="account-security">buộc tạo mật khẩu</a>
+          </div></div>
+        </div>
+      </div>
+    </div>
+    <button class="panel-reset" onclick="resetPrototypeData()">↺ Reset dữ liệu demo</button>
+  </div>
+  <div class="demo-notice">Demo — dữ liệu lưu local browser, không gửi đâu</div>
+
+  <script>
+    const FEATURE = "authentication";
+    const STORE_KEY = "proto:authentication:v1";
+    const SCREENS = ["login","signup","verify-sent","verify-result-success","verify-result-expired","forgot-password","reset-password","reset-result-success","account-security"];
+    const DEFAULT_SCREEN = "login";
+    const ENTRY_SCREENS = ["login","signup","forgot-password"];  // màn NHẬP MỚI mỗi lần ghé — clear input khi quay lại
+
+    // ═══ DEMO DATA (deterministic) ═══
+    const DEMO = {
+      existingUser: { email: "learner@email.com", password: "Hoc2024!", verified: true },
+      googleAccount: { email: "learner@email.com" }  // trùng existing -> auto-link
+    };
+
+    // ═══ DEFAULT STATE ═══
+    const DEFAULT_STATE = {
+      pendingEmail: "",       // email vừa đăng ký (chờ verify)
+      failCount: 0,           // số lần đăng nhập sai liên tiếp
+      lockedUntilMsg: "",     // thông báo khóa (giả lập)
+      resetRequested: false,
+      account: {              // tài khoản dùng cho màn account-security
+        hasPassword: false,
+        googleLinked: true
+      }
+    };
+    const store = {
+      state: null,
+      load(){
+        Object.keys(localStorage).forEach(k => { if (k.startsWith("proto:authentication:") && k !== STORE_KEY) localStorage.removeItem(k); });
+        try { const r = localStorage.getItem(STORE_KEY);
+          this.state = r ? Object.assign(structuredClone(DEFAULT_STATE), JSON.parse(r)) : structuredClone(DEFAULT_STATE);
+        } catch { this.state = structuredClone(DEFAULT_STATE); }
+      },
+      save(){ localStorage.setItem(STORE_KEY, JSON.stringify(this.state)); },
+      update(patch){ Object.assign(this.state, patch); this.save(); }
+    };
+    store.load();
+
+    // ═══ helpers ═══
+    const $ = id => document.getElementById(id);
+    const isEmail = v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+    function pwPolicy(pw, email){
+      if (pw.length < 8 || pw.length > 20) return false;
+      if (!/[a-z]/.test(pw) || !/[A-Z]/.test(pw) || !/[^A-Za-z0-9]/.test(pw)) return false;
+      const local = (email.split('@')[0] || '').toLowerCase();
+      if (local.length >= 3 && pw.toLowerCase().includes(local)) return false;
+      return true;
+    }
+    function pwStrength(pw){
+      let s = 0;
+      if (pw.length >= 8) s++; if (pw.length >= 12) s++;
+      if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) s++;
+      if (/[^A-Za-z0-9]/.test(pw)) s++;
+      return Math.min(s, 3);
+    }
+    function togglePw(id, btn){ const el = $(id); const p = el.type === 'password'; el.type = p ? 'text' : 'password'; btn.textContent = p ? 'Ẩn' : 'Hiện'; }
+    function banner(id, cls, html){ const b = $(id); b.className = 'banner ' + cls + ' show'; b.innerHTML = html; }
+    function hideBanner(id){ const b = $(id); if (b) b.classList.remove('show'); }
+
+    // ═══ NAVIGATION ═══
+    function goto(slug){ location.hash = slug; }
+    function showScreen(slug){
+      if (!slug || !SCREENS.includes(slug)) slug = DEFAULT_SCREEN;
+      document.querySelectorAll('[data-screen]').forEach(s => s.classList.remove('active'));
+      const t = document.querySelector('[data-screen="'+slug+'"]'); if (t) t.classList.add('active');
+      if (ENTRY_SCREENS.includes(slug)) clearFormInputs(slug); // màn entry: xoá input cũ TRƯỚC khi render — context flow (store.state) không bị đụng
+      renderScreen(slug);
+      document.querySelectorAll('.toc-link').forEach(a => a.classList.toggle('active', a.dataset.goto === slug));
+    }
+    window.addEventListener('hashchange', () => showScreen(location.hash.slice(1)));
+
+    // ═══ ENTRY SCREEN CLEAR (input tự-nhập-lại mỗi lần ghé — KHÔNG đụng store.state) ═══
+    function clearFormInputs(slug){
+      const section = document.querySelector('[data-screen="'+slug+'"]');
+      if (!section) return;
+      section.querySelectorAll('input[type="text"], input[type="email"], input[type="password"], textarea').forEach(el => el.value = '');
+      section.querySelectorAll('input[type="checkbox"], input[type="radio"]').forEach(el => el.checked = false);
+      section.querySelectorAll('.banner').forEach(el => el.classList.remove('show'));
+      section.querySelectorAll('.err-inline').forEach(el => el.classList.remove('show'));
+    }
+
+    function togglePanel(force){ const p = $('proto-panel'); const open = force === undefined ? !p.classList.contains('open') : force; p.classList.toggle('open', open); }
+    function switchPane(name, btn){ document.querySelectorAll('.proto-tab').forEach(t => t.classList.remove('active')); btn.classList.add('active');
+      $('pane-toc').classList.toggle('active', name === 'toc'); $('pane-flow').classList.toggle('active', name === 'flow'); }
+    document.querySelectorAll('[data-goto]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); goto(a.dataset.goto); togglePanel(false); }));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') togglePanel(false); });
+
+    function resetPrototypeData(){
+      if(!confirm('Xoá toàn bộ dữ liệu demo và làm mới? Không thể hoàn tác.')) return;
+      localStorage.removeItem(STORE_KEY); store.state = structuredClone(DEFAULT_STATE);
+      history.replaceState(null, '', location.pathname + location.search); location.reload();
+    }
+
+    // ═══ RENDER per screen (từ store.state) ═══
+    function renderScreen(slug){
+      if (slug === 'login'){ onLoginInput(); syncCaptcha(); if (store.state.lockedUntilMsg) banner('login-banner','err',store.state.lockedUntilMsg); }
+      if (slug === 'signup'){ onSignupInput(); }
+      if (slug === 'verify-sent'){ $('vs-email').textContent = store.state.pendingEmail || 'ban@email.com'; }
+      if (slug === 'forgot-password'){ onFpInput(); }
+      if (slug === 'reset-password'){ onResetInput(); }
+      if (slug === 'account-security'){ renderAccountSecurity(); }
+    }
+    function syncCaptcha(){ $('login-captcha').classList.toggle('show', store.state.failCount >= 3); }
+
+    // ═══ LOGIN ═══
+    function onLoginInput(){
+      const email = $('login-email').value.trim(), pw = $('login-pw').value;
+      const needCaptcha = store.state.failCount >= 3;
+      const captchaOk = !needCaptcha || $('login-captcha-chk').checked;
+      $('login-submit').disabled = !(isEmail(email) && pw.length > 0 && captchaOk);
+    }
+    function doLogin(){
+      hideBanner('login-banner');
+      const email = $('login-email').value.trim(), pw = $('login-pw').value;
+      const btn = $('login-submit'); const original = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Đang đăng nhập...';
+      setTimeout(() => {
+        // giả lập: tài khoản khóa khi failCount >= 5
+        if (store.state.failCount >= 5){
+          banner('login-banner','err','Tài khoản tạm khóa do nhiều lần đăng nhập sai. Vui lòng thử lại sau 24 giờ.');
+          btn.disabled = false; btn.textContent = original; onLoginInput(); return;
+        }
+        if (email === DEMO.existingUser.email && pw === DEMO.existingUser.password){
+          store.update({ failCount: 0, lockedUntilMsg: "" });
+          goto('account-security');   // vào "app" (dùng account-security làm màn sau đăng nhập trong demo)
+          return;
+        }
+        // sai
+        const fc = store.state.failCount + 1;
+        let lockMsg = "";
+        if (fc >= 5) lockMsg = 'Tài khoản tạm khóa do nhiều lần đăng nhập sai. Vui lòng thử lại sau 24 giờ.';
+        store.update({ failCount: fc, lockedUntilMsg: lockMsg });
+        if (fc >= 5) banner('login-banner','err',lockMsg);
+        else banner('login-banner','err','Email hoặc mật khẩu không đúng.' + (fc>=3 ? '<br>Vui lòng xác minh captcha bên dưới.' : ''));
+        syncCaptcha();
+        btn.disabled = false; btn.textContent = original; onLoginInput();
+      }, 600);
+    }
+    function doGoogle(){
+      const btn = document.querySelector('.btn.google'); const original = btn.innerHTML;
+      btn.disabled = true; btn.innerHTML = 'Đang đăng nhập...';
+      setTimeout(() => {
+        // Google OAuth: email trùng -> auto-link vào tài khoản có sẵn -> vào app
+        store.update({ account: Object.assign({}, store.state.account, { googleLinked: true }) });
+        banner('login-banner','ok','Đăng nhập Google thành công — tài khoản đã tự liên kết.');
+        setTimeout(() => goto('account-security'), 400);
+      }, 600);
+    }
+
+    // ═══ SIGNUP ═══
+    function onSignupInput(){
+      const email = $('su-email').value.trim(), pw = $('su-pw').value;
+      // strength meter
+      const s = pwStrength(pw); const m = $('su-meter'), ml = $('su-meter-label');
+      const cols = ['var(--err)','#f0b90b','var(--ok)']; const labels = ['Yếu','Trung bình','Mạnh'];
+      m.style.width = (pw ? (s/3*100) : 0) + '%'; m.style.background = pw ? cols[Math.max(0,s-1)] : 'var(--err)';
+      ml.textContent = 'Độ mạnh: ' + (pw ? labels[Math.max(0,s-1)] : '—');
+      // email dup check (against demo existing)
+      const dup = email === DEMO.existingUser.email;
+      $('su-email-err').classList.toggle('show', dup && isEmail(email));
+      const pwOk = pwPolicy(pw, email);
+      $('su-pw-err').classList.toggle('show', pw.length > 0 && !pwOk);
+      const captchaOk = $('su-captcha-chk').checked;
+      $('su-submit').disabled = !(isEmail(email) && !dup && pwOk && captchaOk);
+    }
+    function doSignup(){
+      const email = $('su-email').value.trim();
+      const btn = $('su-submit'); const original = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Đang đăng ký...';
+      setTimeout(() => {
+        store.update({ pendingEmail: email });
+        goto('verify-sent');
+      }, 600);
+    }
+
+    // ═══ VERIFY ═══
+    let resendTimer = null;
+    function doResend(){
+      const btn = $('vs-resend'); if (!btn || btn.disabled) return;
+      btn.disabled = true; const original = btn.textContent; btn.textContent = 'Đang gửi...';
+      hideBanner('vs-banner');
+      setTimeout(() => {
+        btn.textContent = original;
+        let left = 60;
+        $('vs-cooldown').textContent = 'Có thể gửi lại sau ' + left + ' giây.';
+        clearInterval(resendTimer);
+        resendTimer = setInterval(() => {
+          left--; if (left <= 0){ clearInterval(resendTimer); btn.disabled = false; $('vs-cooldown').textContent = 'Có thể gửi lại email xác nhận.'; }
+          else $('vs-cooldown').textContent = 'Có thể gửi lại sau ' + left + ' giây.';
+        }, 1000);
+      }, 600);
+    }
+    // Bước ngoài màn hình: user bấm link xác nhận trong EMAIL (kích hoạt từ panel demo)
+    function simVerify(valid){
+      if (valid) goto('verify-result-success');
+      else goto('verify-result-expired');
+    }
+    // Bước ngoài màn hình: user mở link đặt lại trong EMAIL → tới màn đặt mật khẩu mới
+    function simResetLink(){ goto('reset-password'); }
+
+    // ═══ FORGOT / RESET ═══
+    function onFpInput(){ $('fp-submit').disabled = !isEmail($('fp-email').value.trim()); }
+    function doForgot(){
+      const btn = $('fp-submit'); const original = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Đang gửi...';
+      setTimeout(() => {
+        // anti-enumeration: cùng thông báo trung tính bất kể email tồn tại
+        store.update({ resetRequested: true });
+        banner('fp-banner','info','Nếu email tồn tại trong hệ thống, chúng tôi đã gửi link đặt lại mật khẩu.');
+        btn.textContent = original; // vẫn disabled: đã gửi xong, chờ submit mới (email đổi) mới bật lại
+      }, 600);
+    }
+    function onResetInput(){
+      const pw = $('rp-pw').value, pw2 = $('rp-pw2').value;
+      const ok = pwPolicy(pw, DEMO.existingUser.email);
+      $('rp-pw-err').classList.toggle('show', pw.length > 0 && !ok);
+      const match = pw === pw2;
+      $('rp-pw2-err').classList.toggle('show', pw2.length > 0 && !match);
+      $('rp-submit').disabled = !(ok && match);
+    }
+    function doReset(){
+      const btn = $('rp-submit'); const original = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Đang đặt lại...';
+      setTimeout(() => {
+        // đặt lại thành công -> thu hồi mọi phiên
+        store.update({ resetRequested: false, failCount: 0, lockedUntilMsg: "" });
+        goto('reset-result-success');
+      }, 600);
+    }
+
+    // ═══ ACCOUNT SECURITY (unlink google) ═══
+    function renderAccountSecurity(){
+      const a = store.state.account;
+      $('as-pw-state').textContent = a.hasPassword ? 'Đã đặt mật khẩu' : 'Chưa đặt — tài khoản đăng ký qua Google';
+      $('as-setpw').style.display = a.hasPassword ? 'none' : 'inline-block';
+      $('as-google-state').textContent = a.googleLinked ? 'Đã liên kết' : 'Chưa liên kết';
+      $('as-unlink').disabled = !a.googleLinked;
+      $('as-unlink').style.opacity = a.googleLinked ? '1' : '.4';
+      hideBanner('as-banner');
+    }
+    function doUnlink(){
+      const a = store.state.account;
+      if (!a.hasPassword){
+        // buộc tạo mật khẩu trước (E-authentication-010 / FR-024)
+        banner('as-banner','err','Cần đặt mật khẩu trước khi gỡ liên kết Google, để bạn vẫn đăng nhập được.');
+        openSetPw(); return;
+      }
+      const btn = $('as-unlink'); const original = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Đang gỡ...';
+      setTimeout(() => {
+        store.update({ account: Object.assign({}, a, { googleLinked: false }) });
+        renderAccountSecurity();
+        banner('as-banner','ok','Đã gỡ liên kết Google. Bạn vẫn đăng nhập được bằng email + mật khẩu.');
+        btn.textContent = original;
+      }, 600);
+    }
+    function openSetPw(){
+      const dlg = $('setpw-modal');
+      const cur = document.querySelector('[data-screen].active');
+      if (cur) dlg.querySelector('[data-theme]').setAttribute('data-theme', cur.getAttribute('data-theme') || 'light');
+      $('sp-pw').value = ''; onSetPwInput(); dlg.showModal();
+    }
+    function onSetPwInput(){ $('sp-submit').disabled = !pwPolicy($('sp-pw').value, DEMO.existingUser.email); }
+    function doSetPw(){
+      const btn = $('sp-submit'); const original = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Đang lưu...';
+      setTimeout(() => {
+        store.update({ account: Object.assign({}, store.state.account, { hasPassword: true }) });
+        $('setpw-modal').close(); renderAccountSecurity();
+        banner('as-banner','ok','Đã tạo mật khẩu. Giờ bạn có thể gỡ liên kết Google.');
+        btn.textContent = original;
+      }, 600);
+    }
+
+    // ═══ INIT ═══
+    showScreen(location.hash.slice(1) || DEFAULT_SCREEN);
+  </script>
+</body>
+</html>

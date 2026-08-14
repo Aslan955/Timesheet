@@ -1,0 +1,5 @@
+{
+  "actors": ["Người học mới", "Hệ thống auth", "Email service"],
+  "branches": ["Không đạt", "Đã có", "Hết hạn"],
+  "errors": ["Email đã được đăng ký"]
+}

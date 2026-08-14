@@ -1,0 +1,28 @@
+meta {
+  name: TC-13 POST /v1/charges
+  type: http
+  seq: 13
+}
+
+post {
+  url: {{PAYGATE_BASE}}/v1/charges
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.PAYGATE_KEY}}
+}
+
+body:json {
+  {
+    "amount": 99000,
+    "currency": "vnd",
+    "source": "tok_error"
+  }
+}
+
+assert {
+  res.status: eq 500
+  res.body.error.code: eq processing_error
+}

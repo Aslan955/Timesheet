@@ -1,0 +1,37 @@
+{
+  "process": { "id": "Process_signup_verify", "title": "Đăng ký + xác nhận email" },
+  "lanes": [
+    { "id": "Lane_learner", "name": "Người học mới" },
+    { "id": "Lane_system",  "name": "Hệ thống auth" },
+    { "id": "Lane_email",   "name": "Email service" }
+  ],
+  "nodes": [
+    { "id": "Start_1",     "kind": "start",   "lane": "Lane_learner", "name": "Người học bắt đầu đăng ký" },
+    { "id": "Task_enter",  "kind": "task",    "lane": "Lane_learner", "name": "Nhập email + mật khẩu, submit" },
+    { "id": "GW_pw",       "kind": "gateway", "lane": "Lane_system",  "name": "Mật khẩu đạt chính sách?" },
+    { "id": "GW_dup",      "kind": "gateway", "lane": "Lane_system",  "name": "Email đã được đăng ký?" },
+    { "id": "End_dup",     "kind": "end",     "lane": "Lane_system",  "name": "Email đã được đăng ký (dừng)" },
+    { "id": "Task_create", "kind": "task",    "lane": "Lane_system",  "name": "Tạo account unverified + verify link 24h" },
+    { "id": "Task_send",   "kind": "task",    "lane": "Lane_email",   "name": "Gửi email xác nhận tới hộp thư" },
+    { "id": "Task_sent",   "kind": "task",    "lane": "Lane_learner", "name": "Xem màn Đã gửi email xác nhận" },
+    { "id": "Task_click",  "kind": "task",    "lane": "Lane_learner", "name": "Mở email, click link xác nhận" },
+    { "id": "GW_token",    "kind": "gateway", "lane": "Lane_system",  "name": "Token còn hạn & chưa dùng?" },
+    { "id": "Task_verify", "kind": "task",    "lane": "Lane_system",  "name": "Đổi account sang verified" },
+    { "id": "End_active",  "kind": "end",     "lane": "Lane_learner", "name": "Tài khoản đã kích hoạt" }
+  ],
+  "flows": [
+    { "id": "Flow_start",   "src": "Start_1",     "tgt": "Task_enter" },
+    { "id": "Flow_submit",  "src": "Task_enter",  "tgt": "GW_pw" },
+    { "id": "Flow_pw_no",   "src": "GW_pw",       "tgt": "Task_enter",  "name": "Không đạt" },
+    { "id": "Flow_pw_yes",  "src": "GW_pw",       "tgt": "GW_dup",      "name": "Đạt" },
+    { "id": "Flow_dup_y",   "src": "GW_dup",      "tgt": "End_dup",     "name": "Đã có" },
+    { "id": "Flow_dup_n",   "src": "GW_dup",      "tgt": "Task_create", "name": "Chưa có" },
+    { "id": "Flow_tosend",  "src": "Task_create", "tgt": "Task_send" },
+    { "id": "Flow_tosent",  "src": "Task_send",   "tgt": "Task_sent" },
+    { "id": "Flow_toclick", "src": "Task_sent",   "tgt": "Task_click" },
+    { "id": "Flow_totoken", "src": "Task_click",  "tgt": "GW_token" },
+    { "id": "Flow_tk_no",   "src": "GW_token",    "tgt": "Task_send",   "name": "Hết hạn → gửi lại" },
+    { "id": "Flow_tk_yes",  "src": "GW_token",    "tgt": "Task_verify", "name": "Hợp lệ" },
+    { "id": "Flow_tover",   "src": "Task_verify", "tgt": "End_active" }
+  ]
+}

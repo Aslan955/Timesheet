@@ -1,0 +1,72 @@
+# ERD premium-payment — nguồn: srs/premium-payment-erd.md (chuyển 1-1)
+direction: right
+
+USER: {
+  shape: sql_table
+  id: string { constraint: primary_key }
+  email: string
+  plan: "free | premium"
+  premium_until: date
+}
+
+CUSTOMER: {
+  shape: sql_table
+  id: "string (map cus_ PayGate)" { constraint: primary_key }
+  user_id: string { constraint: foreign_key }
+  email: string
+}
+
+PAYMENT_METHOD: {
+  shape: sql_table
+  id: "string (map pm_)" { constraint: primary_key }
+  customer_id: string { constraint: foreign_key }
+  brand: string
+  last4: string
+  exp: string
+}
+
+PAYMENT: {
+  shape: sql_table
+  id: "string (map ch_)" { constraint: primary_key }
+  user_id: string { constraint: foreign_key }
+  subscription_id: "string (null nếu mua 1 lần)" { constraint: foreign_key }
+  amount: "int (VND)"
+  status: "pending | succeeded | failed | refunded"
+  failure_code: "string (null nếu thành công)"
+  created: datetime
+}
+
+SUBSCRIPTION: {
+  shape: sql_table
+  id: "string (map sub_)" { constraint: primary_key }
+  user_id: string { constraint: foreign_key }
+  plan: "premium_monthly | premium_yearly"
+  amount: int
+  status: "active | past_due | canceled"
+  current_period_end: datetime
+}
+
+REFUND: {
+  shape: sql_table
+  id: "string (map re_)" { constraint: primary_key }
+  payment_id: string { constraint: foreign_key }
+  amount: int
+  status: string
+}
+
+EMAIL_MESSAGE: {
+  shape: sql_table
+  id: "string (map msg_ MailGate)" { constraint: primary_key }
+  payment_id: string { constraint: foreign_key }
+  template: "receipt | payment_failed | welcome_premium"
+  status: "queued | delivered | bounced | failed"
+}
+
+# Quan hệ (nhãn nghiệp vụ)
+USER.id -> CUSTOMER.user_id: ánh xạ
+USER.id -> PAYMENT.user_id: thực hiện
+USER.id -> SUBSCRIPTION.user_id: có thể có
+CUSTOMER.id -> PAYMENT_METHOD.customer_id: sở hữu
+SUBSCRIPTION.id -> PAYMENT.subscription_id: sinh theo kỳ
+PAYMENT.id -> REFUND.payment_id: có thể có
+PAYMENT.id -> EMAIL_MESSAGE.payment_id: kèm biên nhận

@@ -1,0 +1,28 @@
+meta {
+  name: TC-11 POST /v1/charges
+  type: http
+  seq: 11
+}
+
+post {
+  url: {{PAYGATE_BASE}}/v1/charges
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.PAYGATE_KEY}}
+}
+
+body:json {
+  {
+    "amount": 99000,
+    "currency": "vnd",
+    "source": "tok_expired"
+  }
+}
+
+assert {
+  res.status: eq 402
+  res.body.error.code: eq expired_card
+}

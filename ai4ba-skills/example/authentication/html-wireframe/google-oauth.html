@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>authentication — Đăng nhập/đăng ký qua Google | Wireframe</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f4f4f4; color: #000; padding: 32px 24px; }
+    .wf-page { max-width: 1400px; margin: 0 auto; }
+    .wf-breadcrumb { max-width: 1400px; margin: 0 auto 16px; }
+    .wf-breadcrumb a { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #000; text-decoration: none; border: 1px solid #000; border-radius: 4px; padding: 6px 12px; background: #fff; }
+    .wf-breadcrumb a:hover { background: #f0f0f0; }
+    html.in-iframe .wf-breadcrumb { display: none; }
+    .wf-header { margin-bottom: 28px; border-bottom: 2px solid #000; padding-bottom: 14px; background: #fff; padding: 16px 20px; }
+    .wf-feature-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #888; }
+    .wf-flow-title { font-size: 22px; font-weight: 700; margin-top: 4px; }
+    .wf-flow-meta { font-size: 12px; color: #888; margin-top: 6px; }
+    .wf-flow-desc { font-size: 13px; color: #444; margin-top: 8px; line-height: 1.5; }
+    .wf-rows { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 24px 16px; }
+    .wf-screen { flex: 0 0 auto; }
+    .wf-page[data-device="desktop"] .wf-screen { width: 1024px; max-width: 100%; }
+    .wf-device-tag { display: inline-block; font-size: 10px; color: #555; border: 1px solid #ccc; border-radius: 3px; padding: 1px 6px; margin-bottom: 6px; }
+    .wf-step-badge { font-size: 10px; font-weight: 700; color: #fff; background: #000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; margin-bottom: 6px; }
+    .wf-screen-label { text-align: center; font-size: 11px; color: #555; margin-top: 6px; }
+    .wf-shared-badge { font-size: 9px; color: #888; border: 1px solid #ccc; border-radius: 3px; padding: 0 4px; margin-left: 4px; }
+    .wf-screen-frame { border: 2px solid #000; border-radius: 8px; overflow: hidden; background: #fff; }
+    .wf-screen-bar { background: #f0f0f0; border-bottom: 1px solid #000; padding: 6px 10px; display: flex; align-items: center; gap: 5px; }
+    .wf-dot { width: 8px; height: 8px; border-radius: 50%; border: 1px solid #888; background: #fff; flex-shrink: 0; }
+    .wf-bar-title { font-size: 11px; font-weight: 600; flex: 1; text-align: center; }
+    .wf-screen-content { padding: 20px 22px; display: flex; flex-direction: column; gap: 12px; }
+    .wf-app-brand { text-align: center; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; color: #000; padding-bottom: 4px; }
+    .wf-form { max-width: 400px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 12px; }
+    .wf-screen-title { font-size: 16px; font-weight: 700; text-align: center; margin-bottom: 6px; }
+    .field { display: flex; flex-direction: column; gap: 3px; }
+    .field label { font-size: 11px; font-weight: 600; }
+    .field input { border: 1px solid #000; border-radius: 3px; padding: 8px 10px; font-size: 12px; width: 100%; background: #fff; color: #000; }
+    .field input::placeholder { color: #aaa; }
+    .input-pw { position: relative; }
+    .input-pw input { padding-right: 48px; }
+    .input-pw .eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); font-size: 10px; cursor: pointer; color: #555; border: 1px solid #ccc; border-radius: 3px; padding: 1px 4px; }
+    label.checkbox { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+    label.checkbox input { width: 14px; height: 14px; flex-shrink: 0; }
+    .btn-primary { display: block; width: 100%; padding: 10px 12px; background: #000; color: #fff; border: 2px solid #000; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; }
+    .btn-secondary { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 10px 12px; background: #fff; color: #000; border: 3px solid #000; border-radius: 4px; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .g-icon { font-size: 11px; font-weight: 900; border: 1px solid #000; border-radius: 3px; padding: 0 4px; }
+    .wf-link { font-size: 12px; color: #000; text-decoration: underline; cursor: pointer; }
+    .links-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px; }
+    .links-center { text-align: center; font-size: 12px; }
+    .state-hint { font-size: 10px; color: #888; font-style: italic; margin-top: 2px; }
+    .divider { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #888; }
+    .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: #ccc; }
+    .captcha-box { border: 1px dashed #888; border-radius: 4px; padding: 8px; text-align: center; font-size: 10px; color: #888; background: #f8f8f8; }
+    .branch-note { border: 2px dashed #888; border-radius: 6px; padding: 16px; background: #fafafa; font-size: 12px; line-height: 1.6; color: #333; align-self: stretch; }
+    .branch-note h3 { font-size: 13px; margin-bottom: 8px; }
+    .branch-note table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 6px; }
+    .branch-note th, .branch-note td { border: 1px solid #000; padding: 5px 7px; text-align: left; vertical-align: top; }
+    .branch-note th { background: #f0f0f0; font-weight: 700; }
+    .wf-footer { margin-top: 36px; padding-top: 12px; border-top: 1px solid #ccc; font-size: 10px; color: #aaa; display: flex; justify-content: space-between; }
+    .wf-desc-section { margin-top: 32px; }
+    .wf-desc-title { font-size: 14px; font-weight: 700; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid #000; }
+    .wf-desc-table { width: 100%; border-collapse: collapse; background: #fff; font-size: 12px; }
+    .wf-desc-table th, .wf-desc-table td { border: 1px solid #000; padding: 6px 8px; text-align: left; vertical-align: top; }
+    .wf-desc-table th { background: #f0f0f0; font-weight: 700; font-size: 11px; text-transform: uppercase; }
+    .wf-desc-table td:first-child, .wf-desc-table th:first-child { width: 150px; }
+    .wf-desc-table td:nth-child(2) { width: 220px; }
+  </style>
+</head>
+<body>
+  <div class="wf-breadcrumb"><a href="authentication-wireframe.html">← Mục lục wireframe (tất cả flow)</a></div>
+<div class="wf-page" data-device="desktop">
+
+  <div class="wf-header">
+    <div class="wf-feature-label">Feature: authentication / Wireframe</div>
+    <div class="wf-flow-title">Đăng nhập/đăng ký qua Google</div>
+    <div class="wf-flow-meta">Dùng chung màn login (không có screen riêng) · Device: desktop 1024 · Cập nhật: 2026-07-17 · Nguồn: srs/authentication-userflow.md + ascii-wireframe/google-oauth.md</div>
+    <div class="wf-flow-desc">Flow này KHÔNG có màn riêng — điểm vào là nút "Đăng nhập với Google" trên màn login. Sau khi Google callback thành công, hệ thống tự phân nhánh: email mới → tạo tài khoản verified; email trùng → tự liên kết vào tài khoản đã có. Callback thất bại → về login với banner lỗi.</div>
+  </div>
+
+  <div class="wf-rows">
+    <div class="wf-screen" id="s1">
+      <div class="wf-step-badge">1</div>
+      <div class="wf-device-tag">desktop · 1024px · điểm vào chung</div>
+      <div class="wf-screen-frame">
+        <div class="wf-screen-bar"><div class="wf-dot"></div><div class="wf-dot"></div><div class="wf-dot"></div><span class="wf-bar-title">Đăng nhập tài khoản</span></div>
+        <div class="wf-screen-content">
+          <div class="wf-app-brand">english-ai-demo</div>
+          <div class="wf-form">
+            <div class="wf-screen-title">Đăng nhập tài khoản</div>
+            <div class="field"><label>Email</label><input type="email" placeholder="ban@email.com"></div>
+            <div class="field"><label>Mật khẩu</label><div class="input-pw"><input type="password"><span class="eye">Hiện</span></div></div>
+            <div class="links-row"><label class="checkbox"><input type="checkbox"> Ghi nhớ đăng nhập</label><a class="wf-link">Quên mật khẩu?</a></div>
+            <button class="btn-primary">Đăng nhập</button>
+            <div class="divider">hoặc</div>
+            <button class="btn-secondary"><span class="g-icon">G</span> Đăng nhập với Google [điểm vào flow này]</button>
+            <div class="links-center">Chưa có tài khoản? <a class="wf-link">Đăng ký</a></div>
+          </div>
+        </div>
+      </div>
+      <div class="wf-screen-label">login<span class="wf-shared-badge">chung login-email</span></div>
+    </div>
+
+    <div class="wf-screen" id="s2" style="width:520px;">
+      <div class="wf-step-badge">2</div>
+      <div class="wf-device-tag">Nhánh nghiệp vụ OAuth (không phải màn UI)</div>
+      <div class="branch-note">
+        <h3>Sau khi bấm "Đăng nhập với Google"</h3>
+        Hệ thống khởi tạo OAuth 2.0, chuyển sang trang consent của Google. Khi Google callback về, kết quả rẽ theo bảng dưới. Không có màn hình riêng của app — người dùng hoặc vào app, hoặc về màn login kèm banner lỗi.
+        <table>
+          <thead><tr><th>Nhánh</th><th>Kết quả nghiệp vụ</th><th>Nguồn</th></tr></thead>
+          <tbody>
+            <tr><td>Callback thành công, email mới</td><td>Tạo tài khoản mới trạng thái verified → vào app</td><td>FR-013, BR-009</td></tr>
+            <tr><td>Callback thành công, email trùng tài khoản có sẵn</td><td>Tự liên kết Google vào tài khoản đã có (không tạo trùng, không hỏi mật khẩu cũ) → vào app</td><td>FR-014, BR-003</td></tr>
+            <tr><td>Callback thất bại (mạng/Google/người dùng hủy)</td><td>Về màn login, banner "Đăng nhập Google thất bại. Vui lòng thử lại." — không tạo tài khoản dở dang</td><td>FR-015, E-008</td></tr>
+            <tr><td>Edge: đóng tab consent giữa chừng</td><td>Coi như thất bại (E-008)</td><td>FR-015</td></tr>
+            <tr><td>Edge: email Google khác hoàn toàn email đã có</td><td>Tạo tài khoản riêng, không tự liên kết</td><td>Assumption Mục 11</td></tr>
+          </tbody>
+        </table>
+        <p style="margin-top:8px;font-size:10px;color:#888;font-style:italic;">OQ-1: auto-link không re-verify quyền sở hữu tài khoản đích — rủi ro chiếm tài khoản (userflow OQ-1 / spec Mục 12). Sự kiện tự-liên-kết được ghi vết phục vụ điều tra (NFR-008).</p>
+      </div>
+      <div class="wf-screen-label">nhánh OAuth (tham chiếu element #7 màn login)</div>
+    </div>
+  </div>
+
+  <div class="wf-desc-section">
+    <div class="wf-desc-title">Nhánh nghiệp vụ (tham chiếu element "Đăng nhập với Google" của màn login)</div>
+    <table class="wf-desc-table">
+      <thead><tr><th>Nhánh</th><th>Kết quả nghiệp vụ</th><th>Nguồn</th></tr></thead>
+      <tbody>
+        <tr><td>Callback Google thành công, email mới</td><td>Tạo tài khoản mới ở trạng thái verified → vào app</td><td>FR-authentication-013, BR-authentication-009</td></tr>
+        <tr><td>Callback Google thành công, email trùng tài khoản có sẵn</td><td>Tự liên kết Google vào tài khoản đã có (không tạo trùng, không hỏi mật khẩu cũ) → vào app</td><td>FR-authentication-014, BR-authentication-003</td></tr>
+        <tr><td>Callback Google thất bại (mạng/Google/người dùng hủy)</td><td>Về màn login, banner "Đăng nhập Google thất bại. Vui lòng thử lại." — không tạo tài khoản dở dang</td><td>FR-authentication-015, E-authentication-008</td></tr>
+        <tr><td>Edge: đóng tab consent giữa chừng</td><td>Coi như thất bại (E-008)</td><td>FR-015</td></tr>
+        <tr><td>Edge: email Google khác hoàn toàn email đã có</td><td>Tạo tài khoản riêng, không tự liên kết</td><td>Assumption Mục 11</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="wf-footer"><span>authentication / google-oauth</span><span>Tạo bởi /wireframe-html · 2026-07-20</span></div>
+</div>
+<script>if (window.self !== window.top) document.documentElement.classList.add('in-iframe');</script>
+</body>
+</html>

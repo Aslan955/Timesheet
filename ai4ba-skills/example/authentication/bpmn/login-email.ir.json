@@ -1,0 +1,32 @@
+{
+  "process": { "id": "Process_login_email", "title": "Đăng nhập bằng email" },
+  "lanes": [
+    { "id": "Lane_learner", "name": "Người học" },
+    { "id": "Lane_system",  "name": "Hệ thống auth" }
+  ],
+  "nodes": [
+    { "id": "Start_1",      "kind": "start",   "lane": "Lane_learner", "name": "Người học muốn đăng nhập" },
+    { "id": "Task_enter",   "kind": "task",    "lane": "Lane_learner", "name": "Nhập email + mật khẩu" },
+    { "id": "GW_cred",      "kind": "gateway", "lane": "Lane_system",  "name": "Email + mật khẩu đúng?" },
+    { "id": "GW_lock",      "kind": "gateway", "lane": "Lane_system",  "name": "Đã sai ≥5 lần?" },
+    { "id": "End_locked",   "kind": "end",     "lane": "Lane_system",  "name": "Account bị khóa 24h" },
+    { "id": "GW_verified",  "kind": "gateway", "lane": "Lane_system",  "name": "Account đã verified?" },
+    { "id": "Task_session", "kind": "task",    "lane": "Lane_system",  "name": "Tạo phiên đăng nhập" },
+    { "id": "GW_onboard",   "kind": "gateway", "lane": "Lane_system",  "name": "Đã hoàn tất onboarding?" },
+    { "id": "End_app",      "kind": "end",     "lane": "Lane_learner", "name": "Vào app chính" },
+    { "id": "End_onboard",  "kind": "end",     "lane": "Lane_learner", "name": "Chuyển onboarding" }
+  ],
+  "flows": [
+    { "id": "Flow_start",   "src": "Start_1",     "tgt": "Task_enter" },
+    { "id": "Flow_submit",  "src": "Task_enter",  "tgt": "GW_cred" },
+    { "id": "Flow_cred_no", "src": "GW_cred",     "tgt": "GW_lock",     "name": "Sai" },
+    { "id": "Flow_lock_y",  "src": "GW_lock",     "tgt": "End_locked",  "name": "≥5 lần" },
+    { "id": "Flow_lock_n",  "src": "GW_lock",     "tgt": "Task_enter",  "name": "<5, thử lại" },
+    { "id": "Flow_cred_y",  "src": "GW_cred",     "tgt": "GW_verified", "name": "Đúng" },
+    { "id": "Flow_ver_y",   "src": "GW_verified", "tgt": "Task_session","name": "Đã verified" },
+    { "id": "Flow_ver_n",   "src": "GW_verified", "tgt": "Task_enter",  "name": "Chưa → gửi lại email" },
+    { "id": "Flow_ses_ob",  "src": "Task_session","tgt": "GW_onboard" },
+    { "id": "Flow_ob_y",    "src": "GW_onboard",  "tgt": "End_app",     "name": "Rồi" },
+    { "id": "Flow_ob_n",    "src": "GW_onboard",  "tgt": "End_onboard", "name": "Chưa" }
+  ]
+}

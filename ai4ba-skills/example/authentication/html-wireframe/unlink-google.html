@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>authentication — Gỡ liên kết Google | Wireframe</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f4f4f4; color: #000; padding: 32px 24px; }
+    .wf-page { max-width: 1400px; margin: 0 auto; }
+    .wf-breadcrumb { max-width: 1400px; margin: 0 auto 16px; }
+    .wf-breadcrumb a { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #000; text-decoration: none; border: 1px solid #000; border-radius: 4px; padding: 6px 12px; background: #fff; }
+    .wf-breadcrumb a:hover { background: #f0f0f0; }
+    html.in-iframe .wf-breadcrumb { display: none; }
+    .wf-header { margin-bottom: 28px; border-bottom: 2px solid #000; padding-bottom: 14px; background: #fff; padding: 16px 20px; }
+    .wf-feature-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #888; }
+    .wf-flow-title { font-size: 22px; font-weight: 700; margin-top: 4px; }
+    .wf-flow-meta { font-size: 12px; color: #888; margin-top: 6px; }
+    .wf-flow-desc { font-size: 13px; color: #444; margin-top: 8px; line-height: 1.5; }
+    .wf-rows { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 24px 16px; }
+    .wf-screen { flex: 0 0 auto; }
+    .wf-page[data-device="desktop"] .wf-screen { width: 1024px; max-width: 100%; }
+    .wf-device-tag { display: inline-block; font-size: 10px; color: #555; border: 1px solid #ccc; border-radius: 3px; padding: 1px 6px; margin-bottom: 6px; }
+    .wf-step-badge { font-size: 10px; font-weight: 700; color: #fff; background: #000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; margin-bottom: 6px; }
+    .wf-screen-label { text-align: center; font-size: 11px; color: #555; margin-top: 6px; }
+    .wf-screen-frame { border: 2px solid #000; border-radius: 8px; overflow: hidden; background: #fff; }
+    .wf-screen-bar { background: #f0f0f0; border-bottom: 1px solid #000; padding: 6px 10px; display: flex; align-items: center; gap: 5px; }
+    .wf-dot { width: 8px; height: 8px; border-radius: 50%; border: 1px solid #888; background: #fff; flex-shrink: 0; }
+    .wf-bar-title { font-size: 11px; font-weight: 600; flex: 1; text-align: center; }
+    .wf-screen-content { padding: 24px 32px; display: flex; flex-direction: column; gap: 16px; }
+    .settings-title { font-size: 18px; font-weight: 700; }
+    .field { display: flex; flex-direction: column; gap: 3px; }
+    .field label { font-size: 11px; font-weight: 600; }
+    .field input { border: 1px solid #000; border-radius: 3px; padding: 8px 10px; font-size: 12px; width: 100%; background: #fff; color: #000; }
+    .btn-primary { display: block; width: 100%; padding: 10px 12px; background: #000; color: #fff; border: 2px solid #000; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; }
+    .btn-danger { display: inline-flex; align-items: center; justify-content: center; padding: 6px 14px; background: #fff; color: #000; border: 2px solid #000; border-radius: 4px; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .btn-outline { display: inline-flex; align-items: center; justify-content: center; padding: 6px 14px; background: #fff; color: #000; border: 1px solid #000; border-radius: 4px; font-size: 12px; font-weight: 600; cursor: pointer; }
+    .g-icon { font-size: 11px; font-weight: 900; border: 1px solid #000; border-radius: 3px; padding: 0 4px; }
+    .wf-link { font-size: 12px; color: #000; text-decoration: underline; cursor: pointer; }
+    .state-hint { font-size: 10px; color: #888; font-style: italic; }
+    .policy-note { font-size: 10px; color: #666; }
+    .panel-title { font-size: 13px; font-weight: 700; margin-top: 4px; }
+    .panel-box { border: 1px solid #000; border-radius: 4px; }
+    .panel-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; font-size: 12px; border-bottom: 1px solid #ddd; }
+    .panel-row:last-child { border-bottom: none; }
+    .panel-row .r-main { display: flex; flex-direction: column; gap: 2px; }
+    .panel-row .r-sub { font-size: 10px; color: #888; }
+    .panel-row .r-status { font-size: 11px; color: #333; min-width: 120px; }
+    .dialog-wrap { border: 2px dashed #888; border-radius: 6px; padding: 16px; background: #fafafa; }
+    .dialog-caption { font-size: 11px; color: #888; font-style: italic; text-align: center; margin-bottom: 10px; }
+    .wf-form { max-width: 400px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 12px; background: #fff; border: 2px solid #000; border-radius: 8px; padding: 18px 20px; }
+    .dialog-title { font-size: 15px; font-weight: 700; text-align: center; }
+    .dialog-text { font-size: 12px; color: #444; text-align: center; line-height: 1.5; }
+    .links-center { text-align: center; font-size: 12px; }
+    .wf-footer { margin-top: 36px; padding-top: 12px; border-top: 1px solid #ccc; font-size: 10px; color: #aaa; display: flex; justify-content: space-between; }
+    .wf-desc-section { margin-top: 32px; }
+    .wf-desc-title { font-size: 14px; font-weight: 700; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid #000; }
+    .wf-desc-table { width: 100%; border-collapse: collapse; background: #fff; font-size: 12px; }
+    .wf-desc-table th, .wf-desc-table td { border: 1px solid #000; padding: 6px 8px; text-align: left; vertical-align: top; }
+    .wf-desc-table th { background: #f0f0f0; font-weight: 700; font-size: 11px; text-transform: uppercase; }
+    .wf-desc-table td:first-child, .wf-desc-table th:first-child { width: 34px; text-align: center; }
+    .wf-desc-table td:nth-child(2) { width: 180px; }
+    .wf-desc-table td:nth-child(3) { width: 140px; }
+    .wf-desc-table td:nth-child(4) { width: 90px; }
+    .wf-desc-screen-header td { background: #000; color: #fff; font-weight: 700; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="wf-breadcrumb"><a href="authentication-wireframe.html">← Mục lục wireframe (tất cả flow)</a></div>
+<div class="wf-page" data-device="desktop">
+
+  <div class="wf-header">
+    <div class="wf-feature-label">Feature: authentication / Wireframe</div>
+    <div class="wf-flow-title">Gỡ liên kết Google</div>
+    <div class="wf-flow-meta">1 màn hình (trang cài đặt full-content + dialog hẹp) · Device: desktop 1024 · Cập nhật: 2026-07-17 · Nguồn: srs/authentication-userflow.md + ascii-wireframe/unlink-google.md</div>
+    <div class="wf-flow-desc">Trang bảo mật cho người đã đăng nhập: gỡ liên kết Google (gỡ ngay nếu đã có mật khẩu, buộc tạo mật khẩu trước nếu chưa có — E-010), xem danh sách thiết bị đang đăng nhập với đăng xuất từ xa (P1). Dialog "tạo mật khẩu trước khi gỡ" là hộp hẹp căn giữa theo ba-conventions Mục 8.</div>
+  </div>
+
+  <div class="wf-rows">
+    <div class="wf-screen" id="s1">
+      <div class="wf-step-badge">1</div>
+      <div class="wf-device-tag">desktop · 1024px · full-content</div>
+      <div class="wf-screen-frame">
+        <div class="wf-screen-bar"><div class="wf-dot"></div><div class="wf-dot"></div><div class="wf-dot"></div><span class="wf-bar-title">Bảo mật tài khoản</span></div>
+        <div class="wf-screen-content">
+          <div class="settings-title">Bảo mật tài khoản</div>
+
+          <div class="panel-title">Phương thức đăng nhập</div>
+          <div class="panel-box">
+            <div class="panel-row">
+              <div class="r-main"><span>Email + mật khẩu</span></div>
+              <div class="r-status">Đã thiết lập [1]</div>
+              <div style="min-width:110px;"></div>
+            </div>
+            <div class="panel-row">
+              <div class="r-main"><span><span class="g-icon">G</span> Google (ban@email.com)</span><span class="r-sub">Đã liên kết</span></div>
+              <div class="r-status">&nbsp;</div>
+              <button class="btn-danger">Gỡ liên kết [2]</button>
+            </div>
+          </div>
+
+          <div class="panel-title">Thiết bị đang đăng nhập [3]</div>
+          <div class="panel-box">
+            <div class="panel-row">
+              <div class="r-main"><span>Chrome - Windows - HCM</span></div>
+              <div class="r-status">Hiện tại</div>
+              <div style="min-width:110px;"></div>
+            </div>
+            <div class="panel-row">
+              <div class="r-main"><span>Safari - iPhone - HN</span><span class="r-sub">2 giờ trước</span></div>
+              <div class="r-status">&nbsp;</div>
+              <button class="btn-outline">Đăng xuất [4]</button>
+            </div>
+          </div>
+
+          <div class="dialog-wrap">
+            <div class="dialog-caption">Dialog — chỉ hiện khi tài khoản CHƯA có mật khẩu (trigger E-010)</div>
+            <div class="wf-form">
+              <div class="dialog-title">Tạo mật khẩu trước khi gỡ</div>
+              <div class="dialog-text">Tài khoản này đăng nhập bằng Google và chưa có mật khẩu. Hãy tạo mật khẩu để không mất lối vào tài khoản.</div>
+              <div class="field">
+                <label>Mật khẩu mới [5]</label>
+                <input type="password">
+                <span class="policy-note">8-20 ký tự, hoa/thường/ký tự đặc biệt, không chứa phần đầu email (FR-003, E-002)</span>
+              </div>
+              <button class="btn-primary">Tạo mật khẩu và gỡ Google [6]</button>
+              <div class="links-center"><a class="wf-link">Hủy</a></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="wf-screen-label">account-security</div>
+    </div>
+  </div>
+
+  <div class="wf-desc-section">
+    <div class="wf-desc-title">Mô tả màn hình</div>
+    <table class="wf-desc-table">
+      <thead><tr><th>#</th><th>Items</th><th>Control type</th><th>Data type</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr class="wf-desc-screen-header"><td colspan="5">Screen 1: account-security — Bảo mật tài khoản</td></tr>
+        <tr><td>1</td><td>Trạng thái email + mật khẩu</td><td>Label</td><td>ReadOnly</td><td>• <strong>Mục đích</strong>: cho biết tài khoản đã có phương thức email/mật khẩu chưa — quyết định luồng gỡ Google.<br>• <strong>Nội dung</strong>: "Đã thiết lập" nếu có mật khẩu; "Chưa có mật khẩu" nếu tài khoản gốc tạo qua Google (Credential có thể trống).</td></tr>
+        <tr><td>2</td><td>Gỡ liên kết Google</td><td>Button (Secondary/Danger)</td><td>Click</td><td>• <strong>Mục đích</strong>: gỡ liên kết Google khỏi tài khoản.<br>• <strong>Navigate — đã có mật khẩu</strong>: gỡ ngay, giữ đăng nhập email/mật khẩu (FR-023, không hộp thoại xác nhận).<br>• <strong>Navigate — chưa có mật khẩu</strong>: E-authentication-010 — mở dialog "Tạo mật khẩu trước khi gỡ" (element #5), KHÔNG gỡ cho tới khi tạo mật khẩu (FR-024, BR-004).<br>• <strong>Business rule</strong>: phải có mật khẩu trước khi gỡ để tránh mất lối vào tài khoản (BR-004).<br>• <strong>Audit</strong>: sự kiện gỡ/tự liên kết Google được ghi vết (NFR-008).</td></tr>
+        <tr><td>3</td><td>Thiết bị đang đăng nhập</td><td>List</td><td>ReadOnly</td><td>• <strong>Mục đích</strong>: cho người dùng thấy thiết bị đang có phiên (FR-030, P1).<br>• <strong>Nội dung</strong>: mỗi dòng thiết bị + thời điểm; đánh dấu "Hiện tại".<br>• <strong>Note</strong>: đăng nhập nhiều thiết bị không giới hạn, phiên không tự hết hạn (FR-021).</td></tr>
+        <tr><td>4</td><td>Đăng xuất (mỗi thiết bị)</td><td>Button (Secondary)</td><td>Click</td><td>• <strong>Mục đích</strong>: đăng xuất từ xa một thiết bị (FR-030, P1).<br>• <strong>Hệ quả</strong>: thu hồi phiên thiết bị đó, không ảnh hưởng thiết bị khác (đối chiếu FR-022 cho thiết bị hiện tại).</td></tr>
+        <tr><td>5</td><td>Dialog: Mật khẩu mới</td><td>Textbox (password)</td><td>Text</td><td>• <strong>Mục đích</strong>: buộc tạo mật khẩu đạt chính sách trước khi gỡ Google (FR-024).<br>• <strong>Validation (FR-003)</strong>: 8-20 ký tự, hoa/thường/ký tự đặc biệt, không chứa phần đầu email.<br>• <strong>Error</strong>: E-authentication-002 nếu không đạt.<br>• <strong>Display rule</strong>: dialog chỉ mở khi tài khoản chưa có mật khẩu (trigger E-010).</td></tr>
+        <tr><td>6</td><td>Dialog: Tạo mật khẩu và gỡ Google</td><td>Button (Primary)</td><td>Click/Submit</td><td>• <strong>Mục đích</strong>: đặt mật khẩu rồi mới gỡ Google trong cùng thao tác (FR-024, BR-004).<br>• <strong>Success</strong>: lưu mật khẩu → gỡ Google → giữ đăng nhập email/mật khẩu.<br>• <strong>Edge</strong>: bấm "Hủy" giữa chừng → dialog đóng, KHÔNG gỡ liên kết (Google vẫn còn).</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="wf-footer"><span>authentication / unlink-google</span><span>Tạo bởi /wireframe-html · 2026-07-17</span></div>
+</div>
+<script>if (window.self !== window.top) document.documentElement.classList.add('in-iframe');</script>
+</body>
+</html>

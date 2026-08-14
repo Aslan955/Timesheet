@@ -1,0 +1,32 @@
+meta {
+  name: TC-02 POST /v1/charges
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{PAYGATE_BASE}}/v1/charges
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.PAYGATE_KEY}}
+}
+
+headers {
+  Idempotency-Key: key_tc02
+}
+
+body:json {
+  {
+    "amount": 99000,
+    "currency": "vnd",
+    "source": "tok_chargeable"
+  }
+}
+
+assert {
+  res.status: eq 201
+  res.body.status: eq succeeded
+}

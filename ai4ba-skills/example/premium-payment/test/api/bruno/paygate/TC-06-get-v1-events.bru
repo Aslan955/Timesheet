@@ -1,0 +1,18 @@
+meta {
+  name: TC-06 GET /v1/events
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{PAYGATE_BASE}}/v1/events
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.PAYGATE_KEY}}
+}
+
+assert {
+  res.status: eq 200
+}
