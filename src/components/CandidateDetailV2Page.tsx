@@ -175,7 +175,7 @@ export const FieldBox: React.FC<{
 );
 
 // Tab "Request": danh sách các Yêu cầu tuyển dụng mà ứng viên đang tham gia (có thể nhiều request cùng lúc)
-const RequestTabContent: React.FC<{
+export const RequestTabContent: React.FC<{
   applications: CandidateApplication[];
   assignee: string;
   date: string;

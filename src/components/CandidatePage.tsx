@@ -43,6 +43,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CandidateFormV2 } from './CandidateFormV2';
+import { RequestTabContent } from './CandidateDetailV2Page';
 import * as XLSX from 'xlsx';
 
 // ==========================================================================
@@ -800,7 +801,7 @@ export const CandidatePage: React.FC = () => {
   const handlePersonalImport = async (file: File) => {
     try {
       const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+      const wb = XLSX.read(buf, { type: 'array', cellDates: true, codepage: 65001 });
       const sheet = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
       if (!rows.length) {
@@ -866,36 +867,151 @@ export const CandidatePage: React.FC = () => {
     }
   };
 
-  // ---- Phân trang "Thông tin ứng tuyển": mỗi trang = 1 Yêu cầu tuyển dụng mà ứng viên tham gia ----
-  const [reqPage, setReqPage] = useState(0);
+  // ---- Import nhiều ứng viên cùng lúc từ file Excel/CSV (màn danh sách) ----
+  const bulkImportRef = useRef<HTMLInputElement>(null);
+  const [bulkImportMsg, setBulkImportMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleBulkImport = async (file: File) => {
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array', cellDates: true, codepage: 65001 });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
+      if (!rows.length) {
+        setBulkImportMsg({ type: 'error', text: 'File không có dữ liệu.' });
+        return;
+      }
+
+      const normalize = (s: string) =>
+        s
+          .toString()
+          .trim()
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(new RegExp('[\\u0300-\\u036f]', 'g'), '')
+          .replace(/\s+/g, ' ');
+
+      const findValue = (row: Record<string, unknown>, ...keys: string[]) => {
+        for (const [k, v] of Object.entries(row)) {
+          const nk = normalize(k);
+          if (keys.some((key) => nk === normalize(key))) return String(v ?? '').trim();
+        }
+        return '';
+      };
+
+      const toDateStr = (v: string) => {
+        if (!v) return '';
+        const d = new Date(v);
+        return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0];
+      };
+
+      const newCandidates: Candidate[] = [];
+      const errors: string[] = [];
+
+      rows.forEach((row, i) => {
+        const rawSource = findValue(row, 'Nguồn', 'Nguồn ứng viên', 'Source');
+        const source = (SOURCES as readonly string[]).includes(rawSource) ? (rawSource as Source) : 'Khác';
+        const inputDate = toDateStr(findValue(row, 'Ngày tiếp nhận', 'Input Date')) || new Date().toISOString().split('T')[0];
+        const candidateIndex = candidates.length + newCandidates.length + 1;
+
+        const c: Candidate = {
+          ...emptyForm(),
+          id: `ƯV-${String(candidateIndex).padStart(4, '0')}`,
+          inputDate,
+          name: findValue(row, 'Họ và tên', 'Họ tên', 'Name'),
+          dob: toDateStr(findValue(row, 'Ngày sinh', 'DOB')),
+          email: findValue(row, 'Email'),
+          phone: findValue(row, 'Điện thoại', 'Số điện thoại', 'Phone', 'SDT'),
+          linkedin: findValue(row, 'LinkedIn'),
+          university: findValue(row, 'Trường đại học', 'University'),
+          major: findValue(row, 'Chuyên ngành', 'Major'),
+          currentPosition: findValue(row, 'Vị trí hiện tại', 'Current Position'),
+          currentCompany: findValue(row, 'Công ty hiện tại', 'Current Company'),
+          techStack: findValue(row, 'Tech Stack', 'TechStack'),
+          appliedPosition: findValue(row, 'Chuyên môn', 'Vị trí ứng tuyển', 'Applied Position'),
+          source,
+          note: findValue(row, 'Ghi chú', 'Note'),
+        };
+
+        const err = validate(c);
+        if (err) {
+          errors.push(`Dòng ${i + 2}: ${err}`); // +2 vì dòng 1 là tiêu đề cột
+        } else {
+          newCandidates.push(c);
+        }
+      });
+
+      if (newCandidates.length > 0) {
+        setCandidates((prev) => [...newCandidates, ...prev]);
+        setLogs((prev) => [
+          ...newCandidates.map((c) => ({
+            id: `LOG-${Date.now()}-${c.id}`,
+            candidateId: c.id,
+            action: 'create' as const,
+            changedBy: CURRENT_USER,
+            timestamp: nowStamp(),
+            changes: [],
+          })),
+          ...prev,
+        ]);
+      }
+
+      if (errors.length === 0) {
+        setBulkImportMsg({ type: 'success', text: `Đã import thành công ${newCandidates.length} ứng viên.` });
+      } else {
+        const preview = errors.slice(0, 3).join('; ') + (errors.length > 3 ? '...' : '');
+        setBulkImportMsg({
+          type: newCandidates.length > 0 ? 'success' : 'error',
+          text: `Đã import ${newCandidates.length} ứng viên, bỏ qua ${errors.length} dòng lỗi (${preview})`,
+        });
+      }
+    } catch {
+      setBulkImportMsg({ type: 'error', text: 'Không đọc được file. Vui lòng kiểm tra định dạng (.xlsx, .xls, .csv).' });
+    }
+  };
+
   useEffect(() => {
-    setReqPage(0);
     setImportMsg(null);
   }, [selectedId, isCreating]);
-  const applications = view?.applications || [];
-  const curReqPage = Math.min(reqPage, Math.max(0, applications.length - 1));
-  const curApplication = applications[curReqPage] || null;
-  const curRequest = curApplication ? RECRUITMENT_REQUESTS.find((r) => r.id === curApplication.requestId) || null : null;
 
-  const updateApplication = (idx: number, patch: Partial<CandidateApplication>) => {
-    setDraft((prev) => ({
+  // ---- Gán/bỏ Yêu cầu tuyển dụng cho ứng viên đang xem — lưu ngay lập tức, tự ghi log (giống màn V2) ----
+  const addApplicationToSelected = (requestId: string) => {
+    if (!selectedCandidate) return;
+    const id = selectedCandidate.id;
+    setCandidates((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, applications: [...c.applications, { requestId, finalStatus: 'New' }] } : c))
+    );
+    setLogs((prev) => [
+      {
+        id: `LOG-${Date.now()}`,
+        candidateId: id,
+        action: 'update',
+        changedBy: CURRENT_USER,
+        timestamp: nowStamp(),
+        changes: [{ field: 'Yêu cầu tuyển dụng', oldValue: '—', newValue: requestId }],
+      },
       ...prev,
-      applications: prev.applications.map((a, i) => (i === idx ? { ...a, ...patch } : a)),
-    }));
+    ]);
   };
-  const addApplication = () => {
-    setDraft((prev) => ({
+  const removeApplicationFromSelected = (idx: number) => {
+    if (!selectedCandidate) return;
+    const removed = selectedCandidate.applications[idx];
+    if (!removed) return;
+    const id = selectedCandidate.id;
+    setCandidates((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, applications: c.applications.filter((_, i) => i !== idx) } : c))
+    );
+    setLogs((prev) => [
+      {
+        id: `LOG-${Date.now()}`,
+        candidateId: id,
+        action: 'update',
+        changedBy: CURRENT_USER,
+        timestamp: nowStamp(),
+        changes: [{ field: 'Yêu cầu tuyển dụng', oldValue: removed.requestId, newValue: '—' }],
+      },
       ...prev,
-      applications: [...prev.applications, { requestId: '', finalStatus: 'New' }],
-    }));
-    setReqPage(applications.length);
-  };
-  const removeApplication = (idx: number) => {
-    setDraft((prev) => ({
-      ...prev,
-      applications: prev.applications.filter((_, i) => i !== idx),
-    }));
-    setReqPage((p) => Math.max(0, Math.min(p, applications.length - 2)));
+    ]);
   };
 
   // Mở màn tạo ứng viên mới — dùng luôn màn chi tiết ở chế độ nhập liệu
@@ -1170,6 +1286,24 @@ export const CandidatePage: React.FC = () => {
                     <Download size={14} className="text-[#0fa57c]" />
                     Xuất dữ liệu
                   </button>
+                  <button
+                    onClick={() => bulkImportRef.current?.click()}
+                    className="px-4 py-2.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-xs cursor-pointer shrink-0"
+                  >
+                    <FileSpreadsheet size={14} className="text-[#0fa57c]" />
+                    Nhập dữ liệu
+                  </button>
+                  <input
+                    ref={bulkImportRef}
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleBulkImport(f);
+                      e.currentTarget.value = '';
+                    }}
+                  />
                   <div className="relative shrink-0">
                     <button
                       onClick={() => setShowCreateMenu((o) => !o)}
@@ -1205,6 +1339,22 @@ export const CandidatePage: React.FC = () => {
                   </div>
                 </div>
               </div>
+
+              {bulkImportMsg && (
+                <div
+                  className={`p-3.5 rounded-xl text-xs font-bold flex items-center justify-between gap-2 border ${
+                    bulkImportMsg.type === 'success' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    {bulkImportMsg.type === 'success' ? <Check size={15} /> : <AlertCircle size={15} />}
+                    {bulkImportMsg.text}
+                  </span>
+                  <button onClick={() => setBulkImportMsg(null)} className="p-1 hover:bg-black/5 rounded-lg">
+                    <X size={13} />
+                  </button>
+                </div>
+              )}
 
               {/* Bảng danh sách kiểu grid */}
               <div className="bg-white rounded-3xl border border-slate-100 shadow-xs overflow-hidden">
@@ -1413,159 +1563,26 @@ export const CandidatePage: React.FC = () => {
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
                 {/* ===== Cột 1: Thông tin tuyển dụng (khu vực làm việc chính) ===== */}
                 <div className="space-y-6">
-                  {/* Thông tin ứng tuyển: 1 ứng viên có thể tham gia nhiều Yêu cầu tuyển dụng -> mỗi trang = 1 yêu cầu */}
+                  {/* Thông tin ứng tuyển: dùng lại giao diện cụm Request của V2 - hiển thị đầy đủ mọi Yêu cầu tuyển dụng cùng lúc */}
                   <Section title="Thông tin ứng tuyển" icon={Tag}>
                     <div className="space-y-4">
                       {editing && (
                         <DetailField icon={Calendar} label="Ngày tiếp nhận" required control="date" mono editing value={view.inputDate} onChange={setDf('inputDate')} />
                       )}
 
-                      {applications.length === 0 ? (
-                        <div className="text-center py-6">
-                          <p className="text-sm text-slate-300">Chưa tham gia yêu cầu tuyển dụng nào.</p>
-                          {editing && (
-                            <button
-                              type="button"
-                              onClick={addApplication}
-                              className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-[#0fa57c] hover:underline"
-                            >
-                              <Plus size={13} /> Thêm yêu cầu tuyển dụng
-                            </button>
-                          )}
+                      {isCreating || !selectedCandidate ? (
+                        <div className="py-10 text-center text-sm text-slate-300">
+                          Vui lòng lưu ứng viên trước khi gán yêu cầu tuyển dụng.
                         </div>
                       ) : (
-                        <>
-                          {/* Trang hiện tại: thông tin 1 Yêu cầu tuyển dụng */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
-                            <DetailField
-                              icon={Info}
-                              label="IDRequest"
-                              full
-                              control="select"
-                              options={[{ value: '', label: '-- Chọn yêu cầu tuyển dụng --' }, ...RECRUITMENT_REQUESTS.map((r) => ({ value: r.id, label: `${r.id} · ${r.position}` }))]}
-                              editing={editing}
-                              value={curApplication?.requestId || ''}
-                              onChange={(v) => updateApplication(curReqPage, { requestId: v })}
-                              display={curRequest ? `${curRequest.id} · ${curRequest.position}` : undefined}
-                            />
-                            <DetailField icon={Briefcase} label="Vị trí ứng tuyển" value={curRequest?.position || ''} />
-                            <DetailField icon={Star} label="Level ứng tuyển" value={curRequest?.level || ''} />
-                            <DetailField icon={Layers} label="Khối ứng tuyển" value={curRequest?.block || ''} />
-
-                            {/* FinalStatus của yêu cầu này - đổi nhanh ngay ở màn xem, tự ghi log (full width) */}
-                            <div className="sm:col-span-2 bg-slate-50/70 border border-slate-200 rounded-lg p-4">
-                              <label className="block text-[13px] font-medium text-slate-500 mb-2">
-                                FinalStatus <span className="text-rose-500">*</span>
-                              </label>
-                              {editing ? (
-                                <select
-                                  value={curApplication?.finalStatus || 'New'}
-                                  onChange={(e) => updateApplication(curReqPage, { finalStatus: e.target.value as FinalStatus })}
-                                  className={`${fieldClass} cursor-pointer font-bold`}
-                                >
-                                  {FINAL_STATUSES.map((s) => (
-                                    <option key={s} value={s}>{s}</option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                                  <StatusBadge status={curApplication?.finalStatus ?? 'New'} withLabel />
-                                  <select
-                                    value={curApplication?.finalStatus ?? 'New'}
-                                    onChange={(e) => changeApplicationStatus(curReqPage, e.target.value as FinalStatus)}
-                                    className={`${fieldClass} cursor-pointer font-bold sm:max-w-xs`}
-                                  >
-                                    {FINAL_STATUSES.map((s) => (
-                                      <option key={s} value={s}>{s}</option>
-                                    ))}
-                                  </select>
-                                </div>
-                              )}
-                              {!editing && (
-                                <p className="text-[10px] text-slate-400 mt-2 flex items-center gap-1">
-                                  <History size={11} /> Đổi trạng thái sẽ được ghi log tự động (người đổi + thời gian)
-                                </p>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Chân khối: điều hướng phân trang + trạng thái tổng quan của tất cả yêu cầu */}
-                          <div className="pt-4 border-t border-slate-100 space-y-3">
-                            <div className="flex items-center justify-center gap-3">
-                              <button
-                                type="button"
-                                disabled={curReqPage === 0}
-                                onClick={() => setReqPage((p) => Math.max(0, p - 1))}
-                                className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed"
-                              >
-                                <ChevronLeft size={14} />
-                              </button>
-                              <span className="text-xs font-bold text-slate-500">
-                                Yêu cầu tuyển dụng {curReqPage + 1}/{applications.length}
-                              </span>
-                              <button
-                                type="button"
-                                disabled={curReqPage === applications.length - 1}
-                                onClick={() => setReqPage((p) => Math.min(applications.length - 1, p + 1))}
-                                className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed"
-                              >
-                                <ChevronRight size={14} />
-                              </button>
-                            </div>
-
-                            <div className="flex items-center justify-center gap-1.5">
-                              {applications.map((_, i) => (
-                                <button
-                                  key={i}
-                                  type="button"
-                                  onClick={() => setReqPage(i)}
-                                  title={`Yêu cầu ${i + 1}`}
-                                  className={`h-2 rounded-full transition-all ${i === curReqPage ? 'w-5 bg-[#0fa57c]' : 'w-2 bg-slate-200 hover:bg-slate-300'}`}
-                                />
-                              ))}
-                            </div>
-
-                            <div>
-                              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide mb-1.5 text-center">
-                                Trạng thái các yêu cầu tuyển dụng
-                              </p>
-                              <div className="flex flex-wrap justify-center gap-2">
-                                {applications.map((a, i) => (
-                                  <button
-                                    key={i}
-                                    type="button"
-                                    onClick={() => setReqPage(i)}
-                                    className={`flex items-center gap-1.5 px-1.5 py-1 rounded-lg transition-colors ${
-                                      i === curReqPage ? 'bg-[#0fa57c]/10 ring-1 ring-[#0fa57c]/30' : 'hover:bg-slate-50'
-                                    }`}
-                                  >
-                                    <span className="text-[10px] font-mono font-bold text-slate-400">{a.requestId || '—'}</span>
-                                    <StatusBadge status={a.finalStatus} />
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-
-                            {editing && (
-                              <div className="flex items-center justify-between pt-1">
-                                <button
-                                  type="button"
-                                  onClick={addApplication}
-                                  className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0fa57c] hover:underline"
-                                >
-                                  <Plus size={13} /> Thêm yêu cầu
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => removeApplication(curReqPage)}
-                                  className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-500 hover:underline"
-                                >
-                                  <Trash2 size={13} /> Xoá yêu cầu này
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </>
+                        <RequestTabContent
+                          applications={selectedCandidate.applications}
+                          assignee={selectedCandidate.taPic}
+                          date={selectedCandidate.assignDate || selectedCandidate.inputDate}
+                          onAdd={addApplicationToSelected}
+                          onRemove={removeApplicationFromSelected}
+                          onChangeStatus={changeApplicationStatus}
+                        />
                       )}
                     </div>
                   </Section>
