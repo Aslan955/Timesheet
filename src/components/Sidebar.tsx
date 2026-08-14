@@ -134,11 +134,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeItem, onSelect }) => {
       {/* Brand Header */}
       <div className={`p-4 flex items-center space-x-3 transition-colors ${THEME.headerBorder}`}>
         <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#0fa57c] to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/15 shrink-0">
-          <span className="text-white font-black text-2xl tracking-tighter">F</span>
+          <span className="text-white font-black text-sm tracking-tighter">VTX</span>
         </div>
         <div className="flex flex-col min-w-0">
           <span className={`text-sm tracking-wide flex items-center gap-1.5 font-black ${THEME.brandText}`}>
-            Fwork
+            VTX Group
             <span className={`text-[8px] border font-black px-1.5 py-0.5 rounded-full scale-90 uppercase ${THEME.brandBadge}`}>
               IMIS
             </span>
