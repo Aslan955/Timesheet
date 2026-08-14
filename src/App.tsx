@@ -18,6 +18,7 @@ import { ProjectsPage } from './components/ProjectsPage';
 import { OnsiteReportPage } from './components/OnsiteReportPage';
 import { LeaveReportPage } from './components/LeaveReportPage';
 import { CandidatePage } from './components/CandidatePage';
+import { CandidateDetailV2Page } from './components/CandidateDetailV2Page';
 
 export default function App() {
   const [activeItem, setActiveItem] = useState('Overview');
@@ -53,6 +54,8 @@ export default function App() {
       case 'Quản lý ứng viên':
       case 'Ứng viên':
         return <CandidatePage />;
+      case 'Chi tiết ứng viên (Giao diện mới)':
+        return <CandidateDetailV2Page />;
       default:
         return (
           <div className="flex flex-col items-center justify-center h-full text-gray-500 space-y-4">

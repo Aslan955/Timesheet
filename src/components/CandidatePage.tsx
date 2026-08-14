@@ -42,6 +42,7 @@ import {
   FileSpreadsheet,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { CandidateFormV2 } from './CandidateFormV2';
 import * as XLSX from 'xlsx';
 
 // ==========================================================================
@@ -220,7 +221,7 @@ export interface Candidate {
   tags: string[];           // Thẻ gắn cho ứng viên
 }
 
-const INITIAL_CANDIDATES: Candidate[] = [
+export const INITIAL_CANDIDATES: Candidate[] = [
   {
     id: 'ƯV-0001',
     inputDate: '2026-08-01',
@@ -471,10 +472,10 @@ INITIAL_CANDIDATES.push(
 );
 
 // Người dùng đang đăng nhập (mock) - dùng cho trường "người thay đổi" khi ghi log
-const CURRENT_USER = 'Nguyễn Văn An';
+export const CURRENT_USER = 'Nguyễn Văn An';
 
 // Nhãn tiếng Việt của từng trường khi hiển thị log thay đổi
-const FIELD_LABELS: Record<keyof Candidate, string> = {
+export const FIELD_LABELS: Record<keyof Candidate, string> = {
   id: 'Mã ứng viên',
   inputDate: 'Ngày tiếp nhận',
   taReceiver: 'TA tiếp nhận',
@@ -533,7 +534,7 @@ const INITIAL_LOGS: ChangeLog[] = INITIAL_CANDIDATES.map((c, i) => ({
 }));
 
 // Trạng thái mặc định của form rỗng
-const emptyForm = (): Candidate => ({
+export const emptyForm = (): Candidate => ({
   id: '',
   inputDate: new Date().toISOString().split('T')[0],
   taReceiver: '',
@@ -570,7 +571,7 @@ const formatDate = (d: string) => (d ? new Date(d).toLocaleDateString('vi-VN') :
 // SUB-COMPONENTS
 // ==========================================================================
 
-const StatusBadge: React.FC<{ status: FinalStatus; withLabel?: boolean }> = ({ status, withLabel }) => (
+export const StatusBadge: React.FC<{ status: FinalStatus; withLabel?: boolean }> = ({ status, withLabel }) => (
   <span
     className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border inline-flex items-center gap-1.5 ${STATUS_STYLE[status]}`}
   >
@@ -772,6 +773,8 @@ export const CandidatePage: React.FC = () => {
   // Chỉnh sửa / tạo mới inline ngay trên màn chi tiết (không dùng popup)
   const [isEditing, setIsEditing] = useState(false);   // đang sửa hồ sơ đã có
   const [isCreating, setIsCreating] = useState(false); // đang tạo ứng viên mới
+  const [createVersion, setCreateVersion] = useState<'v1' | 'v2'>('v1'); // giao diện tạo mới đang dùng
+  const [showCreateMenu, setShowCreateMenu] = useState(false); // menu chọn V1/V2 khi bấm "Thêm ứng viên"
   const [draft, setDraft] = useState<Candidate>(emptyForm());
   const [detailError, setDetailError] = useState('');
 
@@ -896,12 +899,14 @@ export const CandidatePage: React.FC = () => {
   };
 
   // Mở màn tạo ứng viên mới — dùng luôn màn chi tiết ở chế độ nhập liệu
-  const startCreate = () => {
+  const startCreate = (version: 'v1' | 'v2' = 'v1') => {
     setSelectedId(null);
     setDraft(emptyForm());
     setIsCreating(true);
     setIsEditing(false);
     setDetailError('');
+    setCreateVersion(version);
+    setShowCreateMenu(false);
   };
 
   // Vào chế độ sửa inline trên màn chi tiết (dùng chung cho nút ở list và ở màn view)
@@ -1163,15 +1168,41 @@ export const CandidatePage: React.FC = () => {
                     className="px-4 py-2.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-xs cursor-pointer shrink-0"
                   >
                     <Download size={14} className="text-[#0fa57c]" />
-                    Xuất khẩu
+                    Xuất dữ liệu
                   </button>
-                  <button
-                    onClick={startCreate}
-                    className="px-4 py-2.5 bg-[#0fa57c] text-white rounded-xl text-xs font-bold hover:bg-[#0fa57c]/90 transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/10 cursor-pointer active:scale-95 shrink-0"
-                  >
-                    <Plus size={15} />
-                    Thêm ứng viên
-                  </button>
+                  <div className="relative shrink-0">
+                    <button
+                      onClick={() => setShowCreateMenu((o) => !o)}
+                      className="px-4 py-2.5 bg-[#0fa57c] text-white rounded-xl text-xs font-bold hover:bg-[#0fa57c]/90 transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/10 cursor-pointer active:scale-95"
+                    >
+                      <Plus size={15} />
+                      Thêm ứng viên
+                      <ChevronDown size={13} className={`transition-transform ${showCreateMenu ? 'rotate-180' : ''}`} />
+                    </button>
+                    {showCreateMenu && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setShowCreateMenu(false)} />
+                        <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-xl shadow-lg z-20 p-1.5">
+                          <button
+                            type="button"
+                            onClick={() => startCreate('v1')}
+                            className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-slate-50 transition-colors"
+                          >
+                            <p className="text-xs font-bold text-slate-700">V1 · Classic layout</p>
+                            <p className="text-[10px] text-slate-400">Màn tạo ứng viên hiện tại</p>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => startCreate('v2')}
+                            className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-slate-50 transition-colors"
+                          >
+                            <p className="text-xs font-bold text-slate-700">V2 · New layout</p>
+                            <p className="text-[10px] text-slate-400">Bố cục tab mới (Details, Request, CV...)</p>
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1311,7 +1342,7 @@ export const CandidatePage: React.FC = () => {
                 </button>
 
                 <div className="flex items-center gap-2 self-end sm:self-auto">
-                  {!editing ? (
+                  {isCreating && createVersion === 'v2' ? null : !editing ? (
                     <>
                       <button
                         onClick={() => setShowLog(true)}
@@ -1361,6 +1392,16 @@ export const CandidatePage: React.FC = () => {
                 </div>
               </div>
 
+              {isCreating && createVersion === 'v2' ? (
+                <CandidateFormV2
+                  draft={draft}
+                  onChange={(patch) => setDraft((p) => ({ ...p, ...patch }))}
+                  onSave={saveDetail}
+                  onCancel={cancelEdit}
+                  error={detailError}
+                />
+              ) : (
+                <>
               {detailError && (
                 <div className="p-3.5 bg-rose-50 text-rose-600 border border-rose-100 text-xs font-bold rounded-xl flex items-center gap-2">
                   <AlertCircle size={16} />
@@ -1695,6 +1736,8 @@ export const CandidatePage: React.FC = () => {
                   </Section>
                 </div>
               </div>
+                </>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

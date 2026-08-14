@@ -24,7 +24,8 @@ import {
   Inbox,
   PieChart,
   BellRing,
-  UserPlus
+  UserPlus,
+  IdCard
 } from 'lucide-react';
 
 export interface NavItem {
@@ -64,6 +65,7 @@ export const NAVIGATION: NavItem[] = [
     icon: UserPlus,
     children: [
       { title: 'Quản lý ứng viên', icon: Users },
+      { title: 'Chi tiết ứng viên (Giao diện mới)', icon: IdCard },
     ]
   },
   {
