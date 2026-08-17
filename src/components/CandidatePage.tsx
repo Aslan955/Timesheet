@@ -40,11 +40,13 @@ import {
   ChevronUp,
   ChevronDown,
   FileSpreadsheet,
+  Home,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CandidateFormV2 } from './CandidateFormV2';
 import { RequestTabContent } from './CandidateDetailV2Page';
 import * as XLSX from 'xlsx';
+import { parseCVFile } from '../utils/cvParser';
 
 // ==========================================================================
 // TYPES & CONSTANTS - Recruitment / Candidate Management (Module Tuyển dụng)
@@ -93,22 +95,7 @@ export const BLOCKS = [
 export type Block = (typeof BLOCKS)[number];
 
 // Khối ứng tuyển của Yêu cầu tuyển dụng (theo khối tổ chức, khác Khối ứng tuyển của hồ sơ ứng viên)
-export const REQUEST_BLOCKS = [
-  'BFSI',
-  'BO',
-  'Data',
-  'DevOps',
-  'G1',
-  'G2',
-  'G3',
-  'G4',
-  'GPDV',
-  'Hcare',
-  'Operations',
-  'PQA',
-  'Staffing',
-  'Đấu thầu',
-] as const;
+export const REQUEST_BLOCKS = ['G1', 'G2', 'G3', 'G4', 'BFSI'] as const;
 export type RequestBlock = (typeof REQUEST_BLOCKS)[number];
 
 // Trạng thái theo vòng đời ứng viên (tuần tự từ tiếp nhận → onboard)
@@ -172,15 +159,15 @@ export interface RecruitmentRequest {
 }
 
 export const RECRUITMENT_REQUESTS: RecruitmentRequest[] = [
-  { id: 'REQ-001', position: 'Software Developer', level: 'Senior', block: 'DevOps' },
+  { id: 'REQ-001', position: 'Software Developer', level: 'Senior', block: 'G1' },
   { id: 'REQ-002', position: 'Business Analyst', level: 'Fresher', block: 'BFSI' },
-  { id: 'REQ-003', position: 'Data Analyst', level: 'Senior', block: 'Data' },
+  { id: 'REQ-003', position: 'Data Analyst', level: 'Senior', block: 'G2' },
   { id: 'REQ-004', position: 'Designer', level: 'Junior', block: 'G1' },
-  { id: 'REQ-005', position: 'IT Support', level: 'Fresher', block: 'Operations' },
+  { id: 'REQ-005', position: 'IT Support', level: 'Fresher', block: 'G3' },
   { id: 'REQ-006', position: 'Delivery Manager', level: 'Manager', block: 'G2' },
-  { id: 'REQ-007', position: 'Kế toán', level: 'Junior', block: 'BO' },
+  { id: 'REQ-007', position: 'Kế toán', level: 'Junior', block: 'G4' },
   { id: 'REQ-008', position: 'CTO', level: 'C-level', block: 'G3' },
-  { id: 'REQ-009', position: 'DevOps', level: 'Senior', block: 'DevOps' },
+  { id: 'REQ-009', position: 'DevOps', level: 'Senior', block: 'BFSI' },
   { id: 'REQ-010', position: 'Software Developer', level: 'Middle', block: 'G4' },
 ];
 
@@ -200,6 +187,7 @@ export interface Candidate {
   dob: string;              // DOB - Ngày sinh
   email: string;            // Email *
   phone: string;            // Phone - Điện thoại
+  address: string;          // Địa chỉ
   linkedin: string;         // Linkedin
   university: string;       // Trường Đại học *
   major: string;            // Chuyên ngành *
@@ -232,6 +220,7 @@ export const INITIAL_CANDIDATES: Candidate[] = [
     dob: '1996-03-12',
     email: 'khoi.nm@gmail.com',
     phone: '0987 654 321',
+    address: 'Số 12, ngõ 34 Trần Đại Nghĩa, Hai Bà Trưng, Hà Nội',
     linkedin: 'linkedin.com/in/khoi-nguyen',
     university: 'Đại học Bách Khoa Hà Nội',
     major: 'Công nghệ thông tin',
@@ -265,6 +254,7 @@ export const INITIAL_CANDIDATES: Candidate[] = [
     dob: '1998-07-25',
     email: 'yen.tth@gmail.com',
     phone: '0912 333 444',
+    address: '45 Nguyễn Huệ, Quận 1, TP. Hồ Chí Minh',
     linkedin: '',
     university: 'Đại học FPT',
     major: 'Kỹ thuật phần mềm',
@@ -295,6 +285,7 @@ export const INITIAL_CANDIDATES: Candidate[] = [
     dob: '1994-11-02',
     email: 'long.pd@outlook.com',
     phone: '0966 777 888',
+    address: '88 Cầu Giấy, Quận Cầu Giấy, Hà Nội',
     linkedin: 'linkedin.com/in/long-pham-devops',
     university: 'Đại học Công nghệ - ĐHQGHN',
     major: 'Mạng máy tính & Truyền thông',
@@ -325,6 +316,7 @@ export const INITIAL_CANDIDATES: Candidate[] = [
     dob: '2000-01-18',
     email: 'nguyen.dt@gmail.com',
     phone: '0933 121 212',
+    address: '210 Lê Lợi, Quận Hải Châu, Đà Nẵng',
     linkedin: '',
     university: 'Đại học Kinh tế Quốc dân',
     major: 'Hệ thống thông tin quản lý',
@@ -355,6 +347,7 @@ export const INITIAL_CANDIDATES: Candidate[] = [
     dob: '1995-05-30',
     email: 'nam.vh@gmail.com',
     phone: '0977 000 111',
+    address: '17 Phạm Văn Đồng, Quận Bắc Từ Liêm, Hà Nội',
     linkedin: 'linkedin.com/in/namvu-data',
     university: 'Đại học Khoa học Tự nhiên',
     major: 'Toán - Tin ứng dụng',
@@ -443,6 +436,7 @@ INITIAL_CANDIDATES.push(
       dob: `199${i % 9}-0${(i % 8) + 1}-1${i % 9}`,
       email: `${first}${idx}@gmail.com`,
       phone: `09${String(60 + i)} ${String(200 + i * 3).slice(0, 3)} ${String(100 + i * 7).slice(0, 3)}`,
+      address: '',
       linkedin: '',
       university: 'Đại học Kinh tế Quốc dân',
       major: 'Công nghệ thông tin',
@@ -485,6 +479,7 @@ export const FIELD_LABELS: Record<keyof Candidate, string> = {
   dob: 'Ngày sinh',
   email: 'Email',
   phone: 'Điện thoại',
+  address: 'Địa chỉ',
   linkedin: 'LinkedIn',
   university: 'Trường đại học',
   major: 'Chuyên ngành',
@@ -544,6 +539,7 @@ export const emptyForm = (): Candidate => ({
   dob: '',
   email: '',
   phone: '',
+  address: '',
   linkedin: '',
   university: '',
   major: '',
@@ -864,6 +860,45 @@ export const CandidatePage: React.FC = () => {
       setImportMsg({ type: 'success', text: `Đã điền ${Object.keys(patch).length} trường thông tin cá nhân từ file.` });
     } catch {
       setImportMsg({ type: 'error', text: 'Không đọc được file. Vui lòng kiểm tra định dạng (.xlsx, .xls, .csv).' });
+    }
+  };
+
+  // ---- Đọc CV (PDF/TXT) và tự điền thông tin cơ bản của ứng viên ----
+  const cvParseRef = useRef<HTMLInputElement>(null);
+  const [cvParsing, setCvParsing] = useState(false);
+
+  const handleCvParse = async (file: File) => {
+    setCvParsing(true);
+    setImportMsg(null);
+    try {
+      const parsed = await parseCVFile(file);
+      const patch: Partial<Candidate> = {};
+      if (parsed.name) patch.name = parsed.name;
+      if (parsed.dob) patch.dob = parsed.dob;
+      if (parsed.address) patch.address = parsed.address;
+      if (parsed.currentCompany) patch.currentCompany = parsed.currentCompany;
+      if (parsed.email) patch.email = parsed.email;
+      if (parsed.phone) patch.phone = parsed.phone;
+      if (parsed.position) patch.currentPosition = parsed.position;
+
+      // Lưu tên file CV để hiển thị ở cụm "File CV nguồn"
+      patch.cvFile = file.name;
+
+      const filledCount = Object.keys(patch).filter((k) => k !== 'cvFile').length;
+      setDraft((prev) => ({ ...prev, ...patch }));
+
+      if (filledCount === 0) {
+        setImportMsg({
+          type: 'error',
+          text: 'Đã đọc CV nhưng chưa nhận diện được thông tin. CV nên ghi rõ nhãn (Họ tên, Email, SĐT, Ngày sinh, Địa chỉ, Công ty, Vị trí).',
+        });
+      } else {
+        setImportMsg({ type: 'success', text: `Đã đọc CV và tự điền ${filledCount} trường thông tin. Vui lòng rà soát lại trước khi lưu.` });
+      }
+    } catch {
+      setImportMsg({ type: 'error', text: 'Không đọc được CV. Hỗ trợ file PDF hoặc TXT (PDF phải là văn bản, không phải ảnh scan).' });
+    } finally {
+      setCvParsing(false);
     }
   };
 
@@ -1383,47 +1418,64 @@ export const CandidatePage: React.FC = () => {
                             />
                           </th>
                           <th className="px-4 py-3.5 font-bold">Họ và tên</th>
-                          <th className="px-4 py-3.5 font-bold">Số điện thoại</th>
+                          <th className="px-4 py-3.5 font-bold">SĐT</th>
                           <th className="px-4 py-3.5 font-bold">Email</th>
-                          <th className="px-4 py-3.5 font-bold">Chuyên môn</th>
-                          <th className="px-4 py-3.5 font-bold">Tin tuyển dụng</th>
+                          <th className="px-4 py-3.5 font-bold">Vị trí ứng tuyển</th>
+                          <th className="px-4 py-3.5 font-bold">IDRequest</th>
                           <th className="px-4 py-3.5 font-bold">Vòng tuyển dụng</th>
                           <th className="px-4 py-3.5 font-bold">Ngày ứng tuyển</th>
                           <th className="px-4 py-3.5 font-bold">Nguồn ứng viên</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-xs">
-                        {paged.map((c) => (
-                          <tr
-                            key={c.id}
-                            onClick={() => setSelectedId(c.id)}
-                            className={`transition-colors group cursor-pointer ${selectedRows.has(c.id) ? 'bg-emerald-50/40' : 'hover:bg-slate-50/75'}`}
-                          >
-                            <td className="pl-5 pr-2 py-3" onClick={(e) => e.stopPropagation()}>
-                              <input
-                                type="checkbox"
-                                checked={selectedRows.has(c.id)}
-                                onChange={() => toggleRow(c.id)}
-                                className="w-4 h-4 rounded border-slate-300 text-[#0fa57c] accent-[#0fa57c] cursor-pointer"
-                              />
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center space-x-2.5">
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#0fa57c] to-teal-400 text-white flex items-center justify-center font-bold text-[10px] uppercase shadow-xs shrink-0">
-                                  {c.name.split(' ').pop()?.slice(0, 2)}
+                        {paged.map((c) => {
+                          // Gộp toàn bộ Yêu cầu tuyển dụng của ứng viên trên 1 dòng, ngăn nhau bằng dấu phẩy
+                          const positions = c.applications
+                            .map((a) => RECRUITMENT_REQUESTS.find((r) => r.id === a.requestId)?.position || a.requestId)
+                            .join(', ');
+                          const requestIds = c.applications.map((a) => a.requestId).join(', ');
+                          return (
+                            <tr
+                              key={c.id}
+                              onClick={() => setSelectedId(c.id)}
+                              className={`transition-colors group cursor-pointer ${selectedRows.has(c.id) ? 'bg-emerald-50/40' : 'hover:bg-slate-50/75'}`}
+                            >
+                              <td className="pl-5 pr-2 py-3" onClick={(e) => e.stopPropagation()}>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedRows.has(c.id)}
+                                  onChange={() => toggleRow(c.id)}
+                                  className="w-4 h-4 rounded border-slate-300 text-[#0fa57c] accent-[#0fa57c] cursor-pointer"
+                                />
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center space-x-2.5">
+                                  <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#0fa57c] to-teal-400 text-white flex items-center justify-center font-bold text-[10px] uppercase shadow-xs shrink-0">
+                                    {c.name.split(' ').pop()?.slice(0, 2)}
+                                  </div>
+                                  <span className="font-bold text-slate-800 group-hover:text-[#0fa57c] transition-colors whitespace-nowrap">{c.name}</span>
                                 </div>
-                                <span className="font-bold text-slate-800 group-hover:text-[#0fa57c] transition-colors whitespace-nowrap">{c.name}</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 font-mono text-slate-600 whitespace-nowrap">{c.phone || '—'}</td>
-                            <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{c.email}</td>
-                            <td className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">{c.appliedPosition || '—'}</td>
-                            <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{c.appliedBlock || '—'}</td>
-                            <td className="px-4 py-3"><StatusBadge status={c.finalStatus} /></td>
-                            <td className="px-4 py-3 font-mono text-slate-500 whitespace-nowrap">{formatDate(c.inputDate)}</td>
-                            <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{c.source}</td>
-                          </tr>
-                        ))}
+                              </td>
+                              <td className="px-4 py-3 font-mono text-slate-600 whitespace-nowrap">{c.phone || '—'}</td>
+                              <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{c.email}</td>
+                              <td className="px-4 py-3 font-semibold text-slate-700">{positions || '—'}</td>
+                              <td className="px-4 py-3 font-mono text-slate-600">{requestIds || <span className="text-slate-300">—</span>}</td>
+                              <td className="px-4 py-3">
+                                {c.applications.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1">
+                                    {c.applications.map((a, i) => (
+                                      <StatusBadge key={i} status={a.finalStatus} />
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <StatusBadge status={c.finalStatus} />
+                                )}
+                              </td>
+                              <td className="px-4 py-3 font-mono text-slate-500 whitespace-nowrap">{formatDate(c.inputDate)}</td>
+                              <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{c.source}</td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   )}
@@ -1661,7 +1713,8 @@ export const CandidatePage: React.FC = () => {
                   {/* Thông tin cá nhân & liên hệ */}
                   <Section title="Thông tin cá nhân & liên hệ" icon={Mail}>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
-                      {editing && (
+                      {/* Khối "Import dữ liệu cá nhân từ file (Excel/CSV)" tạm ẩn theo yêu cầu */}
+                      {false && editing && (
                         <div className="sm:col-span-2 flex items-center justify-between gap-3 bg-slate-50/70 border border-dashed border-slate-200 rounded-lg p-3">
                           <div className="flex items-center gap-2.5 min-w-0">
                             <FileSpreadsheet size={18} className="text-[#0fa57c] shrink-0" />
@@ -1690,6 +1743,36 @@ export const CandidatePage: React.FC = () => {
                           />
                         </div>
                       )}
+                      {editing && (
+                        <div className="sm:col-span-2 flex items-center justify-between gap-3 bg-emerald-50/40 border border-dashed border-[#0fa57c]/40 rounded-lg p-3">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <FileText size={18} className="text-[#0fa57c] shrink-0" />
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-600">Đọc CV tự động điền thông tin</p>
+                              <p className="text-[10px] text-slate-400 truncate">Tải lên CV (PDF/TXT) — tự trích Họ tên, Ngày sinh, Địa chỉ, Công ty, Email, SĐT, Vị trí</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={cvParsing}
+                            onClick={() => cvParseRef.current?.click()}
+                            className="shrink-0 px-3 py-1.5 text-[11px] font-bold text-white bg-[#0fa57c] hover:bg-[#0c8a68] disabled:opacity-50 rounded-lg transition-colors flex items-center gap-1.5"
+                          >
+                            <Upload size={12} /> {cvParsing ? 'Đang đọc...' : 'Tải CV'}
+                          </button>
+                          <input
+                            ref={cvParseRef}
+                            type="file"
+                            accept=".pdf,.txt"
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) handleCvParse(f);
+                              e.currentTarget.value = '';
+                            }}
+                          />
+                        </div>
+                      )}
                       {editing && importMsg && (
                         <div
                           className={`sm:col-span-2 text-[11px] font-bold px-3 py-2 rounded-lg flex items-center gap-1.5 ${
@@ -1705,6 +1788,7 @@ export const CandidatePage: React.FC = () => {
                       <DetailField icon={Calendar} label="Ngày sinh" control="date" mono editing={editing} value={view.dob} display={formatDate(view.dob)} onChange={setDf('dob')} />
                       <DetailField icon={Mail} label="Email" required control="email" mono editing={editing} value={view.email} onChange={setDf('email')} placeholder="email@example.com" />
                       <DetailField icon={Phone} label="Điện thoại" mono editing={editing} value={view.phone} onChange={setDf('phone')} placeholder="09xx xxx xxx" />
+                      <DetailField icon={Home} label="Địa chỉ" full editing={editing} value={view.address} onChange={setDf('address')} placeholder="Số nhà, đường, quận/huyện, tỉnh/thành" />
                       <DetailField icon={UserCheck} label="TA tiếp nhận" full control="select" options={EMPLOYEE_OPTIONS} placeholder="-- Chọn nhân viên tiếp nhận --" editing={editing} value={view.taReceiver} onChange={setDf('taReceiver')} />
                       <DetailField
                         icon={Linkedin}
