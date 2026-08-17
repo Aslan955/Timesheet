@@ -1425,6 +1425,7 @@ export const CandidatePage: React.FC = () => {
                           <th className="px-4 py-3.5 font-bold">Vòng tuyển dụng</th>
                           <th className="px-4 py-3.5 font-bold">Ngày ứng tuyển</th>
                           <th className="px-4 py-3.5 font-bold">Nguồn ứng viên</th>
+                          <th className="px-4 py-3.5 font-bold">TA phụ trách</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-xs">
@@ -1449,12 +1450,7 @@ export const CandidatePage: React.FC = () => {
                                 />
                               </td>
                               <td className="px-4 py-3">
-                                <div className="flex items-center space-x-2.5">
-                                  <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#0fa57c] to-teal-400 text-white flex items-center justify-center font-bold text-[10px] uppercase shadow-xs shrink-0">
-                                    {c.name.split(' ').pop()?.slice(0, 2)}
-                                  </div>
-                                  <span className="font-bold text-slate-800 group-hover:text-[#0fa57c] transition-colors whitespace-nowrap">{c.name}</span>
-                                </div>
+                                <span className="font-bold text-slate-800 group-hover:text-[#0fa57c] transition-colors whitespace-nowrap">{c.name}</span>
                               </td>
                               <td className="px-4 py-3 font-mono text-slate-600 whitespace-nowrap">{c.phone || '—'}</td>
                               <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{c.email}</td>
@@ -1473,6 +1469,7 @@ export const CandidatePage: React.FC = () => {
                               </td>
                               <td className="px-4 py-3 font-mono text-slate-500 whitespace-nowrap">{formatDate(c.inputDate)}</td>
                               <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{c.source}</td>
+                              <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{c.taPic || <span className="text-slate-300">—</span>}</td>
                             </tr>
                           );
                         })}
