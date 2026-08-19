@@ -5,7 +5,7 @@
  */
 import React, { useState } from 'react';
 import { User, Globe, Check, List, FileText, IdCard, MessageSquare, CheckCircle2, Activity, History, AlertCircle } from 'lucide-react';
-import { Candidate } from './CandidatePage';
+import { Candidate, UNIVERSITIES, MAJORS } from './CandidatePage';
 import { CollapsibleField, FieldBox } from './CandidateDetailV2Page';
 
 type TabKey = 'details' | 'request' | 'cv' | 'note' | 'reference' | 'activity' | 'history';
@@ -123,8 +123,8 @@ export const CandidateFormV2: React.FC<{
             <div className="xl:border-l xl:border-slate-100 xl:pl-10">
               <CollapsibleField label="Education & Experience">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-                  <FieldBox label="University" required editing value={draft.university} onChange={(v) => onChange({ university: v })} />
-                  <FieldBox label="Major" required editing value={draft.major} onChange={(v) => onChange({ major: v })} />
+                  <FieldBox label="University" required editing options={[...UNIVERSITIES]} placeholder="-- Chọn trường đại học --" value={draft.university} onChange={(v) => onChange({ university: v })} />
+                  <FieldBox label="Major" required editing options={[...MAJORS]} placeholder="-- Chọn chuyên ngành --" value={draft.major} onChange={(v) => onChange({ major: v })} />
                   <FieldBox
                     label="Current Position"
                     required

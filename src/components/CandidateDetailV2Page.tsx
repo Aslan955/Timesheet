@@ -141,8 +141,9 @@ export const FieldBox: React.FC<{
   multiline?: boolean;
   placeholder?: string;
   display?: React.ReactNode;
+  options?: (string | { value: string; label: string })[];
   onChange?: (v: string) => void;
-}> = ({ label, value, required, full, editing, multiline, placeholder, display, onChange }) => (
+}> = ({ label, value, required, full, editing, multiline, placeholder, display, options, onChange }) => (
   <div className={full ? 'sm:col-span-2' : ''}>
     {label && (
       <label className="block text-[13px] font-medium text-slate-500 mb-1.5">
@@ -150,7 +151,22 @@ export const FieldBox: React.FC<{
       </label>
     )}
     {editing ? (
-      multiline ? (
+      options ? (
+        <select
+          value={value}
+          onChange={(e) => onChange?.(e.target.value)}
+          className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-[#0fa57c] cursor-pointer"
+        >
+          {placeholder && <option value="">{placeholder}</option>}
+          {options.map((o) => {
+            const val = typeof o === 'string' ? o : o.value;
+            const lbl = typeof o === 'string' ? o : o.label;
+            return (
+              <option key={val} value={val}>{lbl}</option>
+            );
+          })}
+        </select>
+      ) : multiline ? (
         <textarea
           value={value}
           onChange={(e) => onChange?.(e.target.value)}

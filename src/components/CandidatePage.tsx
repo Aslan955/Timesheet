@@ -406,6 +406,64 @@ const SKILL_OPTIONS = [
   'Figma', 'BPMN', 'Jira', 'Agile/Scrum', 'PyTorch', 'TensorFlow', 'Spark', 'Pandas', 'Machine Learning',
 ];
 
+// Danh mục Trường đại học (dropdown chọn 1)
+export const UNIVERSITIES = [
+  'Đại học Bách Khoa Hà Nội',
+  'Đại học Công nghệ - ĐHQGHN',
+  'Đại học Khoa học Tự nhiên - ĐHQGHN',
+  'Đại học FPT',
+  'Đại học Kinh tế Quốc dân',
+  'Đại học Ngoại thương',
+  'Học viện Công nghệ Bưu chính Viễn thông',
+  'Học viện Kỹ thuật Quân sự',
+  'Đại học Giao thông Vận tải',
+  'Đại học Thủy lợi',
+  'Đại học Công nghiệp Hà Nội',
+  'Đại học Bách Khoa TP.HCM',
+  'Đại học Khoa học Tự nhiên - ĐHQG TP.HCM',
+  'Đại học Công nghệ Thông tin - ĐHQG TP.HCM',
+  'Đại học Sư phạm Kỹ thuật TP.HCM',
+  'Đại học Đà Nẵng',
+  'Đại học Cần Thơ',
+  'Khác',
+] as const;
+export type University = (typeof UNIVERSITIES)[number];
+const UNIVERSITY_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: '-- Chọn trường đại học --' },
+  ...UNIVERSITIES.map((u) => ({ value: u, label: u })),
+];
+
+// Danh mục Chuyên ngành (dropdown chọn 1)
+export const MAJORS = [
+  'Công nghệ thông tin',
+  'Kỹ thuật phần mềm',
+  'Khoa học máy tính',
+  'Mạng máy tính & Truyền thông',
+  'An toàn thông tin',
+  'Hệ thống thông tin',
+  'Hệ thống thông tin quản lý',
+  'Khoa học dữ liệu',
+  'Trí tuệ nhân tạo',
+  'Kỹ thuật máy tính',
+  'Điện tử - Viễn thông',
+  'Tự động hóa',
+  'Toán - Tin ứng dụng',
+  'Toán ứng dụng',
+  'Kinh tế',
+  'Quản trị kinh doanh',
+  'Kế toán - Kiểm toán',
+  'Tài chính - Ngân hàng',
+  'Marketing',
+  'Ngôn ngữ Anh',
+  'Thiết kế đồ họa',
+  'Khác',
+] as const;
+export type Major = (typeof MAJORS)[number];
+const MAJOR_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: '-- Chọn chuyên ngành --' },
+  ...MAJORS.map((m) => ({ value: m, label: m })),
+];
+
 // ---- Sinh thêm ứng viên mẫu để danh sách đủ dài (demo phân trang giống mẫu) ----
 const _MORE_NAMES = [
   'Trần Minh Hoàng', 'Đỗ Thị Lan Đào', 'Nguyễn Linh Mạnh', 'Thiên Vân', 'Nguyễn Anh Tú',
@@ -772,6 +830,7 @@ export const CandidatePage: React.FC = () => {
   const [isCreating, setIsCreating] = useState(false); // đang tạo ứng viên mới
   const [createVersion, setCreateVersion] = useState<'v1' | 'v2'>('v1'); // giao diện tạo mới đang dùng
   const [showCreateMenu, setShowCreateMenu] = useState(false); // menu chọn V1/V2 khi bấm "Thêm ứng viên"
+  const [showImportModal, setShowImportModal] = useState(false); // popup import: tải file mẫu + chọn file
   const [draft, setDraft] = useState<Candidate>(emptyForm());
   const [detailError, setDetailError] = useState('');
 
@@ -946,25 +1005,28 @@ export const CandidatePage: React.FC = () => {
       rows.forEach((row, i) => {
         const rawSource = findValue(row, 'Nguồn', 'Nguồn ứng viên', 'Source');
         const source = (SOURCES as readonly string[]).includes(rawSource) ? (rawSource as Source) : 'Khác';
-        const inputDate = toDateStr(findValue(row, 'Ngày tiếp nhận', 'Input Date')) || new Date().toISOString().split('T')[0];
+        const inputDate = toDateStr(findValue(row, 'Ngày tiếp nhận', 'Input Date', 'InputDate')) || new Date().toISOString().split('T')[0];
         const candidateIndex = candidates.length + newCandidates.length + 1;
 
         const c: Candidate = {
           ...emptyForm(),
           id: `ƯV-${String(candidateIndex).padStart(4, '0')}`,
           inputDate,
+          taPic: findValue(row, 'TA PIC', 'TA phụ trách'),
           name: findValue(row, 'Họ và tên', 'Họ tên', 'Name'),
           dob: toDateStr(findValue(row, 'Ngày sinh', 'DOB')),
           email: findValue(row, 'Email'),
           phone: findValue(row, 'Điện thoại', 'Số điện thoại', 'Phone', 'SDT'),
-          linkedin: findValue(row, 'LinkedIn'),
-          university: findValue(row, 'Trường đại học', 'University'),
+          address: findValue(row, 'Địa chỉ', 'Address'),
+          linkedin: findValue(row, 'LinkedIn', 'Linkedin'),
+          university: findValue(row, 'Trường đại học', 'Trường Đại học', 'University'),
           major: findValue(row, 'Chuyên ngành', 'Major'),
-          currentPosition: findValue(row, 'Vị trí hiện tại', 'Current Position'),
-          currentCompany: findValue(row, 'Công ty hiện tại', 'Current Company'),
+          currentPosition: findValue(row, 'Vị trí hiện tại', 'Current Position', 'ViTri', 'Vị trí'),
+          currentCompany: findValue(row, 'Công ty hiện tại', 'Current Company', 'CongTy hiện tại', 'Công ty'),
           techStack: findValue(row, 'Tech Stack', 'TechStack'),
           appliedPosition: findValue(row, 'Chuyên môn', 'Vị trí ứng tuyển', 'Applied Position'),
           source,
+          referrer: findValue(row, 'Người Refer', 'Người refer', 'Referrer'),
           note: findValue(row, 'Ghi chú', 'Note'),
         };
 
@@ -1322,7 +1384,7 @@ export const CandidatePage: React.FC = () => {
                     Xuất dữ liệu
                   </button>
                   <button
-                    onClick={() => bulkImportRef.current?.click()}
+                    onClick={() => setShowImportModal(true)}
                     className="px-4 py-2.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-xs cursor-pointer shrink-0"
                   >
                     <FileSpreadsheet size={14} className="text-[#0fa57c]" />
@@ -1337,8 +1399,84 @@ export const CandidatePage: React.FC = () => {
                       const f = e.target.files?.[0];
                       if (f) handleBulkImport(f);
                       e.currentTarget.value = '';
+                      setShowImportModal(false);
                     }}
                   />
+                  <AnimatePresence>
+                    {showImportModal && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4"
+                        onClick={() => setShowImportModal(false)}
+                      >
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.96, y: 8 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.96, y: 8 }}
+                          transition={{ duration: 0.15 }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden text-left cursor-default"
+                        >
+                          {/* Header */}
+                          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-9 h-9 rounded-lg bg-[#0fa57c]/10 flex items-center justify-center">
+                                <FileSpreadsheet size={18} className="text-[#0fa57c]" />
+                              </div>
+                              <div>
+                                <h3 className="text-sm font-bold text-slate-800">Nhập ứng viên từ file</h3>
+                                <p className="text-[11px] text-slate-400">Hỗ trợ định dạng .xlsx, .xls, .csv</p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setShowImportModal(false)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors cursor-pointer"
+                            >
+                              <X size={18} />
+                            </button>
+                          </div>
+
+                          {/* Body */}
+                          <div className="p-5 space-y-3">
+                            {/* Bước 1: tải file mẫu */}
+                            <div className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 bg-slate-50/60">
+                              <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-xs font-bold shrink-0">1</div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-bold text-slate-700">Tải file mẫu</p>
+                                <p className="text-[11px] text-slate-400 mb-2.5">Dùng đúng định dạng cột để import thành công.</p>
+                                <a
+                                  href={`${import.meta.env.BASE_URL}TemplateUV.xlsx`}
+                                  download="TemplateUV.xlsx"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-[#0fa57c] bg-white border border-[#0fa57c]/30 hover:bg-[#0fa57c]/5 rounded-lg transition-colors cursor-pointer"
+                                >
+                                  <Download size={13} /> Tải file mẫu (.xlsx)
+                                </a>
+                              </div>
+                            </div>
+
+                            {/* Bước 2: chọn file */}
+                            <div className="flex items-start gap-3 p-3.5 rounded-xl border border-[#0fa57c]/30 bg-emerald-50/40">
+                              <div className="w-6 h-6 rounded-full bg-[#0fa57c] text-white flex items-center justify-center text-xs font-bold shrink-0">2</div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-bold text-slate-700">Chọn file từ máy</p>
+                                <p className="text-[11px] text-slate-400 mb-2.5">Chọn file đã điền theo mẫu để nhập dữ liệu.</p>
+                                <button
+                                  type="button"
+                                  onClick={() => bulkImportRef.current?.click()}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-white bg-[#0fa57c] hover:bg-[#0c8a68] rounded-lg transition-colors cursor-pointer"
+                                >
+                                  <Upload size={13} /> Chọn file
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </motion.div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                   <div className="relative shrink-0">
                     <button
                       onClick={() => setShowCreateMenu((o) => !o)}
@@ -1825,8 +1963,8 @@ export const CandidatePage: React.FC = () => {
                   {/* Học vấn & Kinh nghiệm */}
                   <Section title="Học vấn & kinh nghiệm" icon={GraduationCap}>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
-                      <DetailField icon={GraduationCap} label="Trường đại học" required editing={editing} value={view.university} onChange={setDf('university')} />
-                      <DetailField icon={Layers} label="Chuyên ngành" required editing={editing} value={view.major} onChange={setDf('major')} />
+                      <DetailField icon={GraduationCap} label="Trường đại học" required control="select" options={UNIVERSITY_OPTIONS} placeholder="-- Chọn trường đại học --" editing={editing} value={view.university} onChange={setDf('university')} />
+                      <DetailField icon={Layers} label="Chuyên ngành" required control="select" options={MAJOR_OPTIONS} placeholder="-- Chọn chuyên ngành --" editing={editing} value={view.major} onChange={setDf('major')} />
                       <DetailField icon={Briefcase} label="Vị trí hiện tại" required editing={editing} value={view.currentPosition} onChange={setDf('currentPosition')} />
                       <DetailField icon={Building2} label="Công ty hiện tại" required editing={editing} value={view.currentCompany} onChange={setDf('currentCompany')} />
                       <DetailField icon={Code2} label="Tech Stack" required full control="textarea" editing={editing} value={view.techStack} onChange={setDf('techStack')} placeholder="VD: Java, Spring Boot, PostgreSQL..." />
