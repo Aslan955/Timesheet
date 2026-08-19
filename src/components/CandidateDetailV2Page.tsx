@@ -32,6 +32,7 @@ import {
   ExternalLink,
   Paperclip,
   Trash2,
+  Search,
 } from 'lucide-react';
 import {
   Candidate,
@@ -41,7 +42,6 @@ import {
   RECRUITMENT_REQUESTS,
   INITIAL_CANDIDATES,
   emptyForm,
-  StatusBadge,
   CURRENT_USER,
   ChangeLog,
   FieldChange,
@@ -200,7 +200,19 @@ export const RequestTabContent: React.FC<{
   onChangeStatus: (idx: number, status: FinalStatus) => void;
 }> = ({ applications, assignee, date, onAdd, onRemove, onChangeStatus }) => {
   const [showPicker, setShowPicker] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState('');
   const availableRequests = RECRUITMENT_REQUESTS.filter((r) => !applications.some((a) => a.requestId === r.id));
+  const q = pickerSearch.trim().toLowerCase();
+  const filteredRequests = q
+    ? availableRequests.filter((r) =>
+        [r.id, r.position, r.level, r.block].some((f) => String(f).toLowerCase().includes(q)),
+      )
+    : availableRequests;
+
+  const closePicker = () => {
+    setShowPicker(false);
+    setPickerSearch('');
+  };
 
   return (
     <div>
@@ -211,36 +223,56 @@ export const RequestTabContent: React.FC<{
         <div className="relative">
           <button
             type="button"
-            onClick={() => setShowPicker((s) => !s)}
+            onClick={() => (showPicker ? closePicker() : setShowPicker(true))}
             className="px-3.5 py-2 border border-[#0fa57c]/30 text-[#0fa57c] rounded-xl text-xs font-bold hover:bg-[#0fa57c]/5 transition-colors flex items-center gap-1.5"
           >
             <Plus size={13} /> Add request to candidate
           </button>
           {showPicker && (
-            <div className="absolute right-0 mt-2 w-72 bg-white border border-slate-200 rounded-xl shadow-lg z-10 p-2 max-h-72 overflow-y-auto">
-              {availableRequests.length === 0 ? (
-                <p className="text-xs text-slate-300 text-center py-3">All recruitment requests have been assigned</p>
-              ) : (
-                availableRequests.map((r) => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    onClick={() => {
-                      onAdd(r.id);
-                      setShowPicker(false);
-                    }}
-                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors"
-                  >
-                    <p className="text-xs font-bold text-slate-700">
-                      {r.id} · {r.position}
-                    </p>
-                    <p className="text-[10px] text-slate-400">
-                      {r.level} · {r.block}
-                    </p>
-                  </button>
-                ))
-              )}
-            </div>
+            <>
+              <div className="fixed inset-0 z-10" onClick={closePicker} />
+              <div className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-xl shadow-lg z-20 overflow-hidden">
+                {/* Ô tìm kiếm IDRequest */}
+                <div className="p-2 border-b border-slate-100 bg-slate-50/60">
+                  <div className="relative">
+                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      autoFocus
+                      value={pickerSearch}
+                      onChange={(e) => setPickerSearch(e.target.value)}
+                      placeholder="Tìm theo ID, vị trí, level, khối..."
+                      className="w-full pl-8 pr-2.5 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:border-[#0fa57c]"
+                    />
+                  </div>
+                </div>
+                <div className="p-2 max-h-64 overflow-y-auto">
+                  {availableRequests.length === 0 ? (
+                    <p className="text-xs text-slate-300 text-center py-3">All recruitment requests have been assigned</p>
+                  ) : filteredRequests.length === 0 ? (
+                    <p className="text-xs text-slate-300 text-center py-3">Không tìm thấy yêu cầu phù hợp</p>
+                  ) : (
+                    filteredRequests.map((r) => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => {
+                          onAdd(r.id);
+                          closePicker();
+                        }}
+                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors"
+                      >
+                        <p className="text-xs font-bold text-slate-700">
+                          {r.id} · {r.position}
+                        </p>
+                        <p className="text-[10px] text-slate-400">
+                          {r.level} · {r.block}
+                        </p>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -281,11 +313,10 @@ export const RequestTabContent: React.FC<{
                 </div>
 
                 <div className="flex flex-row sm:flex-col items-start sm:items-end gap-1.5 shrink-0">
-                  <StatusBadge status={a.finalStatus} withLabel />
                   <select
                     value={a.finalStatus}
                     onChange={(e) => onChangeStatus(i, e.target.value as FinalStatus)}
-                    className="text-[10px] font-bold text-slate-500 px-1.5 py-1 rounded-md border border-slate-200 cursor-pointer outline-none"
+                    className="text-[11px] font-bold text-slate-600 px-2 py-1.5 rounded-md border border-slate-200 cursor-pointer outline-none focus:border-[#0fa57c]"
                   >
                     {FINAL_STATUSES.map((s) => (
                       <option key={s} value={s}>

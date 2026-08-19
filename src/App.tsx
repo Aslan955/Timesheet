@@ -19,11 +19,19 @@ import { OnsiteReportPage } from './components/OnsiteReportPage';
 import { LeaveReportPage } from './components/LeaveReportPage';
 import { CandidatePage } from './components/CandidatePage';
 import { CandidateDetailV2Page } from './components/CandidateDetailV2Page';
+import { CatalogPage } from './components/CatalogPage';
+import { CatalogProvider, CATALOG_DEFS } from './catalog/CatalogContext';
 
 export default function App() {
   const [activeItem, setActiveItem] = useState('Overview');
 
   const renderContent = () => {
+    // Mỗi danh mục tuyển dụng là 1 màn riêng (định tuyến theo tên danh mục)
+    const catalogDef = CATALOG_DEFS.find((d) => d.label === activeItem);
+    if (catalogDef) {
+      return <CatalogPage catalogKey={catalogDef.key} />;
+    }
+
     switch (activeItem) {
       case 'Overview':
         return <DashboardPage onNavigate={setActiveItem} />;
@@ -69,8 +77,10 @@ export default function App() {
   };
 
   return (
-    <Layout activeItem={activeItem} onSelect={setActiveItem}>
-      {renderContent()}
-    </Layout>
+    <CatalogProvider>
+      <Layout activeItem={activeItem} onSelect={setActiveItem}>
+        {renderContent()}
+      </Layout>
+    </CatalogProvider>
   );
 }

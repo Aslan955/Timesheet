@@ -47,6 +47,7 @@ import { CandidateFormV2 } from './CandidateFormV2';
 import { RequestTabContent } from './CandidateDetailV2Page';
 import * as XLSX from 'xlsx';
 import { parseCVFile } from '../utils/cvParser';
+import { useCatalog } from '../catalog/CatalogContext';
 
 // ==========================================================================
 // TYPES & CONSTANTS - Recruitment / Candidate Management (Module Tuyển dụng)
@@ -428,10 +429,6 @@ export const UNIVERSITIES = [
   'Khác',
 ] as const;
 export type University = (typeof UNIVERSITIES)[number];
-const UNIVERSITY_OPTIONS: { value: string; label: string }[] = [
-  { value: '', label: '-- Chọn trường đại học --' },
-  ...UNIVERSITIES.map((u) => ({ value: u, label: u })),
-];
 
 // Danh mục Chuyên ngành (dropdown chọn 1)
 export const MAJORS = [
@@ -459,10 +456,6 @@ export const MAJORS = [
   'Khác',
 ] as const;
 export type Major = (typeof MAJORS)[number];
-const MAJOR_OPTIONS: { value: string; label: string }[] = [
-  { value: '', label: '-- Chọn chuyên ngành --' },
-  ...MAJORS.map((m) => ({ value: m, label: m })),
-];
 
 // ---- Sinh thêm ứng viên mẫu để danh sách đủ dài (demo phân trang giống mẫu) ----
 const _MORE_NAMES = [
@@ -809,6 +802,18 @@ const SkillSelect: React.FC<{
 // ==========================================================================
 
 export const CandidatePage: React.FC = () => {
+  // Options các trường select lấy từ danh mục dùng chung (màn "Danh mục tuyển dụng")
+  const { names } = useCatalog();
+  const sourceOptions = names.source;
+  const universityOptions = useMemo(
+    () => [{ value: '', label: '-- Chọn trường đại học --' }, ...names.university.map((u) => ({ value: u, label: u }))],
+    [names.university],
+  );
+  const majorOptions = useMemo(
+    () => [{ value: '', label: '-- Chọn chuyên ngành --' }, ...names.major.map((m) => ({ value: m, label: m }))],
+    [names.major],
+  );
+
   const [candidates, setCandidates] = useState<Candidate[]>(INITIAL_CANDIDATES);
 
   // null = màn danh sách, có giá trị = màn chi tiết
@@ -829,7 +834,6 @@ export const CandidatePage: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);   // đang sửa hồ sơ đã có
   const [isCreating, setIsCreating] = useState(false); // đang tạo ứng viên mới
   const [createVersion, setCreateVersion] = useState<'v1' | 'v2'>('v1'); // giao diện tạo mới đang dùng
-  const [showCreateMenu, setShowCreateMenu] = useState(false); // menu chọn V1/V2 khi bấm "Thêm ứng viên"
   const [showImportModal, setShowImportModal] = useState(false); // popup import: tải file mẫu + chọn file
   const [draft, setDraft] = useState<Candidate>(emptyForm());
   const [detailError, setDetailError] = useState('');
@@ -1111,6 +1115,24 @@ export const CandidatePage: React.FC = () => {
     ]);
   };
 
+  // ---- Thao tác Yêu cầu tuyển dụng trên DRAFT (dùng khi đang tạo mới / sửa, chưa lưu) ----
+  const addApplicationToDraft = (requestId: string) => {
+    setDraft((p) =>
+      p.applications.some((a) => a.requestId === requestId)
+        ? p
+        : { ...p, applications: [...p.applications, { requestId, finalStatus: 'New' }] },
+    );
+  };
+  const removeApplicationFromDraft = (idx: number) => {
+    setDraft((p) => ({ ...p, applications: p.applications.filter((_, i) => i !== idx) }));
+  };
+  const changeApplicationStatusDraft = (idx: number, newStatus: FinalStatus) => {
+    setDraft((p) => ({
+      ...p,
+      applications: p.applications.map((a, i) => (i === idx ? { ...a, finalStatus: newStatus } : a)),
+    }));
+  };
+
   // Mở màn tạo ứng viên mới — dùng luôn màn chi tiết ở chế độ nhập liệu
   const startCreate = (version: 'v1' | 'v2' = 'v1') => {
     setSelectedId(null);
@@ -1119,7 +1141,6 @@ export const CandidatePage: React.FC = () => {
     setIsEditing(false);
     setDetailError('');
     setCreateVersion(version);
-    setShowCreateMenu(false);
   };
 
   // Vào chế độ sửa inline trên màn chi tiết (dùng chung cho nút ở list và ở màn view)
@@ -1479,36 +1500,12 @@ export const CandidatePage: React.FC = () => {
                   </AnimatePresence>
                   <div className="relative shrink-0">
                     <button
-                      onClick={() => setShowCreateMenu((o) => !o)}
+                      onClick={() => startCreate('v1')}
                       className="px-4 py-2.5 bg-[#0fa57c] text-white rounded-xl text-xs font-bold hover:bg-[#0fa57c]/90 transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/10 cursor-pointer active:scale-95"
                     >
                       <Plus size={15} />
                       Thêm ứng viên
-                      <ChevronDown size={13} className={`transition-transform ${showCreateMenu ? 'rotate-180' : ''}`} />
                     </button>
-                    {showCreateMenu && (
-                      <>
-                        <div className="fixed inset-0 z-10" onClick={() => setShowCreateMenu(false)} />
-                        <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-xl shadow-lg z-20 p-1.5">
-                          <button
-                            type="button"
-                            onClick={() => startCreate('v1')}
-                            className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-slate-50 transition-colors"
-                          >
-                            <p className="text-xs font-bold text-slate-700">V1 · Classic layout</p>
-                            <p className="text-[10px] text-slate-400">Màn tạo ứng viên hiện tại</p>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => startCreate('v2')}
-                            className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-slate-50 transition-colors"
-                          >
-                            <p className="text-xs font-bold text-slate-700">V2 · New layout</p>
-                            <p className="text-[10px] text-slate-400">Bố cục tab mới (Details, Request, CV...)</p>
-                          </button>
-                        </div>
-                      </>
-                    )}
                   </div>
                 </div>
               </div>
@@ -1757,9 +1754,18 @@ export const CandidatePage: React.FC = () => {
                         <DetailField icon={Calendar} label="Ngày tiếp nhận" required control="date" mono editing value={view.inputDate} onChange={setDf('inputDate')} />
                       )}
 
-                      {isCreating || !selectedCandidate ? (
+                      {isCreating ? (
+                        <RequestTabContent
+                          applications={draft.applications}
+                          assignee={draft.taPic}
+                          date={draft.assignDate || draft.inputDate}
+                          onAdd={addApplicationToDraft}
+                          onRemove={removeApplicationFromDraft}
+                          onChangeStatus={changeApplicationStatusDraft}
+                        />
+                      ) : !selectedCandidate ? (
                         <div className="py-10 text-center text-sm text-slate-300">
-                          Vui lòng lưu ứng viên trước khi gán yêu cầu tuyển dụng.
+                          Không có dữ liệu ứng viên.
                         </div>
                       ) : (
                         <RequestTabContent
@@ -1946,7 +1952,7 @@ export const CandidatePage: React.FC = () => {
                           ) : undefined
                         }
                       />
-                      <DetailField icon={Tag} label="Nguồn ứng viên" required control="select" options={[...SOURCES]} editing={editing} value={view.source} onChange={setDf('source')} />
+                      <DetailField icon={Tag} label="Nguồn ứng viên" required control="select" options={sourceOptions} editing={editing} value={view.source} onChange={setDf('source')} />
                       {(editing || view.source === 'Refer') && (
                         <DetailField
                           icon={UserCheck}
@@ -1963,8 +1969,8 @@ export const CandidatePage: React.FC = () => {
                   {/* Học vấn & Kinh nghiệm */}
                   <Section title="Học vấn & kinh nghiệm" icon={GraduationCap}>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
-                      <DetailField icon={GraduationCap} label="Trường đại học" required control="select" options={UNIVERSITY_OPTIONS} placeholder="-- Chọn trường đại học --" editing={editing} value={view.university} onChange={setDf('university')} />
-                      <DetailField icon={Layers} label="Chuyên ngành" required control="select" options={MAJOR_OPTIONS} placeholder="-- Chọn chuyên ngành --" editing={editing} value={view.major} onChange={setDf('major')} />
+                      <DetailField icon={GraduationCap} label="Trường đại học" required control="select" options={universityOptions} placeholder="-- Chọn trường đại học --" editing={editing} value={view.university} onChange={setDf('university')} />
+                      <DetailField icon={Layers} label="Chuyên ngành" required control="select" options={majorOptions} placeholder="-- Chọn chuyên ngành --" editing={editing} value={view.major} onChange={setDf('major')} />
                       <DetailField icon={Briefcase} label="Vị trí hiện tại" required editing={editing} value={view.currentPosition} onChange={setDf('currentPosition')} />
                       <DetailField icon={Building2} label="Công ty hiện tại" required editing={editing} value={view.currentCompany} onChange={setDf('currentCompany')} />
                       <DetailField icon={Code2} label="Tech Stack" required full control="textarea" editing={editing} value={view.techStack} onChange={setDf('techStack')} placeholder="VD: Java, Spring Boot, PostgreSQL..." />

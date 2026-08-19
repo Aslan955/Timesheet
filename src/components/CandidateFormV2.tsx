@@ -5,8 +5,9 @@
  */
 import React, { useState } from 'react';
 import { User, Globe, Check, List, FileText, IdCard, MessageSquare, CheckCircle2, Activity, History, AlertCircle } from 'lucide-react';
-import { Candidate, UNIVERSITIES, MAJORS } from './CandidatePage';
+import { Candidate } from './CandidatePage';
 import { CollapsibleField, FieldBox } from './CandidateDetailV2Page';
+import { useCatalog } from '../catalog/CatalogContext';
 
 type TabKey = 'details' | 'request' | 'cv' | 'note' | 'reference' | 'activity' | 'history';
 
@@ -28,6 +29,7 @@ export const CandidateFormV2: React.FC<{
   error?: string;
 }> = ({ draft, onChange, onSave, onCancel, error }) => {
   const [activeTab, setActiveTab] = useState<TabKey>('details');
+  const { names } = useCatalog();
 
   return (
     <div className="bg-white rounded-2xl border border-[#0fa57c]/40 ring-2 ring-[#0fa57c]/10 shadow-xs overflow-hidden">
@@ -123,8 +125,8 @@ export const CandidateFormV2: React.FC<{
             <div className="xl:border-l xl:border-slate-100 xl:pl-10">
               <CollapsibleField label="Education & Experience">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-                  <FieldBox label="University" required editing options={[...UNIVERSITIES]} placeholder="-- Chọn trường đại học --" value={draft.university} onChange={(v) => onChange({ university: v })} />
-                  <FieldBox label="Major" required editing options={[...MAJORS]} placeholder="-- Chọn chuyên ngành --" value={draft.major} onChange={(v) => onChange({ major: v })} />
+                  <FieldBox label="University" required editing options={names.university} placeholder="-- Chọn trường đại học --" value={draft.university} onChange={(v) => onChange({ university: v })} />
+                  <FieldBox label="Major" required editing options={names.major} placeholder="-- Chọn chuyên ngành --" value={draft.major} onChange={(v) => onChange({ major: v })} />
                   <FieldBox
                     label="Current Position"
                     required
