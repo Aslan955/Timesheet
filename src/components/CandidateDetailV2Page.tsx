@@ -39,13 +39,13 @@ import {
   CandidateApplication,
   FinalStatus,
   FINAL_STATUSES,
-  RECRUITMENT_REQUESTS,
   INITIAL_CANDIDATES,
   emptyForm,
   CURRENT_USER,
   ChangeLog,
   FieldChange,
 } from './CandidatePage';
+import { useRecruitment } from '../recruitment/RecruitmentContext';
 
 // Nhãn tiếng Anh cho các trường được phép sửa trong màn hình này — dùng khi ghi lại lịch sử chỉnh sửa
 // (không dùng chung FIELD_LABELS của màn cũ vì màn này đồng bộ toàn bộ giao diện bằng tiếng Anh)
@@ -199,9 +199,10 @@ export const RequestTabContent: React.FC<{
   onRemove: (idx: number) => void;
   onChangeStatus: (idx: number, status: FinalStatus) => void;
 }> = ({ applications, assignee, date, onAdd, onRemove, onChangeStatus }) => {
+  const { requestOptions, findRequest } = useRecruitment();
   const [showPicker, setShowPicker] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
-  const availableRequests = RECRUITMENT_REQUESTS.filter((r) => !applications.some((a) => a.requestId === r.id));
+  const availableRequests = requestOptions.filter((r) => !applications.some((a) => a.requestId === r.id));
   const q = pickerSearch.trim().toLowerCase();
   const filteredRequests = q
     ? availableRequests.filter((r) =>
@@ -282,7 +283,7 @@ export const RequestTabContent: React.FC<{
       ) : (
         <div className="space-y-3">
           {applications.map((a, i) => {
-            const req = RECRUITMENT_REQUESTS.find((r) => r.id === a.requestId);
+            const req = findRequest(a.requestId);
             return (
               <div
                 key={i}

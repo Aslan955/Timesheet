@@ -65,6 +65,7 @@ export const NAVIGATION: NavItem[] = [
     title: 'Recruitment',
     icon: UserPlus,
     children: [
+      { title: 'Yêu cầu tuyển dụng', icon: Briefcase },
       { title: 'Quản lý ứng viên', icon: Users },
       {
         title: 'Danh mục tuyển dụng',

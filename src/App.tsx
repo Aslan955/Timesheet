@@ -21,6 +21,9 @@ import { CandidatePage } from './components/CandidatePage';
 import { CandidateDetailV2Page } from './components/CandidateDetailV2Page';
 import { CatalogPage } from './components/CatalogPage';
 import { CatalogProvider, CATALOG_DEFS } from './catalog/CatalogContext';
+import { RecruitmentRequestPage } from './components/RecruitmentRequestPage';
+import { RecruitmentProvider } from './recruitment/RecruitmentContext';
+import { CandidateProvider } from './candidates/CandidateContext';
 
 export default function App() {
   const [activeItem, setActiveItem] = useState('Overview');
@@ -59,6 +62,8 @@ export default function App() {
         return <SystemConfigurationPage />;
       case 'Thông tin người phụ thuộc':
         return <DependentPage />;
+      case 'Yêu cầu tuyển dụng':
+        return <RecruitmentRequestPage />;
       case 'Quản lý ứng viên':
       case 'Ứng viên':
         return <CandidatePage />;
@@ -78,9 +83,13 @@ export default function App() {
 
   return (
     <CatalogProvider>
-      <Layout activeItem={activeItem} onSelect={setActiveItem}>
-        {renderContent()}
-      </Layout>
+      <RecruitmentProvider>
+        <CandidateProvider>
+          <Layout activeItem={activeItem} onSelect={setActiveItem}>
+            {renderContent()}
+          </Layout>
+        </CandidateProvider>
+      </RecruitmentProvider>
     </CatalogProvider>
   );
 }

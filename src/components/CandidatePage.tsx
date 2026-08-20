@@ -48,6 +48,9 @@ import { RequestTabContent } from './CandidateDetailV2Page';
 import * as XLSX from 'xlsx';
 import { parseCVFile } from '../utils/cvParser';
 import { useCatalog } from '../catalog/CatalogContext';
+import { useRecruitment } from '../recruitment/RecruitmentContext';
+import { useCandidates } from '../candidates/CandidateContext';
+import { DataTable, Breadcrumb, StatGrid, Column, StatItem } from './DataTable';
 
 // ==========================================================================
 // TYPES & CONSTANTS - Recruitment / Candidate Management (Module Tuyển dụng)
@@ -802,8 +805,12 @@ const SkillSelect: React.FC<{
 // ==========================================================================
 
 export const CandidatePage: React.FC = () => {
+  // Yêu cầu tuyển dụng dùng chung (màn "Yêu cầu tuyển dụng")
+  const { findRequest } = useRecruitment();
   // Options các trường select lấy từ danh mục dùng chung (màn "Danh mục tuyển dụng")
   const { names } = useCatalog();
+  // Danh sách ứng viên dùng chung (để màn Yêu cầu tuyển dụng có thể gán ứng viên)
+  const { candidates, setCandidates } = useCandidates();
   const sourceOptions = names.source;
   const universityOptions = useMemo(
     () => [{ value: '', label: '-- Chọn trường đại học --' }, ...names.university.map((u) => ({ value: u, label: u }))],
@@ -813,8 +820,6 @@ export const CandidatePage: React.FC = () => {
     () => [{ value: '', label: '-- Chọn chuyên ngành --' }, ...names.major.map((m) => ({ value: m, label: m }))],
     [names.major],
   );
-
-  const [candidates, setCandidates] = useState<Candidate[]>(INITIAL_CANDIDATES);
 
   // null = màn danh sách, có giá trị = màn chi tiết
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -1355,6 +1360,25 @@ export const CandidatePage: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  // Stat cards + cấu hình cột cho DataTable (màn danh sách)
+  const candStats: StatItem[] = [
+    { label: 'Tổng ứng viên', value: candidates.length },
+    { label: 'Đã gán yêu cầu', value: candidates.filter((c) => c.applications.length > 0).length, tone: 'success' },
+    { label: 'Chưa gán', value: candidates.filter((c) => c.applications.length === 0).length, tone: 'warning' },
+    { label: 'Đang offer', value: candidates.filter((c) => c.applications.some((a) => a.finalStatus === 'Offering')).length },
+  ];
+  const candColumns: Column<Candidate>[] = [
+    { key: 'name', label: 'Họ và tên', get: (c) => c.name, render: (c) => <span className="font-bold text-slate-800 group-hover:text-[#0fa57c] transition-colors whitespace-nowrap">{c.name}</span> },
+    { key: 'phone', label: 'SĐT', get: (c) => c.phone, render: (c) => <span className="font-mono text-slate-600 whitespace-nowrap">{c.phone || '—'}</span> },
+    { key: 'email', label: 'Email', get: (c) => c.email },
+    { key: 'position', label: 'Vị trí ứng tuyển', get: (c) => c.applications.map((a) => findRequest(a.requestId)?.position || a.requestId).join(', '), render: (c) => { const p = c.applications.map((a) => findRequest(a.requestId)?.position || a.requestId).join(', '); return <span className="font-semibold text-slate-700">{p || '—'}</span>; } },
+    { key: 'requestIds', label: 'IDRequest', get: (c) => c.applications.map((a) => a.requestId).join(', '), render: (c) => { const ids = c.applications.map((a) => a.requestId).join(', '); return <span className="font-mono text-slate-600">{ids || <span className="text-slate-300">—</span>}</span>; } },
+    { key: 'stages', label: 'Vòng tuyển dụng', get: (c) => (c.applications.length ? c.applications.map((a) => a.finalStatus).join(', ') : c.finalStatus), render: (c) => (c.applications.length > 0 ? <div className="flex flex-wrap gap-1">{c.applications.map((a, i) => <StatusBadge key={i} status={a.finalStatus} />)}</div> : <StatusBadge status={c.finalStatus} />) },
+    { key: 'inputDate', label: 'Ngày ứng tuyển', get: (c) => formatDate(c.inputDate) },
+    { key: 'source', label: 'Nguồn ứng viên', get: (c) => c.source },
+    { key: 'taPic', label: 'TA phụ trách', get: (c) => c.taPic },
+  ];
+
   // ==========================================================================
   return (
     <div className="bg-transparent min-h-full p-4 sm:p-6">
@@ -1372,6 +1396,8 @@ export const CandidatePage: React.FC = () => {
               transition={{ duration: 0.2 }}
               className="space-y-6"
             >
+              <Breadcrumb items={['Home', 'Recruitment', 'Quản lý ứng viên']} />
+
               {/* Header + toolbar */}
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                 <div className="flex items-center space-x-3">
@@ -1386,24 +1412,7 @@ export const CandidatePage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2.5 w-full lg:w-auto">
-                  <div className="relative flex-1 lg:w-72">
-                    <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="text"
-                      placeholder="Tìm kiếm nhanh trong danh sách"
-                      value={searchQuery}
-                      onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-                      className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#0fa57c] focus:ring-2 focus:ring-[#0fa57c]/10 transition-all placeholder:text-slate-400"
-                    />
-                  </div>
-                  <button
-                    onClick={handleExport}
-                    className="px-4 py-2.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-xs cursor-pointer shrink-0"
-                  >
-                    <Download size={14} className="text-[#0fa57c]" />
-                    Xuất dữ liệu
-                  </button>
+                <div className="flex items-center gap-2.5 w-full lg:w-auto justify-end">
                   <button
                     onClick={() => setShowImportModal(true)}
                     className="px-4 py-2.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-xs cursor-pointer shrink-0"
@@ -1526,132 +1535,18 @@ export const CandidatePage: React.FC = () => {
                 </div>
               )}
 
-              {/* Bảng danh sách kiểu grid */}
-              <div className="bg-white rounded-3xl border border-slate-100 shadow-xs overflow-hidden">
-                <div className="overflow-x-auto">
-                  {filtered.length === 0 ? (
-                    <div className="py-16 text-center space-y-3">
-                      <AlertCircle className="mx-auto text-slate-300" size={40} />
-                      <p className="text-xs font-bold text-slate-400">Không tìm thấy ứng viên nào phù hợp</p>
-                      <button
-                        onClick={() => { setSearchQuery(''); setStatusFilter('All'); setSourceFilter('All'); setBlockFilter('All'); }}
-                        className="px-4 py-1.5 border border-slate-200 text-slate-500 text-[10px] font-bold rounded-lg hover:bg-slate-50"
-                      >
-                        Xóa bộ lọc
-                      </button>
-                    </div>
-                  ) : (
-                    <table className="w-full text-left border-collapse min-w-[1150px]">
-                      <thead>
-                        <tr className="bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                          <th className="pl-5 pr-2 py-3.5 w-10">
-                            <input
-                              type="checkbox"
-                              checked={allPageSelected}
-                              onChange={toggleAllPage}
-                              className="w-4 h-4 rounded border-slate-300 text-[#0fa57c] accent-[#0fa57c] cursor-pointer"
-                            />
-                          </th>
-                          <th className="px-4 py-3.5 font-bold">Họ và tên</th>
-                          <th className="px-4 py-3.5 font-bold">SĐT</th>
-                          <th className="px-4 py-3.5 font-bold">Email</th>
-                          <th className="px-4 py-3.5 font-bold">Vị trí ứng tuyển</th>
-                          <th className="px-4 py-3.5 font-bold">IDRequest</th>
-                          <th className="px-4 py-3.5 font-bold">Vòng tuyển dụng</th>
-                          <th className="px-4 py-3.5 font-bold">Ngày ứng tuyển</th>
-                          <th className="px-4 py-3.5 font-bold">Nguồn ứng viên</th>
-                          <th className="px-4 py-3.5 font-bold">TA phụ trách</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 text-xs">
-                        {paged.map((c) => {
-                          // Gộp toàn bộ Yêu cầu tuyển dụng của ứng viên trên 1 dòng, ngăn nhau bằng dấu phẩy
-                          const positions = c.applications
-                            .map((a) => RECRUITMENT_REQUESTS.find((r) => r.id === a.requestId)?.position || a.requestId)
-                            .join(', ');
-                          const requestIds = c.applications.map((a) => a.requestId).join(', ');
-                          return (
-                            <tr
-                              key={c.id}
-                              onClick={() => setSelectedId(c.id)}
-                              className={`transition-colors group cursor-pointer ${selectedRows.has(c.id) ? 'bg-emerald-50/40' : 'hover:bg-slate-50/75'}`}
-                            >
-                              <td className="pl-5 pr-2 py-3" onClick={(e) => e.stopPropagation()}>
-                                <input
-                                  type="checkbox"
-                                  checked={selectedRows.has(c.id)}
-                                  onChange={() => toggleRow(c.id)}
-                                  className="w-4 h-4 rounded border-slate-300 text-[#0fa57c] accent-[#0fa57c] cursor-pointer"
-                                />
-                              </td>
-                              <td className="px-4 py-3">
-                                <span className="font-bold text-slate-800 group-hover:text-[#0fa57c] transition-colors whitespace-nowrap">{c.name}</span>
-                              </td>
-                              <td className="px-4 py-3 font-mono text-slate-600 whitespace-nowrap">{c.phone || '—'}</td>
-                              <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{c.email}</td>
-                              <td className="px-4 py-3 font-semibold text-slate-700">{positions || '—'}</td>
-                              <td className="px-4 py-3 font-mono text-slate-600">{requestIds || <span className="text-slate-300">—</span>}</td>
-                              <td className="px-4 py-3">
-                                {c.applications.length > 0 ? (
-                                  <div className="flex flex-wrap gap-1">
-                                    {c.applications.map((a, i) => (
-                                      <StatusBadge key={i} status={a.finalStatus} />
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <StatusBadge status={c.finalStatus} />
-                                )}
-                              </td>
-                              <td className="px-4 py-3 font-mono text-slate-500 whitespace-nowrap">{formatDate(c.inputDate)}</td>
-                              <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{c.source}</td>
-                              <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{c.taPic || <span className="text-slate-300">—</span>}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
+              <StatGrid items={candStats} />
 
-                {/* Footer phân trang */}
-                {filtered.length > 0 && (
-                  <div className="p-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/30">
-                    <span className="text-xs font-bold text-slate-500">
-                      Tổng số bản ghi: <span className="text-slate-800">{filtered.length}</span>
-                      {selectedRows.size > 0 && <span className="ml-2 text-[#0fa57c]">· Đã chọn {selectedRows.size}</span>}
-                    </span>
-                    <div className="flex items-center gap-3">
-                      <select
-                        value={pageSize}
-                        onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
-                        className="bg-white border border-slate-200 px-2 py-1.5 rounded-lg text-xs font-bold text-slate-600 outline-none focus:border-[#0fa57c] cursor-pointer"
-                      >
-                        {[10, 20, 30, 50].map((n) => (
-                          <option key={n} value={n}>{n} bản ghi trên trang</option>
-                        ))}
-                      </select>
-                      <span className="text-xs font-bold text-slate-500 whitespace-nowrap">{rangeStart} đến {rangeEnd}</span>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                          disabled={page <= 1}
-                          className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                        >
-                          <ChevronLeft size={14} />
-                        </button>
-                        <span className="text-xs font-bold text-slate-600 px-1">{page}/{totalPages}</span>
-                        <button
-                          onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                          disabled={page >= totalPages}
-                          className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                        >
-                          <ChevronRight size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <DataTable
+                rows={candidates}
+                columns={candColumns}
+                getRowKey={(c) => c.id}
+                onRowClick={(c) => setSelectedId(c.id)}
+                onView={(c) => setSelectedId(c.id)}
+                searchPlaceholder="Tìm ứng viên... (Enter)"
+                exportFileName="danh-sach-ung-vien"
+                totalLabel={`Tổng: ${candidates.length} ứng viên`}
+              />
             </motion.div>
           ) : (
             // ==================================================================
