@@ -4,13 +4,14 @@
  *  - Màn "Yêu cầu tuyển dụng" gán/bỏ ứng viên vào 1 yêu cầu (assign/unassign theo requestId).
  */
 import React, { createContext, useContext, useMemo, useState } from 'react';
-import { Candidate, INITIAL_CANDIDATES } from '../components/CandidatePage';
+import { Candidate, INITIAL_CANDIDATES, FinalStatus } from '../components/CandidatePage';
 
 interface CandidateContextValue {
   candidates: Candidate[];
   setCandidates: React.Dispatch<React.SetStateAction<Candidate[]>>;
   assignToRequest: (candidateId: string, requestId: string) => void;
   unassignFromRequest: (candidateId: string, requestId: string) => void;
+  setApplicationStatus: (candidateId: string, requestId: string, status: FinalStatus) => void;
 }
 
 const CandidateContext = createContext<CandidateContextValue | null>(null);
@@ -41,8 +42,18 @@ export const CandidateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     );
   };
 
+  const setApplicationStatus: CandidateContextValue['setApplicationStatus'] = (candidateId, requestId, status) => {
+    setCandidates((prev) =>
+      prev.map((c) =>
+        c.id === candidateId
+          ? { ...c, applications: c.applications.map((a) => (a.requestId === requestId ? { ...a, finalStatus: status } : a)) }
+          : c,
+      ),
+    );
+  };
+
   const value = useMemo<CandidateContextValue>(
-    () => ({ candidates, setCandidates, assignToRequest, unassignFromRequest }),
+    () => ({ candidates, setCandidates, assignToRequest, unassignFromRequest, setApplicationStatus }),
     [candidates],
   );
 

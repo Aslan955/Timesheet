@@ -10,7 +10,13 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useCandidates } from '../candidates/CandidateContext';
-import { DataTable, Breadcrumb, StatGrid, Column, StatItem } from './DataTable';
+import { FINAL_STATUSES, FinalStatus, Candidate } from './CandidatePage';
+import { useEmail, EMAIL_TYPES, EmailType } from '../email/EmailContext';
+import { EmailComposeModal } from './EmailComposeModal';
+import { EmailHistoryModal } from './EmailHistoryModal';
+import { Mail, History } from 'lucide-react';
+import { SkinProvider, useSkin, SkinName } from '../recruitment2/skin';
+import { DataTable, Breadcrumb, Column } from './DataTable';
 import {
   useRecruitment,
   RecruitmentRequestRow,
@@ -53,14 +59,16 @@ const slaStyle: Record<string, string> = {
   Overdue: 'bg-rose-50 text-rose-600 border-rose-200',
 };
 
-const Badge: React.FC<{ text: string; cls?: string }> = ({ text, cls }) =>
-  text ? (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold border ${cls || 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+const Badge: React.FC<{ text: string; cls?: string; block?: boolean }> = ({ text, cls, block }) => {
+  if (!text) return <span className={`text-slate-300 ${block ? 'block text-center' : ''}`}>—</span>;
+  return (
+    <span
+      className={`items-center justify-center px-2 py-1 rounded-md text-[11px] font-bold border text-center ${block ? 'flex w-full' : 'inline-flex'} ${cls || 'bg-slate-100 text-slate-500 border-slate-200'}`}
+    >
       {text}
     </span>
-  ) : (
-    <span className="text-slate-300">—</span>
   );
+};
 
 // ==========================================================================
 // Field: hiển thị (xem) hoặc điều khiển nhập (sửa)
@@ -74,9 +82,11 @@ const DField: React.FC<{
   value?: React.ReactNode;   // giá trị hiển thị khi xem
   full?: boolean;
   children?: React.ReactNode; // điều khiển nhập khi sửa
-}> = ({ label, required, editing, value, full, children }) => (
+}> = ({ label, required, editing, value, full, children }) => {
+  const skin = useSkin();
+  return (
   <div className={full ? 'sm:col-span-2' : ''}>
-    <label className="block text-[11px] font-semibold text-slate-400 mb-0.5">
+    <label className={skin.isV2 ? 'block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-0.5' : 'block text-[11px] font-semibold text-slate-400 mb-0.5'}>
       {label} {required && <span className="text-rose-500">*</span>}
     </label>
     {editing ? (
@@ -87,7 +97,8 @@ const DField: React.FC<{
       </div>
     )}
   </div>
-);
+  );
+};
 
 const SelectControl: React.FC<{
   value: string;
@@ -111,13 +122,19 @@ const emptyRow = (): RecruitmentRequestRow => ({
   level: '', taPic: '', taSupport: '', dateReceived: '', endDate: '', note: '', headcount: '',
 });
 
-export const RecruitmentRequestPage: React.FC = () => {
+export const RecruitmentRequestPage: React.FC<{ skin?: SkinName }> = ({ skin = 'classic' }) => {
   const { requests, addRequest, updateRequest, removeRequest } = useRecruitment();
-  const { candidates, assignToRequest, unassignFromRequest } = useCandidates();
+  const { candidates, assignToRequest, unassignFromRequest, setApplicationStatus } = useCandidates();
+  const { sentForCandidate } = useEmail();
 
   // Gán ứng viên vào yêu cầu (trong màn chi tiết)
   const [showAssign, setShowAssign] = useState(false);
   const [assignSearch, setAssignSearch] = useState('');
+
+  // Email cho ứng viên đã gán
+  const [emailCompose, setEmailCompose] = useState<{ candidate: Candidate; type: EmailType } | null>(null);
+  const [historyCandidate, setHistoryCandidate] = useState<Candidate | null>(null);
+  const [emailMenuFor, setEmailMenuFor] = useState<string | null>(null);
 
   // Điều hướng list ↔ detail
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -254,6 +271,7 @@ export const RecruitmentRequestPage: React.FC = () => {
   // ========================================================================
   if (showDetail) {
     return (
+      <SkinProvider skin={skin}>
       <div className="p-6 h-full">
         {Toast}
         {/* Header */}
@@ -304,7 +322,33 @@ export const RecruitmentRequestPage: React.FC = () => {
           </div>
         </div>
 
-        <div className={`grid grid-cols-1 gap-6 items-start ${!isCreating ? 'xl:grid-cols-[1.5fr_1fr]' : ''}`}>
+        {/* Mã Request ID + Số ngày chạy job + SLA — đưa lên đầu */}
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <div className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 shadow-xs flex items-center gap-2">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Request ID</span>
+            <span className="font-mono text-xs font-bold text-slate-700">{isCreating ? '(tự sinh khi lưu)' : view.requestId}</span>
+            {!isCreating && view.requestId && (
+              <button
+                type="button"
+                onClick={() => navigator.clipboard?.writeText(view.requestId)}
+                className="text-slate-400 hover:text-[#0fa57c]"
+                title="Sao chép"
+              >
+                <Copy size={12} />
+              </button>
+            )}
+          </div>
+          <div className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 shadow-xs flex items-center gap-2">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Ngày chạy job</span>
+            <span className="text-xs font-bold text-slate-700">{days == null ? '—' : `${days} ngày`}</span>
+          </div>
+          <div className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 shadow-xs flex items-center gap-2">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">SLA</span>
+            <Badge text={sla} cls={slaStyle[sla]} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 items-start">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
           <div className="p-5">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3.5">
@@ -359,32 +403,6 @@ export const RecruitmentRequestPage: React.FC = () => {
                 <AlertCircle size={13} /> {formError}
               </div>
             )}
-
-            {/* Mã Request ID + Số ngày chạy job + SLA — dưới phần thông tin */}
-            <div className="mt-5 pt-4 border-t border-slate-100 flex flex-wrap items-center gap-2">
-              <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-100 flex items-center gap-2">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Request ID</span>
-                <span className="font-mono text-xs font-bold text-slate-700">{isCreating ? '(tự sinh khi lưu)' : view.requestId}</span>
-                {!isCreating && view.requestId && (
-                  <button
-                    type="button"
-                    onClick={() => navigator.clipboard?.writeText(view.requestId)}
-                    className="text-slate-400 hover:text-[#0fa57c]"
-                    title="Sao chép"
-                  >
-                    <Copy size={12} />
-                  </button>
-                )}
-              </div>
-              <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-100 flex items-center gap-2">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Ngày chạy job</span>
-                <span className="text-xs font-bold text-slate-700">{days == null ? '—' : `${days} ngày`}</span>
-              </div>
-              <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-100 flex items-center gap-2">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">SLA</span>
-                <Badge text={sla} cls={slaStyle[sla]} />
-              </div>
-            </div>
           </div>
           </div>
 
@@ -447,44 +465,135 @@ export const RecruitmentRequestPage: React.FC = () => {
                 )}
               </div>
             </div>
-            <div className="p-3">
+            <div className="overflow-x-auto">
               {assignedCandidates.length === 0 ? (
                 <p className="text-center text-sm text-slate-300 py-8">Chưa có ứng viên nào được gán.</p>
               ) : (
-                <ul className="divide-y divide-slate-100">
-                  {assignedCandidates.map((c) => {
-                    const app = c.applications.find((a) => a.requestId === view.requestId);
-                    return (
-                      <li key={c.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50/70 rounded-lg group">
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-[#0fa57c] to-teal-400 text-white flex items-center justify-center font-bold text-[10px] uppercase shrink-0">
-                          {c.name.split(' ').pop()?.slice(0, 2)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-slate-700 truncate">{c.name}</p>
-                          <p className="text-[11px] text-slate-400 truncate">{c.email || '—'} · {c.phone || '—'}</p>
-                        </div>
-                        {app && <Badge text={app.finalStatus} />}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            unassignFromRequest(c.id, view.requestId);
-                            flash('success', `Đã bỏ gán ${c.name}`);
-                          }}
-                          className="p-1.5 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-500 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
-                          title="Bỏ gán"
-                        >
-                          <X size={15} />
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
+                <table className="w-full text-left border-collapse min-w-[720px]">
+                  <thead>
+                    <tr className="bg-slate-50 border-y border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                      <th className="px-4 py-3 font-bold">Ứng viên</th>
+                      <th className="px-4 py-3 font-bold w-48">Trạng thái</th>
+                      <th className="px-4 py-3 font-bold w-32 text-center">Gửi email</th>
+                      <th className="px-4 py-3 font-bold w-28 text-center">Lịch sử</th>
+                      <th className="px-4 py-3 font-bold w-14" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs">
+                    {assignedCandidates.map((c) => {
+                      const app = c.applications.find((a) => a.requestId === view.requestId);
+                      const mailCount = sentForCandidate(c.id).length;
+                      return (
+                        <tr key={c.id} className="hover:bg-slate-50/70 group">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-[#0fa57c] to-teal-400 text-white flex items-center justify-center font-bold text-[10px] uppercase shrink-0">
+                                {c.name.split(' ').pop()?.slice(0, 2)}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-bold text-slate-700 truncate">{c.name}</p>
+                                <p className="text-[11px] text-slate-400 truncate">{c.email || '—'} · {c.phone || '—'}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            {app && (
+                              <select
+                                value={app.finalStatus}
+                                onChange={(e) => {
+                                  setApplicationStatus(c.id, view.requestId, e.target.value as FinalStatus);
+                                  flash('success', `Đã đổi trạng thái ${c.name}`);
+                                }}
+                                className="w-full text-[11px] font-bold text-slate-600 px-2 py-1.5 rounded-md border border-slate-200 outline-none focus:border-[#0fa57c] cursor-pointer"
+                                title="Đổi trạng thái ứng viên"
+                              >
+                                {FINAL_STATUSES.map((s) => (
+                                  <option key={s} value={s}>{s}</option>
+                                ))}
+                              </select>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <div className="relative inline-block">
+                              <button
+                                type="button"
+                                onClick={() => setEmailMenuFor((v) => (v === c.id ? null : c.id))}
+                                className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold border border-[#0fa57c]/30 text-[#0fa57c] bg-[#0fa57c]/5 hover:bg-[#0fa57c]/10 inline-flex items-center gap-1.5 cursor-pointer"
+                              >
+                                <Mail size={13} /> Gửi email
+                              </button>
+                              {emailMenuFor === c.id && (
+                                <>
+                                  <div className="fixed inset-0 z-10" onClick={() => setEmailMenuFor(null)} />
+                                  <div className="absolute right-0 mt-1 w-44 bg-white border border-slate-200 rounded-xl shadow-lg z-20 p-1.5">
+                                    {EMAIL_TYPES.map((t) => (
+                                      <button
+                                        key={t.type}
+                                        type="button"
+                                        onClick={() => {
+                                          setEmailCompose({ candidate: c, type: t.type });
+                                          setEmailMenuFor(null);
+                                        }}
+                                        className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                                      >
+                                        {t.label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => setHistoryCandidate(c)}
+                              className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold border border-slate-200 text-slate-600 hover:bg-slate-50 inline-flex items-center gap-1.5 cursor-pointer"
+                              title="Lịch sử gửi email"
+                            >
+                              <History size={13} /> {mailCount}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                unassignFromRequest(c.id, view.requestId);
+                                flash('success', `Đã bỏ gán ${c.name}`);
+                              }}
+                              className="p-1.5 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-500 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="Bỏ gán"
+                            >
+                              <X size={15} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               )}
             </div>
           </div>
           )}
         </div>
+
+        {/* Popup soạn email / lịch sử email cho ứng viên đã gán */}
+        <AnimatePresence>
+          {emailCompose && (
+            <EmailComposeModal
+              candidate={emailCompose.candidate}
+              type={emailCompose.type}
+              onClose={() => setEmailCompose(null)}
+              onSent={() => flash('success', 'Đã gửi email')}
+            />
+          )}
+          {historyCandidate && (
+            <EmailHistoryModal candidate={historyCandidate} onClose={() => setHistoryCandidate(null)} />
+          )}
+        </AnimatePresence>
       </div>
+      </SkinProvider>
     );
   }
 
@@ -492,21 +601,11 @@ export const RecruitmentRequestPage: React.FC = () => {
   // MÀN DANH SÁCH
   // ========================================================================
   const slaOf = (r: RecruitmentRequestRow) => computeSla(computeDaysRunning(r));
-  const stats: StatItem[] = [
-    { label: 'Tổng yêu cầu', value: requests.length },
-    { label: 'Đang tuyển', value: requests.filter((r) => r.status === 'Đang tuyển').length, tone: 'success' },
-    { label: 'Đang chờ phê duyệt', value: requests.filter((r) => r.status === 'Đang chờ phê duyệt').length },
-    { label: 'Đã tuyển', value: requests.filter((r) => r.status === 'Đã tuyển _ Chờ nhận việc').length, tone: 'success' },
-    { label: 'Sắp đến hạn SLA', value: requests.filter((r) => slaOf(r) === 'Near Deadline').length, tone: 'warning' },
-    { label: 'Quá hạn SLA', value: requests.filter((r) => slaOf(r) === 'Overdue').length, tone: 'danger' },
-    { label: 'Tạm dừng', value: requests.filter((r) => r.status === 'Tạm dừng').length },
-    { label: 'Tổng SL cần', value: requests.reduce((s, r) => s + (Number(r.headcount) || 0), 0) },
-  ];
 
   const columns: Column<RecruitmentRequestRow>[] = [
-    { key: 'priority', label: 'Priority', get: (r) => r.priority, render: (r) => <Badge text={r.priority} cls={priorityStyle[r.priority]} /> },
+    { key: 'priority', label: 'Priority', width: 'w-28', get: (r) => r.priority, render: (r) => <Badge block text={r.priority} cls={priorityStyle[r.priority]} /> },
     { key: 'requestId', label: 'Request ID', get: (r) => r.requestId, render: (r) => <span className="font-mono font-bold text-slate-700 whitespace-nowrap group-hover:text-[#0fa57c] transition-colors">{r.requestId}</span> },
-    { key: 'status', label: 'Tình trạng', get: (r) => r.status, render: (r) => <Badge text={r.status} cls={statusStyle[r.status]} /> },
+    { key: 'status', label: 'Tình trạng', width: 'w-44', get: (r) => r.status, render: (r) => <Badge block text={r.status} cls={statusStyle[r.status]} /> },
     { key: 'block', label: 'Khối', get: (r) => r.block },
     { key: 'position', label: 'Vị trí tuyển dụng', get: (r) => r.position, render: (r) => <span className="font-semibold text-slate-700">{r.position || '—'}</span> },
     { key: 'skill', label: 'Skill', get: (r) => r.skill },
@@ -514,14 +613,15 @@ export const RecruitmentRequestPage: React.FC = () => {
     { key: 'taPic', label: 'TA PIC', get: (r) => r.taPic },
     { key: 'dateReceived', label: 'Ngày nhận', get: (r) => formatDate(r.dateReceived) },
     { key: 'days', label: 'Ngày chạy', numeric: true, get: (r) => computeDaysRunning(r) ?? '', render: (r) => { const d = computeDaysRunning(r); return d == null ? <span className="text-slate-300">—</span> : d; } },
-    { key: 'sla', label: 'SLA', get: (r) => slaOf(r), render: (r) => <Badge text={slaOf(r)} cls={slaStyle[slaOf(r)]} /> },
+    { key: 'sla', label: 'SLA', width: 'w-32', get: (r) => slaOf(r), render: (r) => <Badge block text={slaOf(r)} cls={slaStyle[slaOf(r)]} /> },
     { key: 'headcount', label: 'SL cần', numeric: true, total: true, get: (r) => (r.headcount === '' ? '' : r.headcount) },
   ];
 
   return (
+    <SkinProvider skin={skin}>
     <div className="p-6 h-full">
       {Toast}
-      <Breadcrumb items={['Home', 'Recruitment', 'Yêu cầu tuyển dụng']} />
+      <Breadcrumb items={skin === 'v2' ? ['Trang chủ', 'Tuyển dụng 2', 'Yêu cầu tuyển dụng'] : ['Home', 'Recruitment', 'Yêu cầu tuyển dụng']} />
 
       <div className="flex items-center justify-between gap-4 mb-5 flex-wrap">
         <div className="flex items-center gap-3">
@@ -542,8 +642,6 @@ export const RecruitmentRequestPage: React.FC = () => {
         </button>
       </div>
 
-      <StatGrid items={stats} />
-
       <DataTable
         rows={requests}
         columns={columns}
@@ -555,5 +653,6 @@ export const RecruitmentRequestPage: React.FC = () => {
         totalLabel={`Tổng: ${requests.length} yêu cầu`}
       />
     </div>
+    </SkinProvider>
   );
 };

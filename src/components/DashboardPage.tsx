@@ -148,14 +148,14 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
     { id: 'b-4', name: 'Nguyễn Văn Nam', role: 'Marketing Manager', date: '18/06', isToday: false, avatar: 'https://ui-avatars.com/api/?name=Nguyen+Nam&background=4f46e5&color=fff&bold=true' },
   ];
 
-  // Lịch sử điểm danh (log chấm công thô từ máy chấm công)
+  // Lịch sử điểm danh (gộp theo ngày: giờ vào / giờ ra từ máy chấm công)
   const attendanceLogs = [
-    { id: 'a-1', date: '21/05/2026', time: '08:10:46', type: 'Máy chấm công' },
-    { id: 'a-2', date: '20/05/2026', time: '17:08:30', type: 'Máy chấm công' },
-    { id: 'a-3', date: '20/05/2026', time: '09:37:06', type: 'Máy chấm công' },
-    { id: 'a-4', date: '19/05/2026', time: '17:12:20', type: 'Máy chấm công' },
-    { id: 'a-5', date: '19/05/2026', time: '08:08:15', type: 'Máy chấm công' },
-    { id: 'a-6', date: '18/05/2026', time: '17:19:02', type: 'Máy chấm công' },
+    { id: 'a-1', date: '10/09/2026', checkIn: '08:48:35', checkOut: '—',        type: 'Máy chấm công' },
+    { id: 'a-2', date: '09/09/2026', checkIn: '08:40:48', checkOut: '18:43:17', type: 'Máy chấm công' },
+    { id: 'a-3', date: '08/09/2026', checkIn: '09:02:06', checkOut: '19:20:32', type: 'Máy chấm công' },
+    { id: 'a-4', date: '04/09/2026', checkIn: '08:52:46', checkOut: '18:44:20', type: 'Máy chấm công' },
+    { id: 'a-5', date: '03/09/2026', checkIn: '08:15:10', checkOut: '17:30:05', type: 'Máy chấm công' },
+    { id: 'a-6', date: '02/09/2026', checkIn: '08:22:41', checkOut: '17:48:19', type: 'Máy chấm công' },
   ];
 
   // Mở popup soạn lời chúc cho một đồng nghiệp
@@ -287,21 +287,7 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
       </AnimatePresence>
 
       {/* Top Header & Dashboard Navigation Tabs */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-2 border-b border-slate-200/60">
-        <div>
-          <div className="flex items-center space-x-3">
-            <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
-              Dashboard Portal IMIS
-            </h1>
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-[#0fa57c]/10 text-[#0fa57c] border border-[#0fa57c]/20 uppercase">
-              Fwork Enterprise
-            </span>
-          </div>
-          <p className="text-xs font-semibold text-slate-400 mt-0.5">
-            Hệ thống quản trị thông tin nhân sự và vận hành Fwork
-          </p>
-        </div>
-
+      <div className="flex flex-col md:flex-row md:items-center md:justify-end gap-4 pb-2 border-b border-slate-200/60">
         {/* Live Clock Pill & Tab Switcher */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="px-3.5 py-1.5 bg-white border border-slate-200/80 rounded-full shadow-xs flex items-center space-x-2 text-xs font-bold text-slate-600 font-mono">
@@ -511,7 +497,7 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                       <col className="w-[70px]" />
                       <col className="w-[100px]" />
                     </colgroup>
-                    <thead className="sticky top-0 z-10">
+                    <thead>
                       <tr className="border-b border-slate-100 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider bg-slate-50">
                         <th className="py-2.5 px-3">Module</th>
                         <th className="py-2.5 px-3">Loại đơn</th>
@@ -592,7 +578,8 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                       <tr className="border-b border-slate-100 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider bg-slate-50/50">
                         <th className="py-2.5 px-3 w-10">STT</th>
                         <th className="py-2.5 px-3">Ngày</th>
-                        <th className="py-2.5 px-3">Thời gian</th>
+                        <th className="py-2.5 px-3">Check-in</th>
+                        <th className="py-2.5 px-3">Check-out</th>
                         <th className="py-2.5 px-3">Loại điểm danh</th>
                       </tr>
                     </thead>
@@ -601,7 +588,8 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                         <tr key={log.id} className="hover:bg-slate-50/40 transition-colors">
                           <td className="py-2.5 px-3 font-bold text-slate-400 font-mono">{idx + 1}</td>
                           <td className="py-2.5 px-3 font-semibold text-slate-700 font-mono">{log.date}</td>
-                          <td className="py-2.5 px-3 font-bold text-slate-800 font-mono">{log.time}</td>
+                          <td className="py-2.5 px-3 font-bold text-slate-800 font-mono">{log.checkIn}</td>
+                          <td className="py-2.5 px-3 font-bold text-slate-800 font-mono">{log.checkOut}</td>
                           <td className="py-2.5 px-3">
                             <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[9px] font-bold rounded-md border border-blue-100 whitespace-nowrap">{log.type}</span>
                           </td>

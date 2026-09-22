@@ -15,6 +15,12 @@ import {
   ChevronRight,
   Info,
   Mail,
+  MailCheck,
+  Eye,
+  CalendarClock,
+  Heart,
+  Gift,
+  Send,
   Phone,
   Linkedin,
   GraduationCap,
@@ -51,6 +57,11 @@ import { useCatalog } from '../catalog/CatalogContext';
 import { useRecruitment } from '../recruitment/RecruitmentContext';
 import { useCandidates } from '../candidates/CandidateContext';
 import { DataTable, Breadcrumb, StatGrid, Column, StatItem } from './DataTable';
+import { CandidateEmailPanel } from './CandidateEmailPanel';
+import { SkinProvider, useSkin, SkinName } from '../recruitment2/skin';
+import { useEmail, EMAIL_TYPES, EmailType } from '../email/EmailContext';
+import { EmailComposeModal } from './EmailComposeModal';
+import { EmailHistoryModal } from './EmailHistoryModal';
 
 // ==========================================================================
 // TYPES & CONSTANTS - Recruitment / Candidate Management (Module Tuyển dụng)
@@ -663,12 +674,15 @@ const tagColor = (t: string) => {
 };
 
 // Nhãn kiểu form: chữ thường, dấu * đỏ khi bắt buộc (hiển thị cả khi xem)
-const FieldLabel: React.FC<{ label: string; required?: boolean }> = ({ label, required }) => (
-  <label className="block text-[13px] font-medium text-slate-500 mb-1.5">
-    {label}
-    {required && <span className="text-rose-500"> *</span>}
-  </label>
-);
+const FieldLabel: React.FC<{ label: string; required?: boolean }> = ({ label, required }) => {
+  const skin = useSkin();
+  return (
+    <label className={skin.label}>
+      {label}
+      {required && <span className="text-rose-500"> *</span>}
+    </label>
+  );
+};
 
 // Ô chi tiết vừa hiển thị (view) vừa cho sửa inline (edit) tuỳ theo `editing`
 const DetailField: React.FC<{
@@ -728,6 +742,7 @@ const Section: React.FC<{ title: string; icon?: React.ElementType; children: Rea
   defaultOpen = true,
 }) => {
   const [open, setOpen] = useState(defaultOpen);
+  const skin = useSkin();
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
       <button
@@ -735,8 +750,8 @@ const Section: React.FC<{ title: string; icon?: React.ElementType; children: Rea
         onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center justify-between px-5 py-3.5 border-b border-slate-100 hover:bg-slate-50/50 transition-colors cursor-pointer"
       >
-        <h3 className="text-sm font-bold text-[#0fa57c] flex items-center gap-2">
-          {Icon && <Icon size={16} className="text-[#0fa57c]" />}
+        <h3 className={skin.sectionTitle}>
+          {Icon && <Icon size={16} className={skin.sectionIcon} />}
           {title}
         </h3>
         {open ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
@@ -804,13 +819,26 @@ const SkillSelect: React.FC<{
 // MAIN COMPONENT
 // ==========================================================================
 
-export const CandidatePage: React.FC = () => {
+// Icon + màu cho từng loại email (để nhận biết ở cột Actions)
+const EMAIL_ICON: Record<EmailType, React.ElementType> = { interview: CalendarClock, thanks: Heart, offer: Gift, hr: Send };
+const EMAIL_ACTIVE: Record<EmailType, string> = {
+  interview: 'text-sky-500 hover:bg-sky-50',
+  thanks: 'text-violet-500 hover:bg-violet-50',
+  offer: 'text-emerald-500 hover:bg-emerald-50',
+  hr: 'text-amber-500 hover:bg-amber-50',
+};
+
+export const CandidatePage: React.FC<{ skin?: SkinName }> = ({ skin = 'classic' }) => {
   // Yêu cầu tuyển dụng dùng chung (màn "Yêu cầu tuyển dụng")
   const { findRequest } = useRecruitment();
   // Options các trường select lấy từ danh mục dùng chung (màn "Danh mục tuyển dụng")
   const { names } = useCatalog();
   // Danh sách ứng viên dùng chung (để màn Yêu cầu tuyển dụng có thể gán ứng viên)
   const { candidates, setCandidates } = useCandidates();
+  // Gửi email ở màn danh sách
+  const { sentForCandidate } = useEmail();
+  const [emailCompose, setEmailCompose] = useState<{ candidate: Candidate; type: EmailType } | null>(null);
+  const [emailHistoryFor, setEmailHistoryFor] = useState<Candidate | null>(null);
   const sourceOptions = names.source;
   const universityOptions = useMemo(
     () => [{ value: '', label: '-- Chọn trường đại học --' }, ...names.university.map((u) => ({ value: u, label: u }))],
@@ -1381,6 +1409,7 @@ export const CandidatePage: React.FC = () => {
 
   // ==========================================================================
   return (
+    <SkinProvider skin={skin}>
     <div className="bg-transparent min-h-full p-4 sm:p-6">
       <div className="space-y-6 w-full pb-20">
         <AnimatePresence mode="wait">
@@ -1396,7 +1425,7 @@ export const CandidatePage: React.FC = () => {
               transition={{ duration: 0.2 }}
               className="space-y-6"
             >
-              <Breadcrumb items={['Home', 'Recruitment', 'Quản lý ứng viên']} />
+              <Breadcrumb items={skin === 'v2' ? ['Trang chủ', 'Tuyển dụng 2', 'Quản lý ứng viên'] : ['Home', 'Recruitment', 'Quản lý ứng viên']} />
 
               {/* Header + toolbar */}
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
@@ -1542,11 +1571,52 @@ export const CandidatePage: React.FC = () => {
                 columns={candColumns}
                 getRowKey={(c) => c.id}
                 onRowClick={(c) => setSelectedId(c.id)}
-                onView={(c) => setSelectedId(c.id)}
                 searchPlaceholder="Tìm ứng viên... (Enter)"
                 exportFileName="danh-sach-ung-vien"
                 totalLabel={`Tổng: ${candidates.length} ứng viên`}
+                actions={(c) => {
+                  const sent = sentForCandidate(c.id);
+                  return (
+                    <div className="flex items-center justify-center gap-0.5">
+                      <button type="button" onClick={() => setSelectedId(c.id)} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer" title="Xem chi tiết">
+                        <Eye size={16} />
+                      </button>
+                      <span className="w-px h-5 bg-slate-200 mx-0.5" />
+                      {EMAIL_TYPES.map((t) => {
+                        const Icon = EMAIL_ICON[t.type];
+                        const count = sent.filter((m) => m.type === t.type).length;
+                        const done = count > 0;
+                        return (
+                          <button
+                            key={t.type}
+                            type="button"
+                            onClick={() => (done ? setEmailHistoryFor(c) : setEmailCompose({ candidate: c, type: t.type }))}
+                            className={`relative p-1.5 rounded-lg cursor-pointer transition-colors ${done ? EMAIL_ACTIVE[t.type] : 'text-slate-300 hover:bg-slate-100 hover:text-slate-500'}`}
+                            title={done ? `${t.label} — đã gửi ${count}` : `Gửi ${t.label}`}
+                          >
+                            <Icon size={16} />
+                            {done && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border border-white" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                }}
               />
+
+              {/* Popup soạn email / lịch sử email */}
+              <AnimatePresence>
+                {emailCompose && (
+                  <EmailComposeModal
+                    candidate={emailCompose.candidate}
+                    type={emailCompose.type}
+                    onClose={() => setEmailCompose(null)}
+                  />
+                )}
+                {emailHistoryFor && (
+                  <EmailHistoryModal candidate={emailHistoryFor} onClose={() => setEmailHistoryFor(null)} />
+                )}
+              </AnimatePresence>
             </motion.div>
           ) : (
             // ==================================================================
@@ -1873,6 +1943,11 @@ export const CandidatePage: React.FC = () => {
                   </Section>
                 </div>
               </div>
+
+              {/* Gửi email cho ứng viên (chỉ với hồ sơ đã lưu) */}
+              {selectedCandidate && !isCreating && !isEditing && (
+                <CandidateEmailPanel candidate={selectedCandidate} />
+              )}
                 </>
               )}
             </motion.div>
@@ -1974,6 +2049,7 @@ export const CandidatePage: React.FC = () => {
         )}
       </AnimatePresence>
     </div>
+    </SkinProvider>
   );
 };
 

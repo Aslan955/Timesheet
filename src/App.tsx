@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { Layout } from './components/Layout';
 import { LeavesPage } from './components/LeavesPage';
 import { TimesheetPage } from './components/TimesheetPage';
+import { TimesheetApprovalPage } from './components/TimesheetApprovalPage';
 import { LeaveBalancesPage } from './components/LeaveBalancesPage';
 import { SystemConfigurationPage } from './components/SystemConfigurationPage';
 import { DashboardPage } from './components/DashboardPage';
@@ -15,6 +16,12 @@ import { AttendancePage } from './components/AttendancePage';
 import { AttendanceSummaryPage } from './components/AttendanceSummaryPage';
 import { DependentPage } from './components/DependentPage';
 import { ProjectsPage } from './components/ProjectsPage';
+import { ProjectFinancePage } from './components/ProjectFinancePage';
+import { RevenuePlanPage } from './components/RevenuePlanPage';
+import { CompanyOverviewPage } from './components/CompanyOverviewPage';
+import { PayrollApprovalPage } from './components/PayrollApprovalPage';
+import { PayrollListPage } from './components/PayrollListPage';
+import { FinancePlanProvider } from './finance/FinancePlanContext';
 import { OnsiteReportPage } from './components/OnsiteReportPage';
 import { LeaveReportPage } from './components/LeaveReportPage';
 import { CandidatePage } from './components/CandidatePage';
@@ -24,6 +31,8 @@ import { CatalogProvider, CATALOG_DEFS } from './catalog/CatalogContext';
 import { RecruitmentRequestPage } from './components/RecruitmentRequestPage';
 import { RecruitmentProvider } from './recruitment/RecruitmentContext';
 import { CandidateProvider } from './candidates/CandidateContext';
+import { EmailProvider } from './email/EmailContext';
+import { EmailTemplatePage } from './components/EmailTemplatePage';
 
 export default function App() {
   const [activeItem, setActiveItem] = useState('Overview');
@@ -34,16 +43,37 @@ export default function App() {
     if (catalogDef) {
       return <CatalogPage catalogKey={catalogDef.key} />;
     }
+    // Recruitment 2 (skin v2) — cùng bố cục module 1, giao diện style mới
+    if (activeItem.endsWith(' · V2')) {
+      const base = activeItem.slice(0, -' · V2'.length);
+      if (base === 'Quản lý ứng viên') return <CandidatePage skin="v2" />;
+      if (base === 'Yêu cầu tuyển dụng') return <RecruitmentRequestPage skin="v2" />;
+      if (base === 'Mẫu email') return <EmailTemplatePage skin="v2" />;
+      const catV2 = CATALOG_DEFS.find((d) => d.label === base);
+      if (catV2) return <CatalogPage catalogKey={catV2.key} skin="v2" />;
+    }
 
     switch (activeItem) {
       case 'Overview':
         return <DashboardPage onNavigate={setActiveItem} />;
       case 'Projects':
         return <ProjectsPage />;
+      case 'Cập nhật tài chính dự án':
+        return <ProjectFinancePage />;
+      case 'Kế hoạch thu':
+        return <RevenuePlanPage />;
+      case 'Toàn cảnh thu chi':
+        return <CompanyOverviewPage />;
+      case 'Duyệt bảng lương khối':
+        return <PayrollApprovalPage />;
+      case 'Payroll':
+        return <PayrollListPage />;
       case 'Leaves':
         return <LeavesPage />;
       case 'Timesheet':
         return <TimesheetPage />;
+      case 'Duyệt Timesheet':
+        return <TimesheetApprovalPage />;
       case 'Chấm công':
         return <AttendancePage />;
       case 'Tổng hợp công':
@@ -69,6 +99,8 @@ export default function App() {
         return <CandidatePage />;
       case 'Chi tiết ứng viên (Giao diện mới)':
         return <CandidateDetailV2Page />;
+      case 'Mẫu email':
+        return <EmailTemplatePage />;
       default:
         return (
           <div className="flex flex-col items-center justify-center h-full text-gray-500 space-y-4">
@@ -85,9 +117,13 @@ export default function App() {
     <CatalogProvider>
       <RecruitmentProvider>
         <CandidateProvider>
-          <Layout activeItem={activeItem} onSelect={setActiveItem}>
-            {renderContent()}
-          </Layout>
+          <EmailProvider>
+            <FinancePlanProvider>
+              <Layout activeItem={activeItem} onSelect={setActiveItem}>
+                {renderContent()}
+              </Layout>
+            </FinancePlanProvider>
+          </EmailProvider>
         </CandidateProvider>
       </RecruitmentProvider>
     </CatalogProvider>

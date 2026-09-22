@@ -9,6 +9,7 @@ import React, { useMemo, useState } from 'react';
 import { Database, Plus, Pencil, Trash2, Check, X, Search, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useCatalog, CatalogKey, CatalogItem, suggestCode } from '../catalog/CatalogContext';
+import { SkinProvider, SkinName } from '../recruitment2/skin';
 
 interface EditorState {
   mode: 'add' | 'edit';
@@ -19,7 +20,7 @@ interface EditorState {
   codeTouched: boolean;  // đã sửa mã thủ công chưa (để auto-gợi ý mã theo tên)
 }
 
-export const CatalogPage: React.FC<{ catalogKey: CatalogKey }> = ({ catalogKey }) => {
+export const CatalogPage: React.FC<{ catalogKey: CatalogKey; skin?: SkinName }> = ({ catalogKey, skin = 'classic' }) => {
   const { catalogs, getDef, addItem, updateItem, removeItem } = useCatalog();
   const def = getDef(catalogKey);
   const items = catalogs[catalogKey];
@@ -69,6 +70,7 @@ export const CatalogPage: React.FC<{ catalogKey: CatalogKey }> = ({ catalogKey }
   };
 
   return (
+    <SkinProvider skin={skin}>
     <div className="p-6 h-full">
       {/* Tiêu đề */}
       <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
@@ -302,5 +304,6 @@ export const CatalogPage: React.FC<{ catalogKey: CatalogKey }> = ({ catalogKey }
         )}
       </AnimatePresence>
     </div>
+    </SkinProvider>
   );
 };

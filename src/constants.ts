@@ -26,7 +26,8 @@ import {
   BellRing,
   UserPlus,
   IdCard,
-  ListChecks
+  ListChecks,
+  Mail
 } from 'lucide-react';
 
 export interface NavItem {
@@ -43,6 +44,9 @@ export const NAVIGATION: NavItem[] = [
     children: [
       { title: 'Work Order', icon: ClipboardList },
       { title: 'Projects', icon: Briefcase },
+      { title: 'Kế hoạch thu', icon: ClipboardList },
+      { title: 'Cập nhật tài chính dự án', icon: Wallet },
+      { title: 'Toàn cảnh thu chi', icon: PieChart },
       { title: 'Resource Allocation', icon: Users },
       { title: 'Projects Cost Efficiency', icon: BarChart3 },
     ]
@@ -67,6 +71,7 @@ export const NAVIGATION: NavItem[] = [
     children: [
       { title: 'Yêu cầu tuyển dụng', icon: Briefcase },
       { title: 'Quản lý ứng viên', icon: Users },
+      { title: 'Mẫu email', icon: Mail },
       {
         title: 'Danh mục tuyển dụng',
         icon: ListChecks,
@@ -78,6 +83,28 @@ export const NAVIGATION: NavItem[] = [
           { title: 'Khối ứng tuyển', icon: Users2 },
           { title: 'Vị trí', icon: Briefcase },
           { title: 'Kỹ năng', icon: ClipboardList },
+        ],
+      },
+    ]
+  },
+  {
+    title: 'Recruitment 2',
+    icon: IdCard,
+    children: [
+      { title: 'Yêu cầu tuyển dụng · V2', icon: Briefcase },
+      { title: 'Quản lý ứng viên · V2', icon: Users },
+      { title: 'Mẫu email · V2', icon: Mail },
+      {
+        title: 'Danh mục tuyển dụng · V2',
+        icon: ListChecks,
+        children: [
+          { title: 'Nguồn ứng viên · V2', icon: Award },
+          { title: 'Trường đại học · V2', icon: Building },
+          { title: 'Chuyên ngành · V2', icon: Layers },
+          { title: 'Level ứng tuyển · V2', icon: Hash },
+          { title: 'Khối ứng tuyển · V2', icon: Users2 },
+          { title: 'Vị trí · V2', icon: Briefcase },
+          { title: 'Kỹ năng · V2', icon: ClipboardList },
         ],
       },
     ]
@@ -96,6 +123,7 @@ export const NAVIGATION: NavItem[] = [
       { title: 'Overview', icon: BarChart3 },
       { title: 'Quản lý Đơn từ', icon: Inbox },
       { title: 'Timesheet', icon: Calendar },
+      { title: 'Duyệt Timesheet', icon: UserCheck },
       { title: 'Chấm công', icon: Clock },
       { title: 'Tổng hợp công', icon: FileText },
       { title: 'Overtime', icon: Clock },
@@ -111,6 +139,7 @@ export const NAVIGATION: NavItem[] = [
     children: [
       { title: 'Time Attendance', icon: Clock },
       { title: 'Payroll', icon: Wallet },
+      { title: 'Duyệt bảng lương khối', icon: UserCheck },
       { title: 'Báo cáo Onsite', icon: ClipboardList },
       { title: 'PayAdjustment', icon: Settings },
       { title: 'Bonus', icon: MessageSquare },

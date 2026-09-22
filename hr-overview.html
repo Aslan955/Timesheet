@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HR Overview — Portal IMIS</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root { --accent: #0fa57c; }
+    body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background: #f1f5f9; }
+    .font-mono { font-variant-numeric: tabular-nums; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+    .shadow-xs { box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04); }
+  </style>
+</head>
+<body class="min-h-screen text-slate-800">
+
+  <!-- App shell: sidebar + main -->
+  <div class="flex min-h-screen">
+
+    <!-- Sidebar -->
+    <aside class="hidden lg:flex w-64 shrink-0 flex-col bg-[#0f172a] text-slate-300">
+      <div class="p-4 flex items-center gap-3 border-b border-white/5">
+        <div class="w-11 h-11 rounded-xl bg-[#0fa57c] text-white font-black flex items-center justify-center text-sm">VTX</div>
+        <div>
+          <div class="flex items-center gap-1.5">
+            <span class="text-white font-black text-sm">VTX Group</span>
+            <span class="text-[8px] font-black bg-white/10 px-1 py-0.5 rounded text-slate-300">IMIS</span>
+          </div>
+          <p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Portal System</p>
+        </div>
+      </div>
+      <div class="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center justify-between">
+        Navigation Center <span class="w-1.5 h-1.5 rounded-full bg-[#0fa57c]"></span>
+      </div>
+      <nav class="px-3 space-y-1 text-sm font-bold">
+        <div class="px-3 py-2.5 rounded-lg flex items-center justify-between text-slate-400 hover:bg-white/5 cursor-pointer">Project Management <span>›</span></div>
+        <div class="px-3 py-2.5 rounded-lg bg-[#0fa57c]/10 text-[#0fa57c] flex items-center justify-between cursor-pointer">Human Resources <span>⌄</span></div>
+        <div class="ml-2 pl-3 border-l border-white/5 space-y-0.5 text-[13px]">
+          <div class="px-3 py-2 rounded-lg bg-[#0fa57c] text-white font-bold cursor-pointer">Overview</div>
+          <div class="px-3 py-2 rounded-lg text-slate-400 hover:bg-white/5 cursor-pointer">Employees</div>
+          <div class="px-3 py-2 rounded-lg text-slate-400 hover:bg-white/5 cursor-pointer">Contracts</div>
+          <div class="px-3 py-2 rounded-lg text-slate-400 hover:bg-white/5 cursor-pointer">Salary History</div>
+          <div class="px-3 py-2 rounded-lg text-slate-400 hover:bg-white/5 cursor-pointer">Onboarding Request</div>
+          <div class="px-3 py-2 rounded-lg text-slate-400 hover:bg-white/5 cursor-pointer">Certificate Management</div>
+        </div>
+        <div class="px-3 py-2.5 rounded-lg flex items-center justify-between text-slate-400 hover:bg-white/5 cursor-pointer">Recruitment <span>›</span></div>
+        <div class="px-3 py-2.5 rounded-lg flex items-center justify-between text-slate-400 hover:bg-white/5 cursor-pointer">Timekeeping <span>›</span></div>
+      </nav>
+      <div class="mt-auto p-4 flex items-center gap-3 border-t border-white/5">
+        <div class="w-9 h-9 rounded-full bg-[#0fa57c] text-white font-black flex items-center justify-center text-xs">NA</div>
+        <div class="min-w-0">
+          <p class="text-xs font-bold text-white truncate">Nguyễn Văn An</p>
+          <p class="text-[10px] text-slate-500 truncate">an.nv@fwork.vn</p>
+        </div>
+        <span class="ml-auto text-[8px] font-black bg-[#0fa57c]/20 text-[#0fa57c] px-1.5 py-0.5 rounded">NHÂN SỰ</span>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="flex-1 min-w-0 flex flex-col">
+      <!-- Topbar -->
+      <header class="h-12 bg-white border-b border-slate-200 flex items-center justify-between px-4 sticky top-0 z-20 shadow-sm">
+        <button class="p-2 hover:bg-slate-100 rounded-md text-slate-600">☰</button>
+        <div class="flex items-center gap-4">
+          <button class="relative p-2 hover:bg-slate-100 rounded-md text-slate-600">
+            🔔<span class="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 rounded-full"></span>
+          </button>
+          <div class="flex items-center gap-2 pl-4 border-l border-slate-200">
+            <span class="text-sm font-medium text-slate-700">admin</span>
+            <div class="w-8 h-8 rounded-md bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-black">AD</div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Content -->
+      <main class="p-6 space-y-6 flex-1">
+
+        <!-- Header row -->
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-2 border-b border-slate-200/60">
+          <div>
+            <div class="flex items-center gap-3">
+              <h1 class="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">Dashboard Portal IMIS</h1>
+              <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-[#0fa57c]/10 text-[#0fa57c] border border-[#0fa57c]/20 uppercase">Fwork Enterprise</span>
+            </div>
+            <p class="text-xs font-semibold text-slate-400 mt-0.5">Hệ thống quản trị thông tin nhân sự và vận hành Fwork</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-3">
+            <div class="px-3.5 py-1.5 bg-white border border-slate-200/80 rounded-full shadow-xs flex items-center gap-2 text-xs font-bold text-slate-600 font-mono">
+              <span class="text-[#0fa57c]">🕑</span><span id="clock">—</span>
+            </div>
+            <div class="bg-slate-100 p-1 rounded-xl flex items-center gap-1 border border-slate-200/60">
+              <button class="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-white text-[#0fa57c] shadow-xs flex items-center gap-1.5">👤 Trang cá nhân</button>
+              <button class="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1.5">🗂 Quản lý &amp; Phê duyệt <span class="w-2 h-2 rounded-full bg-rose-500"></span></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stat cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          <!-- Phép cá nhân -->
+          <div class="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-xs hover:shadow-md hover:border-[#0fa57c]/50 transition-all cursor-pointer">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Phép cá nhân (2026)</span>
+              <div class="p-2.5 rounded-xl bg-emerald-50 text-[#0fa57c]">👛</div>
+            </div>
+            <div class="flex items-baseline gap-1.5">
+              <span class="text-2xl font-black text-slate-800 font-mono">15.5</span>
+              <span class="text-xs font-bold text-slate-400">/ 18 ngày</span>
+            </div>
+            <div class="w-full bg-slate-100 rounded-full h-1.5 mt-2.5 overflow-hidden"><div class="bg-[#0fa57c] h-full rounded-full" style="width:86%"></div></div>
+            <p class="text-[10px] font-bold text-slate-400 mt-2 flex items-center justify-between"><span>Đã dùng: 7.5d</span><span class="text-[#0fa57c]">Xem chi tiết →</span></p>
+          </div>
+          <!-- Chấm công -->
+          <div class="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-xs hover:shadow-md hover:border-[#0fa57c]/50 transition-all cursor-pointer">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Chấm công tháng 5</span>
+              <div class="p-2.5 rounded-xl bg-blue-50 text-blue-600">🕐</div>
+            </div>
+            <div class="flex items-baseline gap-1.5">
+              <span class="text-2xl font-black text-slate-800 font-mono">21.0</span>
+              <span class="text-xs font-bold text-slate-400">/ 22 công</span>
+            </div>
+            <div class="w-full bg-slate-100 rounded-full h-1.5 mt-2.5 overflow-hidden"><div class="bg-blue-600 h-full rounded-full" style="width:95%"></div></div>
+            <p class="text-[10px] font-bold text-slate-400 mt-2 flex items-center justify-between"><span class="text-emerald-600">Đúng giờ: 21d</span><span>Trễ: 0</span></p>
+          </div>
+          <!-- Timesheet cần duyệt -->
+          <div class="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-xs hover:shadow-md hover:border-[#0fa57c]/50 transition-all cursor-pointer">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Timesheet cần duyệt</span>
+              <div class="p-2.5 rounded-xl bg-purple-50 text-purple-600">📄</div>
+            </div>
+            <div class="flex items-baseline gap-1.5">
+              <span class="text-2xl font-black text-slate-800 font-mono">0</span>
+              <span class="text-xs font-bold text-slate-400">bảng công</span>
+            </div>
+            <div class="w-full bg-slate-100 rounded-full h-1.5 mt-2.5 overflow-hidden"><div class="bg-purple-600 h-full rounded-full" style="width:0%"></div></div>
+            <p class="text-[10px] font-bold text-purple-600 mt-2">Đã duyệt hết ✅</p>
+          </div>
+          <!-- Đơn từ đang chờ -->
+          <div class="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-xs hover:shadow-md hover:border-[#0fa57c]/50 transition-all cursor-pointer">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Đơn từ đang chờ</span>
+              <div class="p-2.5 rounded-xl bg-amber-50 text-amber-600">📥</div>
+            </div>
+            <div class="flex items-baseline gap-1.5">
+              <span class="text-2xl font-black text-slate-800 font-mono">1</span>
+              <span class="text-xs font-bold text-slate-400">yêu cầu</span>
+            </div>
+            <div class="w-full bg-slate-100 rounded-full h-1.5 mt-2.5 overflow-hidden"><div class="bg-amber-500 h-full rounded-full" style="width:50%"></div></div>
+            <p class="text-[10px] font-bold text-amber-600 mt-2">Nghỉ phép năm (1 ngày)</p>
+          </div>
+        </div>
+
+        <!-- Split grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+          <!-- Left column -->
+          <div class="lg:col-span-7 space-y-6">
+
+            <!-- Đơn Từ & Yêu Cầu -->
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
+              <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+                <div class="flex items-center gap-2">
+                  <div class="p-2 bg-emerald-50 text-[#0fa57c] rounded-xl">📄</div>
+                  <div>
+                    <h3 class="text-sm font-bold text-slate-800">Đơn Từ &amp; Yêu Cầu Của Tôi</h3>
+                    <p class="text-[10px] text-slate-400 font-semibold uppercase">Phân loại theo module: Onsite / Leaves / OT</p>
+                  </div>
+                </div>
+                <button class="text-xs font-bold text-[#0fa57c] hover:underline flex items-center gap-1">Xem tất cả ›</button>
+              </div>
+
+              <!-- Module filter chips -->
+              <div class="flex items-center flex-wrap gap-1.5 mb-3" id="chips">
+                <button data-mod="all"    class="chip px-2.5 py-1 text-[10px] font-bold rounded-lg border bg-[#0fa57c] text-white border-[#0fa57c]">Tất cả (8)</button>
+                <button data-mod="Onsite" class="chip px-2.5 py-1 text-[10px] font-bold rounded-lg border bg-white text-slate-500 border-slate-200">Onsite (2)</button>
+                <button data-mod="Leaves" class="chip px-2.5 py-1 text-[10px] font-bold rounded-lg border bg-white text-slate-500 border-slate-200">Leaves (4)</button>
+                <button data-mod="OT"     class="chip px-2.5 py-1 text-[10px] font-bold rounded-lg border bg-white text-slate-500 border-slate-200">OT (2)</button>
+              </div>
+
+              <!-- Fixed 6-row frame -->
+              <div class="overflow-x-auto overflow-y-auto" style="height:551px">
+                <table class="w-full text-left text-xs" style="table-layout:fixed">
+                  <colgroup><col style="width:80px"><col><col style="width:180px"><col style="width:70px"><col style="width:100px"></colgroup>
+                  <thead class="sticky top-0 z-10">
+                    <tr class="border-b border-slate-100 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider bg-slate-50">
+                      <th class="py-2.5 px-3">Module</th><th class="py-2.5 px-3">Loại đơn</th><th class="py-2.5 px-3">Thời gian</th><th class="py-2.5 px-3 text-center">Số giờ</th><th class="py-2.5 px-3 text-center">Trạng thái</th>
+                    </tr>
+                  </thead>
+                  <tbody id="reqBody" class="divide-y divide-slate-100"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Lịch sử điểm danh -->
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
+              <div class="flex items-center justify-between pb-2 border-b border-slate-100 mb-4">
+                <div class="flex items-center gap-2">
+                  <div class="p-2 bg-blue-50 text-blue-600 rounded-xl">🕐</div>
+                  <div>
+                    <h3 class="text-sm font-bold text-slate-800">Lịch sử điểm danh</h3>
+                    <p class="text-[10px] text-slate-400 font-semibold uppercase">Giờ chấm công gần đây</p>
+                  </div>
+                </div>
+                <button class="text-xs font-bold text-[#0fa57c] hover:underline flex items-center gap-1">Xem tất cả ›</button>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                  <thead>
+                    <tr class="border-b border-slate-100 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider bg-slate-50/50">
+                      <th class="py-2.5 px-3 w-10">STT</th><th class="py-2.5 px-3">Ngày</th><th class="py-2.5 px-3">Thời gian</th><th class="py-2.5 px-3">Loại điểm danh</th>
+                    </tr>
+                  </thead>
+                  <tbody id="attBody" class="divide-y divide-slate-50"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right column -->
+          <div class="lg:col-span-5 space-y-6">
+
+            <!-- Sinh nhật -->
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
+              <div class="flex items-center justify-between pb-2 border-b border-slate-100 mb-4">
+                <div class="flex items-center gap-2">
+                  <div class="p-2 bg-rose-50 text-rose-500 rounded-xl">🎁</div>
+                  <div>
+                    <h3 class="text-sm font-bold text-slate-800">Sinh Nhật Đồng Nghiệp</h3>
+                    <p class="text-[10px] text-slate-400 font-semibold uppercase">Tháng 5/2026</p>
+                  </div>
+                </div>
+                <button class="relative p-2 hover:bg-slate-100 rounded-xl text-slate-500">🔔</button>
+              </div>
+              <div class="space-y-3" id="bdayList"></div>
+            </div>
+
+            <!-- Thông báo nội bộ -->
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
+              <div class="flex items-center justify-between pb-2 border-b border-slate-100 mb-3">
+                <div class="flex items-center gap-2">
+                  <div class="p-2 bg-amber-50 text-amber-600 rounded-xl">🔔</div>
+                  <div>
+                    <h3 class="text-sm font-bold text-slate-800">Thông Báo Nội Bộ</h3>
+                    <p class="text-[10px] text-slate-400 font-semibold uppercase">Lịch nghỉ &amp; Quy định Fwork</p>
+                  </div>
+                </div>
+              </div>
+              <div class="space-y-3">
+                <div class="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <span class="text-[9px] font-bold text-emerald-600 uppercase">Lịch nghỉ lễ sắp tới</span>
+                  <h4 class="text-xs font-bold text-slate-800 mt-0.5">Nghỉ Lễ Quốc Khánh 02/09/2026</h4>
+                  <p class="text-[10px] text-slate-500 mt-1">Toàn thể CBNV được nghỉ 02 ngày (02/09 và 03/09). Vui lòng đăng ký Timesheet đúng hạn trước khi nghỉ lễ.</p>
+                </div>
+                <div class="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <span class="text-[9px] font-bold text-blue-600 uppercase">Khảo sát HR</span>
+                  <h4 class="text-xs font-bold text-slate-800 mt-0.5">Khảo sát môi trường làm việc Quý 2</h4>
+                  <p class="text-[10px] text-slate-500 mt-1">HR kính mời CBNV tham gia đánh giá mức độ hài lòng về đãi ngộ &amp; hạ tầng công nghệ.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    // ---- Data ----
+    const MODULE_META = {
+      Onsite: 'bg-blue-50 text-blue-600 border-blue-100',
+      Leaves: 'bg-emerald-50 text-emerald-600 border-emerald-100',
+      OT: 'bg-purple-50 text-purple-600 border-purple-100'
+    };
+    const STATUS = {
+      Requested: '<span class="px-2.5 py-0.5 bg-amber-50 text-amber-600 text-[9px] font-bold rounded-full border border-amber-100 whitespace-nowrap">Chờ duyệt</span>',
+      Approved:  '<span class="px-2.5 py-0.5 bg-emerald-50 text-emerald-600 text-[9px] font-bold rounded-full border border-emerald-100 whitespace-nowrap">Đã duyệt</span>',
+      Rejected:  '<span class="px-2.5 py-0.5 bg-rose-50 text-rose-500 text-[9px] font-bold rounded-full border border-rose-100 whitespace-nowrap">Từ chối</span>'
+    };
+    const requests = [
+      { module:'Leaves', type:'Annual leave',      createdAt:'13/04/2026', period:'26/03/2026 - 26/03/2026', hours:7.5,  status:'Requested' },
+      { module:'Leaves', type:'Maternity Leave',   createdAt:'17/04/2026', period:'17/04/2026 - 22/04/2026', hours:27.2, status:'Requested' },
+      { module:'Leaves', type:'Wedding leave',     createdAt:'17/04/2026', period:'17/04/2026 - 17/04/2026', hours:8,    status:'Requested' },
+      { module:'Leaves', type:'Annual leave',      createdAt:'13/04/2026', period:'26/03/2026 - 26/03/2026', hours:7.5,  status:'Requested' },
+      { module:'Onsite', type:'Đăng ký Onsite khách hàng', createdAt:'05/09/2026', period:'10/09/2026 - 12/09/2026', hours:24, status:'Requested' },
+      { module:'Onsite', type:'Onsite trung tâm dữ liệu',  createdAt:'28/08/2026', period:'01/09/2026 - 01/09/2026', hours:8,  status:'Approved' },
+      { module:'OT',     type:'Làm thêm giờ dự án',        createdAt:'03/09/2026', period:'03/09/2026 18:00 - 21:00', hours:3, status:'Approved' },
+      { module:'OT',     type:'Trực hệ thống cuối tuần',   createdAt:'30/08/2026', period:'31/08/2026 08:00 - 12:00', hours:4, status:'Requested' }
+    ];
+    const attendance = [
+      { date:'21/05/2026', time:'08:10:46' }, { date:'20/05/2026', time:'17:08:30' },
+      { date:'20/05/2026', time:'09:37:06' }, { date:'19/05/2026', time:'17:12:20' },
+      { date:'19/05/2026', time:'08:08:15' }, { date:'18/05/2026', time:'17:19:02' }
+    ];
+    const birthdays = [
+      { name:'Bùi Thu Hiền', role:'Merchandise', date:'Hôm nay', today:true, c:'#e67e22', bg:'#ffeedd' },
+      { name:'Nguyễn Khắc Hiển', role:'MB Infrastructure', date:'Hôm nay', today:true, c:'#0d47a1', bg:'#e3f2fd' },
+      { name:'Ánh Dương', role:'SEO Specialist', date:'03/07', today:false, c:'#fff', bg:'#0fa57c' },
+      { name:'Nguyễn Văn Nam', role:'Marketing Manager', date:'18/06', today:false, c:'#fff', bg:'#4f46e5' }
+    ];
+
+    const initials = n => n.trim().split(/\s+/).slice(-2).map(w=>w[0]).join('').toUpperCase();
+
+    // ---- Render requests with module filter ----
+    let activeMod = 'all';
+    function renderRequests() {
+      const rows = requests.filter(r => activeMod === 'all' || r.module === activeMod);
+      const VISIBLE = 6;
+      const fillers = Math.max(0, VISIBLE - rows.length);
+      let html = rows.map(r => `
+        <tr class="hover:bg-slate-50/40 transition-colors align-middle" style="height:84px">
+          <td class="px-3"><span class="px-2 py-0.5 text-[9px] font-bold rounded-md border ${MODULE_META[r.module]}">${r.module}</span></td>
+          <td class="px-3"><span class="font-bold text-slate-800 block truncate">${r.type}</span><span class="block text-[10px] text-slate-400 font-medium">Tạo ngày ${r.createdAt}</span></td>
+          <td class="px-3 font-medium text-slate-600 whitespace-nowrap">${r.period}</td>
+          <td class="px-3 text-center font-bold text-slate-800 font-mono">${r.hours}h</td>
+          <td class="px-3 text-center">${STATUS[r.status]}</td>
+        </tr>`).join('');
+      if (rows.length === 0) html += `<tr style="height:84px"><td colspan="5" class="px-3 text-center text-slate-300 font-semibold text-[11px]">Không có đơn từ nào thuộc module này.</td></tr>`;
+      for (let i = rows.length === 0 ? 1 : 0; i < fillers; i++) html += `<tr style="height:84px"><td class="px-3" colspan="5"></td></tr>`;
+      document.getElementById('reqBody').innerHTML = html;
+    }
+    document.getElementById('chips').addEventListener('click', e => {
+      const btn = e.target.closest('.chip'); if (!btn) return;
+      activeMod = btn.dataset.mod;
+      document.querySelectorAll('.chip').forEach(c => {
+        const on = c.dataset.mod === activeMod;
+        c.className = `chip px-2.5 py-1 text-[10px] font-bold rounded-lg border ${on ? 'bg-[#0fa57c] text-white border-[#0fa57c]' : 'bg-white text-slate-500 border-slate-200'}`;
+      });
+      renderRequests();
+    });
+
+    // ---- Render attendance ----
+    document.getElementById('attBody').innerHTML = attendance.map((a, i) => `
+      <tr class="hover:bg-slate-50/40 transition-colors">
+        <td class="py-2.5 px-3 font-bold text-slate-400 font-mono">${i+1}</td>
+        <td class="py-2.5 px-3 font-semibold text-slate-700 font-mono">${a.date}</td>
+        <td class="py-2.5 px-3 font-bold text-slate-800 font-mono">${a.time}</td>
+        <td class="py-2.5 px-3"><span class="px-2 py-0.5 bg-blue-50 text-blue-600 text-[9px] font-bold rounded-md border border-blue-100 whitespace-nowrap">Máy chấm công</span></td>
+      </tr>`).join('');
+
+    // ---- Render birthdays ----
+    document.getElementById('bdayList').innerHTML = birthdays.map(p => `
+      <div class="p-2.5 rounded-xl border flex items-center justify-between ${p.today ? 'bg-rose-50/50 border-rose-100' : 'bg-slate-50/40 border-slate-100'}">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-black" style="background:${p.bg};color:${p.c}">${initials(p.name)}</div>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-xs font-bold text-slate-800">${p.name}</span>
+              ${p.today ? '<span class="px-1.5 py-0.5 bg-rose-100 text-rose-600 text-[9px] font-black uppercase tracking-wider rounded">Hôm nay</span>' : ''}
+            </div>
+            <p class="text-[10px] text-slate-400 font-semibold">${p.role} • <span class="font-bold text-slate-600">${p.date}</span></p>
+          </div>
+        </div>
+        <button class="px-3 py-1 text-[10px] font-bold rounded-lg bg-rose-500 hover:bg-rose-600 text-white">Chúc</button>
+      </div>`).join('');
+
+    // ---- Live clock ----
+    const WD = ['Chủ nhật','Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7'];
+    const p2 = n => String(n).padStart(2,'0');
+    function tick(){ const d=new Date(); document.getElementById('clock').textContent =
+      `${WD[d.getDay()]}, ${p2(d.getDate())}/${p2(d.getMonth()+1)}/${d.getFullYear()} - ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`; }
+    tick(); setInterval(tick, 1000);
+
+    renderRequests();
+  </script>
+</body>
+</html>

@@ -289,26 +289,23 @@ export const RequestTabContent: React.FC<{
                 key={i}
                 className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 bg-white border border-slate-100 rounded-2xl hover:border-[#0fa57c]/30 transition-colors"
               >
-                <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
-                  <Frame size={22} className="text-slate-300" />
+                <div className="w-11 h-11 rounded-full bg-[#0fa57c]/10 text-[#0fa57c] flex items-center justify-center shrink-0 text-base font-black">
+                  {i + 1}
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-[#0fa57c]">
-                    Request [{i + 1}] [{req?.position || 'Undefined'}]
+                  <p className="text-sm font-bold text-[#0fa57c] flex items-center gap-1.5">
+                    {a.requestId} - {req?.block || '—'}
+                    <CopyButton value={a.requestId} />
                   </p>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 text-xs text-slate-500 font-medium">
                     <span className="flex items-center gap-1">
                       <Layers size={12} className="text-slate-400" />
-                      {req?.block || '—'}
+                      {req?.position || '—'}
                     </span>
                     <span className="flex items-center gap-1">
                       <Star size={12} className="text-slate-400" />
                       {req?.level || '—'}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      ID: {a.requestId}
-                      <CopyButton value={a.requestId} />
                     </span>
                   </div>
                 </div>
