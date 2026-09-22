@@ -92,7 +92,7 @@ const SidebarItem: React.FC<{
             isActive ? THEME.itemIconActive : containsActive ? THEME.itemIconActive : THEME.itemIcon
           }`} 
         />
-        <span className="flex-1 truncate">{item.title}</span>
+        <span className="flex-1 truncate">{item.label ?? item.title}</span>
         {hasChildren && (
           <span className={`${THEME.itemTextMuted} ml-1.5 shrink-0`}>
             <ChevronDown 

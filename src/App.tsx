@@ -58,9 +58,9 @@ export default function App() {
         return <DashboardPage onNavigate={setActiveItem} />;
       case 'Projects':
         return <ProjectsPage />;
-      case 'Cập nhật tài chính dự án':
+      case 'Thông tin tài chính dự án':
         return <ProjectFinancePage />;
-      case 'Kế hoạch thu':
+      case 'Kế hoạch thu chi':
         return <RevenuePlanPage />;
       case 'Toàn cảnh thu chi':
         return <CompanyOverviewPage />;

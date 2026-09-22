@@ -285,10 +285,10 @@ export const ProjectFinancePage: React.FC = () => {
           <ChevronRight size={12} className="text-slate-300" />
           <span>Quản lý dự án</span>
           <ChevronRight size={12} className="text-slate-300" />
-          <span className="text-slate-900 font-bold">Cập nhật tài chính</span>
+          <span className="text-slate-900 font-bold">Thông tin tài chính</span>
         </div>
         <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2.5">
-          <span>Cập Nhật Tài Chính Dự Án</span>
+          <span>Thông Tin Tài Chính Dự Án</span>
           <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-50 text-blue-600 border border-blue-200">
             Form View · Năm {YEAR}
           </span>

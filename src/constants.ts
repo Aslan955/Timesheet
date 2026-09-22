@@ -32,6 +32,7 @@ import {
 
 export interface NavItem {
   title: string;
+  label?: string; // nhãn hiển thị trên sidebar (nếu khác title dùng để định tuyến)
   icon: any;
   path?: string;
   children?: NavItem[];
@@ -44,9 +45,9 @@ export const NAVIGATION: NavItem[] = [
     children: [
       { title: 'Work Order', icon: ClipboardList },
       { title: 'Projects', icon: Briefcase },
-      { title: 'Kế hoạch thu', icon: ClipboardList },
-      { title: 'Cập nhật tài chính dự án', icon: Wallet },
-      { title: 'Toàn cảnh thu chi', icon: PieChart },
+      { title: 'Kế hoạch thu chi', icon: ClipboardList },
+      { title: 'Thông tin tài chính dự án', icon: Wallet },
+      { title: 'Toàn cảnh thu chi', label: 'Overview', icon: PieChart },
       { title: 'Resource Allocation', icon: Users },
       { title: 'Projects Cost Efficiency', icon: BarChart3 },
     ]
