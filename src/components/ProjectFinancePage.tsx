@@ -24,9 +24,13 @@ import {
   CheckCircle2,
   Layers,
   BarChart3,
+  Eye,
+  X,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFinancePlans } from '../finance/FinancePlanContext';
+import { setOverheadFocusKhoi } from '../finance/overheadDetail';
 
 const YEAR = 2026;
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
@@ -96,11 +100,9 @@ const INITIAL_OVERHEAD: Record<string, number[]> = KHOI_LIST.reduce((acc, k) => 
 }, {} as Record<string, number[]>);
 
 type Basis = 'revenue' | 'cost' | 'count' | 'headcount';
-const BASIS_LABEL: Record<Basis, string> = {
-  revenue: 'Theo doanh thu thực tế',
+// Chỉ dùng 1 tiêu thức phân bổ: theo chi phí thực tế.
+const BASIS_LABEL: Partial<Record<Basis, string>> = {
   cost: 'Theo chi phí thực tế',
-  count: 'Chia đều theo số dự án',
-  headcount: 'Theo nhân sự (headcount)',
 };
 
 // ==========================================================================
@@ -120,11 +122,11 @@ const ALL_PROJECTS = '__ALL__';
 // ==========================================================================
 // Component
 // ==========================================================================
-export const ProjectFinancePage: React.FC = () => {
+export const ProjectFinancePage: React.FC<{ onNavigate?: (item: string) => void }> = ({ onNavigate }) => {
   const [finance, setFinance] = useState<Record<string, Finance>>(INITIAL_FINANCE);
   const [overhead, setOverhead] = useState<Record<string, number[]>>(INITIAL_OVERHEAD);
   const [basisByKhoi, setBasisByKhoi] = useState<Record<string, Basis>>(
-    KHOI_LIST.reduce((a, k) => ((a[k] = 'revenue'), a), {} as Record<string, Basis>),
+    KHOI_LIST.reduce((a, k) => ((a[k] = 'cost'), a), {} as Record<string, Basis>),
   );
 
   const [tab, setTab] = useState<Tab>('revenue');
@@ -377,6 +379,7 @@ export const ProjectFinancePage: React.FC = () => {
           setOverheadCell={setOverheadCell}
           setBasis={(b) => setBasisByKhoi((prev) => ({ ...prev, [khoi]: b }))}
           onSave={() => showToast('💾 Đã lưu & phân bổ chi phí vận hành khối.')}
+          onOpenDetail={() => { setOverheadFocusKhoi(khoi); onNavigate?.('Chi phí vận hành chi tiết'); }}
         />
       )}
       {tab === 'cashflow' && (
@@ -597,43 +600,31 @@ const OverheadForm: React.FC<{
   setOverheadCell: (i: number, v: number) => void;
   setBasis: (b: Basis) => void;
   onSave: () => void;
-}> = ({ khoi, projects, overhead, basis, allocation, setOverheadCell, setBasis, onSave }) => {
-  const totalOverhead = sum(overhead);
+  onOpenDetail?: () => void;
+}> = ({ khoi, projects, overhead, allocation, setOverheadCell, onSave, onOpenDetail }) => {
   return (
     <>
-      <div className="bg-white px-4 py-3 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3 flex-wrap">
-        <span className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-          <Layers size={12} /> Tiêu thức phân bổ về dự án
-        </span>
-        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
-          {(Object.keys(BASIS_LABEL) as Basis[]).map((b) => (
-            <button
-              key={b}
-              onClick={() => setBasis(b)}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                basis === b ? 'bg-white text-[#0fa57c] shadow-xs' : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              {BASIS_LABEL[b]}
-            </button>
-          ))}
-        </div>
-        <span className="ml-auto text-xs font-bold text-slate-600">
-          Tổng CP vận hành <span className="text-[#0fa57c]">{khoi}</span>: <span className="font-mono">{fmt(totalOverhead)}</span> triệu/năm
-        </span>
-      </div>
-
       <GridShell
         title={`Chi phí vận hành chung — Khối ${khoi}`}
-        subtitle={`Nhập tổng chi phí chung theo tháng; hệ thống tự phân bổ về ${projects.length} dự án theo tiêu thức đã chọn.`}
+        subtitle={`Nhập tổng chi phí chung theo tháng; hệ thống tự phân bổ về ${projects.length} dự án theo chi phí thực tế.`}
         onSave={onSave}
         legend={
           <span className="flex items-center gap-1.5">
-            <Info size={12} className="text-blue-500" /> {BASIS_LABEL[basis]}. Tổng các dòng phân bổ mỗi tháng luôn bằng chi phí vận hành khối tháng đó.
+            <Info size={12} className="text-blue-500" /> Phân bổ theo chi phí thực tế. Tổng các dòng phân bổ mỗi tháng luôn bằng chi phí vận hành khối tháng đó.
           </span>
         }
       >
-        <EditRow label={`Σ Chi phí vận hành khối ${khoi}`} values={overhead} onChange={setOverheadCell} tone="out" />
+        <EditRow
+          label={
+            <button onClick={() => onOpenDetail?.()} className="inline-flex items-center gap-1.5 text-slate-700 hover:text-blue-600 cursor-pointer" title="Xem chi tiết chi phí vận hành khối">
+              <span>Σ Chi phí vận hành khối {khoi}</span>
+              <Eye size={13} className="text-blue-500" />
+            </button>
+          }
+          values={overhead}
+          onChange={setOverheadCell}
+          tone="out"
+        />
         <tr>
           <td colSpan={14} className="px-4 py-2 bg-slate-100/70 text-[10px] font-black text-slate-400 uppercase tracking-wider sticky left-0">
             ↳ Phân bổ về dự án

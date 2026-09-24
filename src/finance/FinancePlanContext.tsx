@@ -27,15 +27,22 @@ export interface PlanHistory {
   note?: string;
 }
 
-/** Một dự án trong kế hoạch của khối — gồm các dòng dự kiến theo tháng. */
+/**
+ * Một dự án trong kế hoạch của khối. Mỗi chỉ tiêu theo tháng tách 2 phần:
+ * mảng gốc = Sản xuất (SX), mảng *Kd = Kinh doanh (KD). Tổng = SX + KD.
+ */
 export interface ProjectPlan {
   projectCode: string;
   projectName: string;
-  workload?: number; // Khối lượng công việc (KLCV) — tổng năm (= tổng workloadMonthly)
-  plannedRevenue?: number[]; // Doanh thu dự kiến (nghiệm thu) 12 tháng
-  revenue: number[]; // Thu dự kiến (dòng tiền thu) 12 tháng
-  expense: number[]; // Chi dự kiến 12 tháng
-  workloadMonthly?: number[]; // Khối lượng công việc theo từng tháng
+  workload?: number; // Khối lượng công việc (KLCV) — tổng năm
+  plannedRevenue?: number[]; // Doanh thu dự kiến (SX) 12 tháng
+  plannedRevenueKd?: number[]; // Doanh thu dự kiến (KD)
+  revenue: number[]; // Thu dự kiến (SX)
+  revenueKd?: number[]; // Thu dự kiến (KD)
+  expense: number[]; // Chi dự kiến (SX)
+  expenseKd?: number[]; // Chi dự kiến (KD)
+  workloadMonthly?: number[]; // KLCV (SX) theo tháng
+  workloadKd?: number[]; // KLCV (KD) theo tháng
 }
 
 export interface BlockPlan {
@@ -93,15 +100,19 @@ const proj = (
     if (rem > 0) { v += 1; rem -= 1; }
     return v;
   });
+  // Tách mỗi chỉ tiêu tháng thành SX (60%) và KD (40%); tổng = giá trị gốc.
+  const sxOf = (arr: number[]) => arr.map((v) => Math.round(v * 0.6));
+  const kdOf = (arr: number[]) => arr.map((v) => v - Math.round(v * 0.6));
+  const revArr = MONTHS12.map((m) => (skip.includes(m) ? 0 : revBase));
+  const expArr = MONTHS12.map((m) => (skip.includes(m) ? 0 : expBase));
   return {
     projectCode,
     projectName,
     workload: 100,
-    // Doanh thu dự kiến (nghiệm thu) — mặc định bằng thu dự kiến để giữ liên kết PAKD.
-    plannedRevenue: MONTHS12.map((m) => (skip.includes(m) ? 0 : revBase)),
-    revenue: MONTHS12.map((m) => (skip.includes(m) ? 0 : revBase)),
-    expense: MONTHS12.map((m) => (skip.includes(m) ? 0 : expBase)),
-    workloadMonthly, // %
+    plannedRevenue: sxOf(revArr), plannedRevenueKd: kdOf(revArr),
+    revenue: sxOf(revArr), revenueKd: kdOf(revArr),
+    expense: sxOf(expArr), expenseKd: kdOf(expArr),
+    workloadMonthly: sxOf(workloadMonthly), workloadKd: kdOf(workloadMonthly),
   };
 };
 
@@ -199,8 +210,12 @@ export const FinancePlanProvider: React.FC<{ children: React.ReactNode }> = ({ c
     for (const b of blocks) {
       if (b.year !== year) continue;
       const p = b.projects.find((x) => x.projectCode === projectCode);
-      // "Doanh thu kế hoạch (PAKD)" = doanh thu dự kiến; fallback về thu dự kiến.
-      if (p) return p.plannedRevenue ?? p.revenue;
+      // "Doanh thu kế hoạch (PAKD)" = doanh thu dự kiến (SX + KD).
+      if (p) {
+        const sx = p.plannedRevenue ?? p.revenue;
+        const kd = p.plannedRevenueKd ?? p.revenueKd ?? [];
+        return MONTHS12.map((_, i) => (sx[i] || 0) + (kd[i] || 0));
+      }
     }
     return undefined;
   };
@@ -209,7 +224,11 @@ export const FinancePlanProvider: React.FC<{ children: React.ReactNode }> = ({ c
     for (const b of blocks) {
       if (b.year !== year) continue;
       const p = b.projects.find((x) => x.projectCode === projectCode);
-      if (p) return p.workloadMonthly;
+      if (p) {
+        const sx = p.workloadMonthly ?? [];
+        const kd = p.workloadKd ?? [];
+        return MONTHS12.map((_, i) => (sx[i] || 0) + (kd[i] || 0));
+      }
     }
     return undefined;
   };

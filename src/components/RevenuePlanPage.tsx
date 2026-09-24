@@ -42,19 +42,23 @@ const deepProjects = (p: ProjectPlan[]): ProjectPlan[] =>
   p.map((x) => ({
     ...x,
     plannedRevenue: [...(x.plannedRevenue || zero12())],
+    plannedRevenueKd: [...(x.plannedRevenueKd || zero12())],
     revenue: [...x.revenue],
+    revenueKd: [...(x.revenueKd || zero12())],
     expense: [...x.expense],
+    expenseKd: [...(x.expenseKd || zero12())],
     workloadMonthly: [...(x.workloadMonthly || zero12())],
+    workloadKd: [...(x.workloadKd || zero12())],
   }));
 
 const emptyProject = (): ProjectPlan => ({
   projectCode: '',
   projectName: '',
   workload: 0,
-  plannedRevenue: zero12(),
-  revenue: zero12(),
-  expense: zero12(),
-  workloadMonthly: zero12(),
+  plannedRevenue: zero12(), plannedRevenueKd: zero12(),
+  revenue: zero12(), revenueKd: zero12(),
+  expense: zero12(), expenseKd: zero12(),
+  workloadMonthly: zero12(), workloadKd: zero12(),
 });
 
 export const RevenuePlanPage: React.FC = () => {
@@ -86,14 +90,24 @@ export const RevenuePlanPage: React.FC = () => {
   const block: BlockPlan | undefined = getBlock(khoi, year);
   const myRequests = editRequests.filter((r) => r.khoi === khoi && r.status === 'Chờ duyệt');
 
-  // ---- Tổng hợp toàn khối ----
-  const planRevTotalByMonth = MONTHS12.map((_, i) => projects.reduce((s, p) => s + (p.plannedRevenue?.[i] || 0), 0));
-  const revTotalByMonth = MONTHS12.map((_, i) => projects.reduce((s, p) => s + (p.revenue[i] || 0), 0));
-  const expTotalByMonth = MONTHS12.map((_, i) => projects.reduce((s, p) => s + (p.expense[i] || 0), 0));
-  const netTotalByMonth = MONTHS12.map((_, i) => revTotalByMonth[i] - expTotalByMonth[i]);
+  // ---- Tổng hợp toàn khối (theo SX / KD) ----
+  const totBy = (f: (p: ProjectPlan) => number[] | undefined) =>
+    MONTHS12.map((_, i) => projects.reduce((s, p) => s + (f(p)?.[i] || 0), 0));
+  const planRevSx = totBy((p) => p.plannedRevenue);
+  const planRevKd = totBy((p) => p.plannedRevenueKd);
+  const revSx = totBy((p) => p.revenue);
+  const revKd = totBy((p) => p.revenueKd);
+  const expSx = totBy((p) => p.expense);
+  const expKd = totBy((p) => p.expenseKd);
+  const netSx = MONTHS12.map((_, i) => revSx[i] - expSx[i]);
+  const netKd = MONTHS12.map((_, i) => revKd[i] - expKd[i]);
 
   // ---- Cập nhật ô ----
-  type CellKind = 'plannedRevenue' | 'revenue' | 'expense' | 'workloadMonthly';
+  type CellKind =
+    | 'plannedRevenue' | 'plannedRevenueKd'
+    | 'revenue' | 'revenueKd'
+    | 'expense' | 'expenseKd'
+    | 'workloadMonthly' | 'workloadKd';
   const setCell = (pi: number, kind: CellKind, mi: number, v: number) =>
     setProjects((prev) =>
       prev.map((p, i) => (i === pi ? { ...p, [kind]: (p[kind] || zero12()).map((x, j) => (j === mi ? v : x)) } : p)),
@@ -117,7 +131,7 @@ export const RevenuePlanPage: React.FC = () => {
     setNote('');
   };
 
-  const colCount = 4 + 12; // Nội dung + Mã dự án + CẢ NĂM + KLCV + 12 tháng
+  const colCount = 4 + 24; // Nội dung + Mã dự án + CẢ NĂM + KLCV + 12 tháng × (SX,KD)
 
   return (
     <div className="p-4 sm:p-6 bg-slate-50/50 min-h-screen space-y-4 font-sans">
@@ -197,21 +211,30 @@ export const RevenuePlanPage: React.FC = () => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[1280px]">
+          <table className="w-full text-left border-collapse min-w-[2000px]">
             <thead>
               <tr className="bg-slate-100/80 border-b border-slate-200 text-[10px] font-black text-slate-500 uppercase tracking-wider">
-                <th className="px-3 py-3 sticky left-0 bg-slate-100/80 z-10 min-w-[210px]">Nội dung</th>
-                <th className="px-3 py-3 min-w-[130px]">Mã dự án</th>
-                <th className="px-3 py-3 text-right min-w-[96px] bg-slate-200/60 text-slate-700">CẢ NĂM</th>
-                <th className="px-3 py-3 text-right min-w-[96px] bg-indigo-100/70 text-indigo-700" title="Khối lượng công việc">KLCV</th>
+                <th rowSpan={2} className="px-3 py-2 sticky left-0 bg-slate-100/80 z-10 min-w-[210px]">Nội dung</th>
+                <th rowSpan={2} className="px-3 py-2 min-w-[130px]">Mã dự án</th>
+                <th rowSpan={2} className="px-3 py-2 text-right min-w-[96px] bg-slate-200/60 text-slate-700">CẢ NĂM</th>
+                <th rowSpan={2} className="px-3 py-2 text-right min-w-[96px] bg-indigo-100/70 text-indigo-700" title="Khối lượng công việc">KLCV</th>
                 {MONTHS12.map((m) => (
-                  <th key={m} className="px-2 py-3 text-right min-w-[70px]">Tháng {m}</th>
+                  <th key={m} colSpan={2} className="px-2 py-2 text-center border-l border-slate-200">Tháng {m}</th>
                 ))}
-                <th className="px-2 py-3 w-10" />
+                <th rowSpan={2} className="px-2 py-2 w-10" />
+              </tr>
+              <tr className="bg-slate-50 border-b border-slate-200 text-[9px] font-black text-slate-400 uppercase tracking-wider">
+                {MONTHS12.map((m) => (
+                  <React.Fragment key={m}>
+                    <th className="px-1.5 py-1.5 text-right border-l border-slate-200 min-w-[62px]" title="Sản xuất">SX</th>
+                    <th className="px-1.5 py-1.5 text-right min-w-[62px] text-slate-500" title="Kinh doanh">KD</th>
+                  </React.Fragment>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
               {projects.map((p, pi) => {
+                const wl = MONTHS12.map((_, i) => (p.workloadMonthly?.[i] || 0) + (p.workloadKd?.[i] || 0));
                 return (
                   <React.Fragment key={pi}>
                     {/* --- Header dự án: tên + mã + KLCV --- */}
@@ -236,9 +259,9 @@ export const RevenuePlanPage: React.FC = () => {
                         />
                       </td>
                       <td className="px-3 py-2 text-right font-mono font-black bg-slate-200/50 text-slate-500 text-[11px]">DỰ ÁN {pi + 1}</td>
-                      <td className="px-3 py-2 text-right font-mono font-black bg-indigo-50/50 text-indigo-700">{fmt(sum12(p.workloadMonthly || []))}%</td>
-                      <td colSpan={12} className="px-3 py-2 text-[11px] text-slate-400 font-semibold">
-                        Khai báo thu &amp; chi dự kiến 12 tháng bên dưới
+                      <td className="px-3 py-2 text-right font-mono font-black bg-indigo-50/50 text-indigo-700">{fmt(sum12(wl))}%</td>
+                      <td colSpan={24} className="px-3 py-2 text-[11px] text-slate-400 font-semibold">
+                        Khai báo thu &amp; chi dự kiến 12 tháng — tách <strong className="text-slate-500">SX</strong> (sản xuất) / <strong className="text-slate-500">KD</strong> (kinh doanh)
                       </td>
                       <td className="px-2 py-2 text-center">
                         <button onClick={() => removeProject(pi)} className="p-1 text-slate-300 hover:text-rose-600 cursor-pointer" title="Xoá dự án">
@@ -247,61 +270,14 @@ export const RevenuePlanPage: React.FC = () => {
                       </td>
                     </tr>
 
-                    {/* --- Doanh thu dự kiến (nghiệm thu) --- */}
-                    <tr className="hover:bg-emerald-50/20">
-                      <td className="px-3 py-1.5 sticky left-0 bg-white z-10 pl-11 text-emerald-700 font-bold">Doanh thu dự kiến</td>
-                      <td className="px-3 py-1.5 text-slate-300">—</td>
-                      <td className="px-3 py-1.5 text-right font-mono font-black bg-emerald-50/70 text-emerald-700">{fmt(sum12(p.plannedRevenue || []))}</td>
-                      <td className="px-3 py-1.5 text-center text-slate-300 bg-indigo-50/40">—</td>
-                      {(p.plannedRevenue || zero12()).map((v, mi) => (
-                        <td key={mi} className="px-1.5 py-1.5">
-                          <NumCell value={v} onChange={(nv) => setCell(pi, 'plannedRevenue', mi, nv)} tone="in" />
-                        </td>
-                      ))}
-                      <td />
-                    </tr>
-
-                    {/* --- Thu dự kiến từng tháng (dòng tiền thu) --- */}
-                    <tr className="hover:bg-emerald-50/30">
-                      <td className="px-3 py-1.5 sticky left-0 bg-white z-10 pl-11 text-emerald-700 font-bold">Thu dự kiến</td>
-                      <td className="px-3 py-1.5 text-slate-300">—</td>
-                      <td className="px-3 py-1.5 text-right font-mono font-black bg-emerald-50/70 text-emerald-700">{fmt(sum12(p.revenue))}</td>
-                      <td className="px-3 py-1.5 text-center text-slate-300 bg-indigo-50/40">—</td>
-                      {p.revenue.map((v, mi) => (
-                        <td key={mi} className="px-1.5 py-1.5">
-                          <NumCell value={v} onChange={(nv) => setCell(pi, 'revenue', mi, nv)} tone="in" />
-                        </td>
-                      ))}
-                      <td />
-                    </tr>
-
-                    {/* --- Chi dự kiến từng tháng --- */}
-                    <tr className="hover:bg-rose-50/30">
-                      <td className="px-3 py-1.5 sticky left-0 bg-white z-10 pl-11 text-rose-700 font-bold">Chi dự kiến</td>
-                      <td className="px-3 py-1.5 text-slate-300">—</td>
-                      <td className="px-3 py-1.5 text-right font-mono font-black bg-rose-50/70 text-rose-700">{fmt(sum12(p.expense))}</td>
-                      <td className="px-3 py-1.5 text-center text-slate-300 bg-indigo-50/40">—</td>
-                      {p.expense.map((v, mi) => (
-                        <td key={mi} className="px-1.5 py-1.5">
-                          <NumCell value={v} onChange={(nv) => setCell(pi, 'expense', mi, nv)} tone="out" />
-                        </td>
-                      ))}
-                      <td />
-                    </tr>
-
-                    {/* --- Khối lượng công việc theo tháng --- */}
-                    <tr className="hover:bg-indigo-50/20 border-b-2 border-slate-200">
-                      <td className="px-3 py-1.5 sticky left-0 bg-white z-10 pl-11 text-indigo-700 font-bold">Khối lượng công việc (%)</td>
-                      <td className="px-3 py-1.5 text-slate-300">—</td>
-                      <td className="px-3 py-1.5 text-right font-mono font-black bg-indigo-50/60 text-indigo-700">{fmt(sum12(p.workloadMonthly || []))}%</td>
-                      <td className="px-3 py-1.5 text-center text-slate-300 bg-indigo-50/40">—</td>
-                      {(p.workloadMonthly || zero12()).map((v, mi) => (
-                        <td key={mi} className="px-1.5 py-1.5">
-                          <NumCell value={v} onChange={(nv) => setCell(pi, 'workloadMonthly', mi, nv)} unit="%" />
-                        </td>
-                      ))}
-                      <td />
-                    </tr>
+                    <MetricRow label="Doanh thu dự kiến" labelCls="text-emerald-700" caCls="bg-emerald-50/70 text-emerald-700"
+                      pi={pi} sx={p.plannedRevenue || zero12()} kd={p.plannedRevenueKd || zero12()} sxKind="plannedRevenue" kdKind="plannedRevenueKd" tone="in" setCell={setCell} />
+                    <MetricRow label="Thu dự kiến" labelCls="text-emerald-700" caCls="bg-emerald-50/70 text-emerald-700"
+                      pi={pi} sx={p.revenue} kd={p.revenueKd || zero12()} sxKind="revenue" kdKind="revenueKd" tone="in" setCell={setCell} />
+                    <MetricRow label="Chi dự kiến" labelCls="text-rose-700" caCls="bg-rose-50/70 text-rose-700"
+                      pi={pi} sx={p.expense} kd={p.expenseKd || zero12()} sxKind="expense" kdKind="expenseKd" tone="out" setCell={setCell} />
+                    <MetricRow label="Khối lượng công việc (%)" labelCls="text-indigo-700" caCls="bg-indigo-50/60 text-indigo-700"
+                      pi={pi} sx={p.workloadMonthly || zero12()} kd={p.workloadKd || zero12()} sxKind="workloadMonthly" kdKind="workloadKd" unit="%" suffix="%" borderB2 setCell={setCell} />
                   </React.Fragment>
                 );
               })}
@@ -317,19 +293,10 @@ export const RevenuePlanPage: React.FC = () => {
               {/* ===== Tổng hợp toàn khối ===== */}
               {projects.length > 0 && (
                 <>
-                  <TotalRow label="Tổng doanh thu dự kiến" months={planRevTotalByMonth} tone="rev" />
-                  <TotalRow label="Tổng thu dự kiến" months={revTotalByMonth} tone="rev" />
-                  <TotalRow label="Tổng chi dự kiến" months={expTotalByMonth} tone="cost" />
-                  <tr className="bg-slate-100 border-t-2 border-slate-300 font-black text-indigo-700">
-                    <td className="px-3 py-2.5 sticky left-0 bg-slate-100 z-10 text-slate-700">Chênh lệch thu - chi (toàn khối)</td>
-                    <td className="px-3 py-2.5" />
-                    <td className="px-3 py-2.5 text-right font-mono bg-indigo-50/60">{fmt(sum12(netTotalByMonth))}</td>
-                    <td className="px-3 py-2.5" />
-                    {netTotalByMonth.map((v, i) => (
-                      <td key={i} className={`px-2 py-2.5 text-right font-mono ${v < 0 ? 'text-rose-600' : ''}`}>{fmt(v)}</td>
-                    ))}
-                    <td />
-                  </tr>
+                  <Total2Row label="Tổng doanh thu dự kiến" sx={planRevSx} kd={planRevKd} tone="rev" />
+                  <Total2Row label="Tổng thu dự kiến" sx={revSx} kd={revKd} tone="rev" />
+                  <Total2Row label="Tổng chi dự kiến" sx={expSx} kd={expKd} tone="cost" />
+                  <Total2Row label="Chênh lệch thu - chi (toàn khối)" sx={netSx} kd={netKd} tone="net" />
                 </>
               )}
             </tbody>
@@ -430,19 +397,66 @@ const NumCell: React.FC<{ value: number; onChange: (v: number) => void; tone?: '
   </div>
 );
 
-// Hàng tổng hợp toàn khối (Tổng thu / Tổng chi)
-const TotalRow: React.FC<{ label: string; months: number[]; tone: 'rev' | 'cost'; workload?: number }> = ({ label, months, workload, tone }) => (
-  <tr className={`border-y border-slate-200 font-black ${tone === 'rev' ? 'bg-emerald-50/60 text-emerald-800' : 'bg-rose-50/60 text-rose-800'}`}>
-    <td className={`px-3 py-2 sticky left-0 z-10 ${tone === 'rev' ? 'bg-emerald-50/95' : 'bg-rose-50/95'}`}>{label}</td>
-    <td className="px-3 py-2" />
-    <td className="px-3 py-2 text-right font-mono bg-white/50">{fmt(sum12(months))}</td>
-    <td className="px-3 py-2 text-right font-mono bg-indigo-50/40 text-indigo-700">{workload != null ? fmt(workload) : '—'}</td>
-    {months.map((v, i) => (
-      <td key={i} className="px-2 py-2 text-right font-mono">{fmt(v)}</td>
-    ))}
-    <td />
-  </tr>
-);
+// Hàng chỉ tiêu 1 dự án — mỗi tháng 2 ô: SX (sản xuất) và KD (kinh doanh)
+const MetricRow: React.FC<{
+  label: string;
+  labelCls: string;
+  caCls: string;
+  pi: number;
+  sx: number[];
+  kd: number[];
+  sxKind: string;
+  kdKind: string;
+  tone?: 'in' | 'out';
+  unit?: string;
+  suffix?: string;
+  borderB2?: boolean;
+  setCell: (pi: number, kind: any, mi: number, v: number) => void;
+}> = ({ label, labelCls, caCls, pi, sx, kd, sxKind, kdKind, tone, unit, suffix = '', borderB2, setCell }) => {
+  const total = sum12(sx) + sum12(kd);
+  return (
+    <tr className={`hover:bg-slate-50/40 ${borderB2 ? 'border-b-2 border-slate-200' : ''}`}>
+      <td className={`px-3 py-1.5 sticky left-0 bg-white z-10 pl-11 font-bold ${labelCls}`}>{label}</td>
+      <td className="px-3 py-1.5 text-slate-300">—</td>
+      <td className={`px-3 py-1.5 text-right font-mono font-black ${caCls}`}>{fmt(total)}{suffix}</td>
+      <td className="px-3 py-1.5 text-center text-slate-300 bg-indigo-50/40">—</td>
+      {MONTHS12.map((_, mi) => (
+        <React.Fragment key={mi}>
+          <td className="px-1 py-1.5 border-l border-slate-100">
+            <NumCell value={sx[mi] || 0} onChange={(v) => setCell(pi, sxKind, mi, v)} tone={tone} unit={unit} />
+          </td>
+          <td className="px-1 py-1.5">
+            <NumCell value={kd[mi] || 0} onChange={(v) => setCell(pi, kdKind, mi, v)} tone={tone} unit={unit} />
+          </td>
+        </React.Fragment>
+      ))}
+      <td />
+    </tr>
+  );
+};
+
+// Hàng tổng hợp toàn khối — 2 ô SX/KD mỗi tháng
+const Total2Row: React.FC<{ label: string; sx: number[]; kd: number[]; tone: 'rev' | 'cost' | 'net' }> = ({ label, sx, kd, tone }) => {
+  const bg = tone === 'rev' ? 'bg-emerald-50/60' : tone === 'cost' ? 'bg-rose-50/60' : 'bg-slate-100';
+  const bgSticky = tone === 'rev' ? 'bg-emerald-50/95' : tone === 'cost' ? 'bg-rose-50/95' : 'bg-slate-100';
+  const text = tone === 'rev' ? 'text-emerald-800' : tone === 'cost' ? 'text-rose-800' : 'text-indigo-700';
+  const total = sum12(sx) + sum12(kd);
+  return (
+    <tr className={`border-y-2 border-slate-300 font-black ${bg} ${text}`}>
+      <td className={`px-3 py-2 sticky left-0 z-10 ${bgSticky} ${tone === 'net' ? 'text-slate-700' : ''}`}>{label}</td>
+      <td className="px-3 py-2" />
+      <td className="px-3 py-2 text-right font-mono bg-indigo-50/60 text-indigo-700">{fmt(total)}</td>
+      <td className="px-3 py-2" />
+      {MONTHS12.map((_, i) => (
+        <React.Fragment key={i}>
+          <td className="px-2 py-2 text-right font-mono border-l border-slate-200/70">{fmt(sx[i])}</td>
+          <td className="px-2 py-2 text-right font-mono">{fmt(kd[i])}</td>
+        </React.Fragment>
+      ))}
+      <td />
+    </tr>
+  );
+};
 
 // ==========================================================================
 // Modal

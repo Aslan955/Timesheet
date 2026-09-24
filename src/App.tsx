@@ -21,6 +21,7 @@ import { RevenuePlanPage } from './components/RevenuePlanPage';
 import { CompanyOverviewPage } from './components/CompanyOverviewPage';
 import { PayrollApprovalPage } from './components/PayrollApprovalPage';
 import { PayrollListPage } from './components/PayrollListPage';
+import { OverheadDetailPage } from './components/OverheadDetailPage';
 import { FinancePlanProvider } from './finance/FinancePlanContext';
 import { OnsiteReportPage } from './components/OnsiteReportPage';
 import { LeaveReportPage } from './components/LeaveReportPage';
@@ -59,7 +60,9 @@ export default function App() {
       case 'Projects':
         return <ProjectsPage />;
       case 'Thông tin tài chính dự án':
-        return <ProjectFinancePage />;
+        return <ProjectFinancePage onNavigate={setActiveItem} />;
+      case 'Chi phí vận hành chi tiết':
+        return <OverheadDetailPage onNavigate={setActiveItem} />;
       case 'Kế hoạch thu chi':
         return <RevenuePlanPage />;
       case 'Toàn cảnh thu chi':
