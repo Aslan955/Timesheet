@@ -17,6 +17,7 @@ import {
   TrendingDown,
   Wallet,
   Building2,
+  ArrowLeft,
   ChevronRight,
   Grid,
   Save,
@@ -27,10 +28,21 @@ import {
   Eye,
   X,
   FileSpreadsheet,
+  Search,
+  Filter,
+  ListFilter,
+  Download,
+  ArrowUpDown,
+  FilterX,
+  History,
+  Upload,
+  FileUp,
+  DownloadCloud,
+  FileText,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFinancePlans } from '../finance/FinancePlanContext';
-import { setOverheadFocusKhoi } from '../finance/overheadDetail';
+import { OVERHEAD_DETAIL, setOverheadFocusKhoi } from '../finance/overheadDetail';
 
 const YEAR = 2026;
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
@@ -124,11 +136,28 @@ const ALL_PROJECTS = '__ALL__';
 // ==========================================================================
 export const ProjectFinancePage: React.FC<{ onNavigate?: (item: string) => void }> = ({ onNavigate }) => {
   const [finance, setFinance] = useState<Record<string, Finance>>(INITIAL_FINANCE);
-  const [overhead, setOverhead] = useState<Record<string, number[]>>(INITIAL_OVERHEAD);
+  
+  const overhead = useMemo(() => {
+    const res: Record<string, number[]> = {};
+    KHOI_LIST.forEach(k => {
+      const arr = Array(12).fill(0);
+      const items = OVERHEAD_DETAIL[k] || [];
+      items.forEach(it => {
+        const [mm, yyyy] = it.month.split('/').map(Number);
+        if (yyyy === YEAR && mm >= 1 && mm <= 12) {
+          arr[mm - 1] += (it.amount / 1_000_000);
+        }
+      });
+      res[k] = arr;
+    });
+    return res;
+  }, []);
+
   const [basisByKhoi, setBasisByKhoi] = useState<Record<string, Basis>>(
     KHOI_LIST.reduce((a, k) => ((a[k] = 'cost'), a), {} as Record<string, Basis>),
   );
 
+  const [detailView, setDetailView] = useState<'none' | 'revenue' | 'overhead'>('none');
   const [tab, setTab] = useState<Tab>('revenue');
   const [khoi, setKhoi] = useState<string>('G1');
   const projectsInKhoi = useMemo(() => PROJECTS.filter((p) => p.khoi === khoi), [khoi]);
@@ -222,14 +251,6 @@ export const ProjectFinancePage: React.FC<{ onNavigate?: (item: string) => void 
     });
   };
 
-  const setOverheadCell = (monthIdx: number, value: number) => {
-    setOverhead((prev) => {
-      const arr = [...prev[khoi]];
-      arr[monthIdx] = value;
-      return { ...prev, [khoi]: arr };
-    });
-  };
-
   // ---- Phân bổ chi phí khối về dự án theo tiêu thức ----
   const basis = basisByKhoi[khoi];
   const allocation = useMemo(() => {
@@ -262,6 +283,22 @@ export const ProjectFinancePage: React.FC<{ onNavigate?: (item: string) => void 
     }
     return allocation[projectId] || MONTHS.map(() => 0);
   }, [allocation, projectId, isAll, projectsInKhoi]);
+
+  if (detailView === 'revenue') {
+    return (
+      <div className="p-4 sm:p-6 bg-slate-50/50 min-h-screen space-y-4 font-sans">
+        <ImportDetailView onBack={() => setDetailView('none')} />
+      </div>
+    );
+  }
+
+  if (detailView === 'overhead') {
+    return (
+      <div className="p-4 sm:p-6 bg-slate-50/50 min-h-screen space-y-4 font-sans">
+        <OverheadDetailView khoi={khoi} onBack={() => setDetailView('none')} />
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 sm:p-6 bg-slate-50/50 min-h-screen space-y-4 font-sans">
@@ -357,7 +394,7 @@ export const ProjectFinancePage: React.FC<{ onNavigate?: (item: string) => void 
 
       {/* Nội dung tab */}
       {tab === 'revenue' && (
-        <RevenueForm project={displayProject} fin={fin} readOnly={isAll} setCell={setCell} onSave={() => showToast('💾 Đã lưu doanh thu thực tế.')} />
+        <RevenueForm project={displayProject} fin={fin} readOnly={isAll} setCell={setCell} onSave={() => showToast('💾 Đã lưu doanh thu thực tế.')} onViewDetail={() => setDetailView('revenue')} />
       )}
       {tab === 'cost' && (
         <CostForm
@@ -376,10 +413,7 @@ export const ProjectFinancePage: React.FC<{ onNavigate?: (item: string) => void 
           overhead={overhead[khoi]}
           basis={basis}
           allocation={allocation}
-          setOverheadCell={setOverheadCell}
-          setBasis={(b) => setBasisByKhoi((prev) => ({ ...prev, [khoi]: b }))}
-          onSave={() => showToast('💾 Đã lưu & phân bổ chi phí vận hành khối.')}
-          onOpenDetail={() => { setOverheadFocusKhoi(khoi); onNavigate?.('Chi phí vận hành chi tiết'); }}
+          onViewDetail={() => setDetailView('overhead')}
         />
       )}
       {tab === 'cashflow' && (
@@ -409,11 +443,12 @@ const EditCell: React.FC<{ value: number; onChange: (v: number) => void; tone?: 
 const GridShell: React.FC<{
   title: string;
   subtitle?: string;
-  onSave: () => void;
+  onSave?: () => void;
   children: React.ReactNode;
   legend?: React.ReactNode;
   readOnly?: boolean;
-}> = ({ title, subtitle, onSave, children, legend, readOnly }) => (
+  actions?: React.ReactNode;
+}> = ({ title, subtitle, onSave, children, legend, readOnly, actions }) => (
   <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
     <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-3 flex-wrap">
       <div>
@@ -427,13 +462,18 @@ const GridShell: React.FC<{
         </h3>
         {subtitle && <p className="text-[11px] text-slate-500 font-medium">{subtitle}</p>}
       </div>
-      {!readOnly && (
+      {!readOnly && !actions && onSave && (
         <button
           onClick={onSave}
           className="px-3.5 py-1.5 bg-[#0fa57c] hover:bg-[#0c8e6b] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
         >
           <Save size={14} /> Lưu cập nhật
         </button>
+      )}
+      {actions && (
+        <div className="flex items-center gap-2">
+          {actions}
+        </div>
       )}
     </div>
     <div className="overflow-x-auto">
@@ -512,7 +552,9 @@ const RevenueForm: React.FC<{
   setCell: (f: keyof Finance, i: number, v: number) => void;
   onSave: () => void;
   readOnly?: boolean;
-}> = ({ project, fin, setCell, onSave, readOnly }) => {
+  onViewDetail: () => void;
+}> = ({ project, fin, setCell, onSave, readOnly, onViewDetail }) => {
+  const [showImport, setShowImport] = useState(false);
   const diff = MONTHS.map((_, i) => fin.revenueActual[i] - fin.revenuePlan[i]);
   const pct = MONTHS.map((_, i) => (fin.revenuePlan[i] > 0 ? (fin.revenueActual[i] / fin.revenuePlan[i]) * 100 : 0));
   const totalPlan = sum(fin.revenuePlan);
@@ -532,15 +574,30 @@ const RevenueForm: React.FC<{
       <GridShell
         title={`Doanh thu — ${project.code}`}
         subtitle="Doanh thu thực tế = giá trị đã nghiệm thu & xuất hoá đơn trong kỳ."
-        onSave={onSave}
         readOnly={readOnly}
         legend="Chênh lệch = Thực tế − Kế hoạch. Xanh: đạt/vượt kế hoạch, đỏ: hụt kế hoạch."
+        actions={
+          !readOnly && (
+            <>
+              <button onClick={onViewDetail} className="px-3.5 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95">
+                <Eye size={14} /> Xem chi tiết
+              </button>
+              <button onClick={() => setShowImport(true)} className="px-3.5 py-1.5 bg-[#0fa57c] hover:bg-[#0c8e6b] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95">
+                <FileSpreadsheet size={14} /> Import doanh thu thực tế
+              </button>
+            </>
+          )
+        }
       >
         <ReadRow label="Doanh thu kế hoạch" values={fin.revenuePlan} />
-        <EditRow label="Doanh thu thực tế" values={fin.revenueActual} onChange={(i, v) => setCell('revenueActual', i, v)} tone="in" readOnly={readOnly} />
+        <EditRow label="Doanh thu thực tế" values={fin.revenueActual} onChange={(i, v) => setCell('revenueActual', i, v)} tone="in" readOnly={true} />
         <ReadRow label="Chênh lệch TT − KH" values={diff} tone={diffTone} bold />
         <ReadRow label="% hoàn thành KH" values={pct.map((p) => Math.round(p))} tone={(v) => (v >= 100 ? 'text-emerald-600' : v > 0 ? 'text-amber-600' : 'text-slate-400')} total={Math.round(totalPct)} />
       </GridShell>
+
+      <AnimatePresence>
+        {showImport && <ImportFileModal isOpen={showImport} onClose={() => setShowImport(false)} onImport={onSave} />}
+      </AnimatePresence>
     </>
   );
 };
@@ -597,33 +654,39 @@ const OverheadForm: React.FC<{
   overhead: number[];
   basis: Basis;
   allocation: Record<string, number[]>;
-  setOverheadCell: (i: number, v: number) => void;
-  setBasis: (b: Basis) => void;
-  onSave: () => void;
-  onOpenDetail?: () => void;
-}> = ({ khoi, projects, overhead, allocation, setOverheadCell, onSave, onOpenDetail }) => {
+  onViewDetail: () => void;
+}> = ({ khoi, projects, overhead, allocation, onViewDetail }) => {
+  const [showImport, setShowImport] = useState(false);
+
   return (
     <>
       <GridShell
         title={`Chi phí vận hành chung — Khối ${khoi}`}
-        subtitle={`Nhập tổng chi phí chung theo tháng; hệ thống tự phân bổ về ${projects.length} dự án theo chi phí thực tế.`}
-        onSave={onSave}
+        subtitle={`Dữ liệu lấy từ chi phí vận hành chi tiết, hệ thống tự phân bổ về ${projects.length} dự án theo chi phí thực tế.`}
+        actions={
+          <>
+            <button onClick={onViewDetail} className="px-3.5 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95">
+              <Eye size={14} /> Xem chi tiết
+            </button>
+            <button onClick={() => setShowImport(true)} className="px-3.5 py-1.5 bg-[#0fa57c] hover:bg-[#0c8e6b] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95">
+              <Upload size={14} /> Import chi phí vận hành
+            </button>
+          </>
+        }
         legend={
           <span className="flex items-center gap-1.5">
             <Info size={12} className="text-blue-500" /> Phân bổ theo chi phí thực tế. Tổng các dòng phân bổ mỗi tháng luôn bằng chi phí vận hành khối tháng đó.
           </span>
         }
       >
-        <EditRow
+        <ReadRow
           label={
-            <button onClick={() => onOpenDetail?.()} className="inline-flex items-center gap-1.5 text-slate-700 hover:text-blue-600 cursor-pointer" title="Xem chi tiết chi phí vận hành khối">
+            <button onClick={onViewDetail} className="inline-flex items-center gap-1.5 text-slate-700 hover:text-blue-600 cursor-pointer" title="Xem chi tiết chi phí vận hành khối">
               <span>Σ Chi phí vận hành khối {khoi}</span>
               <Eye size={13} className="text-blue-500" />
             </button>
           }
           values={overhead}
-          onChange={setOverheadCell}
-          tone="out"
         />
         <tr>
           <td colSpan={14} className="px-4 py-2 bg-slate-100/70 text-[10px] font-black text-slate-400 uppercase tracking-wider sticky left-0">
@@ -644,6 +707,10 @@ const OverheadForm: React.FC<{
           />
         ))}
       </GridShell>
+      
+      <AnimatePresence>
+        {showImport && <OverheadImportModal isOpen={showImport} onClose={() => setShowImport(false)} onImport={() => alert('Đã import thành công!')} />}
+      </AnimatePresence>
     </>
   );
 };
@@ -716,3 +783,389 @@ const SummaryStrip: React.FC<{ items: { label: string; value: string; tone: 'def
     </div>
   );
 };
+
+// ==========================================================================
+// MODAL IMPORT DOANH THU TỪ EXCEL
+// ==========================================================================
+const ImportFileModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  onImport: () => void;
+}> = ({ isOpen, onClose, onImport }) => {
+  const [fileName, setFileName] = useState<string | null>(null);
+
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm font-sans">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden"
+      >
+        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+          <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
+            <Upload className="text-[#0fa57c]" size={20} />
+            Import Doanh Thu Thực Tế
+          </h2>
+          <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer">
+            <X size={20} />
+          </button>
+        </div>
+        
+        <div className="p-6 bg-white flex flex-col gap-6">
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-bold text-slate-700">1. Tải file mẫu import</p>
+            <p className="text-xs text-slate-500">Vui lòng tải và sử dụng định dạng chuẩn để nhập dữ liệu doanh thu chính xác.</p>
+            <button className="w-fit px-4 py-2 mt-1 bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 text-xs font-bold rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer">
+              <DownloadCloud size={16} /> Tải file mẫu (.xlsx)
+            </button>
+          </div>
+          
+          <div className="h-px bg-slate-100 w-full" />
+          
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-bold text-slate-700">2. Chọn file excel import</p>
+            <label className="mt-1 flex flex-col items-center justify-center w-full h-32 border-2 border-slate-300 border-dashed rounded-xl cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors">
+              <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                <FileUp size={24} className="text-slate-400 mb-2" />
+                <p className="text-xs text-slate-500 font-medium text-center px-4">
+                  {fileName ? (
+                    <span className="text-[#0fa57c] font-bold flex items-center gap-1 justify-center"><FileText size={14}/> {fileName}</span>
+                  ) : (
+                    <span>Nhấn để chọn hoặc kéo thả file excel vào đây</span>
+                  )}
+                </p>
+              </div>
+              <input 
+                type="file" 
+                className="hidden" 
+                accept=".xlsx, .xls, .csv" 
+                onChange={(e) => setFileName(e.target.files?.[0]?.name || null)}
+              />
+            </label>
+          </div>
+        </div>
+        
+        <div className="px-5 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 text-slate-600 font-bold text-sm hover:bg-slate-200 rounded-xl transition-colors cursor-pointer">
+            Hủy bỏ
+          </button>
+          <button 
+            onClick={() => {
+              if (!fileName) {
+                alert('Vui lòng chọn file excel trước khi thực hiện import!');
+                return;
+              }
+              onImport();
+              onClose();
+            }}
+            className="px-5 py-2 bg-[#0fa57c] hover:bg-[#0c8e6b] text-white text-sm font-bold rounded-xl shadow-sm transition-all cursor-pointer flex items-center gap-2"
+          >
+            <Upload size={16} /> Thực hiện Import
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+// ==========================================================================
+// MODAL CHI TIẾT IMPORT DOANH THU
+// ==========================================================================
+const MOCK_IMPORT_DETAILS = [
+  { id: 1, date: '15/08/2026', desc: 'Doanh thu HĐ tư vấn ADB đợt 1', amount: 2358608000, target: 'Ngân hàng Phát triển Châu Á', projCode: 'X.25.NB.ADB', projName: 'Dự án tư vấn y tế', unitCode: 'BFSI', unitName: 'BFSI', version: 'v21', user: 'admin' },
+  { id: 2, date: '10/08/2026', desc: 'Nghiệm thu phần mềm', amount: 405541000, target: 'Bệnh viện Vinmec', projCode: 'X.25.NB.ADB', projName: 'Dự án tư vấn y tế', unitCode: 'G1', unitName: 'Khối G1', version: 'v12', user: 'admin' },
+  { id: 3, date: '02/08/2026', desc: 'Doanh thu bảo trì tháng 8', amount: 7626841000, target: 'Bệnh viện Bạch Mai', projCode: 'X.25.NB.ADB', projName: 'Dự án tư vấn y tế', unitCode: 'G2', unitName: 'Khối G2', version: 'v20', user: 'Đào Thị A' },
+  { id: 4, date: '25/07/2026', desc: 'Khảo sát và thiết kế', amount: 14467733000, target: 'Bộ Y tế', projCode: 'X.25.NB.ADB', projName: 'Dự án tư vấn y tế', unitCode: 'BO', unitName: 'Back Office', version: 'v15', user: 'Đào Thị A' },
+  { id: 5, date: '20/07/2026', desc: 'Triển khai hạ tầng', amount: 703024000, target: 'Sở Y tế Hà Nội', projCode: 'X.25.NB.ADB', projName: 'Dự án tư vấn y tế', unitCode: 'G4', unitName: 'Khối G4', version: 'v15', user: 'Đào Thị A' },
+];
+
+const ImportDetailView: React.FC<{
+  onBack: () => void;
+}> = ({ onBack }) => {
+  return (
+    <div className="bg-white rounded-2xl shadow-xl w-full h-[calc(100vh-80px)] flex flex-col overflow-hidden border border-slate-200">
+      <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+        <div className="flex items-center gap-3">
+          <button onClick={onBack} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer mr-1">
+            <ArrowLeft size={18} />
+          </button>
+          <FileSpreadsheet className="text-[#0fa57c]" size={20} />
+          <h2 className="text-lg font-black text-slate-800">Chi Tiết Import Doanh Thu</h2>
+        </div>
+      </div>
+      
+      <div className="p-4 bg-white flex flex-col gap-4 flex-1 overflow-hidden">
+          {/* Toolbar */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <button className="px-3.5 py-1.5 bg-white border border-slate-300 text-slate-700 text-xs font-bold rounded-lg shadow-sm hover:bg-slate-50 transition-all flex items-center gap-1.5 cursor-pointer">
+              <Download size={14} /> Xuất Excel theo bộ lọc
+            </button>
+            <div className="flex items-center gap-2">
+              <button className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-xs font-bold rounded-lg shadow-sm hover:bg-slate-50 transition-all flex items-center gap-1.5 cursor-pointer">
+                <History size={14} /> Lịch sử import
+              </button>
+              <div className="relative">
+                <input 
+                  type="text" 
+                  placeholder="Tìm theo tên, mã tổng, gói thầu" 
+                  className="pl-3 pr-8 py-1.5 w-64 text-xs font-medium bg-white border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+                <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold" />
+              </div>
+              <button className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-xs font-bold rounded-lg shadow-sm hover:bg-slate-50 transition-all flex items-center gap-1.5 cursor-pointer">
+                <ListFilter size={14} /> Chọn cột
+              </button>
+              <button className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-xs font-bold rounded-lg shadow-sm hover:bg-slate-50 transition-all flex items-center gap-1.5 cursor-pointer">
+                <FilterX size={14} /> Xóa lọc cột
+              </button>
+            </div>
+          </div>
+          
+          {/* Table */}
+          <div className="border border-slate-200 rounded-lg overflow-auto flex-1">
+            <table className="w-full text-left border-collapse whitespace-nowrap min-w-[1000px]">
+              <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+                <tr className="text-[11px] font-bold text-slate-600 border-b border-slate-200">
+                  <th className="px-3 py-2.5 border-r border-slate-200 text-center w-10">#</th>
+                  {['Ngày hạch toán', 'Diễn giải', 'Số tiền', 'Tên đối tượng', 'Mã công trình', 'Tên công trình', 'Mã khối', 'Tên khối', 'Version', 'Người thực hiện'].map((col, i) => (
+                    <th key={col} className="px-3 py-2.5 border-r border-slate-200 last:border-r-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span>{col}</span>
+                        <div className="flex items-center gap-1 text-slate-400">
+                          {i === 0 || i === 2 ? <ArrowUpDown size={12} className="cursor-pointer hover:text-blue-600" /> : null}
+                          <Filter size={12} className="cursor-pointer hover:text-blue-600" />
+                        </div>
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 text-xs text-slate-700">
+                {MOCK_IMPORT_DETAILS.map((row, idx) => (
+                  <tr key={row.id} className="hover:bg-blue-50/50 transition-colors">
+                    <td className="px-3 py-2.5 border-r border-slate-200 text-center font-medium">{idx + 1}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-200 font-bold text-slate-700">{row.date}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-200">{row.desc}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-200 font-bold text-orange-600 text-right">{row.amount.toLocaleString('vi-VN')}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-200">{row.target}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-200 font-bold text-blue-600">{row.projCode}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-200">{row.projName}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-200 font-bold text-blue-600">{row.unitCode}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-200">{row.unitName}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-200 text-center">
+                      <span className="font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[10px]">{row.version}</span>
+                    </td>
+                    <td className="px-3 py-2.5">{row.user}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+    </div>
+  );
+};
+
+// ==========================================================================
+// MODAL CHI TIẾT CHI PHÍ VẬN HÀNH KHỐI
+// ==========================================================================
+const OverheadDetailView: React.FC<{
+  onBack: () => void;
+  khoi: string;
+}> = ({ onBack, khoi }) => {
+  const [search, setSearch] = useState('');
+  
+  const items = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (OVERHEAD_DETAIL[khoi] || []).filter((it) => {
+      return !q || `${it.desc} ${it.unit} ${it.month}`.toLowerCase().includes(q);
+    });
+  }, [khoi, search]);
+  
+  const total = items.reduce((s, x) => s + x.amount, 0);
+
+  return (
+    <div className="bg-white rounded-2xl shadow-xl w-full h-[calc(100vh-80px)] flex flex-col overflow-hidden border border-slate-200">
+      <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+        <div className="flex items-center gap-3">
+          <button onClick={onBack} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer mr-1">
+            <ArrowLeft size={18} />
+          </button>
+          <Building2 className="text-blue-500" size={20} />
+          <h2 className="text-lg font-black text-slate-800">Chi Tiết Chi Phí Vận Hành Khối {khoi}</h2>
+        </div>
+      </div>
+      
+      <div className="p-4 bg-white flex flex-col gap-4 flex-1 overflow-hidden">
+          {/* Toolbar */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <button className="px-3.5 py-1.5 bg-white border border-slate-300 text-slate-700 text-xs font-bold rounded-lg shadow-sm hover:bg-slate-50 transition-all flex items-center gap-1.5 cursor-pointer">
+              <Download size={14} /> Xuất Excel theo bộ lọc
+            </button>
+            <div className="flex items-center gap-2">
+              <button className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-xs font-bold rounded-lg shadow-sm hover:bg-slate-50 transition-all flex items-center gap-1.5 cursor-pointer">
+                <History size={14} /> Lịch sử import
+              </button>
+              <div className="relative">
+                <input 
+                  type="text" 
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Tìm diễn giải, mã đơn vị..." 
+                  className="pl-3 pr-8 py-1.5 w-64 text-xs font-medium bg-white border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+                <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold" />
+              </div>
+              <button className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-xs font-bold rounded-lg shadow-sm hover:bg-slate-50 transition-all flex items-center gap-1.5 cursor-pointer">
+                <ListFilter size={14} /> Chọn cột
+              </button>
+              <button className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-xs font-bold rounded-lg shadow-sm hover:bg-slate-50 transition-all flex items-center gap-1.5 cursor-pointer">
+                <FilterX size={14} /> Xóa lọc cột
+              </button>
+            </div>
+          </div>
+          
+          {/* Table */}
+          <div className="border border-slate-200 rounded-lg overflow-auto flex-1">
+            <table className="w-full text-left border-collapse whitespace-nowrap min-w-[1000px]">
+              <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+                <tr className="text-[11px] font-bold text-slate-600 border-b border-slate-200">
+                  <th className="px-3 py-2.5 border-r border-slate-200 text-center w-10">#</th>
+                  {['Diễn giải', 'Số tiền', 'Mã đơn vị', 'Tháng', 'Version', 'Người import'].map((col) => (
+                    <th key={col} className={`px-3 py-2.5 border-r border-slate-200 last:border-r-0 ${col === 'Số tiền' ? 'text-right' : col === 'Tháng' || col === 'Version' ? 'text-center' : ''}`}>
+                      <div className={`flex items-center gap-2 ${col === 'Số tiền' ? 'justify-end' : col === 'Tháng' || col === 'Version' ? 'justify-center' : 'justify-between'}`}>
+                        <span>{col}</span>
+                        <div className="flex items-center gap-1 text-slate-400">
+                          <Filter size={12} className="cursor-pointer hover:text-blue-600" />
+                        </div>
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 text-xs text-slate-700">
+                {items.map((row, idx) => (
+                  <tr key={idx} className="hover:bg-blue-50/50 transition-colors">
+                    <td className="px-3 py-2.5 border-r border-slate-200 text-center font-medium">{idx + 1}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-200">{row.desc}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-200 font-bold text-orange-600 text-right">{row.amount.toLocaleString('vi-VN')}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-200 font-bold text-blue-600">{row.unit}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-200 text-center font-mono">{row.month}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-200 text-center">
+                      <span className="font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[10px]">{row.version || 'v1'}</span>
+                    </td>
+                    <td className="px-3 py-2.5">{row.user || 'admin'}</td>
+                  </tr>
+                ))}
+                {items.length === 0 && (
+                  <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-400">Không có khoản chi phí phù hợp.</td></tr>
+                )}
+              </tbody>
+              {items.length > 0 && (
+                <tfoot className="bg-slate-50 sticky bottom-0 z-10 shadow-[0_-1px_2px_rgba(0,0,0,0.05)]">
+                  <tr className="text-indigo-700 font-black text-xs">
+                    <td className="px-3 py-2.5 border-r border-slate-200" />
+                    <td className="px-3 py-2.5 border-r border-slate-200">Tổng cộng ({items.length} khoản)</td>
+                    <td className="px-3 py-2.5 border-r border-slate-200 text-right">{total.toLocaleString('vi-VN')}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-200" />
+                    <td className="px-3 py-2.5 border-r border-slate-200" />
+                    <td className="px-3 py-2.5 border-r border-slate-200" />
+                    <td className="px-3 py-2.5" />
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </div>
+    </div>
+  );
+};
+
+// ==========================================================================
+// MODAL IMPORT CHI PHÍ VẬN HÀNH
+// ==========================================================================
+const OverheadImportModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  onImport: () => void;
+}> = ({ isOpen, onClose, onImport }) => {
+  const [fileName, setFileName] = useState<string | null>(null);
+
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm font-sans">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden"
+      >
+        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+          <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
+            <Upload className="text-[#0fa57c]" size={20} />
+            Import Chi Phí Vận Hành
+          </h2>
+          <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer">
+            <X size={20} />
+          </button>
+        </div>
+        
+        <div className="p-6 bg-white flex flex-col gap-6">
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-bold text-slate-700">1. Tải file mẫu import</p>
+            <p className="text-xs text-slate-500">Vui lòng tải và sử dụng định dạng chuẩn để nhập dữ liệu chi phí vận hành chính xác.</p>
+            <button className="w-fit px-4 py-2 mt-1 bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 text-xs font-bold rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer">
+              <DownloadCloud size={16} /> Tải file mẫu (.xlsx)
+            </button>
+          </div>
+          
+          <div className="h-px bg-slate-100 w-full" />
+          
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-bold text-slate-700">2. Chọn file excel import</p>
+            <label className="mt-1 flex flex-col items-center justify-center w-full h-32 border-2 border-slate-300 border-dashed rounded-xl cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors">
+              <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                <FileUp size={24} className="text-slate-400 mb-2" />
+                <p className="text-xs text-slate-500 font-medium text-center px-4">
+                  {fileName ? (
+                    <span className="text-[#0fa57c] font-bold flex items-center gap-1 justify-center"><FileText size={14}/> {fileName}</span>
+                  ) : (
+                    <span>Nhấn để chọn hoặc kéo thả file excel vào đây</span>
+                  )}
+                </p>
+              </div>
+              <input 
+                type="file" 
+                className="hidden" 
+                accept=".xlsx, .xls, .csv" 
+                onChange={(e) => setFileName(e.target.files?.[0]?.name || null)}
+              />
+            </label>
+          </div>
+        </div>
+        
+        <div className="px-5 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 text-slate-600 font-bold text-sm hover:bg-slate-200 rounded-xl transition-colors cursor-pointer">
+            Hủy bỏ
+          </button>
+          <button 
+            onClick={() => {
+              if (!fileName) {
+                alert('Vui lòng chọn file excel trước khi thực hiện import!');
+                return;
+              }
+              onImport();
+              onClose();
+            }}
+            className="px-5 py-2 bg-[#0fa57c] hover:bg-[#0c8e6b] text-white text-sm font-bold rounded-xl shadow-sm transition-all cursor-pointer flex items-center gap-2"
+          >
+            <Upload size={16} /> Thực hiện Import
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
