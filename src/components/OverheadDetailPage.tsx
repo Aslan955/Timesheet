@@ -15,12 +15,18 @@ const label = (k: string) => (k === 'Giải pháp - Dịch vụ' ? 'GPDV' : k);
 export const OverheadDetailPage: React.FC<{ onNavigate?: (item: string) => void }> = ({ onNavigate }) => {
   const [khoi, setKhoi] = useState<string>(() => (KHOIS.includes(getOverheadFocusKhoi()) ? getOverheadFocusKhoi() : 'G1'));
   const [year, setYear] = useState(2026);
+  const [month, setMonth] = useState<number | 'all'>('all');
   const [search, setSearch] = useState('');
 
   const items = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return (OVERHEAD_DETAIL[khoi] || []).filter((it) => !q || `${it.desc} ${it.unit} ${it.month}`.toLowerCase().includes(q));
-  }, [khoi, search]);
+    return (OVERHEAD_DETAIL[khoi] || []).filter((it) => {
+      const [mm, yyyy] = it.month.split('/').map(Number);
+      if (yyyy !== year) return false;
+      if (month !== 'all' && mm !== month) return false;
+      return !q || `${it.desc} ${it.unit} ${it.month}`.toLowerCase().includes(q);
+    });
+  }, [khoi, year, month, search]);
 
   const total = items.reduce((s, x) => s + x.amount, 0);
 
@@ -51,7 +57,7 @@ export const OverheadDetailPage: React.FC<{ onNavigate?: (item: string) => void 
       </div>
 
       {/* Bộ lọc */}
-      <div className="bg-white px-4 py-3 rounded-2xl border border-slate-200/80 shadow-xs grid grid-cols-[auto_220px_auto_120px_1fr] items-center gap-3">
+      <div className="bg-white px-4 py-3 rounded-2xl border border-slate-200/80 shadow-xs grid grid-cols-[auto_220px_auto_150px_auto_120px_1fr] items-center gap-3">
         <span className="text-xs font-bold text-slate-500 flex items-center gap-1.5"><Building2 size={13} /> Khối</span>
         <select
           value={khoi}
@@ -60,6 +66,17 @@ export const OverheadDetailPage: React.FC<{ onNavigate?: (item: string) => void 
         >
           {KHOIS.map((k) => (
             <option key={k} value={k}>{label(k)}</option>
+          ))}
+        </select>
+        <span className="text-xs font-bold text-slate-500">Tháng</span>
+        <select
+          value={month}
+          onChange={(e) => setMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+          className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-blue-500 cursor-pointer"
+        >
+          <option value="all">Tất cả tháng</option>
+          {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+            <option key={m} value={m}>Tháng {String(m).padStart(2, '0')}</option>
           ))}
         </select>
         <span className="text-xs font-bold text-slate-500">Năm</span>
@@ -81,7 +98,7 @@ export const OverheadDetailPage: React.FC<{ onNavigate?: (item: string) => void 
         <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
           <div>
             <h3 className="text-sm font-black text-slate-800">Chi phí vận hành — Khối {label(khoi)}</h3>
-            <p className="text-[11px] text-slate-500 italic">Kỳ năm {year}</p>
+            <p className="text-[11px] text-slate-500 italic">{month === 'all' ? `Kỳ năm ${year}` : `Tháng ${String(month).padStart(2, '0')} năm ${year}`}</p>
           </div>
           <button className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-bold rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer">
             <FileSpreadsheet size={14} className="text-slate-400" /> Export XLSX
