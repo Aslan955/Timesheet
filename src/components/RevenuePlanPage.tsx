@@ -23,7 +23,9 @@ import {
   Inbox,
   Building2,
   FolderPlus,
+  FileSpreadsheet,
 } from 'lucide-react';
+import { RevenuePlanImportModal } from './RevenuePlanImportModal';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   useFinancePlans,
@@ -79,6 +81,7 @@ export const RevenuePlanPage: React.FC = () => {
   };
   const [historyOpen, setHistoryOpen] = useState(false);
   const [requestsOpen, setRequestsOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   // Nạp dữ liệu khối/năm vào bản nháp khi đổi lựa chọn
   useEffect(() => {
@@ -193,6 +196,9 @@ export const RevenuePlanPage: React.FC = () => {
             </button>
             <button onClick={() => setHistoryOpen(true)} className="px-3 py-1.5 border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50 text-xs font-bold flex items-center gap-1.5 cursor-pointer">
               <History size={13} /> Lịch sử
+            </button>
+            <button onClick={() => setImportOpen(true)} className="px-3 py-1.5 border border-emerald-200 bg-emerald-50 rounded-xl text-emerald-700 hover:bg-emerald-100 text-xs font-bold flex items-center gap-1.5 cursor-pointer">
+              <FileSpreadsheet size={13} /> Nhập Excel
             </button>
             <button onClick={handleSave} className="px-3.5 py-1.5 bg-[#0fa57c] hover:bg-[#0c8e6b] text-white text-xs font-bold rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-95">
               <Save size={14} /> Lưu khai báo
@@ -344,6 +350,24 @@ export const RevenuePlanPage: React.FC = () => {
               </div>
             )}
           </ModalShell>
+        )}
+      </AnimatePresence>
+
+      {/* ===== MODAL: Nhập Excel ===== */}
+      <AnimatePresence>
+        {importOpen && (
+          <RevenuePlanImportModal
+            khoi={khoi}
+            year={year}
+            current={projects}
+            onClose={() => setImportOpen(false)}
+            onApply={(next, summary) => {
+              setProjects(deepProjects(next));
+              if (!note.trim()) setNote(summary);
+              setImportOpen(false);
+              showToast(`📥 ${summary}. Kiểm tra lại rồi bấm “Lưu khai báo”.`);
+            }}
+          />
         )}
       </AnimatePresence>
 
