@@ -762,7 +762,7 @@ const CashflowForm: React.FC<{
           {carryPrev.map((v, i) => (
             <td key={i} className={i === 0 && !readOnly ? "px-1.5 py-1.5" : "px-2 py-2.5 text-right font-mono text-slate-800"}>
               {i === 0 && !readOnly ? (
-                <div className="flex justify-end">
+                <div className="flex justify-center">
                   <div className="w-[72px]">
                     <EditCell value={fin.carryPrev} onChange={(nv) => setCell('carryPrev', 0, nv)} />
                   </div>
