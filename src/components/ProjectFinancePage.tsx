@@ -40,10 +40,12 @@ import {
   FileUp,
   DownloadCloud,
   FileText,
+  Users,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFinancePlans } from '../finance/FinancePlanContext';
 import { OVERHEAD_DETAIL } from '../finance/overheadDetail';
+import { ProjectLaborCostPage } from './ProjectLaborCostPage';
 
 const YEAR = 2026;
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
@@ -127,7 +129,7 @@ const fmt = (n: number) => {
 };
 const sum = (arr: number[]) => arr.reduce((s, x) => s + x, 0);
 
-type Tab = 'revenue' | 'cost' | 'overhead' | 'overheadDetail' | 'cashflow';
+type Tab = 'revenue' | 'cost' | 'overhead' | 'overheadDetail' | 'cashflow' | 'labor';
 
 // Giá trị đặc biệt cho lựa chọn "Tất cả dự án trong khối".
 const ALL_PROJECTS = '__ALL__';
@@ -368,6 +370,7 @@ export const ProjectFinancePage: React.FC = () => {
             { id: 'overhead', label: 'Vận hành khối', icon: Building2 },
             { id: 'overheadDetail', label: 'Chi phí vận hành chi tiết', icon: FileText },
             { id: 'cashflow', label: 'Dòng tiền', icon: Wallet },
+            { id: 'labor', label: 'Chi phí nhân công', icon: Users },
           ] as { id: Tab; label: string; icon: any }[]).map((t) => {
             const Icon = t.icon;
             return (
@@ -413,6 +416,9 @@ export const ProjectFinancePage: React.FC = () => {
       {tab === 'overheadDetail' && <OverheadDetailView khoi={khoi} />}
       {tab === 'cashflow' && (
         <CashflowForm project={displayProject} fin={fin} readOnly={isAll} workload={workloadRow} setCell={setCell} onSave={() => showToast('💾 Đã lưu dòng tiền.')} />
+      )}
+      {tab === 'labor' && (
+        <ProjectLaborCostPage isTab />
       )}
     </div>
   );

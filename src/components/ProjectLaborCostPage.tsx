@@ -73,7 +73,7 @@ const ym = (year: number, m: number) => `${year}-${String(m).padStart(2, '0')}`;
 type Tab = 'overview' | 'project' | 'employee' | 'warning';
 type Warn = { kind: 'noSalary' | 'unallocated' | 'under' | 'over' | 'pending' | 'noKhoi'; key: string; name: string; detail: string; period: string };
 
-export const ProjectLaborCostPage: React.FC = () => {
+export const ProjectLaborCostPage: React.FC<{ isTab?: boolean }> = ({ isTab }) => {
   const { blocks } = useFinancePlans();
   const [ds, setDs] = useState<LaborDataset>(sampleDataset);
 
@@ -297,7 +297,7 @@ export const ProjectLaborCostPage: React.FC = () => {
   const nMonths = resultsOf(monthlyK).filter((r) => r.totals.total > 0).length;
 
   return (
-    <div className="p-4 sm:p-6 bg-slate-50/50 min-h-screen space-y-4 font-sans">
+    <div className={isTab ? "space-y-4 font-sans" : "p-4 sm:p-6 bg-slate-50/50 min-h-screen space-y-4 font-sans"}>
       <AnimatePresence>
         {toast && (
           <motion.div
@@ -313,10 +313,12 @@ export const ProjectLaborCostPage: React.FC = () => {
         )}
       </AnimatePresence>
 
-      <div>
-        <Breadcrumb items={['Quản lý dự án', 'Chi phí nhân công dự án']} />
-        <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight -mt-2">Chi Phí Nhân Công Theo Khối &amp; Dự Án</h1>
-      </div>
+      {!isTab && (
+        <div>
+          <Breadcrumb items={['Quản lý dự án', 'Chi phí nhân công dự án']} />
+          <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight -mt-2">Chi Phí Nhân Công Theo Khối &amp; Dự Án</h1>
+        </div>
+      )}
 
       {/* Bộ lọc + hành động */}
       <div className="bg-white px-4 py-3 rounded-2xl border border-slate-200/80 shadow-xs flex flex-wrap items-center gap-3">
