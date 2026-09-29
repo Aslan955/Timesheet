@@ -70,8 +70,8 @@ const pct = (n: number) => `${(n * 100).toLocaleString('vi-VN', { maximumFractio
 const resultsOf = (o: Record<string, LaborResult>): LaborResult[] => Object.keys(o).sort().map((k) => o[k]);
 const ym = (year: number, m: number) => `${year}-${String(m).padStart(2, '0')}`;
 
-type Tab = 'overview' | 'project' | 'employee' | 'warning';
-type Warn = { kind: 'noSalary' | 'unallocated' | 'under' | 'over' | 'pending' | 'noKhoi'; key: string; name: string; detail: string; period: string };
+type Tab = 'overview' | 'project' | 'employee';
+
 
 export const ProjectLaborCostPage: React.FC<{ isTab?: boolean }> = ({ isTab }) => {
   const { blocks } = useFinancePlans();
@@ -192,35 +192,7 @@ export const ProjectLaborCostPage: React.FC<{ isTab?: boolean }> = ({ isTab }) =
     setEmpDetail(null);
   };
 
-  // ---- Cảnh báo (theo tháng; cả năm = gộp các tháng) ----
-  const warnings = useMemo<Warn[]>(() => {
-    const w: Warn[] = [];
-    const ps = month === 'year' ? yearPeriods : [month];
-    ps.forEach((p) => {
-      const full = monthly[p];
-      const r = monthlyK[p];
-      if (!full || !r) return;
-      if (!khoi)
-        full.unallocated.forEach((s) =>
-          w.push({ kind: 'unallocated', key: s.username, name: s.fullName || s.username, period: p, detail: `Có lương ${vnd(s.salary + s.bhxh + s.cpcd)} đ nhưng không log Jira / chưa phân bổ` }),
-        );
-      r.employees.forEach((e) => {
-        const fe = full.employees.find((x) => x.username === e.username)!; // giờ toàn kỳ (mọi khối)
-        if (!fe.hasSalary) w.push({ kind: 'noSalary', key: e.username, name: e.fullName, period: p, detail: `Log ${r2(fe.hours)}h nhưng chưa có lương → chi phí = 0` });
-        if (fe.pendingWeeks) w.push({ kind: 'pending', key: e.username, name: e.fullName, period: p, detail: `${fe.pendingWeeks} tuần timesheet chưa được duyệt` });
-        if (fe.hours < fe.required * 0.9) w.push({ kind: 'under', key: e.username, name: e.fullName, period: p, detail: `Log ${r2(fe.hours)}h / chuẩn ${fe.required}h (${pct(fe.hours / fe.required)}) — lương vẫn phân bổ hết theo giờ đã log` });
-        if (fe.hours > fe.required * 1.1) w.push({ kind: 'over', key: e.username, name: e.fullName, period: p, detail: `Log ${r2(fe.hours)}h / chuẩn ${fe.required}h (${pct(fe.hours / fe.required)})` });
-      });
-    });
-    // Dự án chưa gán khối (1 dòng / dự án, cộng dồn chi phí)
-    if (!khoi || khoi === NO_KHOI) {
-      const agg = new Map<string, number>();
-      ps.forEach((p) => monthly[p]?.projects.filter((x) => x.khoi === NO_KHOI).forEach((x) => agg.set(x.project, (agg.get(x.project) || 0) + x.total)));
-      agg.forEach((t, code) => w.unshift({ kind: 'noKhoi', key: code, name: code, period: month, detail: `Chưa thuộc khối nào — ${vnd(t)} đ chi phí chưa tính vào khối` }));
-    }
-    return w;
-  }, [monthly, monthlyK, month, khoi, yearPeriods]);
-  const critical = warnings.filter((x) => x.kind === 'noSalary' || x.kind === 'unallocated' || x.kind === 'noKhoi').length;
+
 
   // ---- Cột bảng ----
   const projCols: Column<ProjectResult>[] = [
@@ -377,7 +349,6 @@ export const ProjectLaborCostPage: React.FC<{ isTab?: boolean }> = ({ isTab }) =
             value: million(nMonths ? resultsOf(monthlyK).reduce((s, r) => s + r.totals.total, 0) / nMonths : 0),
           },
           { label: 'Dự án · Nhân sự', value: `${res.projects.length} · ${res.employees.length}` },
-          { label: 'Cảnh báo', value: `${warnings.length}${critical ? ` (${critical} ảnh hưởng CP)` : ''}`, tone: critical ? 'danger' : warnings.length ? 'warning' : 'default' },
         ]}
       />
 
@@ -387,7 +358,6 @@ export const ProjectLaborCostPage: React.FC<{ isTab?: boolean }> = ({ isTab }) =
             ['overview', 'Khối × Tháng'],
             ['project', `Theo dự án (${res.projects.length})`],
             ['employee', `Theo nhân viên (${res.employees.length})`],
-            ['warning', `Cảnh báo (${warnings.length})`],
           ] as [Tab, string][]
         ).map(([k, l]) => (
           <button
@@ -443,15 +413,6 @@ export const ProjectLaborCostPage: React.FC<{ isTab?: boolean }> = ({ isTab }) =
             totalLabel={`Tổng: ${res.employees.length} nhân viên`}
           />
         </>
-      )}
-      {tab === 'warning' && (
-        <WarningList
-          warnings={warnings}
-          showPeriod={month === 'year'}
-          khoiList={khoiList}
-          onAssign={assignKhoi}
-          onAllocate={(username, fullName, period) => setManualFor({ username, fullName, period })}
-        />
       )}
 
       {/* Drawer dự án */}
@@ -705,60 +666,6 @@ const Select: React.FC<{ label: string; value: string; onChange: (v: string) => 
   </label>
 );
 
-const WARN_META: Record<Warn['kind'], { label: string; cls: string; icon: React.ReactNode }> = {
-  noKhoi: { label: 'Chưa gán khối', cls: 'bg-rose-50 text-rose-700 border-rose-200', icon: <FolderX size={13} /> },
-  unallocated: { label: 'Chưa phân bổ', cls: 'bg-rose-50 text-rose-700 border-rose-200', icon: <UserX size={13} /> },
-  noSalary: { label: 'Thiếu lương', cls: 'bg-rose-50 text-rose-700 border-rose-200', icon: <Wallet size={13} /> },
-  pending: { label: 'Chưa duyệt', cls: 'bg-amber-50 text-amber-700 border-amber-200', icon: <Clock size={13} /> },
-  under: { label: 'Log thiếu giờ', cls: 'bg-amber-50 text-amber-700 border-amber-200', icon: <AlertTriangle size={13} /> },
-  over: { label: 'Log vượt giờ', cls: 'bg-indigo-50 text-indigo-700 border-indigo-200', icon: <AlertTriangle size={13} /> },
-};
-
-const WarningList: React.FC<{
-  warnings: Warn[];
-  showPeriod: boolean;
-  khoiList: string[];
-  onAssign: (code: string, khoi: string) => void;
-  onAllocate: (u: string, n: string, period: string) => void;
-}> = ({ warnings, showPeriod, khoiList, onAssign, onAllocate }) => {
-  if (!warnings.length) return <div className="bg-white rounded-2xl border border-slate-200 py-10 text-center text-xs text-slate-400">Không có cảnh báo nào.</div>;
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 divide-y divide-slate-100">
-      {warnings.map((w, i) => {
-        const m = WARN_META[w.kind];
-        return (
-          <div key={i} className="px-4 py-2.5 flex items-center gap-3 text-xs">
-            <span className={`px-2 py-0.5 rounded-lg border text-[10px] font-black flex items-center gap-1 shrink-0 w-32 ${m.cls}`}>
-              {m.icon} {m.label}
-            </span>
-            {showPeriod && <span className="font-mono text-[11px] text-slate-400 w-16 shrink-0">{w.kind === 'noKhoi' ? '' : periodLabel(w.period)}</span>}
-            <span className="font-bold text-slate-700 shrink-0 w-44 truncate">
-              {w.kind === 'noKhoi' ? <span className="font-mono text-blue-600">{w.name}</span> : <>{w.name} <span className="font-mono font-normal text-slate-400">{w.key}</span></>}
-            </span>
-            <span className="text-slate-500 flex-1">{w.detail}</span>
-            {w.kind === 'unallocated' && (
-              <button onClick={() => onAllocate(w.key, w.name, w.period)} className="px-2.5 py-1 rounded-lg bg-[#0fa57c] text-white text-[11px] font-bold hover:bg-[#0c8e6b] cursor-pointer shrink-0">
-                Phân bổ
-              </button>
-            )}
-            {w.kind === 'noKhoi' && (
-              <select
-                defaultValue=""
-                onChange={(e) => e.target.value && onAssign(w.key, e.target.value)}
-                className="text-[11px] font-bold rounded-lg px-2 py-1 border border-slate-200 bg-white text-slate-700 outline-none cursor-pointer shrink-0"
-              >
-                <option value="">Gán khối…</option>
-                {khoiList.map((k) => (
-                  <option key={k} value={k}>{k}</option>
-                ))}
-              </select>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-};
 
 const Kpi: React.FC<{ label: string; value: string; strong?: boolean }> = ({ label, value, strong }) => (
   <div className={`rounded-xl border px-3 py-2 ${strong ? 'border-emerald-200 bg-emerald-50/60' : 'border-slate-100 bg-slate-50/60'}`}>
