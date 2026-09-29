@@ -134,7 +134,7 @@ export const RevenuePlanPage: React.FC = () => {
     setNote('');
   };
 
-  const colCount = 4 + 24; // Nội dung + Mã dự án + CẢ NĂM + KLCV + 12 tháng × (SX,KD)
+  const colCount = 3 + 24; // Nội dung + Mã dự án + CẢ NĂM + 12 tháng × (SX,KD)
 
   return (
     <div className="p-4 sm:p-6 bg-slate-50/50 min-h-screen space-y-4 font-sans">
@@ -187,13 +187,10 @@ export const RevenuePlanPage: React.FC = () => {
             ))}
           </select>
           <div className="text-[11px] text-slate-500 font-semibold">
-            Người lập: <strong className="text-slate-700">{CURRENT_USER}</strong> · ĐVT: <strong className="text-slate-700">triệu VNĐ</strong>
+            Người lập: <strong className="text-slate-700">{CURRENT_USER}</strong>
             {block && <span className="ml-2 text-slate-400">· Cập nhật: {block.updatedAt}</span>}
           </div>
           <div className="justify-self-end flex items-center gap-2">
-            <button onClick={() => setRequestsOpen(true)} className="text-xs font-bold text-blue-600 hover:underline cursor-pointer whitespace-nowrap">
-              Yêu cầu sửa của tôi ({myRequests.length}) →
-            </button>
             <button onClick={() => setHistoryOpen(true)} className="px-3 py-1.5 border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50 text-xs font-bold flex items-center gap-1.5 cursor-pointer">
               <History size={13} /> Lịch sử
             </button>
@@ -223,7 +220,6 @@ export const RevenuePlanPage: React.FC = () => {
                 <th rowSpan={2} className="px-3 py-2 sticky left-0 bg-slate-100/80 z-10 min-w-[210px]">Nội dung</th>
                 <th rowSpan={2} className="px-3 py-2 min-w-[130px]">Mã dự án</th>
                 <th rowSpan={2} className="px-3 py-2 text-right min-w-[96px] bg-slate-200/60 text-slate-700">CẢ NĂM</th>
-                <th rowSpan={2} className="px-3 py-2 text-right min-w-[96px] bg-indigo-100/70 text-indigo-700" title="Khối lượng công việc">KLCV</th>
                 {MONTHS12.map((m) => (
                   <th key={m} colSpan={2} className="px-2 py-2 text-center border-l border-slate-200">Tháng {m}</th>
                 ))}
@@ -265,7 +261,6 @@ export const RevenuePlanPage: React.FC = () => {
                         />
                       </td>
                       <td className="px-3 py-2 text-right font-mono font-black bg-slate-200/50 text-slate-500 text-[11px]">DỰ ÁN {pi + 1}</td>
-                      <td className="px-3 py-2 text-right font-mono font-black bg-indigo-50/50 text-indigo-700">{fmt(sum12(wl))}%</td>
                       <td colSpan={24} className="px-3 py-2 text-[11px] text-slate-400 font-semibold">
                         Khai báo thu &amp; chi dự kiến 12 tháng — tách <strong className="text-slate-500">SX</strong> (sản xuất) / <strong className="text-slate-500">KD</strong> (kinh doanh)
                       </td>
@@ -282,8 +277,8 @@ export const RevenuePlanPage: React.FC = () => {
                       pi={pi} sx={p.revenue} kd={p.revenueKd || zero12()} sxKind="revenue" kdKind="revenueKd" tone="in" setCell={setCell} />
                     <MetricRow label="Chi dự kiến" labelCls="text-rose-700" caCls="bg-rose-50/70 text-rose-700"
                       pi={pi} sx={p.expense} kd={p.expenseKd || zero12()} sxKind="expense" kdKind="expenseKd" tone="out" setCell={setCell} />
-                    <MetricRow label="Khối lượng công việc (%)" labelCls="text-indigo-700" caCls="bg-indigo-50/60 text-indigo-700"
-                      pi={pi} sx={p.workloadMonthly || zero12()} kd={p.workloadKd || zero12()} sxKind="workloadMonthly" kdKind="workloadKd" unit="%" suffix="%" borderB2 setCell={setCell} />
+                    <MetricRow label="Khối lượng công việc (SP)" labelCls="text-indigo-700" caCls="bg-indigo-50/60 text-indigo-700"
+                      pi={pi} sx={p.workloadMonthly || zero12()} kd={p.workloadKd || zero12()} sxKind="workloadMonthly" kdKind="workloadKd" borderB2 setCell={setCell} />
                   </React.Fragment>
                 );
               })}
@@ -443,7 +438,6 @@ const MetricRow: React.FC<{
       <td className={`px-3 py-1.5 sticky left-0 bg-white z-10 pl-11 font-bold ${labelCls}`}>{label}</td>
       <td className="px-3 py-1.5 text-slate-300">—</td>
       <td className={`px-3 py-1.5 text-right font-mono font-black ${caCls}`}>{fmt(total)}{suffix}</td>
-      <td className="px-3 py-1.5 text-center text-slate-300 bg-indigo-50/40">—</td>
       {MONTHS12.map((_, mi) => (
         <React.Fragment key={mi}>
           <td className="px-1 py-1.5 border-l border-slate-100">
@@ -470,7 +464,6 @@ const Total2Row: React.FC<{ label: string; sx: number[]; kd: number[]; tone: 're
       <td className={`px-3 py-2 sticky left-0 z-10 ${bgSticky} ${tone === 'net' ? 'text-slate-700' : ''}`}>{label}</td>
       <td className="px-3 py-2" />
       <td className="px-3 py-2 text-right font-mono bg-indigo-50/60 text-indigo-700">{fmt(total)}</td>
-      <td className="px-3 py-2" />
       {MONTHS12.map((_, i) => (
         <React.Fragment key={i}>
           <td className="px-2 py-2 text-right font-mono border-l border-slate-200/70">{fmt(sx[i])}</td>

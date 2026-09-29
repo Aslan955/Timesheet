@@ -7,6 +7,8 @@ export interface OverheadItem {
   amount: number; // Số tiền (VNĐ)
   unit: string; // Mã đơn vị
   month: string; // Tháng (MM/YYYY)
+  version?: string; // Phiên bản import
+  user?: string; // Người import
 }
 
 export const OVERHEAD_DETAIL: Record<string, OverheadItem[]> = {
