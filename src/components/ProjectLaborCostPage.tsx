@@ -565,7 +565,6 @@ const Overview: React.FC<{
 }> = ({ year, rows, khoiList, colorOf, single, active, onDrill }) => {
   const hl = (i: number) => (active === i ? 'bg-emerald-50 ring-1 ring-inset ring-emerald-200' : '');
   const [open, setOpen] = useState<Set<string>>(new Set());
-  const [hover, setHover] = useState<number | null>(null);
 
   // Tổng theo khối × tháng, thứ tự khối cố định
   const order = [...khoiList, NO_KHOI];
@@ -576,79 +575,12 @@ const Overview: React.FC<{
     })
     .filter((x) => x.list.length);
   const colTot = MONTHS.map((_, i) => byKhoi.reduce((s, k) => s + k.months[i], 0));
-  const max = Math.max(...colTot, 1);
   const grand = colTot.reduce((a, b) => a + b, 0);
-  const H = 200;
 
   if (!byKhoi.length) return <div className="bg-white rounded-2xl border border-slate-200 py-12 text-center text-xs text-slate-400">Chưa có dữ liệu năm {year}.</div>;
 
   return (
     <div className="space-y-4">
-      {/* Biểu đồ */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4">
-        <div className="flex items-start justify-between flex-wrap gap-2 mb-3">
-          <div>
-            <h3 className="text-sm font-black text-slate-800">Chi phí nhân công theo tháng — {single ? `Khối ${single}` : 'các khối'} · {year}</h3>
-            <p className="text-[11px] text-slate-500">Triệu VNĐ · bấm vào cột để xem chi tiết dự án của tháng</p>
-          </div>
-          {byKhoi.length > 1 && (
-            <div className="flex flex-wrap gap-x-3 gap-y-1">
-              {byKhoi.map((k) => (
-                <span key={k.khoi} className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600">
-                  <span className="w-2.5 h-2.5 rounded-sm" style={{ background: colorOf(k.khoi) }} /> {k.khoi}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="relative flex items-end gap-2 pl-10" style={{ height: H + 24 }}>
-          {/* Lưới */}
-          {[0, 0.5, 1].map((t) => (
-            <div key={t} className="absolute left-10 right-0 border-t border-slate-100" style={{ bottom: 24 + t * H }}>
-              <span className="absolute -left-10 -top-2 w-9 text-right text-[10px] text-slate-400 font-mono">{mil1(max * t) === '–' ? '0' : Math.round((max * t) / 1e6).toLocaleString('vi-VN')}</span>
-            </div>
-          ))}
-          {MONTHS.map((m, i) => {
-            const tot = colTot[i];
-            return (
-              <div
-                key={m}
-                className="relative flex-1 flex flex-col items-center justify-end h-full cursor-pointer"
-                onMouseEnter={() => setHover(i)}
-                onMouseLeave={() => setHover(null)}
-                onClick={() => tot && onDrill(single, `${year}-${String(m).padStart(2, '0')}`)}
-              >
-                <div className={`w-full max-w-[44px] flex flex-col-reverse gap-[2px] ${(hover !== null ? hover !== i : active !== null && active !== i) ? 'opacity-40' : ''}`} style={{ height: (tot / max) * H }}>
-                  {byKhoi.map((k, ki) =>
-                    k.months[i] > 0 ? (
-                      <div
-                        key={k.khoi}
-                        style={{ height: `${(k.months[i] / tot) * 100}%`, background: colorOf(k.khoi) }}
-                        className={ki === byKhoi.length - 1 || byKhoi.slice(ki + 1).every((x) => !x.months[i]) ? 'rounded-t-[4px]' : ''}
-                      />
-                    ) : null,
-                  )}
-                </div>
-                <span className="h-6 flex items-center text-[10px] font-bold text-slate-500">T{m}</span>
-                {hover === i && tot > 0 && (
-                  <div className="absolute bottom-full mb-2 z-20 bg-white border border-slate-200 rounded-xl shadow-lg px-3 py-2 text-[11px] whitespace-nowrap pointer-events-none">
-                    <p className="font-black text-slate-800 mb-1">Tháng {m}/{year} · {mil1(tot)} tr</p>
-                    {byKhoi
-                      .filter((k) => k.months[i])
-                      .map((k) => (
-                        <p key={k.khoi} className="flex items-center gap-1.5 text-slate-600">
-                          <span className="w-2 h-2 rounded-sm" style={{ background: colorOf(k.khoi) }} />
-                          {k.khoi}: <span className="font-mono font-bold text-slate-800">{mil1(k.months[i])}</span>
-                        </p>
-                      ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
       {/* Ma trận khối × tháng */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
