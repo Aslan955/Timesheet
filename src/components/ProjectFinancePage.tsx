@@ -328,12 +328,9 @@ export const ProjectFinancePage: React.FC<{ onNavigate?: (item: string) => void 
         </div>
         <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2.5">
           <span>Thông Tin Tài Chính Dự Án</span>
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-50 text-blue-600 border border-blue-200">
-            Form View · Năm {YEAR}
-          </span>
         </h1>
         <p className="text-xs text-slate-500 font-medium mt-0.5">
-          Cập nhật thực tế theo tháng và đối chiếu với kế hoạch. Đơn vị: <strong>triệu VNĐ</strong>.
+          Cập nhật thực tế theo tháng và đối chiếu với kế hoạch.
         </p>
       </div>
 
@@ -636,7 +633,7 @@ const CostForm: React.FC<{
         legend="Chênh lệch = Kế hoạch − Thực tế. Xanh: trong định mức (tiết kiệm), đỏ: vượt chi."
       >
         <ReadRow label="Chi phí kế hoạch" values={fin.costPlan} />
-        <EditRow label="Chi phí thực tế trực tiếp" values={fin.costActual} onChange={(i, v) => setCell('costActual', i, v)} tone="out" readOnly={readOnly} />
+        <EditRow label="Chi phí thực tế trực tiếp" values={fin.costActual} onChange={(i, v) => setCell('costActual', i, v)} tone="out" readOnly={true} />
         <ReadRow label="Phân bổ CP vận hành khối" values={alloc} tone={() => 'text-amber-600'} />
         <ReadRow label="Tổng chi phí thực tế" values={totalActual} bold tone={() => 'text-rose-600'} />
         <ReadRow label="Chênh lệch KH − TT" values={diff} tone={diffTone} bold />
@@ -754,8 +751,8 @@ const CashflowForm: React.FC<{
         readOnly={readOnly}
         legend="Chênh lệch thu-chi = Dòng thu − Dòng chi. Luỹ kế dòng tiền = Luỹ kế kỳ trước + Chênh lệch trong kỳ."
       >
-        <EditRow label="Dòng thu" values={fin.cashIn} onChange={(i, v) => setCell('cashIn', i, v)} tone="in" readOnly={readOnly} />
-        <EditRow label="Dòng chi" values={fin.cashOut} onChange={(i, v) => setCell('cashOut', i, v)} tone="out" readOnly={readOnly} />
+        <EditRow label="Dòng thu" values={fin.cashIn} onChange={(i, v) => setCell('cashIn', i, v)} tone="in" readOnly={true} />
+        <EditRow label="Dòng chi" values={fin.cashOut} onChange={(i, v) => setCell('cashOut', i, v)} tone="out" readOnly={true} />
         <ReadRow label="Chênh lệch thu - chi" values={net} tone={diffTone} bold />
         <ReadRow label="Luỹ kế kỳ trước" values={carryPrev} tone={() => 'text-slate-500'} total={fin.carryPrev} />
         <ReadRow label="Luỹ kế dòng tiền" values={running} bold tone={(v) => (v >= 0 ? 'text-emerald-600' : 'text-rose-600')} total={running[11]} />
