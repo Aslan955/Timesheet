@@ -47,7 +47,6 @@ export const NAVIGATION: NavItem[] = [
       { title: 'Projects', icon: Briefcase },
       { title: 'Kế hoạch thu chi', icon: ClipboardList },
       { title: 'Thông tin tài chính dự án', icon: Wallet },
-      { title: 'Chi phí nhân công dự án', icon: Users },
       { title: 'Toàn cảnh thu chi', label: 'Overview', icon: PieChart },
       { title: 'Resource Allocation', icon: Users },
       { title: 'Projects Cost Efficiency', icon: BarChart3 },
