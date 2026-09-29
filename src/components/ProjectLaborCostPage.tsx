@@ -118,6 +118,21 @@ export const ProjectLaborCostPage: React.FC = () => {
   );
   const matrix = useMemo(() => monthlyMatrix(monthlyK, year), [monthlyK, year]);
   const scopeLabel = `${month === 'year' ? `Năm ${year}` : `Tháng ${periodLabel(month)}`}${khoi ? ` · Khối ${khoi}` : ''}`;
+  // Số dự án theo khối trong phạm vi tháng / năm đang xem (chưa lọc khối) — cho thanh lọc khối
+  const khoiCounts = useMemo(() => {
+    const codes = new Map<string, Set<string>>();
+    (month === 'year' ? yearPeriods : [month]).forEach((p) =>
+      monthly[p]?.projects.forEach((x) => {
+        if (!codes.has(x.khoi)) codes.set(x.khoi, new Set());
+        codes.get(x.khoi)!.add(x.project);
+      }),
+    );
+    const out: Record<string, number> = {};
+    codes.forEach((s, k) => (out[k] = s.size));
+    out[''] = new Set(Array.from(codes.values()).flatMap((s) => Array.from(s))).size;
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monthly, month, year]);
 
   const [tab, setTab] = useState<Tab>('overview');
   const [projDetail, setProjDetail] = useState<ProjectResult | null>(null);
@@ -208,21 +223,7 @@ export const ProjectLaborCostPage: React.FC = () => {
   const critical = warnings.filter((x) => x.kind === 'noSalary' || x.kind === 'unallocated' || x.kind === 'noKhoi').length;
 
   // ---- Cột bảng ----
-  const khoiCell = (p: ProjectResult) => (
-    <select
-      value={p.khoi === NO_KHOI ? '' : p.khoi}
-      onClick={(e) => e.stopPropagation()}
-      onChange={(e) => assignKhoi(p.project, e.target.value)}
-      className={`text-[11px] font-bold rounded-lg px-1.5 py-0.5 border outline-none cursor-pointer ${p.khoi === NO_KHOI ? 'border-rose-200 bg-rose-50 text-rose-600' : 'border-slate-200 bg-white text-slate-700'}`}
-    >
-      {p.khoi === NO_KHOI && <option value="">Chưa gán</option>}
-      {khoiList.map((k) => (
-        <option key={k} value={k}>{k}</option>
-      ))}
-    </select>
-  );
   const projCols: Column<ProjectResult>[] = [
-    { key: 'khoi', label: 'Khối', get: (p) => p.khoi, render: khoiCell },
     { key: 'project', label: 'Mã dự án', get: (p) => p.project, render: (p) => <span className="font-mono font-bold text-blue-600">{p.project}</span> },
     { key: 'headcount', label: 'Số NV', get: (p) => p.headcount, numeric: true, filterable: false },
     { key: 'hours', label: 'Giờ công', get: (p) => r2(p.hours), numeric: true, total: true, filterable: false },
@@ -258,7 +259,6 @@ export const ProjectLaborCostPage: React.FC = () => {
       total: true,
       filterable: false,
     },
-    ...(khoi ? [] : [{ key: 'required', label: 'Giờ chuẩn', get: (e: EmployeeResult) => e.required, numeric: true, filterable: false } as Column<EmployeeResult>]),
     { key: 'nproj', label: 'Số DA', get: (e) => e.allocations.length, numeric: true, filterable: false },
     {
       key: 'alloc',
@@ -286,6 +286,14 @@ export const ProjectLaborCostPage: React.FC = () => {
     },
   ];
 
+  const monthOptions: [string, string, boolean?][] = [
+    ['year', `Cả năm ${year}`],
+    ...MONTHS.map((m): [string, string, boolean] => {
+      const p = ym(year, m);
+      const has = yearPeriods.includes(p);
+      return [p, `Tháng ${periodLabel(p)}${has ? '' : ' · chưa có dữ liệu'}`, !has];
+    }),
+  ];
   const nMonths = resultsOf(monthlyK).filter((r) => r.totals.total > 0).length;
 
   return (
@@ -314,19 +322,7 @@ export const ProjectLaborCostPage: React.FC = () => {
       <div className="bg-white px-4 py-3 rounded-2xl border border-slate-200/80 shadow-xs flex flex-wrap items-center gap-3">
         <Select label="Năm" value={String(year)} onChange={(v) => setYear(+v)} options={years.map((y) => [String(y), String(y)])} />
         <Select label="Khối" value={khoi} onChange={setKhoi} options={[['', 'Tất cả khối'], ...khoiList.map((k) => [k, k] as [string, string]), [NO_KHOI, NO_KHOI]]} />
-        <Select
-          label="Tháng"
-          value={month}
-          onChange={setMonth}
-          options={[
-            ['year', `Cả năm ${year}`],
-            ...MONTHS.map((m): [string, string, boolean] => {
-              const p = ym(year, m);
-              const has = yearPeriods.includes(p);
-              return [p, `Tháng ${periodLabel(p)}${has ? '' : ' · chưa có dữ liệu'}`, !has];
-            }),
-          ]}
-        />
+        <Select label="Tháng" value={month} onChange={setMonth} options={monthOptions} />
         <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1.5">
           <FileSpreadsheet size={13} className="text-emerald-600" /> <strong className="text-slate-700">{ds.source}</strong>
           <span className="text-slate-400">· {yearPeriods.length} tháng có dữ liệu</span>
@@ -407,14 +403,25 @@ export const ProjectLaborCostPage: React.FC = () => {
       )}
       {tab === 'project' && (
         <>
-          <p className="text-[11px] text-slate-500 font-semibold -mb-2">{scopeLabel}</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <Select label="Năm" value={String(year)} onChange={(v) => setYear(+v)} options={years.map((y) => [String(y), String(y)])} />
+            <Select label="Tháng" value={month} onChange={setMonth} options={monthOptions} />
+            <Select
+              label="Khối"
+              value={khoi}
+              onChange={setKhoi}
+              options={['', ...khoiList, NO_KHOI]
+                .filter((k) => k === '' || k === khoi || khoiCounts[k])
+                .map((k) => [k, `${k || 'Tất cả khối'} (${khoiCounts[k] || 0})`] as [string, string])}
+            />
+          </div>
           <DataTable
             rows={res.projects}
             columns={projCols}
             getRowKey={(p) => p.project}
             onRowClick={setProjDetail}
             onView={setProjDetail}
-            searchPlaceholder="Tìm mã dự án / khối..."
+            searchPlaceholder="Tìm mã dự án..."
             exportFileName={`cp-nhan-cong-du-an-${khoi || 'tat-ca'}-${month}`}
             totalLabel={`Tổng: ${res.projects.length} dự án`}
           />
@@ -466,7 +473,6 @@ export const ProjectLaborCostPage: React.FC = () => {
                 <tr className="bg-slate-50 text-[10px] font-black text-slate-500 uppercase tracking-wider">
                   <th className="px-2 py-2 text-left">Nhân viên</th>
                   <th className="px-2 py-2 text-right">Giờ</th>
-                  <th className="px-2 py-2 text-right">{month === 'year' ? 'MM' : 'Tỷ lệ'}</th>
                   <th className="px-2 py-2 text-right">Chi phí</th>
                 </tr>
               </thead>
@@ -478,7 +484,6 @@ export const ProjectLaborCostPage: React.FC = () => {
                       <p className="text-[10px] font-mono text-slate-400">{a.username}{a.manualHours > 0 && ' · phân bổ thủ công'}</p>
                     </td>
                     <td className="px-2 py-1.5 text-right font-mono">{r2(a.hours)}</td>
-                    <td className="px-2 py-1.5 text-right font-mono text-slate-500">{month === 'year' ? r2(a.ratio) : pct(a.ratio)}</td>
                     <td className="px-2 py-1.5 text-right font-mono font-bold">{a.total ? vnd(a.total) : <span className="text-rose-500">0 · thiếu lương</span>}</td>
                   </tr>
                 ))}

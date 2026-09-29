@@ -1,6 +1,6 @@
 /**
  * Dữ liệu chi tiết chi phí vận hành khối (đơn vị: VNĐ) dùng chung cho
- * màn "Chi phí vận hành chi tiết" và tab Vận hành khối.
+ * tab "Chi phí vận hành chi tiết" và tab Vận hành khối.
  */
 export interface OverheadItem {
   desc: string; // Diễn giải
@@ -38,8 +38,3 @@ export const OVERHEAD_DETAIL: Record<string, OverheadItem[]> = {
     { desc: 'Chi phí công tác_GPDV', amount: 11_200_000, unit: 'GPDV', month: '02/2026' },
   ],
 };
-
-// Khối đang được chọn để mở màn chi tiết (đặt trước khi điều hướng sang trang).
-let focusKhoi = 'G1';
-export const setOverheadFocusKhoi = (k: string) => { focusKhoi = k; };
-export const getOverheadFocusKhoi = () => focusKhoi;

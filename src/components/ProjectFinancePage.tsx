@@ -1,12 +1,13 @@
 /**
  * ProjectFinancePage — "Cập nhật Tài chính Dự án" (dạng Form View theo tháng).
  *
- * Bốn chức năng (tab):
+ * Năm chức năng (tab):
  *  1. Doanh thu   — nhập doanh thu phát sinh trong kỳ (đã nghiệm thu & xuất hoá đơn),
  *                   so sánh doanh thu thực tế vs kế hoạch.
  *  2. Chi phí     — nhập chi phí thực tế, so sánh với chi phí kế hoạch.
  *  3. Vận hành khối — nhập chi phí vận hành chung của khối, tự động phân bổ về các dự án.
- *  4. Dòng tiền   — cập nhật dòng tiền thu/chi từng dự án; lưới Dòng thu / Dòng chi /
+ *  4. Chi phí vận hành chi tiết — danh sách các khoản chi phí vận hành của khối.
+ *  5. Dòng tiền   — cập nhật dòng tiền thu/chi từng dự án; lưới Dòng thu / Dòng chi /
  *                   Chênh lệch thu-chi / Luỹ kế kỳ trước / Luỹ kế dòng tiền (đúng mẫu).
  *
  * Đơn vị hiển thị: triệu VNĐ.
@@ -25,12 +26,13 @@ import {
   Layers,
   BarChart3,
   Eye,
+  FileText,
   X,
   FileSpreadsheet,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFinancePlans } from '../finance/FinancePlanContext';
-import { setOverheadFocusKhoi } from '../finance/overheadDetail';
+import { OverheadDetailPanel } from './OverheadDetailPanel';
 
 const YEAR = 2026;
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
@@ -114,7 +116,7 @@ const fmt = (n: number) => {
 };
 const sum = (arr: number[]) => arr.reduce((s, x) => s + x, 0);
 
-type Tab = 'revenue' | 'cost' | 'overhead' | 'cashflow';
+type Tab = 'revenue' | 'cost' | 'overhead' | 'overheadDetail' | 'cashflow';
 
 // Giá trị đặc biệt cho lựa chọn "Tất cả dự án trong khối".
 const ALL_PROJECTS = '__ALL__';
@@ -122,7 +124,7 @@ const ALL_PROJECTS = '__ALL__';
 // ==========================================================================
 // Component
 // ==========================================================================
-export const ProjectFinancePage: React.FC<{ onNavigate?: (item: string) => void }> = ({ onNavigate }) => {
+export const ProjectFinancePage: React.FC = () => {
   const [finance, setFinance] = useState<Record<string, Finance>>(INITIAL_FINANCE);
   const [overhead, setOverhead] = useState<Record<string, number[]>>(INITIAL_OVERHEAD);
   const [basisByKhoi, setBasisByKhoi] = useState<Record<string, Basis>>(
@@ -319,7 +321,7 @@ export const ProjectFinancePage: React.FC<{ onNavigate?: (item: string) => void 
           <select
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
-            disabled={tab === 'overhead'}
+            disabled={tab === 'overhead' || tab === 'overheadDetail'}
             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:border-blue-500 cursor-pointer disabled:opacity-50"
           >
             <option value={ALL_PROJECTS}>▦ Tất cả dự án trong khối ({projectsInKhoi.length})</option>
@@ -336,6 +338,7 @@ export const ProjectFinancePage: React.FC<{ onNavigate?: (item: string) => void 
             { id: 'revenue', label: 'Doanh thu', icon: TrendingUp },
             { id: 'cost', label: 'Chi phí', icon: TrendingDown },
             { id: 'overhead', label: 'Vận hành khối', icon: Building2 },
+            { id: 'overheadDetail', label: 'Chi phí vận hành chi tiết', icon: FileText },
             { id: 'cashflow', label: 'Dòng tiền', icon: Wallet },
           ] as { id: Tab; label: string; icon: any }[]).map((t) => {
             const Icon = t.icon;
@@ -379,9 +382,10 @@ export const ProjectFinancePage: React.FC<{ onNavigate?: (item: string) => void 
           setOverheadCell={setOverheadCell}
           setBasis={(b) => setBasisByKhoi((prev) => ({ ...prev, [khoi]: b }))}
           onSave={() => showToast('💾 Đã lưu & phân bổ chi phí vận hành khối.')}
-          onOpenDetail={() => { setOverheadFocusKhoi(khoi); onNavigate?.('Chi phí vận hành chi tiết'); }}
+          onOpenDetail={() => setTab('overheadDetail')}
         />
       )}
+      {tab === 'overheadDetail' && <OverheadDetailPanel khoi={khoi} />}
       {tab === 'cashflow' && (
         <CashflowForm project={displayProject} fin={fin} readOnly={isAll} workload={workloadRow} setCell={setCell} onSave={() => showToast('💾 Đã lưu dòng tiền.')} />
       )}
