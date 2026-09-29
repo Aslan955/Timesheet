@@ -245,6 +245,9 @@ export const ProjectFinancePage: React.FC<{ onNavigate?: (item: string) => void 
   const setCell = (field: keyof Finance, monthIdx: number, value: number) => {
     setFinance((prev) => {
       const cur = prev[projectId];
+      if (field === 'carryPrev') {
+        return { ...prev, [projectId]: { ...cur, carryPrev: value } };
+      }
       const arr = [...(cur[field] as number[])];
       arr[monthIdx] = value;
       return { ...prev, [projectId]: { ...cur, [field]: arr } };
@@ -628,7 +631,6 @@ const CostForm: React.FC<{
       <GridShell
         title={`Chi phí — ${project.code}`}
         subtitle="Chi phí thực tế trực tiếp + chi phí phân bổ từ khối, so với kế hoạch."
-        onSave={onSave}
         readOnly={readOnly}
         legend="Chênh lệch = Kế hoạch − Thực tế. Xanh: trong định mức (tiết kiệm), đỏ: vượt chi."
       >
@@ -747,14 +749,29 @@ const CashflowForm: React.FC<{
       <GridShell
         title={`Dòng tiền — ${project.code}`}
         subtitle="Cập nhật dòng tiền thu/chi thực nhận từng tháng của dự án."
-        onSave={onSave}
         readOnly={readOnly}
         legend="Chênh lệch thu-chi = Dòng thu − Dòng chi. Luỹ kế dòng tiền = Luỹ kế kỳ trước + Chênh lệch trong kỳ."
       >
         <EditRow label="Dòng thu" values={fin.cashIn} onChange={(i, v) => setCell('cashIn', i, v)} tone="in" readOnly={true} />
         <EditRow label="Dòng chi" values={fin.cashOut} onChange={(i, v) => setCell('cashOut', i, v)} tone="out" readOnly={true} />
         <ReadRow label="Chênh lệch thu - chi" values={net} tone={diffTone} bold />
-        <ReadRow label="Luỹ kế kỳ trước" values={carryPrev} tone={() => 'text-slate-500'} total={fin.carryPrev} />
+        <tr>
+          <td className="px-4 py-2.5 sticky left-0 bg-inherit z-10 font-semibold text-slate-600">
+            Luỹ kế kỳ trước
+          </td>
+          {carryPrev.map((v, i) => (
+            <td key={i} className={i === 0 && !readOnly ? "px-1.5 py-1.5" : "px-2 py-2.5 text-right font-mono text-slate-800"}>
+              {i === 0 && !readOnly ? (
+                <EditCell value={fin.carryPrev} onChange={(nv) => setCell('carryPrev', 0, nv)} />
+              ) : (
+                <span className="text-slate-500">{fmt(v)}</span>
+              )}
+            </td>
+          ))}
+          <td className="px-3 py-2.5 text-right font-mono font-black bg-indigo-50/60 text-indigo-700">
+            {fmt(fin.carryPrev)}
+          </td>
+        </tr>
         <ReadRow label="Luỹ kế dòng tiền" values={running} bold tone={(v) => (v >= 0 ? 'text-emerald-600' : 'text-rose-600')} total={running[11]} />
         {workload && <ReadRow label="Khối lượng công việc (%)" values={workload} suffix="%" total={sum(workload)} />}
       </GridShell>
