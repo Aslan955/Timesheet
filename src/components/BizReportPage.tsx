@@ -48,7 +48,6 @@ const SERIES = { plan: '#2a78d6', actual: '#eb6834' };
 
 const fmtMonth = (m: string) => (m ? `${m.slice(5, 7)}/${m.slice(0, 4)}` : '—');
 const dmy = (iso: string) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—');
-const dt = (iso: string) => new Date(iso).toLocaleString('vi-VN');
 const isMoney = (k: ReportMetric) => REPORT_METRICS.find((m) => m.key === k)!.money;
 const val = (_k: ReportMetric, n: number) => Math.round(n).toLocaleString('en-US');
 const pct = (r: number | null, digits = 0) => (r === null ? '—' : `${(r * 100).toFixed(digits)}%`);
@@ -117,7 +116,6 @@ export const BizReportPage: React.FC = () => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
   };
-  const lastImport = ledger.imports[0];
 
   return (
     <ErpPage>
@@ -133,7 +131,6 @@ export const BizReportPage: React.FC = () => {
           { label: 'Chốt số đến', value: cutoff ? fmtMonth(cutoff) : 'chưa có số thực tế' },
           { label: 'Số dự án', value: projects.length },
           { label: 'Sổ kế toán', value: `${ledger.cashIn.length} dòng thu · ${ledger.cost.length} dòng chi` },
-          ...(lastImport ? [{ label: 'Import gần nhất', value: `${lastImport.fileName} (${lastImport.by}, ${dt(lastImport.at)})` }] : []),
         ]}
       />
 
@@ -400,10 +397,6 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
               ))}
             </select>
           </FilterField>
-          <span className="text-[12px] text-slate-500 border-l border-slate-300 pl-4">
-            So sánh cùng kỳ <strong className="text-slate-700">{fmtMonth(from)} → {fmtMonth(compareEnd)}</strong> (kế hoạch tính đến tháng chốt số) ·{' '}
-            <strong className="text-slate-700">{scoped.length}</strong> dự án
-          </span>
         </div>
       </Panel>
 
