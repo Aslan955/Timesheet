@@ -9,6 +9,12 @@
  * Dưới cùng là SỐ LIỆU THEO THÁNG (import Excel — BizMonthlyImportModal), 2 tab: Kế hoạch / Thực tế
  * (kế toán import). Chỉ tiêu (dọc) × tháng (ngang); chỉ Chi tách SX / KD; lọc theo năm.
  *
+ * Quy trình: Chờ duyệt mã → Chưa có PAKD → PAKD chờ duyệt (GĐK → CFO) → Đang thực hiện → Kết thúc.
+ *   Danh sách hiển thị Hạn lập PAKD, Phiên bản PAKD, nút thao tác theo vai trò (chọn PM / GĐK / CFO),
+ *   và nhóm cột Thông tin về hợp đồng.
+ * Hợp đồng: bấm vào trạng thái "Chưa ký" / "Đã ký" → ContractModal (Cập nhật ký hợp đồng);
+ * đã ký thì hiện thêm khung Thông tin hợp đồng (phụ lục, tài liệu đính kèm).
+ *
  * Giao diện: khung kiểu phần mềm kế toán (src/components/erp/Erp.tsx).
  * Dữ liệu: src/business/BusinessProjectContext.tsx. Đơn vị: VNĐ.
  */
@@ -35,6 +41,13 @@ import {
   Search,
   FileSpreadsheet,
   Table2,
+  UserCog,
+  ClipboardCheck,
+  XCircle,
+  CheckCircle2,
+  Send,
+  FileSignature,
+  FileText,
 } from 'lucide-react';
 import {
   BizPhase,
@@ -42,6 +55,12 @@ import {
   BizProjectInput,
   BizStatus,
   BIZ_STATUSES,
+  BizRole,
+  BIZ_ROLES,
+  PakdState,
+  latestPakd,
+  pendingRole,
+  addDays,
   DIVISIONS,
   PROJECT_TYPES,
   useBusinessProjects,
@@ -51,6 +70,8 @@ import {
   nextMasterCode,
   blankPhases,
   BizMonthRow,
+  BizAttachment,
+  BizContract,
   FIN_METRICS,
   FinKind,
   latestActualMonth,
@@ -58,6 +79,7 @@ import {
 } from '../business/BusinessProjectContext';
 import { BizMonthlyImportModal, fmtMonth } from './BizMonthlyImportModal';
 import { LedgerDetailModal, LedgerDrill, drillCls } from './LedgerDetailModal';
+import { AttachmentList, ContractModal } from './ContractModal';
 import { Btn, ErpPage, ErpTitleBar, FieldTable, FolderTabs, FormRow, KpiBox, Panel, Segmented, Tag, erp } from './erp/Erp';
 
 const CURRENT_USER = 'namnv';
@@ -69,11 +91,11 @@ const dmy = (iso: string) => (iso ? iso.slice(0, 10).split('-').reverse().join('
 const dt = (iso: string) => new Date(iso).toLocaleString('vi-VN');
 
 const STATUS_CLS: Record<BizStatus, string> = {
-  'Nháp': 'bg-slate-100 text-slate-600 border-slate-300',
-  'Chờ duyệt': 'bg-amber-50 text-amber-700 border-amber-300',
-  'Đang triển khai': 'bg-blue-50 text-blue-700 border-blue-300',
-  'Hoàn thành': 'bg-emerald-50 text-emerald-700 border-emerald-300',
-  'Đóng': 'bg-rose-50 text-rose-700 border-rose-300',
+  'Chờ duyệt mã': 'bg-slate-100 text-slate-600 border-slate-300',
+  'Chưa có PAKD': 'bg-rose-50 text-rose-700 border-rose-300',
+  'PAKD chờ duyệt': 'bg-amber-50 text-amber-700 border-amber-300',
+  'Đang thực hiện': 'bg-blue-50 text-blue-700 border-blue-300',
+  'Kết thúc': 'bg-emerald-50 text-emerald-700 border-emerald-300',
 };
 const StatusBadge: React.FC<{ status: BizStatus }> = ({ status }) => <Tag cls={STATUS_CLS[status]}>{status}</Tag>;
 const KeyBadge = () => (
@@ -85,13 +107,26 @@ const KeyBadge = () => (
 type View = { mode: 'list' } | { mode: 'detail'; id: string } | { mode: 'form'; id?: string };
 
 export const BusinessProjectPage: React.FC = () => {
-  const { projects, createProject, updateProject, deleteProject, importMonthly } = useBusinessProjects();
+  const { projects, createProject, updateProject, deleteProject, importMonthly, saveContract, setAttachments, approveCode, submitPakd, decidePakd, finishProject } =
+    useBusinessProjects();
   const [view, setView] = useState<View>({ mode: 'list' });
+  const [role, setRole] = useState<BizRole>('CFO');
+  const actor = `${CURRENT_USER} (${role})`;
   const [toast, setToast] = useState<string | null>(null);
 
   const flash = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 2500);
+  };
+
+  const decide = (p: BizProject, approve: boolean, note: string) => {
+    decidePakd(p.id, approve, role, actor, note);
+    const v = latestPakd(p)!.version;
+    flash(!approve ? `${role} đã từ chối PAKD V${v} — trả về PM` : role === 'GĐK' ? `GĐK đã duyệt PAKD V${v} — chuyển CFO` : `CFO đã duyệt PAKD V${v} — dự án chuyển "Đang thực hiện"`);
+  };
+  const signContract = (p: BizProject, c: Omit<BizContract, 'updatedAt' | 'updatedBy'>) => {
+    saveContract(p.id, c, CURRENT_USER);
+    flash(`${p.contract ? 'Đã cập nhật hợp đồng' : 'Đã xác nhận ký hợp đồng'} ${c.number} — ${p.masterCode}`);
   };
 
   const current = view.mode !== 'list' && 'id' in view && view.id ? projects.find((p) => p.id === view.id) : undefined;
@@ -113,7 +148,15 @@ export const BusinessProjectPage: React.FC = () => {
       </AnimatePresence>
 
       {view.mode === 'list' && (
-        <ProjectList projects={projects} onView={(p) => setView({ mode: 'detail', id: p.id })} onCreate={() => setView({ mode: 'form' })} />
+        <ProjectList
+          projects={projects}
+          role={role}
+          onRoleChange={setRole}
+          onView={(p) => setView({ mode: 'detail', id: p.id })}
+          onCreate={() => setView({ mode: 'form' })}
+          onDecide={decide}
+          onSaveContract={signContract}
+        />
       )}
 
       {view.mode === 'detail' && current && (
@@ -121,6 +164,25 @@ export const BusinessProjectPage: React.FC = () => {
           project={current}
           onBack={() => setView({ mode: 'list' })}
           onEdit={() => setView({ mode: 'form', id: current.id })}
+          role={role}
+          onRoleChange={setRole}
+          onApproveCode={() => {
+            const deadline = addDays(new Date().toISOString().slice(0, 10), 7);
+            approveCode(current.id, actor, deadline);
+            flash(`Đã duyệt mã ${current.masterCode} — hạn lập PAKD ${dmy(deadline)}`);
+          }}
+          onSubmitPakd={() => {
+            submitPakd(current.id, actor);
+            flash(`Đã nộp PAKD V${current.pakd.length + 1} — chờ GĐK duyệt`);
+          }}
+          onDecide={(approve, note) => decide(current, approve, note)}
+          onFinish={() => {
+            if (!window.confirm(`Kết thúc dự án "${current.name}"?`)) return;
+            finishProject(current.id, actor);
+            flash('Đã kết thúc dự án');
+          }}
+          onAttachments={(files, note) => setAttachments(current.id, files, CURRENT_USER, note)}
+          onSaveContract={(c) => signContract(current, c)}
           onImport={(kind, rows, fileName, summary) => {
             importMonthly(current.id, kind, rows, fileName, CURRENT_USER);
             flash(`${summary} — Version ${current.version + 1}`);
@@ -157,40 +219,212 @@ export const BusinessProjectPage: React.FC = () => {
 };
 
 // ==========================================================================
+// Quy trình PAKD — hiển thị Hạn lập / Phiên bản / nút thao tác
+// ==========================================================================
+const todayIso = () => new Date().toISOString().slice(0, 10);
+const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
+
+/** Cột "Hạn lập PAKD": còn bao nhiêu ngày / ngày nộp / ngày duyệt. */
+const pakdDeadlineCell = (p: BizProject): { text: string; sub?: string; cls?: string } => {
+  const last = latestPakd(p);
+  if (p.status === 'Chờ duyệt mã') return { text: '—', cls: 'text-slate-400' };
+  if (p.status === 'Chưa có PAKD') {
+    const sub = last?.state === 'Từ chối' ? `V${last.version} bị từ chối ${dmy(last.decidedAt || '')}` : undefined;
+    if (!p.pakdDeadline) return { text: 'Chưa đặt hạn', sub, cls: 'text-slate-400' };
+    const d = daysBetween(todayIso(), p.pakdDeadline);
+    if (d > 0) return { text: `Còn ${d} ngày`, sub, cls: d <= 3 ? 'text-amber-700 font-semibold' : '' };
+    return { text: d === 0 ? 'Hết hạn hôm nay' : `Quá hạn ${-d} ngày`, sub, cls: 'text-rose-600 font-semibold' };
+  }
+  if (!last) return { text: '—', cls: 'text-slate-400' };
+  if (last.state === 'Chờ GĐK' || last.state === 'Chờ CFO')
+    return { text: last.version === 1 ? 'Nộp' : `Nộp v${last.version},`, sub: dmy(last.submittedAt) };
+  return { text: 'Duyệt', sub: dmy(last.decidedAt || '') };
+};
+
+/** Cột "Phiên bản PAKD": "V1, chờ CFO" / "V2, chờ GĐK" / "V1, đã duyệt". */
+const pakdVersionText = (p: BizProject) => {
+  const last = latestPakd(p);
+  return last ? `V${last.version}, ${last.state.charAt(0).toLowerCase()}${last.state.slice(1)}` : '—';
+};
+
+type RowAction = { label: string; kind: 'view' | 'decide' } | null;
+/** Nút thao tác theo trạng thái + vai trò đang xem. */
+const rowAction = (p: BizProject, role: BizRole): RowAction => {
+  switch (p.status) {
+    case 'Chờ duyệt mã':
+      return { label: role === 'GĐK' ? 'Duyệt mã' : 'Xem', kind: 'view' };
+    case 'Chưa có PAKD':
+      return { label: 'Lập PAKD', kind: 'view' };
+    case 'PAKD chờ duyệt':
+      return pendingRole(latestPakd(p)) === role ? { label: 'Duyệt', kind: 'decide' } : { label: 'Xem', kind: 'view' };
+    case 'Đang thực hiện':
+      return { label: 'Cập nhật', kind: 'view' };
+    default:
+      return null;
+  }
+};
+
+const RoleSelect: React.FC<{ role: BizRole; onChange: (r: BizRole) => void }> = ({ role, onChange }) => (
+  <label className="flex items-center gap-1.5 text-[12px] text-slate-600 border border-slate-300 rounded-[3px] bg-slate-50 pl-2">
+    <UserCog size={13} className="text-slate-500" /> Vai trò
+    <select value={role} onChange={(e) => onChange(e.target.value as BizRole)} className="h-8 px-1.5 bg-white border-l border-slate-300 text-[12px] font-semibold text-[#1e3a5f] outline-none cursor-pointer">
+      {BIZ_ROLES.map((r) => (
+        <option key={r.key} value={r.key}>
+          {r.label}
+        </option>
+      ))}
+    </select>
+  </label>
+);
+
+/** Hộp thoại GĐK / CFO duyệt hoặc từ chối PAKD. */
+const PakdDecisionModal: React.FC<{ project: BizProject; role: BizRole; onClose: () => void; onDecide: (approve: boolean, note: string) => void }> = ({
+  project: p,
+  role,
+  onClose,
+  onDecide,
+}) => {
+  const [note, setNote] = useState('');
+  const [needNote, setNeedNote] = useState(false);
+  const last = latestPakd(p)!;
+  const gp = grossProfit(p);
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/40" />
+      <motion.div
+        initial={{ scale: 0.97, opacity: 0, y: 12 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.97, opacity: 0, y: 12 }}
+        className="relative bg-white w-full max-w-xl rounded-[4px] border border-slate-400 shadow-2xl z-10"
+      >
+        <div className="flex items-center justify-between px-4 py-2.5 bg-[#1e3a5f] text-white rounded-t-[3px]">
+          <h3 className="text-[14px] font-bold flex items-center gap-2">
+            <ClipboardCheck size={16} /> {role} duyệt PAKD — V{last.version}
+          </h3>
+          <button onClick={onClose} className="p-1 rounded hover:bg-white/10 cursor-pointer">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="p-3 space-y-3">
+          <FieldTable
+            labelWidth="45%"
+            rows={[
+              { label: 'Dự án', value: `${p.masterCode} — ${p.name}` },
+              { label: 'Người nộp / ngày nộp', value: `${last.submittedBy} · ${dmy(last.submittedAt)}` },
+              { label: 'Doanh thu PAKD (VNĐ)', value: money(p.expectedRevenue), num: true, strong: true },
+              { label: 'Chi phí kế hoạch (VNĐ)', value: money(plannedCost(p)), num: true },
+              { label: 'LN gộp kế hoạch (VNĐ)', value: `${money(gp)} (${grossMargin(p).toFixed(1)}%)`, num: true },
+              { label: 'Kế hoạch theo tháng', value: p.plan.length ? `${p.plan.length} tháng` : <span className="text-rose-600">Chưa import</span> },
+            ]}
+          />
+          <FormRow label="Ý kiến" required={needNote} error={needNote && !note.trim() ? 'Nhập lý do từ chối' : undefined}>
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="Ý kiến phê duyệt / lý do từ chối" className={`${erp.inputFull} h-auto py-1.5`} />
+          </FormRow>
+          <p className="text-[11px] text-slate-500">
+            {role === 'GĐK' ? 'GĐK duyệt → chuyển CFO duyệt.' : 'CFO duyệt → PAKD được duyệt, dự án chuyển "Đang thực hiện".'} Từ chối → trả về PM lập phiên bản mới.
+          </p>
+        </div>
+        <div className="flex justify-end gap-1.5 px-3 py-2 border-t border-slate-300 bg-slate-50 rounded-b-[3px]">
+          <Btn onClick={onClose}>Huỷ</Btn>
+          <Btn
+            variant="danger"
+            icon={XCircle}
+            onClick={() => {
+              if (!note.trim()) return setNeedNote(true);
+              onDecide(false, note.trim());
+            }}
+          >
+            Từ chối
+          </Btn>
+          <Btn variant="success" icon={CheckCircle2} onClick={() => onDecide(true, note.trim())}>
+            Duyệt
+          </Btn>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+// ==========================================================================
 // Danh sách
 // ==========================================================================
+/** Thanh "Hiển thị" trên danh sách. */
+type ListView = 'all' | 'code' | 'noPakd' | 'pakdPending' | 'noContract' | 'contract';
+const LIST_VIEWS: { key: ListView; label: string; match: (p: BizProject) => boolean }[] = [
+  { key: 'all', label: 'Tất cả', match: () => true },
+  { key: 'code', label: 'Mã chờ cấp', match: (p) => p.status === 'Chờ duyệt mã' },
+  { key: 'noPakd', label: 'Chưa có PAKD', match: (p) => p.status === 'Chưa có PAKD' },
+  { key: 'pakdPending', label: 'PAKD đang chờ duyệt', match: (p) => p.status === 'PAKD chờ duyệt' },
+  { key: 'noContract', label: 'Chưa có hợp đồng', match: (p) => !p.contractSigned },
+  { key: 'contract', label: 'Đã có hợp đồng', match: (p) => p.contractSigned },
+];
+
+const LIST_HEAD = ['TT', 'Mã dự án', 'Tên dự án', 'Tên khách hàng', 'Khối', 'Loại dự án', 'Thời điểm dự kiến ký HĐ', 'PM', 'Trạng thái', 'Hạn lập PAKD', 'Phiên bản PAKD', 'Doanh thu PAKD', 'Thao tác'];
+
 const ProjectList: React.FC<{
   projects: BizProject[];
+  role: BizRole;
+  onRoleChange: (r: BizRole) => void;
   onView: (p: BizProject) => void;
   onCreate: () => void;
-}> = ({ projects, onView, onCreate }) => {
+  onDecide: (p: BizProject, approve: boolean, note: string) => void;
+  onSaveContract: (p: BizProject, c: Omit<BizContract, 'updatedAt' | 'updatedBy'>) => void;
+}> = ({ projects, role, onRoleChange, onView, onCreate, onDecide, onSaveContract }) => {
   const [q, setQ] = useState('');
   const [division, setDivision] = useState('');
   const [status, setStatus] = useState('');
+  const [listView, setListView] = useState<ListView>('all');
+  const [deciding, setDeciding] = useState<BizProject | null>(null);
+  const [contractOf, setContractOf] = useState<BizProject | null>(null);
 
-  const rows = useMemo(() => {
+  // Lọc theo ô tìm kiếm / khối / trạng thái; thanh "Hiển thị" lọc tiếp trên kết quả này (số đếm theo đó)
+  const base = useMemo(() => {
     const n = q.trim().toLowerCase();
     return projects.filter(
       (p) =>
         (!division || p.division === division) &&
         (!status || p.status === status) &&
-        (!n || [p.masterCode, p.name, p.customerCode, p.customerName].some((v) => v.toLowerCase().includes(n))),
+        (!n || [p.masterCode, p.name, p.customerCode, p.customerName, p.businessPm].some((v) => v.toLowerCase().includes(n))),
     );
   }, [projects, q, division, status]);
+  const viewOf = (k: ListView) => LIST_VIEWS.find((v) => v.key === k)!;
+  const rows = base.filter(viewOf(listView).match);
 
   const rev = rows.reduce((s, p) => s + p.expectedRevenue, 0);
-  const cost = rows.reduce((s, p) => s + plannedCost(p), 0);
-  const gp = rev - cost;
+  const myTurn = projects.filter((p) => p.status === 'PAKD chờ duyệt' && pendingRole(latestPakd(p)) === role).length;
+  const count = (st: BizStatus) => projects.filter((p) => p.status === st).length;
 
   const exportXlsx = () => {
     const data = [
-      ['STT', 'Mã Master', 'Tên dự án', 'Khối', 'Loại dự án', 'Mã KH', 'Khách hàng', 'Bắt đầu', 'Kết thúc', 'Doanh thu dự kiến', 'Chi phí kế hoạch', 'LN gộp', 'Version', 'Trạng thái'],
-      ...rows.map((p, i) => [i + 1, p.masterCode, p.name, p.division, p.projectType, p.customerCode, p.customerName, dmy(p.startDate), dmy(p.endDate), p.expectedRevenue, plannedCost(p), grossProfit(p), `v${p.version}`, p.status]),
+      [...LIST_HEAD.slice(0, -1), 'HĐ - Trạng thái', 'Số hợp đồng', 'Ngày ký', 'Ngày hết hạn'],
+      ...rows.map((p, i) => {
+        const dl = pakdDeadlineCell(p);
+        return [
+          i + 1,
+          p.masterCode,
+          p.name,
+          p.customerName,
+          p.division,
+          p.projectType,
+          dmy(p.expectedSignDate || ''),
+          p.businessPm,
+          p.status,
+          [dl.text, dl.sub].filter(Boolean).join(' '),
+          pakdVersionText(p),
+          p.expectedRevenue,
+          p.contractSigned ? 'Đã ký' : 'Chưa ký',
+          p.contract?.number || '',
+          p.contract ? dmy(p.contract.signDate) : '',
+          p.contract ? dmy(p.contract.to) : '',
+        ];
+      }),
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), 'DuAn');
     XLSX.writeFile(wb, 'du-an-kinh-doanh.xlsx');
   };
+
+  const th = `${erp.th} text-center whitespace-normal leading-tight align-middle`;
 
   return (
     <>
@@ -198,17 +432,22 @@ const ProjectList: React.FC<{
         crumbs={CRUMBS}
         title="Dự án kinh doanh (PAKD)"
         actions={
-          <Btn variant="success" icon={Plus} onClick={onCreate}>
-            Tạo dự án
-          </Btn>
+          <>
+            <RoleSelect role={role} onChange={onRoleChange} />
+            <Btn variant="success" icon={Plus} onClick={onCreate}>
+              Tạo dự án
+            </Btn>
+          </>
         }
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-        <KpiBox label="Số dự án" value={rows.length} sub={`${rows.filter((p) => p.isKey).length} dự án KEY`} />
-        <KpiBox label="Doanh thu dự kiến (VNĐ)" value={money(rev)} valueText={money(rev)} tone="good" sub="Tổng các dự án đang lọc" />
-        <KpiBox label="Chi phí kế hoạch (VNĐ)" value={money(cost)} valueText={money(cost)} tone="bad" sub="Chi SX + Chi KD" />
-        <KpiBox label="LN gộp kế hoạch (VNĐ)" value={money(gp)} valueText={money(gp)} sub={`Biên LN gộp ${rev ? ((gp / rev) * 100).toFixed(1) : 0}%`} />
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+        <KpiBox label="Tổng số dự án" value={projects.length} sub={`${projects.filter((p) => p.isKey).length} dự án KEY`} />
+        <KpiBox label="Chờ duyệt mã" value={count('Chờ duyệt mã')} sub="Chờ GĐK duyệt mã" />
+        <KpiBox label="Chưa có PAKD" value={count('Chưa có PAKD')} tone={count('Chưa có PAKD') ? 'bad' : 'neutral'} sub="PM cần lập / nộp PAKD" />
+        <KpiBox label="PAKD chờ duyệt" value={count('PAKD chờ duyệt')} sub={`${myTurn} PAKD chờ ${role} duyệt`} tone={myTurn ? 'bad' : 'neutral'} />
+        <KpiBox label="Đang thực hiện" value={count('Đang thực hiện')} tone="good" sub={`${count('Kết thúc')} dự án đã kết thúc`} />
+        <KpiBox label="Doanh thu PAKD (VNĐ)" value={money(rev)} valueText={money(rev)} sub="Tổng các dự án đang lọc" />
       </div>
 
       <Panel
@@ -217,11 +456,11 @@ const ProjectList: React.FC<{
         noPad
         actions={
           <>
-            <div className="relative w-64">
+            <div className="relative w-60">
               <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm mã, tên dự án, khách hàng..." className={`${erp.inputFull} h-7 pl-7`} />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm mã, tên dự án, khách hàng, PM..." className={`${erp.inputFull} h-7 pl-7`} />
             </div>
-            <select value={division} onChange={(e) => setDivision(e.target.value)} className={`${erp.input} h-7 w-32`}>
+            <select value={division} onChange={(e) => setDivision(e.target.value)} className={`${erp.input} h-7 w-28`}>
               <option value="">Tất cả khối</option>
               {DIVISIONS.map((d) => (
                 <option key={d}>{d}</option>
@@ -230,7 +469,9 @@ const ProjectList: React.FC<{
             <select value={status} onChange={(e) => setStatus(e.target.value)} className={`${erp.input} h-7 w-40`}>
               <option value="">Tất cả trạng thái</option>
               {BIZ_STATUSES.map((s) => (
-                <option key={s}>{s}</option>
+                <option key={s}>
+                  {s} ({count(s)})
+                </option>
               ))}
             </select>
             <Btn icon={FileSpreadsheet} onClick={exportXlsx} className="h-7">
@@ -238,49 +479,110 @@ const ProjectList: React.FC<{
             </Btn>
           </>
         }
-        footer={`${rows.length} / ${projects.length} dự án · Bấm vào 1 dòng để xem chi tiết`}
+        footer={`${rows.length} / ${projects.length} dự án · Đang xem với vai trò ${role} · Bấm vào dòng để xem chi tiết, bấm "Đã ký / Chưa ký" để cập nhật hợp đồng`}
       >
+        {/* Thanh chọn cách hiển thị */}
+        <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-[#f3f6fa] border-b border-slate-300">
+          <span className="text-[12px] font-semibold text-slate-600">Hiển thị:</span>
+          <div className="inline-flex flex-wrap border border-slate-300 rounded-[3px] overflow-hidden divide-x divide-slate-300 bg-white">
+            {LIST_VIEWS.map((v) => {
+              const n = base.filter(v.match).length;
+              const active = listView === v.key;
+              return (
+                <button
+                  key={v.key}
+                  type="button"
+                  onClick={() => setListView(v.key)}
+                  className={`h-7 px-3 text-[12px] whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${active ? 'bg-[#1f5fa8] text-white font-semibold' : 'text-slate-700 hover:bg-slate-50'}`}
+                >
+                  {v.label}
+                  <span className={`min-w-5 px-1 rounded-[3px] text-[11px] font-bold tabular-nums ${active ? 'bg-white/20' : 'bg-slate-100 text-slate-600'}`}>{n}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <div className="overflow-x-auto">
-          <table className={erp.table}>
+          <table className={`${erp.table} min-w-[1600px]`}>
             <thead>
               <tr>
-                {['STT', 'Mã Master', 'Tên dự án', 'Khối', 'Loại dự án', 'Khách hàng', 'Thời gian', 'Doanh thu dự kiến', 'Chi phí kế hoạch', 'LN gộp', 'Ver', 'Trạng thái'].map((h, i) => (
-                  <th key={h} className={`${erp.th} ${i >= 7 && i <= 9 ? 'text-right' : 'text-left'} ${i === 2 ? 'min-w-[220px]' : i === 5 ? 'min-w-[200px]' : ''} border-t-0 first:border-l-0 last:border-r-0`}>
+                {LIST_HEAD.map((h) => (
+                  <th key={h} rowSpan={2} className={`${th} border-t-0 first:border-l-0 ${h === 'Tên dự án' ? 'min-w-[200px]' : h === 'Tên khách hàng' ? 'min-w-[170px]' : ''}`}>
+                    {h}
+                  </th>
+                ))}
+                <th colSpan={4} className={`${th} border-t-0 border-r-0`}>
+                  Thông tin về hợp đồng
+                </th>
+              </tr>
+              <tr>
+                {['Trạng thái', 'Số hợp đồng', 'Ngày ký', 'Ngày hết hạn'].map((h) => (
+                  <th key={h} className={`${th} last:border-r-0`}>
                     {h}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {rows.map((p, i) => (
-                <tr key={p.id} onClick={() => onView(p)} className={`${erp.tr} cursor-pointer`}>
-                  <td className={`${erp.td} text-center text-slate-500 border-l-0`}>{i + 1}</td>
-                  <td className={`${erp.td} ${erp.code} font-semibold whitespace-nowrap`}>{p.masterCode}</td>
-                  <td className={erp.td}>
-                    <span className="flex items-center gap-1.5 font-semibold text-slate-800">
-                      {p.name} {p.isKey && <KeyBadge />}
-                    </span>
-                  </td>
-                  <td className={`${erp.td} text-center`}>{p.division}</td>
-                  <td className={`${erp.td} whitespace-nowrap`}>{p.projectType}</td>
-                  <td className={erp.td}>
-                    <span className="font-mono text-slate-500">{p.customerCode}</span> · {p.customerName}
-                  </td>
-                  <td className={`${erp.td} whitespace-nowrap text-slate-600`}>
-                    {dmy(p.startDate)} → {dmy(p.endDate)}
-                  </td>
-                  <td className={`${erp.td} ${erp.num}`}>{money(p.expectedRevenue)}</td>
-                  <td className={`${erp.td} ${erp.num}`}>{money(plannedCost(p))}</td>
-                  <td className={`${erp.td} ${erp.num} ${grossProfit(p) < 0 ? 'text-rose-600' : ''}`}>{money(grossProfit(p))}</td>
-                  <td className={`${erp.td} text-center text-slate-500`}>v{p.version}</td>
-                  <td className={`${erp.td} border-r-0`}>
-                    <StatusBadge status={p.status} />
-                  </td>
-                </tr>
-              ))}
+              {rows.map((p, i) => {
+                const dl = pakdDeadlineCell(p);
+                const act = rowAction(p, role);
+                return (
+                  <tr key={p.id} onClick={() => onView(p)} className={`${erp.tr} cursor-pointer`}>
+                    <td className={`${erp.td} text-center text-slate-500 border-l-0`}>{i + 1}</td>
+                    <td className={`${erp.td} ${erp.code} font-semibold whitespace-nowrap`}>{p.masterCode}</td>
+                    <td className={erp.td}>
+                      <span className="font-semibold text-slate-800">{p.name}</span> {p.isKey && <KeyBadge />}
+                    </td>
+                    <td className={erp.td}>{p.customerName}</td>
+                    <td className={`${erp.td} text-center`}>{p.division}</td>
+                    <td className={`${erp.td} whitespace-nowrap`}>{p.projectType}</td>
+                    <td className={`${erp.td} text-center whitespace-nowrap`}>{dmy(p.expectedSignDate || '')}</td>
+                    <td className={`${erp.td} whitespace-nowrap`}>{p.businessPm || '—'}</td>
+                    <td className={`${erp.td} whitespace-nowrap`}>
+                      <StatusBadge status={p.status} />
+                    </td>
+                    <td className={`${erp.td} whitespace-nowrap leading-tight ${dl.cls || ''}`}>
+                      {dl.text}
+                      {dl.sub && <span className="block text-[11px] text-slate-500 font-normal">{dl.sub}</span>}
+                    </td>
+                    <td className={`${erp.td} whitespace-nowrap ${latestPakd(p)?.state === 'Từ chối' ? 'text-rose-600' : ''}`}>{pakdVersionText(p)}</td>
+                    <td className={`${erp.td} ${erp.num}`}>{money(p.expectedRevenue)}</td>
+                    <td className={`${erp.td} text-center whitespace-nowrap`}>
+                      {act && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            act.kind === 'decide' ? setDeciding(p) : onView(p);
+                          }}
+                          className={`text-[12px] underline underline-offset-2 cursor-pointer ${act.kind === 'decide' ? 'text-rose-600 font-bold' : 'text-[#1f5fa8] hover:text-[#184c88]'}`}
+                        >
+                          {act.label}
+                        </button>
+                      )}
+                    </td>
+                    <td className={`${erp.td} text-center whitespace-nowrap`}>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setContractOf(p);
+                        }}
+                        className={`text-[12px] underline underline-offset-2 cursor-pointer ${p.contractSigned ? 'text-emerald-700' : 'text-[#1f5fa8]'}`}
+                      >
+                        {p.contractSigned ? 'Đã ký' : 'Chưa ký'}
+                      </button>
+                    </td>
+                    <td className={`${erp.td} whitespace-nowrap`}>{p.contract?.number || ''}</td>
+                    <td className={`${erp.td} text-center whitespace-nowrap`}>{p.contract ? dmy(p.contract.signDate) : ''}</td>
+                    <td className={`${erp.td} text-center whitespace-nowrap border-r-0`}>{p.contract ? dmy(p.contract.to) : ''}</td>
+                  </tr>
+                );
+              })}
               {!rows.length && (
                 <tr>
-                  <td colSpan={12} className={`${erp.td} text-center text-slate-400 py-6`}>
+                  <td colSpan={17} className={`${erp.td} text-center text-slate-400 py-6`}>
                     Không có dự án phù hợp.
                   </td>
                 </tr>
@@ -289,21 +591,175 @@ const ProjectList: React.FC<{
             {rows.length > 0 && (
               <tfoot>
                 <tr className={erp.totalRow}>
-                  <td className={`${erp.td} border-l-0`} colSpan={7}>
+                  <td className={`${erp.td} border-l-0`} colSpan={11}>
                     Tổng cộng ({rows.length} dự án)
                   </td>
                   <td className={`${erp.td} ${erp.num}`}>{money(rev)}</td>
-                  <td className={`${erp.td} ${erp.num}`}>{money(cost)}</td>
-                  <td className={`${erp.td} ${erp.num}`}>{money(gp)}</td>
-                  <td className={`${erp.td} border-r-0`} colSpan={2} />
+                  <td className={`${erp.td} border-r-0`} colSpan={5} />
                 </tr>
               </tfoot>
             )}
           </table>
         </div>
       </Panel>
+
+      <AnimatePresence>
+        {deciding && (
+          <PakdDecisionModal
+            key="decide"
+            project={deciding}
+            role={role}
+            onClose={() => setDeciding(null)}
+            onDecide={(approve, note) => {
+              onDecide(deciding, approve, note);
+              setDeciding(null);
+            }}
+          />
+        )}
+        {contractOf && (
+          <ContractModal
+            key="contract"
+            project={contractOf}
+            onClose={() => setContractOf(null)}
+            onSave={(c) => {
+              onSaveContract(contractOf, c);
+              setContractOf(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
     </>
   );
+};
+
+// ==========================================================================
+// Quy trình & phê duyệt PAKD (màn chi tiết)
+// ==========================================================================
+const WORKFLOW: BizStatus[] = ['Chờ duyệt mã', 'Chưa có PAKD', 'PAKD chờ duyệt', 'Đang thực hiện', 'Kết thúc'];
+
+const WorkflowPanel: React.FC<{
+  project: BizProject;
+  role: BizRole;
+  onApproveCode: () => void;
+  onSubmit: () => void;
+  onDecide: () => void;
+  onFinish: () => void;
+}> = ({ project: p, role, onApproveCode, onSubmit, onDecide, onFinish }) => {
+  const idx = WORKFLOW.indexOf(p.status);
+  const last = latestPakd(p);
+  const dl = pakdDeadlineCell(p);
+  const actions: React.ReactNode[] = [];
+  if (p.status === 'Chờ duyệt mã')
+    actions.push(
+      role === 'GĐK' ? (
+        <Btn key="code" variant="primary" icon={CheckCircle2} className="h-7" onClick={onApproveCode}>
+          Duyệt mã
+        </Btn>
+      ) : (
+        <span key="code" className="text-[12px] text-slate-500">Chờ GĐK duyệt mã</span>
+      ),
+    );
+  if (p.status === 'Chưa có PAKD')
+    actions.push(
+      role === 'PM' ? (
+        <Btn key="sub" variant="success" icon={Send} className="h-7" disabled={!p.plan.length} title={p.plan.length ? undefined : 'Import kế hoạch theo tháng trước khi nộp'} onClick={onSubmit}>
+          Nộp PAKD {p.pakd.length ? `V${p.pakd.length + 1}` : ''}
+        </Btn>
+      ) : (
+        <span key="sub" className="text-[12px] text-slate-500">Chờ PM lập & nộp PAKD</span>
+      ),
+    );
+  if (p.status === 'PAKD chờ duyệt')
+    actions.push(
+      pendingRole(last) === role ? (
+        <Btn key="dec" variant="primary" icon={ClipboardCheck} className="h-7" onClick={onDecide}>
+          Duyệt / Từ chối
+        </Btn>
+      ) : (
+        <span key="dec" className="text-[12px] text-slate-500">Chờ {pendingRole(last)} duyệt</span>
+      ),
+    );
+  if (p.status === 'Đang thực hiện')
+    actions.push(
+      <Btn key="fin" icon={Flag} className="h-7" onClick={onFinish}>
+        Kết thúc dự án
+      </Btn>,
+    );
+
+  return (
+    <Panel title="Quy trình & phê duyệt PAKD" icon={ClipboardCheck} noPad actions={actions}>
+      <div className="flex border-b border-slate-300 overflow-x-auto">
+        {WORKFLOW.map((st, i) => (
+          <div
+            key={st}
+            className={`flex-1 min-w-[150px] px-3 py-2 text-[12px] border-r border-slate-200 last:border-r-0 flex items-center gap-2 ${
+              i < idx ? 'bg-emerald-50 text-emerald-800' : i === idx ? 'bg-[#eaf2fc] text-[#1f5fa8] font-bold' : 'bg-white text-slate-400'
+            }`}
+          >
+            <span
+              className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                i < idx ? 'bg-emerald-600 text-white' : i === idx ? 'bg-[#1f5fa8] text-white' : 'bg-slate-200 text-slate-500'
+              }`}
+            >
+              {i < idx ? <Check size={11} strokeWidth={3} /> : i + 1}
+            </span>
+            {st}
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3">
+        <FieldTable
+          rows={[
+            { label: 'Trạng thái', value: <StatusBadge status={p.status} /> },
+            { label: 'Hạn lập PAKD', value: <span className={dl.cls}>{[dl.text, dl.sub].filter(Boolean).join(' ')}</span> },
+            { label: 'Phiên bản PAKD', value: pakdVersionText(p) },
+            { label: 'Dự kiến ký HĐ', value: dmy(p.expectedSignDate || '') },
+          ]}
+        />
+        <div className="lg:col-span-2 border-l border-slate-200">
+          <table className={erp.table}>
+            <thead>
+              <tr>
+                {['Phiên bản', 'Ngày nộp', 'Người nộp', 'Kết quả', 'Ngày duyệt', 'Ý kiến'].map((h) => (
+                  <th key={h} className={`${erp.th} text-left border-t-0 last:border-r-0`}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {[...p.pakd].reverse().map((v) => (
+                <tr key={v.version} className={erp.tr}>
+                  <td className={`${erp.td} font-semibold`}>V{v.version}</td>
+                  <td className={`${erp.td} whitespace-nowrap`}>{dmy(v.submittedAt)}</td>
+                  <td className={erp.td}>{v.submittedBy}</td>
+                  <td className={erp.td}>
+                    <Tag cls={PAKD_CLS[v.state]}>{v.state}</Tag>
+                  </td>
+                  <td className={`${erp.td} whitespace-nowrap`}>{v.decidedAt ? `${dmy(v.decidedAt)} · ${v.decidedBy}` : '—'}</td>
+                  <td className={`${erp.td} text-slate-600 border-r-0`}>{v.note || '—'}</td>
+                </tr>
+              ))}
+              {!p.pakd.length && (
+                <tr>
+                  <td colSpan={6} className={`${erp.td} text-center text-slate-400 border-r-0`}>
+                    Chưa nộp PAKD. {p.status === 'Chưa có PAKD' && 'PM import kế hoạch theo tháng (khung bên dưới) rồi bấm "Nộp PAKD".'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </Panel>
+  );
+};
+
+const PAKD_CLS: Record<PakdState, string> = {
+  'Chờ GĐK': 'bg-amber-50 text-amber-700 border-amber-300',
+  'Chờ CFO': 'bg-amber-50 text-amber-700 border-amber-300',
+  'Đã duyệt': 'bg-emerald-50 text-emerald-700 border-emerald-300',
+  'Từ chối': 'bg-rose-50 text-rose-700 border-rose-300',
 };
 
 // ==========================================================================
@@ -605,6 +1061,104 @@ const FinanceSection: React.FC<{
 };
 
 // ==========================================================================
+// Thông tin hợp đồng (sau khi ký)
+// ==========================================================================
+const Files: React.FC<{ files: BizAttachment[] }> = ({ files }) =>
+  files.length ? (
+    <span className="flex flex-wrap gap-x-3 gap-y-0.5">
+      {files.map((f) =>
+        f.url ? (
+          <a key={f.id} href={f.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[#1f5fa8] hover:underline">
+            <FileText size={12} /> {f.name}
+          </a>
+        ) : (
+          <span key={f.id} className="inline-flex items-center gap-1">
+            <FileText size={12} /> {f.name}
+          </span>
+        ),
+      )}
+    </span>
+  ) : (
+    <span className="text-slate-400">Chưa có tệp</span>
+  );
+
+const ContractPanel: React.FC<{ project: BizProject; onEdit: () => void }> = ({ project: p, onEdit }) => {
+  const c = p.contract!;
+  const diff = c.value - p.expectedRevenue;
+  return (
+    <Panel
+      title="Thông tin hợp đồng"
+      icon={FileSignature}
+      noPad
+      actions={
+        <Btn icon={Pencil} className="h-7" onClick={onEdit}>
+          Cập nhật
+        </Btn>
+      }
+      footer={`Cập nhật bởi ${c.updatedBy} lúc ${dt(c.updatedAt)}`}
+    >
+      <div className="grid grid-cols-1 lg:grid-cols-2">
+        <FieldTable
+          rows={[
+            { label: 'Số hợp đồng', value: <span className="font-semibold">{c.number}</span> },
+            { label: 'Ngày ký', value: dmy(c.signDate) },
+            { label: 'Thời hạn thực hiện', value: `${dmy(c.from)} → ${dmy(c.to)}` },
+            { label: 'Tệp tài liệu', value: <Files files={c.files} /> },
+          ]}
+        />
+        <FieldTable
+          labelWidth="50%"
+          rows={[
+            { label: 'Giá trị hợp đồng (VNĐ)', value: money(c.value), num: true, strong: true },
+            { label: 'Giá trị đã khai báo (VNĐ)', value: money(p.expectedRevenue), num: true },
+            {
+              label: 'Chênh lệch',
+              value: <span className={diff ? 'text-amber-700 font-semibold' : 'text-slate-400'}>{diff ? `${diff > 0 ? '+' : ''}${money(diff)}` : '0'}</span>,
+              num: true,
+            },
+            { label: 'Lý do lệch', value: c.deviationReason },
+          ]}
+        />
+      </div>
+      <div className="border-t border-slate-300">
+        <p className="px-3 py-1.5 text-[12px] font-bold text-[#1e3a5f] bg-[#f3f6fa] border-b border-slate-300">Phụ lục điều chỉnh ({c.addenda.length})</p>
+        <table className={erp.table}>
+          <thead>
+            <tr>
+              {['STT', 'Số phụ lục', 'Ngày ký', 'Nội dung điều chỉnh', 'File phụ lục'].map((h) => (
+                <th key={h} className={`${erp.th} text-left border-t-0 first:border-l-0 last:border-r-0`}>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {c.addenda.map((a, i) => (
+              <tr key={a.id} className={erp.tr}>
+                <td className={`${erp.td} text-center text-slate-500 w-12 border-l-0`}>{i + 1}</td>
+                <td className={`${erp.td} font-semibold whitespace-nowrap`}>{a.number}</td>
+                <td className={`${erp.td} whitespace-nowrap`}>{dmy(a.signDate)}</td>
+                <td className={erp.td}>{a.content || '—'}</td>
+                <td className={`${erp.td} border-r-0`}>
+                  <Files files={a.files} />
+                </td>
+              </tr>
+            ))}
+            {!c.addenda.length && (
+              <tr>
+                <td colSpan={5} className={`${erp.td} text-center text-slate-400 border-x-0`}>
+                  Chưa có phụ lục điều chỉnh.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </Panel>
+  );
+};
+
+// ==========================================================================
 // Chi tiết
 // ==========================================================================
 const ProjectDetail: React.FC<{
@@ -613,8 +1167,19 @@ const ProjectDetail: React.FC<{
   onEdit: () => void;
   onDelete: () => void;
   onImport: (kind: FinKind, rows: BizMonthRow[], fileName: string, summary: string) => void;
-}> = ({ project: p, onBack, onEdit, onDelete, onImport }) => {
+  onSaveContract: (c: Omit<BizContract, 'updatedAt' | 'updatedBy'>) => void;
+  onAttachments: (files: BizAttachment[], note: string) => void;
+  role: BizRole;
+  onRoleChange: (r: BizRole) => void;
+  onApproveCode: () => void;
+  onSubmitPakd: () => void;
+  onDecide: (approve: boolean, note: string) => void;
+  onFinish: () => void;
+}> = ({ project: p, onBack, onEdit, onDelete, onImport, onSaveContract, onAttachments, role, onRoleChange, onApproveCode, onSubmitPakd, onDecide, onFinish }) => {
+  const files = p.attachments || [];
+  const [deciding, setDeciding] = useState(false);
   const [tab, setTab] = useState<'overview' | 'history'>('overview');
+  const [showContract, setShowContract] = useState(false);
   const gp = grossProfit(p);
 
   return (
@@ -628,6 +1193,7 @@ const ProjectDetail: React.FC<{
         }
         actions={
           <>
+            <RoleSelect role={role} onChange={onRoleChange} />
             <Btn icon={ArrowLeft} onClick={onBack}>
               Quay lại
             </Btn>
@@ -644,6 +1210,7 @@ const ProjectDetail: React.FC<{
           { label: 'Version', value: `v${p.version}` },
           { label: 'Trạng thái', value: <StatusBadge status={p.status} /> },
           { label: 'Khối', value: p.division },
+          { label: 'PAKD', value: pakdVersionText(p) },
           { label: 'Cập nhật', value: dt(p.updatedAt) },
         ]}
       />
@@ -659,6 +1226,7 @@ const ProjectDetail: React.FC<{
 
       {tab === 'overview' && (
         <>
+          <WorkflowPanel project={p} role={role} onApproveCode={onApproveCode} onSubmit={onSubmitPakd} onDecide={() => setDeciding(true)} onFinish={onFinish} />
           <Panel title="Mã dự án" icon={Hash} noPad>
             <table className={erp.table}>
               <thead>
@@ -720,17 +1288,81 @@ const ProjectDetail: React.FC<{
                   { label: 'Biên lợi nhuận gộp', value: `${grossMargin(p).toFixed(1)}%`, num: true },
                   {
                     label: 'Hợp đồng',
-                    value: p.contractSigned ? <Tag cls="bg-emerald-50 text-emerald-700 border-emerald-300">Đã ký</Tag> : <Tag cls="bg-slate-100 text-slate-600 border-slate-300">Chưa ký</Tag>,
+                    value: (
+                      <button
+                        type="button"
+                        onClick={() => setShowContract(true)}
+                        className="inline-flex items-center gap-1.5 cursor-pointer group"
+                        title={p.contractSigned ? 'Xem / cập nhật hợp đồng' : 'Cập nhật ký hợp đồng'}
+                      >
+                        {p.contractSigned ? (
+                          <Tag cls="bg-emerald-50 text-emerald-700 border-emerald-300 group-hover:border-emerald-500" icon={FileSignature}>
+                            Đã ký
+                          </Tag>
+                        ) : (
+                          <Tag cls="bg-slate-100 text-slate-600 border-slate-300 group-hover:border-[#1f5fa8] group-hover:text-[#1f5fa8]" icon={FileSignature}>
+                            Chưa ký
+                          </Tag>
+                        )}
+                        <span className="text-[12px] text-[#1f5fa8] group-hover:underline">
+                          {p.contract ? `Số ${p.contract.number}` : p.contractSigned ? 'Bổ sung thông tin HĐ' : 'Cập nhật ký hợp đồng'}
+                        </span>
+                      </button>
+                    ),
+                  },
+                  {
+                    label: `Tài liệu đính kèm (${files.length})`,
+                    value: (
+                      <AttachmentList
+                        compact
+                        files={files}
+                        label="Đính kèm tài liệu"
+                        onAdd={(added) => onAttachments([...files, ...added], `Thêm ${added.map((f) => f.name).join(', ')}`)}
+                        onRemove={(id) =>
+                          onAttachments(
+                            files.filter((f) => f.id !== id),
+                            `Xoá ${files.find((f) => f.id === id)?.name}`,
+                          )
+                        }
+                      />
+                    ),
                   },
                 ]}
               />
             </Panel>
           </div>
 
+          {p.contract && <ContractPanel project={p} onEdit={() => setShowContract(true)} />}
           <PhaseStepper key={p.id + p.version} phases={p.phases} current={p.currentPhase} />
           <FinanceSection project={p} onImport={onImport} />
         </>
       )}
+
+      <AnimatePresence>
+        {deciding && (
+          <PakdDecisionModal
+            key="decide"
+            project={p}
+            role={role}
+            onClose={() => setDeciding(false)}
+            onDecide={(approve, note) => {
+              onDecide(approve, note);
+              setDeciding(false);
+            }}
+          />
+        )}
+        {showContract && (
+          <ContractModal
+            key="contract"
+            project={p}
+            onClose={() => setShowContract(false)}
+            onSave={(c) => {
+              onSaveContract(c);
+              setShowContract(false);
+            }}
+          />
+        )}
+      </AnimatePresence>
 
       {tab === 'history' && (
         <Panel title="Lịch sử thay đổi" icon={History} noPad>
@@ -787,7 +1419,9 @@ const FormGrid: React.FC<{ children: React.ReactNode }> = ({ children }) => <div
 const emptyInput = (): BizProjectInput => ({
   name: '',
   isKey: false,
-  status: 'Nháp',
+  status: 'Chờ duyệt mã',
+  expectedSignDate: '',
+  pakdDeadline: '',
   masterCode: '',
   businessCode: '',
   productionCode: '',
@@ -813,7 +1447,7 @@ const emptyInput = (): BizProjectInput => ({
 });
 
 const toInput = (p: BizProject): BizProjectInput => {
-  const { id, version, plan, planImport, actual, actualImport, createdAt, updatedAt, history, ...rest } = p;
+  const { id, version, plan, planImport, actual, actualImport, contract, attachments, createdAt, updatedAt, history, ...rest } = p;
   return rest;
 };
 
@@ -964,6 +1598,12 @@ const ProjectForm: React.FC<{
           <FormRow label="Ngày kết thúc" required error={err('endDate')}>
             <input type="date" value={f.endDate} min={f.startDate} onChange={(e) => set('endDate', e.target.value)} className={inputCls} />
           </FormRow>
+          <FormRow label="Dự kiến ký HĐ" hint="Thời điểm dự kiến ký hợp đồng">
+            <input type="date" value={f.expectedSignDate || ''} onChange={(e) => set('expectedSignDate', e.target.value)} className={inputCls} />
+          </FormRow>
+          <FormRow label="Hạn lập PAKD" hint={initial ? undefined : 'Mặc định đặt khi GĐK duyệt mã (7 ngày)'}>
+            <input type="date" value={f.pakdDeadline || ''} onChange={(e) => set('pakdDeadline', e.target.value)} className={inputCls} />
+          </FormRow>
         </FormGrid>
       </Panel>
 
@@ -1050,9 +1690,9 @@ const ProjectForm: React.FC<{
           <FormRow label="Doanh thu dự kiến" required error={err('expectedRevenue')}>
             <MoneyInput value={f.expectedRevenue} onChange={(v) => set('expectedRevenue', v)} />
           </FormRow>
-          <FormRow label="Hợp đồng">
-            <span className="flex items-center gap-2 h-8 text-[13px]">
-              <input type="checkbox" checked={f.contractSigned} onChange={(e) => set('contractSigned', e.target.checked)} className="w-4 h-4 accent-emerald-600" /> Đã ký hợp đồng
+          <FormRow label="Hợp đồng" hint={initial ? 'Cập nhật ký hợp đồng trên màn chi tiết dự án' : 'Sau khi tạo dự án, cập nhật ký hợp đồng trên màn chi tiết'}>
+            <span className="flex items-center h-8">
+              {f.contractSigned ? <Tag cls="bg-emerald-50 text-emerald-700 border-emerald-300">Đã ký</Tag> : <Tag cls="bg-slate-100 text-slate-600 border-slate-300">Chưa ký</Tag>}
             </span>
           </FormRow>
           <FormRow label="Chi phí kinh doanh KH">

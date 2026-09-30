@@ -19,8 +19,37 @@ import React, { createContext, useContext, useState } from 'react';
 export const DIVISIONS = ['G1', 'G2', 'G3', 'G4', 'BFSI', 'GPDV'];
 export const PROJECT_TYPES = ['Fixed Cost', 'Time & Material', 'ODC', 'Cho thuê lao động', 'Nội bộ'];
 
-export type BizStatus = 'Nháp' | 'Chờ duyệt' | 'Đang triển khai' | 'Hoàn thành' | 'Đóng';
-export const BIZ_STATUSES: BizStatus[] = ['Nháp', 'Chờ duyệt', 'Đang triển khai', 'Hoàn thành', 'Đóng'];
+/**
+ * Vòng đời dự án:
+ *   Chờ duyệt mã → (GĐK duyệt mã) → Chưa có PAKD → (PM nộp PAKD) → PAKD chờ duyệt
+ *   → (GĐK duyệt → CFO duyệt) → Đang thực hiện → Kết thúc.
+ * PAKD bị từ chối → quay về "Chưa có PAKD" để lập & nộp phiên bản mới (V2, V3…).
+ */
+export type BizStatus = 'Chờ duyệt mã' | 'Chưa có PAKD' | 'PAKD chờ duyệt' | 'Đang thực hiện' | 'Kết thúc';
+export const BIZ_STATUSES: BizStatus[] = ['Chờ duyệt mã', 'Chưa có PAKD', 'PAKD chờ duyệt', 'Đang thực hiện', 'Kết thúc'];
+
+/** Vai trò trong quy trình (chưa có đăng nhập — chọn trên màn để thao tác thử). */
+export type BizRole = 'PM' | 'GĐK' | 'CFO';
+export const BIZ_ROLES: { key: BizRole; label: string }[] = [
+  { key: 'PM', label: 'PM (lập PAKD)' },
+  { key: 'GĐK', label: 'GĐK (Giám đốc khối)' },
+  { key: 'CFO', label: 'CFO' },
+];
+
+/** 1 phiên bản PAKD nộp duyệt. Thứ tự duyệt: GĐK → CFO. */
+export type PakdState = 'Chờ GĐK' | 'Chờ CFO' | 'Đã duyệt' | 'Từ chối';
+export interface PakdVersion {
+  version: number;
+  submittedAt: string; // YYYY-MM-DD
+  submittedBy: string;
+  state: PakdState;
+  decidedAt?: string; // ngày duyệt / từ chối cuối cùng
+  decidedBy?: string;
+  note?: string;
+}
+/** Vai trò đang phải duyệt phiên bản này (nếu còn chờ). */
+export const pendingRole = (v?: PakdVersion): BizRole | null => (v?.state === 'Chờ GĐK' ? 'GĐK' : v?.state === 'Chờ CFO' ? 'CFO' : null);
+export const latestPakd = (p: Pick<BizProject, 'pakd'>) => p.pakd[p.pakd.length - 1] as PakdVersion | undefined;
 
 export interface BizHistory {
   at: string;
@@ -181,6 +210,11 @@ export interface BizProject {
   plannedBusinessCost: number;
   plannedProductionCost: number;
   contractSigned: boolean;
+  expectedSignDate?: string; // Thời điểm dự kiến ký HĐ
+  pakdDeadline?: string; // Hạn lập PAKD (đặt khi duyệt mã)
+  pakd: PakdVersion[]; // các phiên bản PAKD đã nộp
+  contract?: BizContract; // thông tin ký hợp đồng (cập nhật trên màn chi tiết)
+  attachments?: BizAttachment[]; // tài liệu đính kèm của dự án (PAKD, báo giá, biên bản…)
   note?: string;
 
   phases: BizPhase[];
@@ -195,7 +229,41 @@ export interface BizProject {
   history: BizHistory[];
 }
 
-export type BizProjectInput = Omit<BizProject, 'id' | 'version' | 'plan' | 'planImport' | 'actual' | 'actualImport' | 'createdAt' | 'updatedAt' | 'history'>;
+export type BizProjectInput = Omit<
+  BizProject,
+  'id' | 'version' | 'plan' | 'planImport' | 'actual' | 'actualImport' | 'contract' | 'attachments' | 'pakd' | 'createdAt' | 'updatedAt' | 'history'
+>;
+
+// ==========================================================================
+// Hợp đồng (Cập nhật ký hợp đồng)
+// ==========================================================================
+/** Tệp đính kèm — lưu tạm trong phiên làm việc (url = object URL của trình duyệt). */
+export interface BizAttachment {
+  id: string;
+  name: string;
+  size: number;
+  url?: string;
+}
+/** Phụ lục điều chỉnh hợp đồng. */
+export interface BizAddendum {
+  id: string;
+  number: string; // Số phụ lục
+  signDate: string; // Ngày ký
+  content: string; // Nội dung điều chỉnh
+  files: BizAttachment[]; // File phụ lục
+}
+export interface BizContract {
+  number: string; // Số hợp đồng
+  signDate: string; // Ngày ký
+  value: number; // Giá trị hợp đồng (VNĐ)
+  from: string; // Thời hạn thực hiện — từ
+  to: string; // — đến
+  deviationReason: string; // Lý do lệch so với giá trị đã khai báo (Doanh thu dự kiến)
+  files: BizAttachment[]; // Hợp đồng và các tài liệu đính kèm
+  addenda: BizAddendum[];
+  updatedAt: string;
+  updatedBy: string;
+}
 
 export const plannedCost = (p: Pick<BizProject, 'plannedBusinessCost' | 'plannedProductionCost'>) =>
   (p.plannedBusinessCost || 0) + (p.plannedProductionCost || 0);
@@ -263,6 +331,13 @@ const seedActual = (plan: BizMonthRow[], k: Ratios): BizMonthRow[] =>
       };
     });
 
+/** Cộng n ngày vào ngày YYYY-MM-DD. */
+export const addDays = (iso: string, n: number) => {
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 // Dự án mẫu phục vụ báo cáo — các khối khác nhau, tỷ lệ thực hiện khác nhau.
 const seedProject = (
   id: string,
@@ -285,7 +360,9 @@ const seedProject = (
     name,
     isKey: false,
     version: 3,
-    status: 'Đang triển khai',
+    status: 'Đang thực hiện',
+    expectedSignDate: start,
+    pakd: [{ version: 1, submittedAt: addDays(start, -20), submittedBy: pm[0], state: 'Đã duyệt', decidedAt: addDays(start, -12), decidedBy: 'CFO' }],
     masterCode,
     businessCode: `${masterCode}.1`,
     productionCode: `${masterCode}.2`,
@@ -327,7 +404,10 @@ const SEED: BizProject[] = [
     name: '022.NSG',
     isKey: true,
     version: 2,
-    status: 'Hoàn thành',
+    status: 'PAKD chờ duyệt',
+    expectedSignDate: '2026-11-15',
+    pakdDeadline: '2026-09-30',
+    pakd: [{ version: 1, submittedAt: '2026-09-29', submittedBy: 'Nguyễn Đằng Giang', state: 'Chờ CFO', note: 'GĐK đã duyệt 29/09/2026' }],
     masterCode: '022.688',
     businessCode: '022.688.1',
     productionCode: '022.688.2',
@@ -370,7 +450,9 @@ const SEED: BizProject[] = [
     name: 'Hệ thống giám sát dữ liệu tập trung',
     isKey: false,
     version: 1,
-    status: 'Đang triển khai',
+    status: 'Đang thực hiện',
+    expectedSignDate: '2026-02-25',
+    pakd: [{ version: 1, submittedAt: '2026-02-10', submittedBy: 'Trần Minh Đức', state: 'Đã duyệt', decidedAt: '2026-02-18', decidedBy: 'CFO' }],
     masterCode: '038.360',
     businessCode: '038.360.1',
     productionCode: '038.360.2',
@@ -416,7 +498,10 @@ const SEED: BizProject[] = [
     name: 'Core Banking Mobile Upgrade',
     isKey: true,
     version: 1,
-    status: 'Chờ duyệt',
+    status: 'Chưa có PAKD',
+    expectedSignDate: '2026-10-20',
+    pakdDeadline: '2026-10-03',
+    pakd: [],
     masterCode: '010.541',
     businessCode: '010.541.1',
     productionCode: '010.541.2',
@@ -462,6 +547,36 @@ const SEED: BizProject[] = [
     seedProject('BP-11', 'HDBank Staffing', '818.111', 'BFSI', 'CÔNG TY CỔ PHẦN GALAXY TECHNOLOGY SERVICES', '2026-01-01', '2026-12-31', [4_800_000_000, 3_600_000_000, 240_000_000, 240], { revenue: 0.97, cashIn: 0.93, cost: 0.98, workload: 1 }, ['Lý Thu Hà', 'Ngô Bá Khá']),
     seedProject('BP-12', 'LPB Staffing', '868.222', 'BFSI', 'CÔNG TY CỔ PHẦN ATOMI DIGITAL', '2026-01-01', '2026-12-31', [1_200_000_000, 850_000_000, 60_000_000, 96], { revenue: 1, cashIn: 0.96, cost: 0.95, workload: 1 }, ['Lý Thu Hà', 'Mai Văn Tùng']),
     seedProject('BP-13', 'Digilend', '993.993', 'GPDV', 'CÔNG TY CỔ PHẦN CÔNG NGHỆ TÀI CHÍNH DIGILEND', '2026-01-01', '2026-12-31', [600_000_000, 420_000_000, 30_000_000, 48], { revenue: 0.95, cashIn: 0.9, cost: 1.02, workload: 1 }, ['Vương Đình Khôi', 'Tạ Minh Châu']),
+    {
+      ...seedProject('BP-14', 'Cổng thanh toán điện tử tỉnh', '022.072', 'G1', 'Sở Tài chính 022', '2026-11-01', '2027-10-31', [15_000_000_000, 8_000_000_000, 1_500_000_000, 360], { revenue: 1, cashIn: 1, cost: 1, workload: 1 }, ['Nguyễn Đằng Giang', 'Phạm Hữu Trường']),
+      status: 'Chờ duyệt mã' as BizStatus,
+      expectedSignDate: '2026-10-25',
+      pakd: [],
+      plan: [],
+      planImport: undefined,
+      actual: [],
+      actualImport: undefined,
+      contractSigned: false,
+      version: 1,
+      history: [{ at: '2026-09-28T08:00:00.000Z', by: 'Nguyễn Đằng Giang', action: 'Tạo dự án', note: 'Version 1 · chờ GĐK duyệt mã' }],
+    },
+    {
+      ...seedProject('BP-15', 'Chuyển đổi số kho bạc', '045.120', 'G2', 'Kho bạc 045', '2026-12-01', '2027-11-30', [26_000_000_000, 14_300_000_000, 2_600_000_000, 520], { revenue: 1, cashIn: 1, cost: 1, workload: 1 }, ['Bùi Quang Minh', 'Đặng Thu Trang']),
+      status: 'PAKD chờ duyệt' as BizStatus,
+      expectedSignDate: '2026-11-20',
+      pakdDeadline: '2026-09-18',
+      pakd: [
+        { version: 1, submittedAt: '2026-09-15', submittedBy: 'Bùi Quang Minh', state: 'Từ chối', decidedAt: '2026-09-20', decidedBy: 'CFO', note: 'Biên LN gộp thấp, rà soát lại chi phí thuê ngoài' },
+        { version: 2, submittedAt: '2026-09-26', submittedBy: 'Bùi Quang Minh', state: 'Chờ GĐK' },
+      ] as PakdVersion[],
+      actual: [],
+      actualImport: undefined,
+      contractSigned: false,
+    },
+    {
+      ...seedProject('BP-16', 'Triển khai ERP giai đoạn 1', '061.015', 'G4', 'Sản xuất 061', '2025-10-01', '2026-06-30', [4_500_000_000, 2_600_000_000, 400_000_000, 120], { revenue: 1, cashIn: 1, cost: 0.97, workload: 1 }, ['Trịnh Văn Long', 'Phí Thị Mai']),
+      status: 'Kết thúc' as BizStatus,
+    },
     seedProject('BP-10', 'Dịch vụ vận hành hạ tầng', '077.004', 'GPDV', 'Tổng công ty 077', '2026-01-01', '2026-12-31', [500_000_000, 300_000_000, 50_000_000, 12], { revenue: 0.88, cashIn: 0.75, cost: 1, workload: 0.9 }, ['Vương Đình Khôi', 'Tạ Minh Châu']),
   ],
 ];
@@ -528,6 +643,15 @@ interface Ctx {
   deleteProject: (id: string) => void;
   /** Ghi số liệu theo tháng (kế hoạch hoặc thực tế) bằng dữ liệu import; tăng version. */
   importMonthly: (id: string, kind: FinKind, rows: BizMonthRow[], fileName: string, by: string) => void;
+  /** Cập nhật ký hợp đồng → dự án chuyển "Đã ký"; tăng version. */
+  saveContract: (id: string, contract: Omit<BizContract, 'updatedAt' | 'updatedBy'>, by: string) => void;
+  /** Quy trình: duyệt mã / nộp PAKD / duyệt – từ chối PAKD / kết thúc dự án. */
+  approveCode: (id: string, by: string, pakdDeadline: string) => void;
+  submitPakd: (id: string, by: string) => void;
+  decidePakd: (id: string, approve: boolean, role: BizRole, by: string, note: string) => void;
+  finishProject: (id: string, by: string) => void;
+  /** Thêm / xoá tài liệu đính kèm của dự án (ghi lịch sử, không tăng version). */
+  setAttachments: (id: string, files: BizAttachment[], by: string, note: string) => void;
 }
 
 const BusinessProjectContext = createContext<Ctx | null>(null);
@@ -542,6 +666,7 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
       ...data,
       id: `BP-${Date.now()}`,
       version: 1,
+      pakd: [],
       plan: [],
       actual: [],
       createdAt: at,
@@ -570,6 +695,82 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
   };
 
   const deleteProject = (id: string) => setProjects((prev) => prev.filter((p) => p.id !== id));
+
+  const today = () => now().slice(0, 10);
+  /** Cập nhật 1 dự án + ghi lịch sử. */
+  const patch = (id: string, fn: (p: BizProject) => Partial<BizProject>, by: string, action: string, note?: string) => {
+    const at = now();
+    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...fn(p), updatedAt: at, history: [...p.history, { at, by, action, note }] } : p)));
+  };
+
+  const approveCode = (id: string, by: string, pakdDeadline: string) =>
+    patch(id, () => ({ status: 'Chưa có PAKD', pakdDeadline }), by, 'Duyệt mã dự án', `Hạn lập PAKD: ${pakdDeadline.split('-').reverse().join('/')}`);
+
+  const submitPakd = (id: string, by: string) =>
+    patch(
+      id,
+      (p) => ({ status: 'PAKD chờ duyệt', pakd: [...p.pakd, { version: p.pakd.length + 1, submittedAt: today(), submittedBy: by, state: 'Chờ GĐK' }] }),
+      by,
+      'Nộp PAKD',
+      'Chờ GĐK duyệt',
+    );
+
+  const decidePakd = (id: string, approve: boolean, role: BizRole, by: string, note: string) =>
+    patch(
+      id,
+      (p) => {
+        const last = latestPakd(p)!;
+        const next: PakdVersion = !approve
+          ? { ...last, state: 'Từ chối', decidedAt: today(), decidedBy: role, note }
+          : role === 'GĐK'
+            ? { ...last, state: 'Chờ CFO', note: note || `GĐK đã duyệt ${today().split('-').reverse().join('/')}` }
+            : { ...last, state: 'Đã duyệt', decidedAt: today(), decidedBy: role, note: note || last.note };
+        return {
+          pakd: [...p.pakd.slice(0, -1), next],
+          status: !approve ? 'Chưa có PAKD' : next.state === 'Đã duyệt' ? 'Đang thực hiện' : 'PAKD chờ duyệt',
+        };
+      },
+      by,
+      `${role} ${approve ? 'duyệt' : 'từ chối'} PAKD`,
+      note || undefined,
+    );
+
+  const finishProject = (id: string, by: string) => patch(id, () => ({ status: 'Kết thúc' }), by, 'Kết thúc dự án');
+
+  const setAttachments = (id: string, files: BizAttachment[], by: string, note: string) => {
+    const at = now();
+    setProjects((prev) =>
+      prev.map((p) =>
+        p.id === id ? { ...p, attachments: files, updatedAt: at, history: [...p.history, { at, by, action: 'Cập nhật tài liệu đính kèm', note }] } : p,
+      ),
+    );
+  };
+
+  const saveContract = (id: string, contract: Omit<BizContract, 'updatedAt' | 'updatedBy'>, by: string) => {
+    const at = now();
+    setProjects((prev) =>
+      prev.map((p) =>
+        p.id === id
+          ? {
+              ...p,
+              contractSigned: true,
+              contract: { ...contract, updatedAt: at, updatedBy: by },
+              version: p.version + 1,
+              updatedAt: at,
+              history: [
+                ...p.history,
+                {
+                  at,
+                  by,
+                  action: p.contract ? 'Cập nhật hợp đồng' : 'Ký hợp đồng',
+                  note: `HĐ ${contract.number} · ${contract.addenda.length} phụ lục · Version ${p.version + 1}`,
+                },
+              ],
+            }
+          : p,
+      ),
+    );
+  };
 
   const importMonthly = (id: string, kind: FinKind, rows: BizMonthRow[], fileName: string, by: string) => {
     const at = now();
@@ -635,7 +836,7 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
   };
 
   return (
-    <BusinessProjectContext.Provider value={{ projects, ledger, importLedger, createProject, updateProject, deleteProject, importMonthly }}>
+    <BusinessProjectContext.Provider value={{ projects, ledger, importLedger, createProject, updateProject, deleteProject, importMonthly, saveContract, setAttachments, approveCode, submitPakd, decidePakd, finishProject }}>
       {children}
     </BusinessProjectContext.Provider>
   );
