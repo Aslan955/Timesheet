@@ -51,6 +51,20 @@ export interface PakdVersion {
 export const pendingRole = (v?: PakdVersion): BizRole | null => (v?.state === 'Chờ GĐK' ? 'GĐK' : v?.state === 'Chờ CFO' ? 'CFO' : null);
 export const latestPakd = (p: Pick<BizProject, 'pakd'>) => p.pakd[p.pakd.length - 1] as PakdVersion | undefined;
 
+// ==========================================================================
+// Sổ theo dõi dự án — giá trị hợp đồng ký so với mục tiêu năm của từng khối
+// ==========================================================================
+/** Mục tiêu giá trị hợp đồng ký theo năm → khối (VNĐ). */
+export type SignTargets = Record<string, Record<string, number>>;
+const SEED_TARGETS: SignTargets = {
+  '2026': { G1: 1_500_000_000_000, G2: 70_000_000_000, G3: 20_000_000_000, G4: 150_000_000_000, BFSI: 500_000_000_000, GPDV: 2_000_000_000 },
+};
+/** Ngày ký HĐ: theo thông tin hợp đồng; dự án đã ký nhưng chưa nhập HĐ thì lấy ngày dự kiến ký / ngày bắt đầu. */
+export const signedDate = (p: Pick<BizProject, 'contract' | 'contractSigned' | 'expectedSignDate' | 'startDate'>) =>
+  p.contract?.signDate || (p.contractSigned ? p.expectedSignDate || p.startDate : '');
+/** Giá trị HĐ đã ký: theo hợp đồng, chưa nhập HĐ thì lấy doanh thu dự kiến. */
+export const signedValue = (p: Pick<BizProject, 'contract' | 'expectedRevenue'>) => p.contract?.value ?? p.expectedRevenue;
+
 export interface BizHistory {
   at: string;
   by: string;
@@ -652,6 +666,9 @@ interface Ctx {
   finishProject: (id: string, by: string) => void;
   /** Thêm / xoá tài liệu đính kèm của dự án (ghi lịch sử, không tăng version). */
   setAttachments: (id: string, files: BizAttachment[], by: string, note: string) => void;
+  /** Mục tiêu giá trị hợp đồng ký theo năm / khối. */
+  targets: SignTargets;
+  setYearTargets: (year: string, byDivision: Record<string, number>) => void;
 }
 
 const BusinessProjectContext = createContext<Ctx | null>(null);
@@ -659,6 +676,8 @@ const BusinessProjectContext = createContext<Ctx | null>(null);
 export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [projects, setProjects] = useState<BizProject[]>(SEED);
   const [ledger, setLedger] = useState<Ledger>(() => seedLedger(SEED));
+  const [targets, setTargets] = useState<SignTargets>(SEED_TARGETS);
+  const setYearTargets = (year: string, byDivision: Record<string, number>) => setTargets((prev) => ({ ...prev, [year]: byDivision }));
 
   const createProject = (data: BizProjectInput, by: string) => {
     const at = now();
@@ -836,7 +855,7 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
   };
 
   return (
-    <BusinessProjectContext.Provider value={{ projects, ledger, importLedger, createProject, updateProject, deleteProject, importMonthly, saveContract, setAttachments, approveCode, submitPakd, decidePakd, finishProject }}>
+    <BusinessProjectContext.Provider value={{ projects, ledger, importLedger, createProject, updateProject, deleteProject, importMonthly, saveContract, setAttachments, approveCode, submitPakd, decidePakd, finishProject, targets, setYearTargets }}>
       {children}
     </BusinessProjectContext.Provider>
   );
