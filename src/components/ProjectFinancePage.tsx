@@ -40,10 +40,12 @@ import {
   FileUp,
   DownloadCloud,
   FileText,
+  Users,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFinancePlans } from '../finance/FinancePlanContext';
 import { OVERHEAD_DETAIL } from '../finance/overheadDetail';
+import { ProjectLaborCostPage } from './ProjectLaborCostPage';
 
 const YEAR = 2026;
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
@@ -127,7 +129,7 @@ const fmt = (n: number) => {
 };
 const sum = (arr: number[]) => arr.reduce((s, x) => s + x, 0);
 
-type Tab = 'revenue' | 'cost' | 'overhead' | 'overheadDetail' | 'cashflow';
+type Tab = 'revenue' | 'cost' | 'overhead' | 'cashflow' | 'labor';
 
 // Giá trị đặc biệt cho lựa chọn "Tất cả dự án trong khối".
 const ALL_PROJECTS = '__ALL__';
@@ -158,7 +160,7 @@ export const ProjectFinancePage: React.FC = () => {
     KHOI_LIST.reduce((a, k) => ((a[k] = 'cost'), a), {} as Record<string, Basis>),
   );
 
-  const [detailView, setDetailView] = useState<'none' | 'revenue'>('none');
+  const [detailView, setDetailView] = useState<'none' | 'revenue' | 'overheadDetail'>('none');
   const [tab, setTab] = useState<Tab>('revenue');
   const [khoi, setKhoi] = useState<string>('G1');
   const projectsInKhoi = useMemo(() => PROJECTS.filter((p) => p.khoi === khoi), [khoi]);
@@ -296,6 +298,14 @@ export const ProjectFinancePage: React.FC = () => {
     );
   }
 
+  if (detailView === 'overheadDetail') {
+    return (
+      <div className="p-4 sm:p-6 bg-slate-50/50 min-h-screen space-y-4 font-sans">
+        <OverheadDetailView khoi={khoi} onBack={() => setDetailView('none')} />
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 sm:p-6 bg-slate-50/50 min-h-screen space-y-4 font-sans">
       <AnimatePresence>
@@ -366,8 +376,8 @@ export const ProjectFinancePage: React.FC = () => {
             { id: 'revenue', label: 'Doanh thu', icon: TrendingUp },
             { id: 'cost', label: 'Chi phí', icon: TrendingDown },
             { id: 'overhead', label: 'Vận hành khối', icon: Building2 },
-            { id: 'overheadDetail', label: 'Chi phí vận hành chi tiết', icon: FileText },
             { id: 'cashflow', label: 'Dòng tiền', icon: Wallet },
+            { id: 'labor', label: 'Chi phí nhân công', icon: Users },
           ] as { id: Tab; label: string; icon: any }[]).map((t) => {
             const Icon = t.icon;
             return (
@@ -407,12 +417,14 @@ export const ProjectFinancePage: React.FC = () => {
           overhead={overhead[khoi]}
           basis={basis}
           allocation={allocation}
-          onViewDetail={() => setTab('overheadDetail')}
+          onViewDetail={() => setDetailView('overheadDetail')}
         />
       )}
-      {tab === 'overheadDetail' && <OverheadDetailView khoi={khoi} />}
       {tab === 'cashflow' && (
         <CashflowForm project={displayProject} fin={fin} readOnly={isAll} workload={workloadRow} setCell={setCell} onSave={() => showToast('💾 Đã lưu dòng tiền.')} />
+      )}
+      {tab === 'labor' && (
+        <ProjectLaborCostPage isTab />
       )}
     </div>
   );

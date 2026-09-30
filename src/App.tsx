@@ -68,8 +68,6 @@ export default function App() {
         return <BizReportPage />;
       case 'Thông tin tài chính dự án':
         return <ProjectFinancePage />;
-      case 'Chi phí nhân công dự án':
-        return <ProjectLaborCostPage />;
       case 'Kế hoạch thu chi':
         return <RevenuePlanPage />;
       case 'Toàn cảnh thu chi':
