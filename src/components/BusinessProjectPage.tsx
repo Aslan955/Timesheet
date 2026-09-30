@@ -12,6 +12,7 @@
  * Quy trình: Chờ duyệt mã → Chưa có PAKD → PAKD chờ duyệt (GĐK → CFO) → Đang thực hiện → Kết thúc.
  *   Danh sách hiển thị Hạn lập PAKD, Phiên bản PAKD, nút thao tác theo vai trò (chọn PM / GĐK / CFO),
  *   và nhóm cột Thông tin về hợp đồng.
+ * Đầu màn danh sách: Sổ theo dõi dự án (ProjectTracker) — lọc Năm / Khối, giá trị HĐ ký so với mục tiêu.
  * Hợp đồng: bấm vào trạng thái "Chưa ký" / "Đã ký" → ContractModal (Cập nhật ký hợp đồng);
  * đã ký thì hiện thêm khung Thông tin hợp đồng (phụ lục, tài liệu đính kèm).
  *
@@ -80,6 +81,7 @@ import {
 import { BizMonthlyImportModal, fmtMonth } from './BizMonthlyImportModal';
 import { LedgerDetailModal, LedgerDrill, drillCls } from './LedgerDetailModal';
 import { AttachmentList, ContractModal } from './ContractModal';
+import { ProjectTracker } from './ProjectTracker';
 import { Btn, ErpPage, ErpTitleBar, FieldTable, FolderTabs, FormRow, KpiBox, Panel, Segmented, Tag, erp } from './erp/Erp';
 
 const CURRENT_USER = 'namnv';
@@ -348,17 +350,6 @@ const PakdDecisionModal: React.FC<{ project: BizProject; role: BizRole; onClose:
 // ==========================================================================
 // Danh sách
 // ==========================================================================
-/** Thanh "Hiển thị" trên danh sách. */
-type ListView = 'all' | 'code' | 'noPakd' | 'pakdPending' | 'noContract' | 'contract';
-const LIST_VIEWS: { key: ListView; label: string; match: (p: BizProject) => boolean }[] = [
-  { key: 'all', label: 'Tất cả', match: () => true },
-  { key: 'code', label: 'Mã chờ cấp', match: (p) => p.status === 'Chờ duyệt mã' },
-  { key: 'noPakd', label: 'Chưa có PAKD', match: (p) => p.status === 'Chưa có PAKD' },
-  { key: 'pakdPending', label: 'PAKD đang chờ duyệt', match: (p) => p.status === 'PAKD chờ duyệt' },
-  { key: 'noContract', label: 'Chưa có hợp đồng', match: (p) => !p.contractSigned },
-  { key: 'contract', label: 'Đã có hợp đồng', match: (p) => p.contractSigned },
-];
-
 const LIST_HEAD = ['TT', 'Mã dự án', 'Tên dự án', 'Tên khách hàng', 'Khối', 'Loại dự án', 'Thời điểm dự kiến ký HĐ', 'PM', 'Trạng thái', 'Hạn lập PAKD', 'Phiên bản PAKD', 'Doanh thu PAKD', 'Thao tác'];
 
 const ProjectList: React.FC<{
@@ -373,12 +364,16 @@ const ProjectList: React.FC<{
   const [q, setQ] = useState('');
   const [division, setDivision] = useState('');
   const [status, setStatus] = useState('');
-  const [listView, setListView] = useState<ListView>('all');
+  const years = useMemo(() => {
+    const ys = new Set([String(new Date().getFullYear())]);
+    projects.forEach((p) => [p.expectedSignDate, p.contract?.signDate, p.startDate].forEach((d) => d && ys.add(d.slice(0, 4))));
+    return [...ys].sort();
+  }, [projects]);
+  const [year, setYear] = useState(() => String(new Date().getFullYear()));
   const [deciding, setDeciding] = useState<BizProject | null>(null);
   const [contractOf, setContractOf] = useState<BizProject | null>(null);
 
-  // Lọc theo ô tìm kiếm / khối / trạng thái; thanh "Hiển thị" lọc tiếp trên kết quả này (số đếm theo đó)
-  const base = useMemo(() => {
+  const rows = useMemo(() => {
     const n = q.trim().toLowerCase();
     return projects.filter(
       (p) =>
@@ -387,8 +382,6 @@ const ProjectList: React.FC<{
         (!n || [p.masterCode, p.name, p.customerCode, p.customerName, p.businessPm].some((v) => v.toLowerCase().includes(n))),
     );
   }, [projects, q, division, status]);
-  const viewOf = (k: ListView) => LIST_VIEWS.find((v) => v.key === k)!;
-  const rows = base.filter(viewOf(listView).match);
 
   const rev = rows.reduce((s, p) => s + p.expectedRevenue, 0);
   const myTurn = projects.filter((p) => p.status === 'PAKD chờ duyệt' && pendingRole(latestPakd(p)) === role).length;
@@ -430,16 +423,35 @@ const ProjectList: React.FC<{
     <>
       <ErpTitleBar
         crumbs={CRUMBS}
-        title="Dự án kinh doanh (PAKD)"
+        title="Sổ theo dõi dự án"
         actions={
           <>
+            <label className="flex items-center gap-1.5 text-[12px] text-slate-600">
+              Năm
+              <select value={year} onChange={(e) => setYear(e.target.value)} className={`${erp.input} w-24`}>
+                {years.map((y) => (
+                  <option key={y}>{y}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-1.5 text-[12px] text-slate-600">
+              Khối
+              <select value={division} onChange={(e) => setDivision(e.target.value)} className={`${erp.input} w-32`}>
+                <option value="">Tất cả</option>
+                {DIVISIONS.map((d) => (
+                  <option key={d}>{d}</option>
+                ))}
+              </select>
+            </label>
             <RoleSelect role={role} onChange={onRoleChange} />
-            <Btn variant="success" icon={Plus} onClick={onCreate}>
-              Tạo dự án
+            <Btn variant="primary" icon={Plus} onClick={onCreate}>
+              Xin cấp mã dự án
             </Btn>
           </>
         }
       />
+
+      <ProjectTracker projects={projects} year={year} division={division} />
 
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
         <KpiBox label="Tổng số dự án" value={projects.length} sub={`${projects.filter((p) => p.isKey).length} dự án KEY`} />
@@ -460,12 +472,6 @@ const ProjectList: React.FC<{
               <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm mã, tên dự án, khách hàng, PM..." className={`${erp.inputFull} h-7 pl-7`} />
             </div>
-            <select value={division} onChange={(e) => setDivision(e.target.value)} className={`${erp.input} h-7 w-28`}>
-              <option value="">Tất cả khối</option>
-              {DIVISIONS.map((d) => (
-                <option key={d}>{d}</option>
-              ))}
-            </select>
             <select value={status} onChange={(e) => setStatus(e.target.value)} className={`${erp.input} h-7 w-40`}>
               <option value="">Tất cả trạng thái</option>
               {BIZ_STATUSES.map((s) => (
@@ -481,27 +487,6 @@ const ProjectList: React.FC<{
         }
         footer={`${rows.length} / ${projects.length} dự án · Đang xem với vai trò ${role} · Bấm vào dòng để xem chi tiết, bấm "Đã ký / Chưa ký" để cập nhật hợp đồng`}
       >
-        {/* Thanh chọn cách hiển thị */}
-        <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-[#f3f6fa] border-b border-slate-300">
-          <span className="text-[12px] font-semibold text-slate-600">Hiển thị:</span>
-          <div className="inline-flex flex-wrap border border-slate-300 rounded-[3px] overflow-hidden divide-x divide-slate-300 bg-white">
-            {LIST_VIEWS.map((v) => {
-              const n = base.filter(v.match).length;
-              const active = listView === v.key;
-              return (
-                <button
-                  key={v.key}
-                  type="button"
-                  onClick={() => setListView(v.key)}
-                  className={`h-7 px-3 text-[12px] whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${active ? 'bg-[#1f5fa8] text-white font-semibold' : 'text-slate-700 hover:bg-slate-50'}`}
-                >
-                  {v.label}
-                  <span className={`min-w-5 px-1 rounded-[3px] text-[11px] font-bold tabular-nums ${active ? 'bg-white/20' : 'bg-slate-100 text-slate-600'}`}>{n}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
         <div className="overflow-x-auto">
           <table className={`${erp.table} min-w-[1600px]`}>
             <thead>
