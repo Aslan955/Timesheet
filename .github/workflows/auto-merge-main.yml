@@ -1,0 +1,56 @@
+# Tự merge nhánh feature/* vào main sau khi build thành công.
+# Vercel deploy production từ main → site https://timesheet2-rho.vercel.app/ tự cập nhật.
+#
+# Luồng: push lên feature/xxx → cài package → vite build → merge vào main → push main.
+# Build lỗi hoặc merge bị xung đột → job dừng, KHÔNG đụng vào main (GitHub gửi email báo lỗi).
+name: Auto merge feature → main
+
+on:
+  push:
+    branches:
+      - 'feature/**'
+
+permissions:
+  contents: write
+
+# Không chạy 2 lần merge song song vào main
+concurrency:
+  group: auto-merge-main
+  cancel-in-progress: false
+
+jobs:
+  build-and-merge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Merge vào main
+        run: |
+          set -e
+          BRANCH="${GITHUB_REF_NAME}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout -B main origin/main
+          if git merge-base --is-ancestor "origin/${BRANCH}" main; then
+            echo "main đã có toàn bộ commit của ${BRANCH} — không cần merge."
+            exit 0
+          fi
+          git merge --no-ff "origin/${BRANCH}" -m "Auto merge ${BRANCH} into main (${GITHUB_SHA::7})"
+          git push origin main
+          echo "Đã merge ${BRANCH} vào main — Vercel sẽ tự deploy."
