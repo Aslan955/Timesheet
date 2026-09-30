@@ -226,13 +226,18 @@ export const KpiBox: React.FC<{
   badge?: string;
   tone?: Tone;
 }> = ({ label, value, valueText = '', sub, badge, tone = 'neutral' }) => (
-  <div className={`bg-white border border-slate-300 border-t-[3px] ${TONE_BAR[tone]} rounded-[4px] min-w-0`}>
-    <div className="flex items-start justify-between gap-2 px-3 pt-2">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 leading-tight">{label}</p>
+  // Chiều cao cố định cho từng phần (nhãn 2 dòng, số 1 dòng, dải dưới ghim đáy) để các ô cùng hàng thẳng nhau
+  <div className={`flex flex-col bg-white border border-slate-300 border-t-[3px] ${TONE_BAR[tone]} rounded-[4px] min-w-0`}>
+    <div className="flex items-start justify-between gap-2 px-3 pt-2 h-[38px]">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 leading-[14px] line-clamp-2" title={label}>
+        {label}
+      </p>
       {badge && <span className={`shrink-0 px-1.5 py-px rounded-[3px] border text-[11px] font-bold tabular-nums ${TONE_TEXT[tone]}`}>{badge}</span>}
     </div>
-    <p className={`px-3 pt-1 pb-1.5 font-bold text-slate-900 tabular-nums leading-tight break-all ${valueText.length > 15 ? 'text-[17px]' : 'text-[20px]'}`}>{value}</p>
-    {sub && <div className="px-3 py-1 border-t border-slate-100 bg-slate-50/70 text-[11px] text-slate-500 tabular-nums break-all">{sub}</div>}
+    <p className={`px-3 h-[34px] flex items-center font-bold text-slate-900 tabular-nums whitespace-nowrap overflow-hidden ${valueText.length > 15 ? 'text-[17px]' : 'text-[20px]'}`}>
+      {value}
+    </p>
+    {sub && <div className="mt-auto px-3 py-1 border-t border-slate-100 bg-slate-50/70 text-[11px] text-slate-500 tabular-nums truncate">{sub}</div>}
   </div>
 );
 

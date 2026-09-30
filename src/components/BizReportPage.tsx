@@ -41,7 +41,7 @@ import {
   projectPerf,
   ratio,
 } from '../business/bizReport';
-import { Btn, ErpPage, ErpTitleBar, FieldTable, FolderTabs, KpiBox, Panel, Segmented, Tag, Tone, erp } from './erp/Erp';
+import { Btn, ErpPage, ErpTitleBar, FolderTabs, KpiBox, Panel, Segmented, Tag, Tone, erp } from './erp/Erp';
 
 // Categorical slot 1 / 2 (đã chạy validate_palette: PASS)
 const SERIES = { plan: '#2a78d6', actual: '#eb6834' };
@@ -637,25 +637,35 @@ const ProjectTab: React.FC<{ projects: BizProject[]; cutoff: string; projectId: 
       </Panel>
 
       <Panel title="Thông tin dự án" icon={FolderKanban} noPad>
-        <div className="grid grid-cols-1 md:grid-cols-3">
-          <FieldTable
-            rows={[
-              { label: 'Khối', value: p.division },
-              { label: 'Mã dự án', value: <span className={`${erp.code} font-semibold`}>{p.masterCode}</span> },
-            ]}
-          />
-          <FieldTable
-            rows={[
-              { label: 'Tên dự án', value: p.name },
-              { label: 'Chỉ tiêu', value: `${label} (${unitOf(metric)})` },
-            ]}
-          />
-          <FieldTable
-            rows={[
-              { label: 'Start', value: dmy(p.startDate) },
-              { label: 'End', value: dmy(p.endDate) },
-            ]}
-          />
+        {/* 1 bảng chung 6 cột (nhãn | giá trị × 3) để các hàng luôn thẳng nhau */}
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[13px] table-fixed min-w-[720px]">
+            <tbody>
+              {[
+                [
+                  ['Khối', p.division],
+                  ['Tên dự án', p.name],
+                  ['Start', dmy(p.startDate)],
+                ],
+                [
+                  ['Mã dự án', <span className={`${erp.code} font-semibold`}>{p.masterCode}</span>],
+                  ['Chỉ tiêu', `${label} (${unitOf(metric)})`],
+                  ['End', dmy(p.endDate)],
+                ],
+              ].map((row, i) => (
+                <tr key={i}>
+                  {row.map(([k, v], j) => (
+                    <React.Fragment key={j}>
+                      <th className={`w-[12%] bg-[#f3f6fa] border border-slate-200 px-3 py-1.5 text-left font-medium text-slate-600 ${j === 0 ? 'border-l-0' : ''}`}>{k}</th>
+                      <td className={`w-[21.3%] border border-slate-200 px-3 py-1.5 text-slate-800 truncate ${j === 2 ? 'border-r-0' : ''}`} title={typeof v === 'string' ? v : undefined}>
+                        {v}
+                      </td>
+                    </React.Fragment>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </Panel>
 
