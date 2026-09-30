@@ -45,6 +45,8 @@ export const NAVIGATION: NavItem[] = [
     children: [
       { title: 'Work Order', icon: ClipboardList },
       { title: 'Projects', icon: Briefcase },
+      { title: 'Dự án kinh doanh', icon: Briefcase },
+      { title: 'Báo cáo hiệu quả dự án', icon: BarChart3 },
       { title: 'Kế hoạch thu chi', icon: ClipboardList },
       { title: 'Thông tin tài chính dự án', icon: Wallet },
       { title: 'Toàn cảnh thu chi', label: 'Overview', icon: PieChart },
