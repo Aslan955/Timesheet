@@ -23,6 +23,9 @@ import { PayrollApprovalPage } from './components/PayrollApprovalPage';
 import { PayrollListPage } from './components/PayrollListPage';
 import { ProjectLaborCostPage } from './components/ProjectLaborCostPage';
 import { FinancePlanProvider } from './finance/FinancePlanContext';
+import { BusinessProjectPage } from './components/BusinessProjectPage';
+import { BizReportPage } from './components/BizReportPage';
+import { BusinessProjectProvider } from './business/BusinessProjectContext';
 import { OnsiteReportPage } from './components/OnsiteReportPage';
 import { LeaveReportPage } from './components/LeaveReportPage';
 import { CandidatePage } from './components/CandidatePage';
@@ -59,6 +62,10 @@ export default function App() {
         return <DashboardPage onNavigate={setActiveItem} />;
       case 'Projects':
         return <ProjectsPage />;
+      case 'Dự án kinh doanh':
+        return <BusinessProjectPage />;
+      case 'Báo cáo hiệu quả dự án':
+        return <BizReportPage />;
       case 'Thông tin tài chính dự án':
         return <ProjectFinancePage />;
       case 'Chi phí nhân công dự án':
@@ -122,9 +129,11 @@ export default function App() {
         <CandidateProvider>
           <EmailProvider>
             <FinancePlanProvider>
-              <Layout activeItem={activeItem} onSelect={setActiveItem}>
-                {renderContent()}
-              </Layout>
+              <BusinessProjectProvider>
+                <Layout activeItem={activeItem} onSelect={setActiveItem}>
+                  {renderContent()}
+                </Layout>
+              </BusinessProjectProvider>
             </FinancePlanProvider>
           </EmailProvider>
         </CandidateProvider>
