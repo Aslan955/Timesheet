@@ -105,7 +105,7 @@ const FilterField: React.FC<{ label: string; children: React.ReactNode }> = ({ l
 // Page
 // ==========================================================================
 export const BizReportPage: React.FC = () => {
-  const { projects, ledger } = useBusinessProjects();
+  const { projects } = useBusinessProjects();
   const cutoff = useMemo(() => latestActualMonth(projects), [projects]);
   const [tab, setTab] = useState<'overview' | 'project'>('overview');
   const [projectId, setProjectId] = useState<string>(() => projects.find((p) => p.actual.length)?.id || projects[0]?.id || '');
@@ -130,7 +130,6 @@ export const BizReportPage: React.FC = () => {
         meta={[
           { label: 'Chốt số đến', value: cutoff ? fmtMonth(cutoff) : 'chưa có số thực tế' },
           { label: 'Số dự án', value: projects.length },
-          { label: 'Sổ kế toán', value: `${ledger.cashIn.length} dòng thu · ${ledger.cost.length} dòng chi` },
         ]}
       />
 
@@ -466,7 +465,7 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
                   <React.Fragment key={m.key}>
                     <th className={`${erp.th} text-right font-medium`}>Kế hoạch</th>
                     <th className={`${erp.th} text-right font-medium`}>Thực tế</th>
-                    <th className={`${erp.th} text-right font-medium`}>Chênh lệch</th>
+                    <th className={`${erp.th} text-right font-medium`}>Chênh lệch (%)</th>
                   </React.Fragment>
                 ))}
               </tr>
@@ -486,24 +485,32 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
                     <HealthBadge h={x.health} />
                   </td>
                   {REPORT_METRICS.map(({ key }) => {
-                    const d = x.actual[key] - x.plan[key];
+                    const pl = x.plan[key];
+                    const act = x.actual[key];
+                    const d = act - pl;
                     const noData = x.health === 'Chưa phát sinh';
+                    const diffPct = pl ? (d / pl) * 100 : null;
                     return (
                       <React.Fragment key={key}>
-                        <td className={`${erp.td} ${erp.num} text-slate-600`}>{val(key, x.plan[key])}</td>
+                        <td className={`${erp.td} ${erp.num} text-slate-600`}>{val(key, pl)}</td>
                         <td className={`${erp.td} ${erp.num} font-semibold`}>
                           {noData ? (
                             '–'
                           ) : (
-                            <DrillVal k={key} value={x.actual[key]} onClick={() => drillFor(key, [x.project], x.actual[key], `${x.project.masterCode} — ${x.project.name}`)} />
+                            <DrillVal k={key} value={act} onClick={() => drillFor(key, [x.project], act, `${x.project.masterCode} — ${x.project.name}`)} />
                           )}
                         </td>
                         <td
-                          className={`${erp.td} ${erp.num} last:border-r-0 ${
-                            noData || Math.round(d) === 0 ? 'text-slate-400' : goodTone(key, x.actual[key], x.plan[key]) ? 'text-emerald-700' : 'text-rose-600'
+                          title={noData ? undefined : `Chênh lệch: ${d > 0 ? '+' : ''}${val(key, d)} ${unitOf(key)}`}
+                          className={`${erp.td} ${erp.num} last:border-r-0 font-medium ${
+                            noData || Math.round(d) === 0 ? 'text-slate-400' : goodTone(key, act, pl) ? 'text-emerald-700' : 'text-rose-600'
                           }`}
                         >
-                          {noData ? '–' : `${d > 0 ? '+' : ''}${val(key, d)}`}
+                          {noData || diffPct === null
+                            ? '–'
+                            : Math.abs(diffPct) < 0.05
+                            ? '0.0%'
+                            : `${diffPct > 0 ? '+' : ''}${diffPct.toFixed(1)}%`}
                         </td>
                       </React.Fragment>
                     );
@@ -527,15 +534,25 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
                   {REPORT_METRICS.map(({ key }) => {
                     const p = shown.reduce((s, x) => s + x.plan[key], 0);
                     const a = shown.reduce((s, x) => s + x.actual[key], 0);
+                    const d = a - p;
+                    const diffPct = p ? (d / p) * 100 : null;
                     return (
                       <React.Fragment key={key}>
                         <td className={`${erp.td} ${erp.num}`}>{val(key, p)}</td>
                         <td className={`${erp.td} ${erp.num}`}>
                           <DrillVal k={key} value={a} onClick={() => drillFor(key, shown.map((x) => x.project), a, `${scopeTitle} · ${shown.length} dự án`)} />
                         </td>
-                        <td className={`${erp.td} ${erp.num} last:border-r-0 ${goodTone(key, a, p) ? 'text-emerald-700' : 'text-rose-600'}`}>
-                          {a - p > 0 ? '+' : ''}
-                          {val(key, a - p)}
+                        <td
+                          title={`Chênh lệch: ${d > 0 ? '+' : ''}${val(key, d)} ${unitOf(key)}`}
+                          className={`${erp.td} ${erp.num} last:border-r-0 font-medium ${
+                            Math.round(d) === 0 ? 'text-slate-500' : goodTone(key, a, p) ? 'text-emerald-700' : 'text-rose-600'
+                          }`}
+                        >
+                          {diffPct === null
+                            ? '–'
+                            : Math.abs(diffPct) < 0.05
+                            ? '0.0%'
+                            : `${diffPct > 0 ? '+' : ''}${diffPct.toFixed(1)}%`}
                         </td>
                       </React.Fragment>
                     );

@@ -49,6 +49,7 @@ import {
   Send,
   FileSignature,
   FileText,
+  Paperclip,
 } from 'lucide-react';
 import {
   BizPhase,
@@ -350,7 +351,7 @@ const PakdDecisionModal: React.FC<{ project: BizProject; role: BizRole; onClose:
 // ==========================================================================
 // Danh sách
 // ==========================================================================
-const LIST_HEAD = ['TT', 'Mã dự án', 'Tên dự án', 'Tên khách hàng', 'Khối', 'Loại dự án', 'Thời điểm dự kiến ký HĐ', 'PM', 'Trạng thái', 'Hạn lập PAKD', 'Phiên bản PAKD', 'Doanh thu PAKD', 'Thao tác'];
+const LIST_HEAD = ['TT', 'Mã dự án', 'Tên dự án', 'Tên khách hàng', 'Khối', 'Loại dự án', 'Thời điểm dự kiến ký HĐ', 'PM Kinh doanh', 'PM sản xuất', 'Trạng thái', 'Hạn lập PAKD', 'Phiên bản PAKD', 'Doanh thu PAKD', 'Thao tác'];
 
 const ProjectList: React.FC<{
   projects: BizProject[];
@@ -364,6 +365,7 @@ const ProjectList: React.FC<{
   const [q, setQ] = useState('');
   const [division, setDivision] = useState('');
   const [status, setStatus] = useState('');
+  const [contractFilter, setContractFilter] = useState<'all' | 'signed' | 'unsigned'>('all');
   const years = useMemo(() => {
     const ys = new Set([String(new Date().getFullYear())]);
     projects.forEach((p) => [p.expectedSignDate, p.contract?.signDate, p.startDate].forEach((d) => d && ys.add(d.slice(0, 4))));
@@ -379,17 +381,25 @@ const ProjectList: React.FC<{
       (p) =>
         (!division || p.division === division) &&
         (!status || p.status === status) &&
-        (!n || [p.masterCode, p.name, p.customerCode, p.customerName, p.businessPm].some((v) => v.toLowerCase().includes(n))),
+        (contractFilter === 'all' || (contractFilter === 'signed' ? p.contractSigned : !p.contractSigned)) &&
+        (!n || [p.masterCode, p.name, p.customerCode, p.customerName, p.businessPm, p.productionPm].some((v) => (v || '').toLowerCase().includes(n))),
     );
-  }, [projects, q, division, status]);
+  }, [projects, q, division, status, contractFilter]);
 
   const rev = rows.reduce((s, p) => s + p.expectedRevenue, 0);
+  const contractRev = rows.reduce((s, p) => s + (p.contract?.value ?? (p.contractSigned ? p.expectedRevenue : 0)), 0);
   const myTurn = projects.filter((p) => p.status === 'PAKD chờ duyệt' && pendingRole(latestPakd(p)) === role).length;
   const count = (st: BizStatus) => projects.filter((p) => p.status === st).length;
+  const signedProjects = useMemo(() => projects.filter((p) => p.contractSigned), [projects]);
+  const unsignedProjects = useMemo(() => projects.filter((p) => !p.contractSigned), [projects]);
+  const signedCount = signedProjects.length;
+  const unsignedCount = unsignedProjects.length;
+  const signedRev = useMemo(() => signedProjects.reduce((s, p) => s + (p.contract?.value ?? p.expectedRevenue), 0), [signedProjects]);
+  const unsignedRev = useMemo(() => unsignedProjects.reduce((s, p) => s + p.expectedRevenue, 0), [unsignedProjects]);
 
   const exportXlsx = () => {
     const data = [
-      [...LIST_HEAD.slice(0, -1), 'HĐ - Trạng thái', 'Số hợp đồng', 'Ngày ký', 'Ngày hết hạn'],
+      [...LIST_HEAD.slice(0, -1), 'Giá trị hợp đồng ký', 'Số hợp đồng', 'Ngày ký', 'Ngày hết hạn', 'Tệp', 'Trạng thái'],
       ...rows.map((p, i) => {
         const dl = pakdDeadlineCell(p);
         return [
@@ -401,14 +411,17 @@ const ProjectList: React.FC<{
           p.projectType,
           dmy(p.expectedSignDate || ''),
           p.businessPm,
+          p.productionPm,
           p.status,
           [dl.text, dl.sub].filter(Boolean).join(' '),
           pakdVersionText(p),
           p.expectedRevenue,
-          p.contractSigned ? 'Đã ký' : 'Chưa ký',
+          p.contractSigned ? (p.contract?.value ?? p.expectedRevenue) : '',
           p.contract?.number || '',
-          p.contract ? dmy(p.contract.signDate) : '',
-          p.contract ? dmy(p.contract.to) : '',
+          p.contract?.signDate ? dmy(p.contract.signDate) : p.contractSigned && p.expectedSignDate ? dmy(p.expectedSignDate) : '',
+          p.contract?.to ? dmy(p.contract.to) : p.contractSigned && p.endDate ? dmy(p.endDate) : '',
+          p.contract?.files?.length ? `${p.contract.files.length} tệp` : '',
+          p.contractSigned ? 'Đã ký' : 'Chưa ký',
         ];
       }),
     ];
@@ -428,9 +441,10 @@ const ProjectList: React.FC<{
           <>
             <label className="flex items-center gap-1.5 text-[12px] text-slate-600">
               Năm
-              <select value={year} onChange={(e) => setYear(e.target.value)} className={`${erp.input} w-24`}>
+              <select value={year} onChange={(e) => setYear(e.target.value)} className={`${erp.input} w-28`}>
+                <option value="">Tất cả</option>
                 {years.map((y) => (
-                  <option key={y}>{y}</option>
+                  <option key={y} value={y}>{y}</option>
                 ))}
               </select>
             </label>
@@ -453,13 +467,63 @@ const ProjectList: React.FC<{
 
       <ProjectTracker projects={projects} year={year} division={division} />
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
-        <KpiBox label="Tổng số dự án" value={projects.length} sub={`${projects.filter((p) => p.isKey).length} dự án KEY`} />
-        <KpiBox label="Chờ duyệt mã" value={count('Chờ duyệt mã')} sub="Chờ GĐK duyệt mã" />
-        <KpiBox label="Chưa có PAKD" value={count('Chưa có PAKD')} tone={count('Chưa có PAKD') ? 'bad' : 'neutral'} sub="PM cần lập / nộp PAKD" />
-        <KpiBox label="PAKD chờ duyệt" value={count('PAKD chờ duyệt')} sub={`${myTurn} PAKD chờ ${role} duyệt`} tone={myTurn ? 'bad' : 'neutral'} />
-        <KpiBox label="Đang thực hiện" value={count('Đang thực hiện')} tone="good" sub={`${count('Kết thúc')} dự án đã kết thúc`} />
-        <KpiBox label="Doanh thu PAKD (VNĐ)" value={money(rev)} valueText={money(rev)} sub="Tổng các dự án đang lọc" />
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+        <KpiBox
+          label="Tổng số dự án"
+          value={projects.length}
+          sub={`${projects.filter((p) => p.isKey).length} dự án KEY`}
+          onClick={() => {
+            setStatus('');
+            setContractFilter('all');
+          }}
+        />
+        <KpiBox
+          label="Chờ duyệt mã"
+          value={count('Chờ duyệt mã')}
+          sub="Chờ GĐK duyệt mã"
+          active={status === 'Chờ duyệt mã'}
+          onClick={() => setStatus((s) => (s === 'Chờ duyệt mã' ? '' : 'Chờ duyệt mã'))}
+        />
+        <KpiBox
+          label="Chưa có PAKD"
+          value={count('Chưa có PAKD')}
+          tone={count('Chưa có PAKD') ? 'bad' : 'neutral'}
+          sub="PM cần lập / nộp PAKD"
+          active={status === 'Chưa có PAKD'}
+          onClick={() => setStatus((s) => (s === 'Chưa có PAKD' ? '' : 'Chưa có PAKD'))}
+        />
+        <KpiBox
+          label="PAKD chờ duyệt"
+          value={count('PAKD chờ duyệt')}
+          sub={`${myTurn} PAKD chờ ${role} duyệt`}
+          tone={myTurn ? 'bad' : 'neutral'}
+          active={status === 'PAKD chờ duyệt'}
+          onClick={() => setStatus((s) => (s === 'PAKD chờ duyệt' ? '' : 'PAKD chờ duyệt'))}
+        />
+        <KpiBox
+          label="Đang thực hiện"
+          value={count('Đang thực hiện')}
+          tone="good"
+          sub={`${count('Kết thúc')} dự án đã kết thúc`}
+          active={status === 'Đang thực hiện'}
+          onClick={() => setStatus((s) => (s === 'Đang thực hiện' ? '' : 'Đang thực hiện'))}
+        />
+        <KpiBox
+          label="Dự án đã ký"
+          value={signedCount}
+          tone="good"
+          sub={`${money(signedRev)} đ`}
+          active={contractFilter === 'signed'}
+          onClick={() => setContractFilter((prev) => (prev === 'signed' ? 'all' : 'signed'))}
+        />
+        <KpiBox
+          label="Dự án chưa ký"
+          value={unsignedCount}
+          tone={unsignedCount > 0 ? 'bad' : 'neutral'}
+          sub={`${money(unsignedRev)} đ`}
+          active={contractFilter === 'unsigned'}
+          onClick={() => setContractFilter((prev) => (prev === 'unsigned' ? 'all' : 'unsigned'))}
+        />
       </div>
 
       <Panel
@@ -480,6 +544,11 @@ const ProjectList: React.FC<{
                 </option>
               ))}
             </select>
+            <select value={contractFilter} onChange={(e) => setContractFilter(e.target.value as 'all' | 'signed' | 'unsigned')} className={`${erp.input} h-7 w-36`}>
+              <option value="all">Tất cả hợp đồng</option>
+              <option value="signed">Đã ký ({signedCount})</option>
+              <option value="unsigned">Chưa ký ({unsignedCount})</option>
+            </select>
             <Btn icon={FileSpreadsheet} onClick={exportXlsx} className="h-7">
               Xuất Excel
             </Btn>
@@ -488,7 +557,7 @@ const ProjectList: React.FC<{
         footer={`${rows.length} / ${projects.length} dự án · Đang xem với vai trò ${role} · Bấm vào dòng để xem chi tiết, bấm "Đã ký / Chưa ký" để cập nhật hợp đồng`}
       >
         <div className="overflow-x-auto">
-          <table className={`${erp.table} min-w-[1600px]`}>
+          <table className={`${erp.table} min-w-[1920px]`}>
             <thead>
               <tr>
                 {LIST_HEAD.map((h) => (
@@ -496,13 +565,13 @@ const ProjectList: React.FC<{
                     {h}
                   </th>
                 ))}
-                <th colSpan={4} className={`${th} border-t-0 border-r-0`}>
-                  Thông tin về hợp đồng
+                <th colSpan={6} className={`${th} border-t-0 border-r-0 bg-[#f4f7fb]`}>
+                  Thông tin hợp đồng đã ký
                 </th>
               </tr>
               <tr>
-                {['Trạng thái', 'Số hợp đồng', 'Ngày ký', 'Ngày hết hạn'].map((h) => (
-                  <th key={h} className={`${th} last:border-r-0`}>
+                {['Giá trị hợp đồng ký', 'Số hợp đồng', 'Ngày ký', 'Ngày hết hạn', 'Tệp', 'Trạng thái'].map((h) => (
+                  <th key={h} className={`${th} last:border-r-0 whitespace-nowrap px-3 bg-[#f8fafc]`}>
                     {h}
                   </th>
                 ))}
@@ -524,6 +593,7 @@ const ProjectList: React.FC<{
                     <td className={`${erp.td} whitespace-nowrap`}>{p.projectType}</td>
                     <td className={`${erp.td} text-center whitespace-nowrap`}>{dmy(p.expectedSignDate || '')}</td>
                     <td className={`${erp.td} whitespace-nowrap`}>{p.businessPm || '—'}</td>
+                    <td className={`${erp.td} whitespace-nowrap`}>{p.productionPm || '—'}</td>
                     <td className={`${erp.td} whitespace-nowrap`}>
                       <StatusBadge status={p.status} />
                     </td>
@@ -547,27 +617,56 @@ const ProjectList: React.FC<{
                         </button>
                       )}
                     </td>
+                    <td className={`${erp.td} ${erp.num} whitespace-nowrap font-medium ${p.contractSigned ? 'text-slate-800' : 'text-slate-400'}`}>
+                      {p.contractSigned ? money(p.contract?.value ?? p.expectedRevenue) : '—'}
+                    </td>
+                    <td className={`${erp.td} whitespace-nowrap font-mono text-[12px] text-slate-700`}>
+                      {p.contract?.number || (p.contractSigned ? '—' : '')}
+                    </td>
+                    <td className={`${erp.td} text-center whitespace-nowrap text-slate-600`}>
+                      {p.contract?.signDate ? dmy(p.contract.signDate) : p.contractSigned && p.expectedSignDate ? dmy(p.expectedSignDate) : (p.contractSigned ? '—' : '')}
+                    </td>
+                    <td className={`${erp.td} text-center whitespace-nowrap text-slate-600`}>
+                      {p.contract?.to ? dmy(p.contract.to) : p.contractSigned && p.endDate ? dmy(p.endDate) : (p.contractSigned ? '—' : '')}
+                    </td>
                     <td className={`${erp.td} text-center whitespace-nowrap`}>
+                      {p.contract?.files && p.contract.files.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setContractOf(p);
+                          }}
+                          className="inline-flex items-center gap-1 text-[11px] text-[#1f5fa8] hover:text-[#184c88] hover:underline"
+                          title={p.contract.files.map((f) => f.name).join(', ')}
+                        >
+                          <Paperclip size={12} className="shrink-0 text-slate-500" />
+                          <span>{p.contract.files.length} tệp</span>
+                        </button>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
+                    </td>
+                    <td className={`${erp.td} text-center whitespace-nowrap border-r-0`}>
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           setContractOf(p);
                         }}
-                        className={`text-[12px] underline underline-offset-2 cursor-pointer ${p.contractSigned ? 'text-emerald-700' : 'text-[#1f5fa8]'}`}
+                        className={`text-[12px] underline underline-offset-2 cursor-pointer font-medium ${
+                          p.contractSigned ? 'text-emerald-700 hover:text-emerald-800' : 'text-[#1f5fa8] hover:text-[#184c88]'
+                        }`}
                       >
                         {p.contractSigned ? 'Đã ký' : 'Chưa ký'}
                       </button>
                     </td>
-                    <td className={`${erp.td} whitespace-nowrap`}>{p.contract?.number || ''}</td>
-                    <td className={`${erp.td} text-center whitespace-nowrap`}>{p.contract ? dmy(p.contract.signDate) : ''}</td>
-                    <td className={`${erp.td} text-center whitespace-nowrap border-r-0`}>{p.contract ? dmy(p.contract.to) : ''}</td>
                   </tr>
                 );
               })}
               {!rows.length && (
                 <tr>
-                  <td colSpan={17} className={`${erp.td} text-center text-slate-400 py-6`}>
+                  <td colSpan={20} className={`${erp.td} text-center text-slate-400 py-6`}>
                     Không có dự án phù hợp.
                   </td>
                 </tr>
@@ -576,10 +675,12 @@ const ProjectList: React.FC<{
             {rows.length > 0 && (
               <tfoot>
                 <tr className={erp.totalRow}>
-                  <td className={`${erp.td} border-l-0`} colSpan={11}>
+                  <td className={`${erp.td} border-l-0`} colSpan={12}>
                     Tổng cộng ({rows.length} dự án)
                   </td>
                   <td className={`${erp.td} ${erp.num}`}>{money(rev)}</td>
+                  <td className={`${erp.td}`} />
+                  <td className={`${erp.td} ${erp.num}`}>{money(contractRev)}</td>
                   <td className={`${erp.td} border-r-0`} colSpan={5} />
                 </tr>
               </tfoot>
@@ -1248,7 +1349,7 @@ const ProjectDetail: React.FC<{
                   { label: 'Tên khách hàng', value: p.customerName },
                   { label: 'Mã khách hàng', value: <span className="font-mono">{p.customerCode}</span> },
                   { label: 'Giám đốc kinh doanh', value: p.businessDirector },
-                  { label: 'Giám đốc bán hàng', value: p.salesDirector },
+                  { label: 'Giám đốc khối', value: p.salesDirector },
                   { label: 'Người tạo', value: p.creator },
                   { label: 'AM', value: p.am.join(', ') },
                   { label: 'Thời gian', value: `${dmy(p.startDate)} → ${dmy(p.endDate)}` },
@@ -1522,8 +1623,31 @@ const ProjectForm: React.FC<{
 
       <Panel title="Thông tin chung" icon={LayoutList}>
         <FormGrid>
+          <FormRow label="Mã Master" required error={err('masterCode')} hint={autoCode ? 'Tự sinh theo mã khách hàng — có thể sửa' : 'Mã KD = Master.1, Mã SX = Master.2'}>
+            <input
+              value={f.masterCode}
+              onChange={(e) => {
+                setAutoCode(false);
+                setMaster(e.target.value);
+              }}
+              placeholder="VD: 022.688"
+              className={`${inputCls} font-mono font-bold text-[#1f5fa8]`}
+            />
+          </FormRow>
           <FormRow label="Tên dự án" required error={err('name')}>
             <input value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="VD: 022.NSG" className={inputCls} />
+          </FormRow>
+          <FormRow label="Mã kinh doanh">
+            <input value={f.businessCode} disabled className={`${inputCls} font-mono`} />
+          </FormRow>
+          <FormRow label="PM kinh doanh">
+            <input value={f.businessPm} onChange={(e) => set('businessPm', e.target.value)} className={inputCls} />
+          </FormRow>
+          <FormRow label="Mã sản xuất">
+            <input value={f.productionCode} disabled className={`${inputCls} font-mono`} />
+          </FormRow>
+          <FormRow label="PM sản xuất">
+            <input value={f.productionPm} onChange={(e) => set('productionPm', e.target.value)} className={inputCls} />
           </FormRow>
           <FormRow label="Trạng thái">
             <select value={f.status} onChange={(e) => set('status', e.target.value as BizStatus)} className={inputCls}>
@@ -1568,7 +1692,7 @@ const ProjectForm: React.FC<{
           <FormRow label="Giám đốc kinh doanh">
             <input value={f.businessDirector} onChange={(e) => set('businessDirector', e.target.value)} className={inputCls} />
           </FormRow>
-          <FormRow label="Giám đốc bán hàng">
+          <FormRow label="Giám đốc khối">
             <input value={f.salesDirector} onChange={(e) => set('salesDirector', e.target.value)} className={inputCls} />
           </FormRow>
           <FormRow label="AM" hint="Nhiều người cách nhau bằng dấu phẩy">
@@ -1588,35 +1712,6 @@ const ProjectForm: React.FC<{
           </FormRow>
           <FormRow label="Hạn lập PAKD" hint={initial ? undefined : 'Mặc định đặt khi GĐK duyệt mã (7 ngày)'}>
             <input type="date" value={f.pakdDeadline || ''} onChange={(e) => set('pakdDeadline', e.target.value)} className={inputCls} />
-          </FormRow>
-        </FormGrid>
-      </Panel>
-
-      <Panel title="Mã dự án" icon={Hash}>
-        <FormGrid>
-          <FormRow label="Mã Master" required error={err('masterCode')} hint={autoCode ? 'Tự sinh theo mã khách hàng — có thể sửa' : 'Mã KD = Master.1, Mã SX = Master.2'}>
-            <input
-              value={f.masterCode}
-              onChange={(e) => {
-                setAutoCode(false);
-                setMaster(e.target.value);
-              }}
-              placeholder="VD: 022.688"
-              className={`${inputCls} font-mono font-bold text-[#1f5fa8]`}
-            />
-          </FormRow>
-          <div className="hidden xl:block" />
-          <FormRow label="Mã kinh doanh">
-            <input value={f.businessCode} disabled className={`${inputCls} font-mono`} />
-          </FormRow>
-          <FormRow label="PM kinh doanh">
-            <input value={f.businessPm} onChange={(e) => set('businessPm', e.target.value)} className={inputCls} />
-          </FormRow>
-          <FormRow label="Mã sản xuất">
-            <input value={f.productionCode} disabled className={`${inputCls} font-mono`} />
-          </FormRow>
-          <FormRow label="PM sản xuất">
-            <input value={f.productionPm} onChange={(e) => set('productionPm', e.target.value)} className={inputCls} />
           </FormRow>
         </FormGrid>
       </Panel>

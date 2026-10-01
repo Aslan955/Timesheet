@@ -225,9 +225,17 @@ export const KpiBox: React.FC<{
   sub?: React.ReactNode;
   badge?: string;
   tone?: Tone;
-}> = ({ label, value, valueText = '', sub, badge, tone = 'neutral' }) => (
+  onClick?: () => void;
+  active?: boolean;
+  className?: string;
+}> = ({ label, value, valueText = '', sub, badge, tone = 'neutral', onClick, active, className = '' }) => (
   // Chiều cao cố định cho từng phần (nhãn 2 dòng, số 1 dòng, dải dưới ghim đáy) để các ô cùng hàng thẳng nhau
-  <div className={`flex flex-col bg-white border border-slate-300 border-t-[3px] ${TONE_BAR[tone]} rounded-[4px] min-w-0`}>
+  <div
+    onClick={onClick}
+    className={`flex flex-col bg-white border border-slate-300 border-t-[3px] ${TONE_BAR[tone]} rounded-[4px] min-w-0 ${
+      onClick ? 'cursor-pointer hover:shadow-sm hover:border-slate-400 transition-all select-none' : ''
+    } ${active ? 'ring-2 ring-emerald-500 shadow-sm' : ''} ${className}`}
+  >
     <div className="flex items-start justify-between gap-2 px-3 pt-2 h-[38px]">
       <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 leading-[14px] line-clamp-2" title={label}>
         {label}

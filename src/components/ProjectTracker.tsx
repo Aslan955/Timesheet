@@ -9,7 +9,7 @@
  * Đã ký = tổng giá trị HĐ có ngày ký trong năm. Dự kiến ký còn lại = tổng doanh thu PAKD của
  * dự án chưa ký, dự kiến ký trong năm (chưa kết thúc). ĐVT: VNĐ.
  */
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Target, Pencil, X, Save, BarChart3 } from 'lucide-react';
 import { BizProject, DIVISIONS, signedDate, signedValue, useBusinessProjects } from '../business/BusinessProjectContext';
@@ -28,13 +28,18 @@ interface Row {
   expected: number;
 }
 
-/** Tính số theo khối cho 1 năm. */
+/** Tính số theo khối cho 1 năm hoặc tất cả. */
 export const trackerRows = (projects: BizProject[], year: string, divisions: string[], targets: Record<string, number>): Row[] =>
   divisions.map((d) => {
     const list = projects.filter((p) => p.division === d);
-    const signed = list.filter((p) => signedDate(p).startsWith(year)).reduce((s, p) => s + signedValue(p), 0);
+    const signed = list
+      .filter((p) => {
+        const sd = signedDate(p);
+        return sd ? (!year || sd.startsWith(year)) : false;
+      })
+      .reduce((s, p) => s + signedValue(p), 0);
     const expected = list
-      .filter((p) => !p.contractSigned && p.status !== 'Kết thúc' && (p.expectedSignDate || '').startsWith(year))
+      .filter((p) => !p.contractSigned && p.status !== 'Kết thúc' && (!year || (p.expectedSignDate || '').startsWith(year)))
       .reduce((s, p) => s + p.expectedRevenue, 0);
     return { key: d, label: `Khối ${d}`, target: targets[d] || 0, signed, expected };
   });
@@ -69,7 +74,6 @@ const RowCells: React.FC<{ r: Row; total?: boolean }> = ({ r, total }) => {
       <td className={`${erp.td} ${erp.num}`}>{money(r.target)}</td>
       <td className={`${erp.td} ${erp.num} font-semibold`}>{money(r.signed)}</td>
       <td className={`${erp.td} ${erp.num} ${missing ? 'text-rose-600 font-semibold' : 'text-slate-400'}`}>{money(missing)}</td>
-      <td className={`${erp.td} ${erp.num}`}>{money(r.expected)}</td>
       <td className={`${erp.td} ${erp.num} font-semibold border-r-0 ${after >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
         {r.target ? `${after >= 0 ? 'Dư' : 'Thiếu'} ${money(Math.abs(after))}` : '—'}
       </td>
@@ -80,7 +84,17 @@ const RowCells: React.FC<{ r: Row; total?: boolean }> = ({ r, total }) => {
 export const ProjectTracker: React.FC<{ projects: BizProject[]; year: string; division: string }> = ({ projects, year, division }) => {
   const { targets, setYearTargets } = useBusinessProjects();
   const [editing, setEditing] = useState(false);
-  const yearTargets = targets[year] || {};
+  const activeModalYear = year || String(new Date().getFullYear());
+  const yearTargets = useMemo(() => {
+    if (year) return targets[year] || {};
+    const agg: Record<string, number> = {};
+    Object.values(targets).forEach((yTargets) => {
+      Object.entries(yTargets).forEach(([k, v]) => {
+        agg[k] = (agg[k] || 0) + v;
+      });
+    });
+    return agg;
+  }, [targets, year]);
   const divisions = division ? [division] : DIVISIONS;
   const rows = trackerRows(projects, year, divisions, yearTargets);
   const total: Row = {
@@ -98,7 +112,7 @@ export const ProjectTracker: React.FC<{ projects: BizProject[]; year: string; di
       <div className="bg-white border border-slate-300 border-t-[3px] border-t-[#1f5fa8] rounded-[4px] flex flex-col">
         <div className="px-4 pt-3">
           <p className="text-[12px] font-semibold text-slate-600">
-            Giá trị hợp đồng ký năm {year}
+            Giá trị hợp đồng dự kiến
             {division && ` · Khối ${division}`}
           </p>
           <p className="text-right text-[26px] font-bold text-[#1e3a5f] tabular-nums leading-tight mt-2 break-all">{money(total.signed)}</p>
@@ -107,7 +121,7 @@ export const ProjectTracker: React.FC<{ projects: BizProject[]; year: string; di
         <table className="w-full border-collapse text-[13px] mt-3 tabular-nums">
           <tbody>
             {[
-              ['Mục tiêu năm', money(total.target), 'font-semibold'],
+              [year ? 'Mục tiêu năm' : 'Mục tiêu luỹ kế', money(total.target), 'font-semibold'],
               ['Còn thiếu', money(missing), missing ? 'text-rose-600 font-bold' : 'text-slate-400'],
               ['Đạt', total.target ? pct(total.signed / total.target) : '—', total.signed >= total.target && total.target ? 'text-emerald-700 font-bold' : 'font-bold'],
               ['Dự kiến ký còn lại', money(total.expected), ''],
@@ -130,7 +144,7 @@ export const ProjectTracker: React.FC<{ projects: BizProject[]; year: string; di
 
       {/* Theo khối */}
       <Panel
-        title={`Theo khối so với mục tiêu năm ${year}`}
+        title={year ? `Theo khối so với mục tiêu năm ${year}` : 'Theo khối so với mục tiêu (Tất cả)'}
         icon={BarChart3}
         noPad
         actions={
@@ -151,13 +165,13 @@ export const ProjectTracker: React.FC<{ projects: BizProject[]; year: string; di
             </Btn>
           </>
         }
-        footer="ĐVT: VNĐ · Đã ký = giá trị HĐ có ngày ký trong năm · Dự kiến ký còn lại = doanh thu PAKD của dự án chưa ký, dự kiến ký trong năm"
+        footer={year ? 'ĐVT: VNĐ · Đã ký = giá trị HĐ có ngày ký trong năm · Dự kiến ký còn lại = doanh thu PAKD của dự án chưa ký, dự kiến ký trong năm' : 'ĐVT: VNĐ · Đã ký = giá trị HĐ đã ký · Dự kiến ký còn lại = doanh thu PAKD của dự án chưa ký'}
       >
         <div className="overflow-x-auto">
           <table className={erp.table}>
             <thead>
               <tr>
-                {['Khối', 'So với mục tiêu', 'Mục tiêu', 'Đã ký', 'Còn thiếu', 'Dự kiến ký còn lại', 'Sau khi ký hết'].map((h, i) => (
+                {['Khối', 'So với mục tiêu', 'Mục tiêu', 'Đã ký', 'Còn thiếu', 'Sau khi ký hết'].map((h, i) => (
                   <th key={h} className={`${erp.th} ${i >= 2 ? 'text-right' : 'text-left'} border-t-0 first:border-l-0 last:border-r-0`}>
                     {h}
                   </th>
@@ -186,11 +200,11 @@ export const ProjectTracker: React.FC<{ projects: BizProject[]; year: string; di
         {editing && (
           <TargetModal
             key="targets"
-            year={year}
-            initial={yearTargets}
+            year={activeModalYear}
+            initial={targets[activeModalYear] || {}}
             onClose={() => setEditing(false)}
             onSave={(t) => {
-              setYearTargets(year, t);
+              setYearTargets(activeModalYear, t);
               setEditing(false);
             }}
           />
