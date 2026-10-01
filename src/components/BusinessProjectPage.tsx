@@ -459,7 +459,7 @@ const ProjectList: React.FC<{
             </label>
             <RoleSelect role={role} onChange={onRoleChange} />
             <Btn variant="primary" icon={Plus} onClick={onCreate}>
-              Xin cấp mã dự án
+              Cấp mã dự án
             </Btn>
           </>
         }
