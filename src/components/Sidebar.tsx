@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronRight, LayoutDashboard, Shield, LogOut } from 'lucide-react';
-import { NAVIGATION, NavItem } from '../constants';
+import { NAVIGATION, NavItem, visibleNav } from '../constants';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface SidebarProps {
@@ -92,7 +92,8 @@ const SidebarItem: React.FC<{
             isActive ? THEME.itemIconActive : containsActive ? THEME.itemIconActive : THEME.itemIcon
           }`} 
         />
-        <span className="flex-1 truncate">{item.label ?? item.title}</span>
+        {/* Tên module (cấp 0) được xuống dòng nếu dài; mục con vẫn cắt bằng dấu … */}
+        <span className={`flex-1 ${isLevel0 ? 'whitespace-normal leading-snug' : 'truncate'}`}>{item.label ?? item.title}</span>
         {hasChildren && (
           <span className={`${THEME.itemTextMuted} ml-1.5 shrink-0`}>
             <ChevronDown 
@@ -154,7 +155,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeItem, onSelect }) => {
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
         </div>
         
-        {NAVIGATION.map((item, idx) => (
+        {visibleNav(NAVIGATION).map((item, idx) => (
           <SidebarItem
             key={`${item.title}-${idx}`}
             item={item}

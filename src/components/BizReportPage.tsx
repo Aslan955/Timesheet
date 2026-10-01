@@ -120,7 +120,7 @@ export const BizReportPage: React.FC = () => {
   return (
     <ErpPage>
       <ErpTitleBar
-        crumbs={['Project Management', 'Báo cáo hiệu quả dự án']}
+        crumbs={['Quản trị dự án & Tài chính', 'Báo cáo hiệu quả dự án']}
         title="Báo cáo hiệu quả dự án"
         actions={
           <Btn variant="success" icon={FileUp} onClick={() => setShowLedgerImport(true)}>

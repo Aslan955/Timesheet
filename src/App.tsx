@@ -24,6 +24,9 @@ import { PayrollListPage } from './components/PayrollListPage';
 import { ProjectLaborCostPage } from './components/ProjectLaborCostPage';
 import { FinancePlanProvider } from './finance/FinancePlanContext';
 import { BusinessProjectPage } from './components/BusinessProjectPage';
+import { PmPlaceholderPage } from './components/PmPlaceholderPage';
+import { BizTargetPage, BizTargetProvider } from './components/BizTargetPage';
+import { PM_PLACEHOLDER_SCREENS } from './constants';
 import { BizReportPage } from './components/BizReportPage';
 import { BusinessProjectProvider } from './business/BusinessProjectContext';
 import { OnsiteReportPage } from './components/OnsiteReportPage';
@@ -39,7 +42,7 @@ import { EmailProvider } from './email/EmailContext';
 import { EmailTemplatePage } from './components/EmailTemplatePage';
 
 export default function App() {
-  const [activeItem, setActiveItem] = useState('Overview');
+  const [activeItem, setActiveItem] = useState('Mục tiêu kinh doanh'); // màn mở mặc định khi vào hệ thống
 
   const renderContent = () => {
     // Mỗi danh mục tuyển dụng là 1 màn riêng (định tuyến theo tên danh mục)
@@ -57,6 +60,9 @@ export default function App() {
       if (catV2) return <CatalogPage catalogKey={catV2.key} skin="v2" />;
     }
 
+    // Các màn bổ sung của Project Management (khung trống, làm nội dung sau)
+    if (PM_PLACEHOLDER_SCREENS[activeItem]) return <PmPlaceholderPage key={activeItem} title={PM_PLACEHOLDER_SCREENS[activeItem]} />;
+
     switch (activeItem) {
       case 'Overview':
         return <DashboardPage onNavigate={setActiveItem} />;
@@ -64,6 +70,8 @@ export default function App() {
         return <ProjectsPage />;
       case 'Dự án kinh doanh':
         return <BusinessProjectPage />;
+      case 'Mục tiêu kinh doanh':
+        return <BizTargetPage />;
       case 'Báo cáo hiệu quả dự án':
         return <BizReportPage />;
       case 'Thông tin tài chính dự án':
@@ -128,9 +136,11 @@ export default function App() {
           <EmailProvider>
             <FinancePlanProvider>
               <BusinessProjectProvider>
-                <Layout activeItem={activeItem} onSelect={setActiveItem}>
-                  {renderContent()}
-                </Layout>
+                <BizTargetProvider>
+                  <Layout activeItem={activeItem} onSelect={setActiveItem}>
+                    {renderContent()}
+                  </Layout>
+                </BizTargetProvider>
               </BusinessProjectProvider>
             </FinancePlanProvider>
           </EmailProvider>

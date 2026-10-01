@@ -11,8 +11,8 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Check, CheckCircle2, ChevronLeft, ChevronsRight, ClipboardCheck, Flag, ListChecks, Lock, RotateCcw, Send, X as XIcon } from 'lucide-react';
-import { BizHistory, BizProject, BizRole, PAKD_DAYS, PakdVersion, latestPakd } from '../business/BusinessProjectContext';
+import { ArrowRight, Check, CheckCircle2, ChevronLeft, ChevronsRight, ClipboardCheck, Flag, ListChecks, Lock, RotateCcw, Send, X as XIcon } from 'lucide-react';
+import { BizHistory, BizProject, BizRole, PAKD_DAYS, PakdVersion, addDays, latestPakd } from '../business/BusinessProjectContext';
 import { Btn } from './erp/Erp';
 
 // --------------------------------------------------------------------------
@@ -52,31 +52,6 @@ interface Step {
 }
 
 const lastHist = (p: BizProject, pred: (h: BizHistory) => boolean) => [...p.history].reverse().find(pred);
-
-/** Xem trước các bước trên form "Yêu cầu mở mã dự án" (chưa gửi). */
-const previewSteps = (p: BizProject, creatorRole: BizRole): { steps: Step[]; states: StepState[] } => {
-  const self = creatorRole === 'GĐK';
-  return {
-    steps: [
-      { key: 'req', title: 'Lập yêu cầu mở mã', who: p.creator, role: creatorRole, notes: [{ text: 'Đang lập — bấm "Gửi yêu cầu" để chuyển bước', tone: 'muted' }] },
-      {
-        key: 'code',
-        title: 'Giám đốc khối phê duyệt',
-        role: 'GĐK',
-        notes: [
-          self
-            ? { text: 'Bạn là GĐK tạo yêu cầu → tự động phê duyệt khi gửi, mã được cấp ngay', tone: 'warn' }
-            : { text: 'Sau khi gửi, chờ GĐK phê duyệt. Duyệt xong hệ thống sinh Mã dự án / Mã KD / Mã SX', tone: 'muted' },
-        ],
-      },
-      { key: 'pakd', title: 'Khối cập nhật PAKD', role: 'GĐK', notes: [{ text: `Hạn ${PAKD_DAYS} ngày kể từ ngày GĐK phê duyệt; quá hạn chưa có PAKD → dự án tự đóng`, tone: 'muted' }] },
-      { key: 'cfo', title: 'Kế toán duyệt PAKD', role: 'Kế toán (CFO)', notes: [{ text: 'Từ chối → tự động trả về bước "Khối cập nhật PAKD" để làm lại', tone: 'muted' }] },
-      { key: 'run', title: 'Thực hiện dự án', who: p.productionPm || '', role: 'PM sản xuất' },
-      { key: 'end', title: 'Kết thúc' },
-    ],
-    states: ['current', 'todo', 'todo', 'todo', 'todo', 'todo'],
-  };
-};
 
 const buildSteps = (p: BizProject): { steps: Step[]; states: StepState[] } => {
   const last = latestPakd(p);
@@ -283,15 +258,19 @@ export const WorkflowDrawer: React.FC<{
   onSubmit: () => void;
   onDecide: () => void;
   onFinish: () => void;
-  /** Xem trước trên form yêu cầu mở mã (chưa gửi): không có nút thao tác. */
-  preview?: boolean;
-}> = ({ project: p, role, open, width, onOpenChange, onWidthChange, onApproveCode, onReopen, onSubmit, onDecide, onFinish, preview }) => {
-  const { steps, states } = preview ? previewSteps(p, role) : buildSteps(p);
+  /** Mở phần lập PAKD (import kế hoạch theo tháng). */
+  onLapPakd?: () => void;
+  /** Mở form cập nhật thông tin dự án. */
+  onEditInfo?: () => void;
+}> = ({ project: p, role, open, width, onOpenChange, onWidthChange, onApproveCode, onReopen, onSubmit, onDecide, onFinish, onLapPakd, onEditInfo }) => {
+  const { steps, states } = buildSteps(p);
+  // Ngày cấp mã: lưu khi cấp mã; dữ liệu cũ lấy theo lịch sử "Duyệt mã dự án".
+  const codeDate =
+    p.codeIssuedAt || [...p.history].reverse().find((h) => h.action === 'Duyệt mã dự án')?.at?.slice(0, 10) || (p.pakdDeadline ? addDays(p.pakdDeadline, -PAKD_DAYS) : '');
   const last = latestPakd(p);
 
   // Nút thao tác gắn vào bước hiện tại (theo vai trò đang xem).
   const actionFor = (key: string): React.ReactNode => {
-    if (preview) return null;
     if (key === 'code' && p.status === 'Chờ duyệt mã' && role === 'GĐK')
       return (
         <Btn variant="primary" icon={CheckCircle2} className="h-7" onClick={onApproveCode}>
@@ -407,6 +386,43 @@ export const WorkflowDrawer: React.FC<{
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 pb-5">
+              {/* Theo dõi lập PAKD — hiện sau khi GĐK duyệt / hệ thống cấp mã */}
+              {p.status !== 'Chờ duyệt mã' && (
+                <section className="mb-5">
+                  <p className="mb-2 text-[12px] font-bold text-[#1e3a5f] uppercase tracking-wide">Theo dõi lập PAKD</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      ['Ngày cấp mã', dmy(codeDate)],
+                      ['Hạn lập PAKD', dmy(p.pakdDeadline)],
+                    ].map(([k, v]) => (
+                      <div key={k}>
+                        <p className="text-[11.5px] text-slate-500 mb-1">{k}</p>
+                        <p className="h-9 px-2.5 flex items-center rounded-[3px] border border-slate-200 bg-[#e8eef5] text-[13px] font-semibold text-slate-800 tabular-nums">{v || '—'}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-2.5 px-3 py-2.5 rounded-[3px] bg-amber-50 border border-amber-200 text-[12px] leading-snug text-amber-800">
+                    Hạn lập PAKD = ngày hệ thống cấp mã + {PAKD_DAYS} ngày. Sau cấp mã, chuyển tiếp sang lập PAKD.
+                  </p>
+                  {onLapPakd && p.status === 'Chưa có PAKD' && (
+                    <button
+                      onClick={onLapPakd}
+                      className="mt-2.5 w-full h-10 rounded-[3px] bg-[#16857c] hover:bg-[#127068] text-white text-[13px] font-semibold flex items-center justify-center gap-2"
+                    >
+                      Lập PAKD <ArrowRight size={15} />
+                    </button>
+                  )}
+                  {onEditInfo && (
+                    <button
+                      onClick={onEditInfo}
+                      className="mt-2 w-full h-10 rounded-[3px] bg-[#23476d] hover:bg-[#1c3a5a] text-white text-[13px] font-semibold"
+                    >
+                      Cập nhật thông tin
+                    </button>
+                  )}
+                </section>
+              )}
+
               {/* Dòng thời gian */}
               <ol>
                 {steps.map((s, i) => {
@@ -433,7 +449,6 @@ export const WorkflowDrawer: React.FC<{
               </ol>
 
               {/* Phiên bản PAKD */}
-              {!preview && (<>
               <p className="mt-5 mb-2 text-[12px] font-bold text-slate-600 uppercase tracking-wide">Phiên bản PAKD</p>
               {p.pakd.length ? (
                 <div className="space-y-2">
@@ -465,7 +480,6 @@ export const WorkflowDrawer: React.FC<{
                   <Lock size={12} /> Chọn vai trò Kế toán (CFO) để duyệt PAKD.
                 </p>
               )}
-              </>)}
             </div>
           </motion.aside>
         )}

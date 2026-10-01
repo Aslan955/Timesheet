@@ -90,7 +90,7 @@ import { WorkflowDrawer, useWorkflowDrawer } from './WorkflowDrawer';
 import { Btn, ErpPage, ErpTitleBar, FieldTable, FolderTabs, FormRow, Panel, Segmented, Tag, erp } from './erp/Erp';
 
 const CURRENT_USER = 'namnv';
-const CRUMBS = ['Project Management', 'Dự án kinh doanh'];
+const CRUMBS = ['Quản trị dự án & Tài chính', 'Danh sách dự án'];
 
 const money = (n: number) => Math.round(n || 0).toLocaleString('en-US');
 const num = (n: number) => (n ? Math.round(n).toLocaleString('en-US') : '–');
@@ -404,11 +404,13 @@ const ProjectList: React.FC<{
   const [division, setDivision] = useState('');
   const [status, setStatus] = useState('');
   const [contractFilter, setContractFilter] = useState<'all' | 'signed' | 'unsigned'>('all');
+  const { targets } = useBusinessProjects();
   const years = useMemo(() => {
     const ys = new Set([String(new Date().getFullYear())]);
     projects.forEach((p) => ys.add(projectYear(p)));
+    Object.keys(targets).forEach((y) => ys.add(y)); // năm đã có mục tiêu kinh doanh (kể cả chưa có dự án)
     return [...ys].filter(Boolean).sort();
-  }, [projects]);
+  }, [projects, targets]);
   const [year, setYear] = useState(() => String(new Date().getFullYear()));
   const [deciding, setDeciding] = useState<BizProject | null>(null);
   const [contractOf, setContractOf] = useState<BizProject | null>(null);
@@ -822,9 +824,16 @@ const KIND_TEXT: Record<FinKind, { tab: string; importBtn: string; empty: string
 const FinanceSection: React.FC<{
   project: BizProject;
   onImport: (kind: FinKind, rows: BizMonthRow[], fileName: string, summary: string) => void;
-}> = ({ project: p, onImport }) => {
+  /** Tăng lên mỗi lần bấm "Lập PAKD" ở ngăn quy trình → mở import kế hoạch. */
+  importRequest?: number;
+}> = ({ project: p, onImport, importRequest }) => {
   const [kind, setKind] = useState<FinKind>('plan');
   const [showImport, setShowImport] = useState(false);
+  useEffect(() => {
+    if (!importRequest) return;
+    setKind('plan');
+    setShowImport(true);
+  }, [importRequest]);
   const [drill, setDrill] = useState<LedgerDrill | null>(null);
   const data = p[kind];
   const info = kind === 'plan' ? p.planImport : p.actualImport;
@@ -1122,6 +1131,13 @@ const ProjectDetail: React.FC<{
   const gp = grossProfit(p);
   const drawer = useWorkflowDrawer();
   const wide = useWide();
+  const [importReq, setImportReq] = useState(0);
+  /** "Lập PAKD": về tab thông tin, cuộn tới bảng kế hoạch theo tháng và mở import kế hoạch. */
+  const lapPakd = () => {
+    setTab('overview');
+    setImportReq((n) => n + 1);
+    setTimeout(() => document.getElementById('pakd-plan')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  };
 
   return (
     <div className="transition-[margin] duration-200" style={{ marginRight: drawer.open && wide ? drawer.width : 0 }}>
@@ -1137,6 +1153,8 @@ const ProjectDetail: React.FC<{
         onSubmit={onSubmitPakd}
         onDecide={() => setDeciding(true)}
         onFinish={onFinish}
+        onLapPakd={lapPakd}
+        onEditInfo={onEdit}
       />
       <ErpTitleBar
         crumbs={[...CRUMBS, p.masterCode || 'Yêu cầu mở mã']}
@@ -1290,7 +1308,9 @@ const ProjectDetail: React.FC<{
 
           {p.contract && <ContractPanel project={p} onEdit={() => setShowContract(true)} />}
           <PhaseStepper key={p.id + p.version} phases={p.phases} current={p.currentPhase} />
-          <FinanceSection project={p} onImport={onImport} />
+          <div id="pakd-plan" className="scroll-mt-16">
+            <FinanceSection project={p} onImport={onImport} importRequest={importReq} />
+          </div>
         </>
       )}
 
@@ -1407,7 +1427,7 @@ const peopleOf = (projects: BizProject[], pick: (p: BizProject) => (string | und
 /**
  * Form "Yêu cầu mở mã dự án" (tạo mới) / "Sửa thông tin dự án".
  * Trường: Mã dự án · Mã kinh doanh · Mã sản xuất (hệ thống tự sinh sau khi GĐK duyệt) · Tên dự án ·
- *         PM kinh doanh · PM sản xuất · Khách hàng (chọn / thêm mới) · Loại dự án · GĐKD · AM · Khối.
+ *         PM kinh doanh · PM sản xuất · Khách hàng (chọn / thêm mới) · Loại dự án · GĐKD · AM · Khối · Dự án KEY.
  */
 const ProjectForm: React.FC<{
   initial?: BizProject;
@@ -1416,8 +1436,6 @@ const ProjectForm: React.FC<{
   onCancel: () => void;
   onSubmit: (data: BizProjectInput) => void;
 }> = ({ initial, projects, role, onCancel, onSubmit }) => {
-  const drawer = useWorkflowDrawer();
-  const wide = useWide();
   const [f, setF] = useState<BizProjectInput>(() => (initial ? toInput(initial) : emptyInput()));
   const [touched, setTouched] = useState(false);
   const directors = useMemo(() => peopleOf(projects, (p) => [p.businessDirector, p.salesDirector]), [projects]);
@@ -1488,26 +1506,8 @@ const ProjectForm: React.FC<{
     <input value={v || ''} placeholder={autoText} disabled className={`${inputCls} font-mono ${v ? 'font-bold text-[#1f5fa8]' : ''}`} />
   );
 
-  const noop = () => {};
-  // Dự án nháp để hiển thị các bước: yêu cầu mới → xem trước; đang sửa → tiến độ thực tế.
-  const draft: BizProject = initial ? { ...initial, ...f } : ({ ...f, id: 'draft', version: 0, pakd: [], plan: [], actual: [], createdAt: '', updatedAt: '', history: [] } as BizProject);
-
   return (
-    <div className="transition-[margin] duration-200" style={{ marginRight: drawer.open && wide ? drawer.width : 0 }}>
-      <WorkflowDrawer
-        project={draft}
-        role={role}
-        preview={!initial}
-        open={drawer.open}
-        width={drawer.width}
-        onOpenChange={drawer.setOpen}
-        onWidthChange={drawer.setWidth}
-        onApproveCode={noop}
-        onReopen={noop}
-        onSubmit={noop}
-        onDecide={noop}
-        onFinish={noop}
-      />
+    <>
       <ErpTitleBar
         crumbs={[...CRUMBS, initial ? `Sửa ${initial.masterCode || 'yêu cầu mở mã'}` : 'Yêu cầu mở mã dự án']}
         title={initial ? `Sửa dự án — ${initial.name}` : 'Yêu cầu mở mã dự án'}
@@ -1539,6 +1539,20 @@ const ProjectForm: React.FC<{
           </span>
         }
       >
+        {/* Hướng dẫn quy trình cấp mã */}
+        <div className="mb-3 space-y-1.5">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 rounded-[4px] border border-emerald-600/70 bg-emerald-50/40 text-[13px]">
+            <span className="font-bold text-[#1e3a5f]">Hướng dẫn quy trình</span>
+            <span className="text-slate-700">
+              ▸ {role === 'GĐK' && !f.masterCode ? 'Gửi yêu cầu -> GĐK tự duyệt (người tạo là GĐK) -> Hệ thống cấp mã' : 'Gửi GĐK duyệt -> GĐK duyệt -> Hệ thống cấp mã'}
+            </span>
+          </div>
+          <p className="text-[12.5px] text-slate-600">
+            {f.masterCode
+              ? `Mã dự án đã được cấp: ${f.masterCode}${f.pakdDeadline ? ` · Ngày đến hạn lập PAKD: ${dmy(f.pakdDeadline)}` : ''}.`
+              : 'Mã dự án chưa được cấp. Ngày đến hạn lập PAKD được xác định sau khi hệ thống cấp mã.'}
+          </p>
+        </div>
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-x-8 gap-y-2.5">
           <FormRow label="Mã dự án">{codeBox(f.masterCode)}</FormRow>
           <FormRow label="Tên dự án" required error={err('name')}>
@@ -1621,8 +1635,14 @@ const ProjectForm: React.FC<{
               ))}
             </select>
           </FormRow>
+          <FormRow label="Dự án KEY">
+            <label className="flex items-center gap-2 h-8 text-[13px] cursor-pointer w-fit">
+              <input type="checkbox" checked={f.isKey} onChange={(e) => set('isKey', e.target.checked)} className="w-4 h-4 accent-amber-500" />
+              <Star size={13} className="fill-amber-400 text-amber-500" /> Đánh dấu là dự án trọng điểm
+            </label>
+          </FormRow>
         </div>
       </Panel>
-    </div>
+    </>
   );
 };

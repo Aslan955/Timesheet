@@ -38,14 +38,46 @@ export interface NavItem {
   children?: NavItem[];
 }
 
+/** Module Project Management: chỉ hiện các màn này trên menu (các màn khác vẫn giữ code, chỉ tạm ẩn). */
+export const PM_VISIBLE_SCREENS = [
+  'PM · Tổng quan',
+  'Mục tiêu kinh doanh',
+  'Dự án kinh doanh', // hiển thị: "Danh sách dự án"
+  'Báo cáo hiệu quả dự án',
+  'Công nợ phải thu',
+  'Dòng tiền',
+  'Nhật ký dự án',
+];
+/** Các màn bổ sung của Project Management (đang là khung trống). */
+export const PM_PLACEHOLDER_SCREENS: Record<string, string> = {
+  'PM · Tổng quan': 'Tổng quan',
+  'Công nợ phải thu': 'Công nợ phải thu',
+  'Dòng tiền': 'Dòng tiền',
+  'Nhật ký dự án': 'Nhật ký dự án',
+};
+
+/** Lọc menu: ẩn các màn của module Project Management không nằm trong PM_VISIBLE_SCREENS; các module khác giữ nguyên. */
+export const visibleNav = (items: NavItem[]): NavItem[] =>
+  items.map((it) =>
+    it.title === 'Project Management' && it.children
+      ? { ...it, children: PM_VISIBLE_SCREENS.map((t) => it.children!.find((c) => c.title === t)).filter((c): c is NavItem => !!c) }
+      : it,
+  );
+
 export const NAVIGATION: NavItem[] = [
   {
     title: 'Project Management',
+    label: 'Quản trị dự án & Tài chính',
     icon: BarChart3,
     children: [
+      { title: 'PM · Tổng quan', label: 'Tổng quan', icon: PieChart },
+      { title: 'Mục tiêu kinh doanh', icon: Award },
+      { title: 'Công nợ phải thu', icon: Wallet },
+      { title: 'Dòng tiền', icon: BarChart3 },
+      { title: 'Nhật ký dự án', icon: FileText },
       { title: 'Work Order', icon: ClipboardList },
       { title: 'Projects', icon: Briefcase },
-      { title: 'Dự án kinh doanh', icon: Briefcase },
+      { title: 'Dự án kinh doanh', label: 'Danh sách dự án', icon: Briefcase },
       { title: 'Báo cáo hiệu quả dự án', icon: BarChart3 },
       { title: 'Kế hoạch thu chi', icon: ClipboardList },
       { title: 'Thông tin tài chính dự án', icon: Wallet },
