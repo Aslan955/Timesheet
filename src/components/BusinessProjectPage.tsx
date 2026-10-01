@@ -83,7 +83,7 @@ import { BizMonthlyImportModal, fmtMonth } from './BizMonthlyImportModal';
 import { LedgerDetailModal, LedgerDrill, drillCls } from './LedgerDetailModal';
 import { AttachmentList, ContractModal } from './ContractModal';
 import { ProjectTracker } from './ProjectTracker';
-import { Btn, ErpPage, ErpTitleBar, FieldTable, FolderTabs, FormRow, KpiBox, Panel, Segmented, Tag, erp } from './erp/Erp';
+import { Btn, ErpPage, ErpTitleBar, FieldTable, FolderTabs, FormRow, Panel, Segmented, Tag, erp } from './erp/Erp';
 
 const CURRENT_USER = 'namnv';
 const CRUMBS = ['Project Management', 'Dự án kinh doanh'];
@@ -388,14 +388,11 @@ const ProjectList: React.FC<{
 
   const rev = rows.reduce((s, p) => s + p.expectedRevenue, 0);
   const contractRev = rows.reduce((s, p) => s + (p.contract?.value ?? (p.contractSigned ? p.expectedRevenue : 0)), 0);
-  const myTurn = projects.filter((p) => p.status === 'PAKD chờ duyệt' && pendingRole(latestPakd(p)) === role).length;
   const count = (st: BizStatus) => projects.filter((p) => p.status === st).length;
   const signedProjects = useMemo(() => projects.filter((p) => p.contractSigned), [projects]);
   const unsignedProjects = useMemo(() => projects.filter((p) => !p.contractSigned), [projects]);
   const signedCount = signedProjects.length;
   const unsignedCount = unsignedProjects.length;
-  const signedRev = useMemo(() => signedProjects.reduce((s, p) => s + (p.contract?.value ?? p.expectedRevenue), 0), [signedProjects]);
-  const unsignedRev = useMemo(() => unsignedProjects.reduce((s, p) => s + p.expectedRevenue, 0), [unsignedProjects]);
 
   const exportXlsx = () => {
     const data = [
@@ -466,65 +463,6 @@ const ProjectList: React.FC<{
       />
 
       <ProjectTracker projects={projects} year={year} division={division} />
-
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-        <KpiBox
-          label="Tổng số dự án"
-          value={projects.length}
-          sub={`${projects.filter((p) => p.isKey).length} dự án KEY`}
-          onClick={() => {
-            setStatus('');
-            setContractFilter('all');
-          }}
-        />
-        <KpiBox
-          label="Chờ duyệt mã"
-          value={count('Chờ duyệt mã')}
-          sub="Chờ GĐK duyệt mã"
-          active={status === 'Chờ duyệt mã'}
-          onClick={() => setStatus((s) => (s === 'Chờ duyệt mã' ? '' : 'Chờ duyệt mã'))}
-        />
-        <KpiBox
-          label="Chưa có PAKD"
-          value={count('Chưa có PAKD')}
-          tone={count('Chưa có PAKD') ? 'bad' : 'neutral'}
-          sub="PM cần lập / nộp PAKD"
-          active={status === 'Chưa có PAKD'}
-          onClick={() => setStatus((s) => (s === 'Chưa có PAKD' ? '' : 'Chưa có PAKD'))}
-        />
-        <KpiBox
-          label="PAKD chờ duyệt"
-          value={count('PAKD chờ duyệt')}
-          sub={`${myTurn} PAKD chờ ${role} duyệt`}
-          tone={myTurn ? 'bad' : 'neutral'}
-          active={status === 'PAKD chờ duyệt'}
-          onClick={() => setStatus((s) => (s === 'PAKD chờ duyệt' ? '' : 'PAKD chờ duyệt'))}
-        />
-        <KpiBox
-          label="Đang thực hiện"
-          value={count('Đang thực hiện')}
-          tone="good"
-          sub={`${count('Kết thúc')} dự án đã kết thúc`}
-          active={status === 'Đang thực hiện'}
-          onClick={() => setStatus((s) => (s === 'Đang thực hiện' ? '' : 'Đang thực hiện'))}
-        />
-        <KpiBox
-          label="Dự án đã ký"
-          value={signedCount}
-          tone="good"
-          sub={`${money(signedRev)} đ`}
-          active={contractFilter === 'signed'}
-          onClick={() => setContractFilter((prev) => (prev === 'signed' ? 'all' : 'signed'))}
-        />
-        <KpiBox
-          label="Dự án chưa ký"
-          value={unsignedCount}
-          tone={unsignedCount > 0 ? 'bad' : 'neutral'}
-          sub={`${money(unsignedRev)} đ`}
-          active={contractFilter === 'unsigned'}
-          onClick={() => setContractFilter((prev) => (prev === 'unsigned' ? 'all' : 'unsigned'))}
-        />
-      </div>
 
       <Panel
         title="Danh sách dự án"
