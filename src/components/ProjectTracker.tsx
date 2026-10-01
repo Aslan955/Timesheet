@@ -53,7 +53,7 @@ export const trackerRows = (projects: BizProject[], year: string, divisions: str
   });
 
 /** Thanh tiến độ của 1 khối (thang riêng từng dòng: max(mục tiêu, đã ký + chưa ký)):
- *  xanh đậm = đã ký, xanh nhạt = chưa ký. */
+ *  xanh đậm = đã ký, xanh nhạt = chưa ký, vạch đen = giá trị mục tiêu. */
 const Bullet: React.FC<{ r: Row }> = ({ r }) => {
   const scale = Math.max(1, r.target, r.signed + r.expected);
   const w = (v: number) => `${Math.min(100, (v / scale) * 100)}%`;
@@ -64,6 +64,7 @@ const Bullet: React.FC<{ r: Row }> = ({ r }) => {
     >
       <div className="absolute inset-y-0 left-0 rounded-[2px]" style={{ width: w(r.signed + r.expected), background: EXPECTED }} />
       <div className="absolute inset-y-0 left-0 rounded-l-[2px]" style={{ width: w(r.signed), background: SIGNED }} />
+      {r.target > 0 && <div className="absolute -top-1 -bottom-1 w-[2px] bg-slate-900" style={{ left: `calc(${w(r.target)} - 1px)` }} />}
     </div>
   );
 };
@@ -162,6 +163,9 @@ export const ProjectTracker: React.FC<{ projects: BizProject[]; year: string; di
               <span className="flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded-[2px]" style={{ background: EXPECTED }} /> Chưa ký
               </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-[2px] h-3.5 bg-slate-900" /> Mục tiêu
+              </span>
             </span>
             <Btn icon={Target} className="h-7" onClick={() => setEditing(true)}>
               Đặt mục tiêu
@@ -174,8 +178,8 @@ export const ProjectTracker: React.FC<{ projects: BizProject[]; year: string; di
           <table className={erp.table}>
             <thead>
               <tr>
-                {['Khối', 'So với mục tiêu', 'Giá trị mục tiêu', 'Giá trị đã ký', 'Giá trị chưa ký', 'Giá trị còn thiếu so với mục tiêu', '% Đạt'].map((h, i) => (
-                  <th key={h} className={`${erp.th} ${i >= 2 ? 'text-right' : 'text-left'} border-t-0 first:border-l-0 last:border-r-0`}>
+                {['Khối', 'So với mục tiêu', 'Giá trị mục tiêu', 'Giá trị đã ký', 'Giá trị chưa ký', 'Giá trị còn thiếu so với mục tiêu', '% Đạt'].map((h) => (
+                  <th key={h} className={`${erp.th} text-center border-t-0 first:border-l-0 last:border-r-0`}>
                     {h}
                   </th>
                 ))}

@@ -61,6 +61,7 @@ import {
   BizRole,
   BIZ_ROLES,
   latestPakd,
+  signedDate,
   pendingRole,
   addDays,
   PAKD_DAYS,
@@ -71,6 +72,7 @@ import {
   grossProfit,
   grossMargin,
   nextMasterCode,
+  codesFrom,
   blankPhases,
   BizMonthRow,
   BizAttachment,
@@ -110,6 +112,18 @@ const KeyBadge = () => (
   </Tag>
 );
 
+/** Màn rộng (≥ 1280px): ngăn quy trình đẩy nội dung sang trái; màn hẹp: ngăn nổi đè lên nội dung. */
+const useWide = () => {
+  const [wide, setWide] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1280px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1280px)');
+    const on = () => setWide(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return wide;
+};
+
 type View = { mode: 'list' } | { mode: 'detail'; id: string } | { mode: 'form'; id?: string };
 
 export const BusinessProjectPage: React.FC = () => {
@@ -128,7 +142,7 @@ export const BusinessProjectPage: React.FC = () => {
   const decide = (p: BizProject, approve: boolean, note: string) => {
     decidePakd(p.id, approve, role, actor, note);
     const v = latestPakd(p)!.version;
-    flash(!approve ? `Kế toán đã từ chối PAKD V${v} — trả về PM` : `Kế toán đã duyệt PAKD V${v} — dự án chuyển "Đang thực hiện"`);
+    flash(!approve ? `Kế toán đã từ chối PAKD V${v} — trả về GĐK lập lại` : `Kế toán đã duyệt PAKD V${v} — dự án chuyển "Đang thực hiện"`);
   };
   const signContract = (p: BizProject, c: Omit<BizContract, 'updatedAt' | 'updatedBy'>) => {
     saveContract(p.id, c, CURRENT_USER);
@@ -173,8 +187,8 @@ export const BusinessProjectPage: React.FC = () => {
           role={role}
           onRoleChange={setRole}
           onApproveCode={() => {
-            const deadline = approveCode(current.id, actor);
-            flash(`Đã duyệt mã ${current.masterCode} — hạn lập PAKD ${dmy(deadline)}`);
+            const { deadline, code } = approveCode(current.id, actor);
+            flash(`Đã duyệt — hệ thống cấp mã ${code} (KD ${code}.1 · SX ${code}.2), hạn lập PAKD ${dmy(deadline)}`);
           }}
           onReopen={() => {
             const deadline = reopenProject(current.id, actor);
@@ -209,6 +223,7 @@ export const BusinessProjectPage: React.FC = () => {
         <ProjectForm
           initial={current}
           projects={projects}
+          role={role}
           onCancel={() => setView(current ? { mode: 'detail', id: current.id } : { mode: 'list' })}
           onSubmit={(data) => {
             if (current) {
@@ -219,12 +234,15 @@ export const BusinessProjectPage: React.FC = () => {
               // AM tạo → chờ GĐK duyệt mã; GĐK tự tạo → mã được cấp ngay, hạn PAKD = hôm nay + PAKD_DAYS.
               const issued = role === 'GĐK';
               const d = todayIso();
+              const code = issued ? nextMasterCode(projects, data.customerCode) : '';
               const p = createProject(
-                issued ? { ...data, status: 'Chưa có PAKD', codeIssuedAt: d, pakdDeadline: addDays(d, PAKD_DAYS) } : { ...data, status: 'Chờ duyệt mã', codeIssuedAt: undefined, pakdDeadline: '' },
+                issued
+                  ? { ...data, ...codesFrom(code), status: 'Chưa có PAKD', codeIssuedAt: d, pakdDeadline: addDays(d, PAKD_DAYS) }
+                  : { ...data, ...codesFrom(''), status: 'Chờ duyệt mã', codeIssuedAt: undefined, pakdDeadline: '' },
                 actor,
               );
               setView({ mode: 'detail', id: p.id });
-              flash(issued ? `Đã cấp mã dự án — hạn lập PAKD ${dmy(addDays(d, PAKD_DAYS))}` : 'Đã gửi yêu cầu cấp mã — chờ GĐK duyệt');
+              flash(issued ? `Đã cấp mã ${code} — GĐK lập PAKD trước ${dmy(addDays(d, PAKD_DAYS))}` : 'Đã gửi yêu cầu mở mã dự án — chờ GĐK duyệt');
             }
           }}
         />
@@ -246,6 +264,8 @@ const pakdDeadlineCell = (p: BizProject): { text: string; sub?: string; cls?: st
   if (p.status === 'Đóng') return { text: 'Đã đóng', sub: dmy(p.closedAt || p.pakdDeadline || ''), cls: 'text-slate-600 font-semibold' };
   if (p.status === 'Chưa có PAKD') {
     const sub = last?.state === 'Từ chối' ? `V${last.version} bị từ chối ${dmy(last.decidedAt || '')}` : undefined;
+    // Bị Kế toán từ chối → trả về cập nhật lại PAKD (hạn 30 ngày chỉ áp dụng lần đầu).
+    if (last?.state === 'Từ chối') return { text: `Làm lại V${last.version + 1}`, sub, cls: 'text-amber-700 font-semibold' };
     if (!p.pakdDeadline) return { text: 'Chưa đặt hạn', sub, cls: 'text-slate-400' };
     const d = daysBetween(todayIso(), p.pakdDeadline);
     if (d > 0) return { text: `Còn ${d} ngày`, sub, cls: d <= 3 ? 'text-amber-700 font-semibold' : '' };
@@ -262,6 +282,9 @@ const pakdVersionText = (p: BizProject) => {
   const last = latestPakd(p);
   return last ? `V${last.version}, ${last.state.charAt(0).toLowerCase()}${last.state.slice(1)}` : '—';
 };
+
+/** Năm của dự án dùng cho bộ lọc Năm: năm ký HĐ (đã ký) → năm dự kiến ký HĐ → năm tạo yêu cầu. */
+const projectYear = (p: BizProject) => (signedDate(p) || p.expectedSignDate || p.createdAt || '').slice(0, 4);
 
 type RowAction = { label: string; kind: 'view' | 'decide' } | null;
 /** Nút thao tác theo trạng thái + vai trò đang xem. */
@@ -339,7 +362,7 @@ const PakdDecisionModal: React.FC<{ project: BizProject; role: BizRole; onClose:
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="Ý kiến phê duyệt / lý do từ chối" className={`${erp.inputFull} h-auto py-1.5`} />
           </FormRow>
           <p className="text-[11px] text-slate-500">
-            Kế toán (CFO) duyệt → PAKD được duyệt, dự án chuyển "Đang thực hiện". Từ chối → trả về PM lập phiên bản mới.
+            Kế toán (CFO) duyệt → PAKD được duyệt, dự án chuyển "Đang thực hiện". Từ chối → trả về GĐK lập phiên bản mới.
           </p>
         </div>
         <div className="flex justify-end gap-1.5 px-3 py-2 border-t border-slate-300 bg-slate-50 rounded-b-[3px]">
@@ -383,31 +406,33 @@ const ProjectList: React.FC<{
   const [contractFilter, setContractFilter] = useState<'all' | 'signed' | 'unsigned'>('all');
   const years = useMemo(() => {
     const ys = new Set([String(new Date().getFullYear())]);
-    projects.forEach((p) => [p.expectedSignDate, p.contract?.signDate, p.startDate].forEach((d) => d && ys.add(d.slice(0, 4))));
-    return [...ys].sort();
+    projects.forEach((p) => ys.add(projectYear(p)));
+    return [...ys].filter(Boolean).sort();
   }, [projects]);
   const [year, setYear] = useState(() => String(new Date().getFullYear()));
   const [deciding, setDeciding] = useState<BizProject | null>(null);
   const [contractOf, setContractOf] = useState<BizProject | null>(null);
 
-  const rows = useMemo(() => {
+  // Lọc theo Năm · Khối · Tìm kiếm (dùng chung cho danh sách và số đếm trong các ô lọc).
+  const base = useMemo(() => {
     const n = q.trim().toLowerCase();
     return projects.filter(
       (p) =>
+        (!year || projectYear(p) === year) &&
         (!division || p.division === division) &&
-        (!status || p.status === status) &&
-        (contractFilter === 'all' || (contractFilter === 'signed' ? p.contractSigned : !p.contractSigned)) &&
         (!n || [p.masterCode, p.name, p.customerCode, p.customerName, p.businessPm, p.productionPm].some((v) => (v || '').toLowerCase().includes(n))),
     );
-  }, [projects, q, division, status, contractFilter]);
+  }, [projects, q, year, division]);
+  const byStatus = (p: BizProject) => !status || p.status === status;
+  const byContract = (p: BizProject) => contractFilter === 'all' || (contractFilter === 'signed' ? p.contractSigned : !p.contractSigned);
+  const rows = useMemo(() => base.filter((p) => byStatus(p) && byContract(p)), [base, status, contractFilter]);
 
   const rev = rows.reduce((s, p) => s + p.expectedRevenue, 0);
   const contractRev = rows.reduce((s, p) => s + (p.contract?.value ?? (p.contractSigned ? p.expectedRevenue : 0)), 0);
-  const count = (st: BizStatus) => projects.filter((p) => p.status === st).length;
-  const signedProjects = useMemo(() => projects.filter((p) => p.contractSigned), [projects]);
-  const unsignedProjects = useMemo(() => projects.filter((p) => !p.contractSigned), [projects]);
-  const signedCount = signedProjects.length;
-  const unsignedCount = unsignedProjects.length;
+  // Số đếm trong ô lọc: theo các bộ lọc còn lại (để chọn vào là ra đúng số đó).
+  const count = (st: BizStatus) => base.filter((p) => p.status === st && byContract(p)).length;
+  const signedCount = base.filter((p) => p.contractSigned && byStatus(p)).length;
+  const unsignedCount = base.filter((p) => !p.contractSigned && byStatus(p)).length;
 
   const exportXlsx = () => {
     const data = [
@@ -494,7 +519,7 @@ const ProjectList: React.FC<{
             <select value={status} onChange={(e) => setStatus(e.target.value)} className={`${erp.input} h-7 w-40`}>
               <option value="">Tất cả trạng thái</option>
               {BIZ_STATUSES.map((s) => (
-                <option key={s}>
+                <option key={s} value={s}>
                   {s} ({count(s)})
                 </option>
               ))}
@@ -539,7 +564,7 @@ const ProjectList: React.FC<{
                 return (
                   <tr key={p.id} onClick={() => onView(p)} className={`${erp.tr} cursor-pointer`}>
                     <td className={`${erp.td} text-center text-slate-500 border-l-0`}>{i + 1}</td>
-                    <td className={`${erp.td} ${erp.code} font-semibold whitespace-nowrap`}>{p.masterCode}</td>
+                    <td className={`${erp.td} ${erp.code} font-semibold whitespace-nowrap`}>{p.masterCode || <span className="text-slate-400 font-normal font-sans text-[12px]">Chờ cấp mã</span>}</td>
                     <td className={erp.td}>
                       <span className="font-semibold text-slate-800">{p.name}</span> {p.isKey && <KeyBadge />}
                     </td>
@@ -1096,14 +1121,7 @@ const ProjectDetail: React.FC<{
   const [showContract, setShowContract] = useState(false);
   const gp = grossProfit(p);
   const drawer = useWorkflowDrawer();
-  // Màn rộng (≥ 1280px): ngăn quy trình đẩy nội dung sang trái; màn hẹp: ngăn nổi đè lên nội dung.
-  const [wide, setWide] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1280px)').matches);
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 1280px)');
-    const on = () => setWide(mq.matches);
-    mq.addEventListener('change', on);
-    return () => mq.removeEventListener('change', on);
-  }, []);
+  const wide = useWide();
 
   return (
     <div className="transition-[margin] duration-200" style={{ marginRight: drawer.open && wide ? drawer.width : 0 }}>
@@ -1121,7 +1139,7 @@ const ProjectDetail: React.FC<{
         onFinish={onFinish}
       />
       <ErpTitleBar
-        crumbs={[...CRUMBS, p.masterCode]}
+        crumbs={[...CRUMBS, p.masterCode || 'Yêu cầu mở mã']}
         title={
           <>
             {p.name} {p.isKey && <KeyBadge />}
@@ -1145,7 +1163,7 @@ const ProjectDetail: React.FC<{
           </>
         }
         meta={[
-          { label: 'Mã Master', value: <span className={erp.code}>{p.masterCode}</span> },
+          { label: 'Mã dự án', value: p.masterCode ? <span className={erp.code}>{p.masterCode}</span> : <span className="text-slate-400">Chờ GĐK duyệt</span> },
           { label: 'Version', value: `v${p.version}` },
           { label: 'Trạng thái', value: <StatusBadge status={p.status} /> },
           { label: 'Khối', value: p.division },
@@ -1178,7 +1196,7 @@ const ProjectDetail: React.FC<{
               </thead>
               <tbody className="text-[13px]">
                 {[
-                  ['Mã Master (mã tổng)', p.masterCode, '—'],
+                  ['Mã dự án (mã tổng)', p.masterCode || 'Chờ cấp mã', '—'],
                   ['Mã kinh doanh (PAKD)', p.businessCode, p.businessPm],
                   ['Mã sản xuất', p.productionCode, p.productionPm],
                 ].map(([k, c, pm]) => (
@@ -1337,22 +1355,8 @@ const ProjectDetail: React.FC<{
 // ==========================================================================
 const inputCls = erp.inputFull;
 /** Ô nhập trong bảng (kiểu bảng tính): không viền, nền đổi khi focus. */
-const cellInput = 'w-full h-8 px-2 bg-transparent text-[13px] outline-none focus:bg-[#eaf2fc] focus:ring-1 focus:ring-inset focus:ring-[#1f5fa8]';
 
-const MoneyInput: React.FC<{ value: number; onChange: (v: number) => void }> = ({ value, onChange }) => (
-  <div className="relative">
-    <input
-      inputMode="numeric"
-      value={value ? value.toLocaleString('en-US') : ''}
-      onChange={(e) => onChange(Number(e.target.value.replace(/[^\d]/g, '')) || 0)}
-      placeholder="0"
-      className={`${inputCls} text-right pr-12 tabular-nums`}
-    />
-    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-slate-400">VNĐ</span>
-  </div>
-);
 
-const FormGrid: React.FC<{ children: React.ReactNode }> = ({ children }) => <div className="grid grid-cols-1 xl:grid-cols-2 gap-x-8 gap-y-2.5">{children}</div>;
 
 const emptyInput = (): BizProjectInput => ({
   name: '',
@@ -1389,48 +1393,83 @@ const toInput = (p: BizProject): BizProjectInput => {
   return rest;
 };
 
+/** Danh sách khách hàng = các khách hàng đã có trong dự án (mã → tên). */
+const customerList = (projects: BizProject[]) => {
+  const m = new Map<string, string>();
+  projects.forEach((p) => p.customerCode && !m.has(p.customerCode) && m.set(p.customerCode, p.customerName));
+  return [...m.entries()].map(([code, name]) => ({ code, name })).sort((a, b) => a.code.localeCompare(b.code));
+};
+
+/** Danh sách người theo vai trò, lấy từ các dự án đã có (chưa có danh mục nhân sự riêng). */
+const peopleOf = (projects: BizProject[], pick: (p: BizProject) => (string | undefined)[]) =>
+  [...new Set(projects.flatMap((p) => pick(p)).map((x) => (x || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'vi'));
+
+/**
+ * Form "Yêu cầu mở mã dự án" (tạo mới) / "Sửa thông tin dự án".
+ * Trường: Mã dự án · Mã kinh doanh · Mã sản xuất (hệ thống tự sinh sau khi GĐK duyệt) · Tên dự án ·
+ *         PM kinh doanh · PM sản xuất · Khách hàng (chọn / thêm mới) · Loại dự án · GĐKD · AM · Khối.
+ */
 const ProjectForm: React.FC<{
   initial?: BizProject;
   projects: BizProject[];
+  role: BizRole;
   onCancel: () => void;
   onSubmit: (data: BizProjectInput) => void;
-}> = ({ initial, projects, onCancel, onSubmit }) => {
+}> = ({ initial, projects, role, onCancel, onSubmit }) => {
+  const drawer = useWorkflowDrawer();
+  const wide = useWide();
   const [f, setF] = useState<BizProjectInput>(() => (initial ? toInput(initial) : emptyInput()));
-  const [amText, setAmText] = useState(() => f.am.join(', '));
-  // Khi tạo mới, mã Master tự sinh theo mã KH cho tới khi người dùng tự sửa.
-  const [autoCode, setAutoCode] = useState(!initial);
   const [touched, setTouched] = useState(false);
+  const directors = useMemo(() => peopleOf(projects, (p) => [p.businessDirector, p.salesDirector]), [projects]);
+  const amPeople = useMemo(() => peopleOf(projects, (p) => [...(p.am || []), p.businessPm]), [projects]);
+  const bizPms = useMemo(() => peopleOf(projects, (p) => [p.businessPm]), [projects]);
+  const prodPms = useMemo(() => peopleOf(projects, (p) => [p.productionPm]), [projects]);
+  /** Ô chọn 1 người; giữ cả giá trị cũ nếu không còn trong danh sách. */
+  const personSelect = (k: 'businessDirector' | 'businessPm' | 'productionPm', list: string[], ph: string) => (
+    <select value={f[k]} onChange={(e) => set(k, e.target.value)} className={inputCls}>
+      <option value="">{ph}</option>
+      {[...new Set([...list, f[k]].filter(Boolean))].map((n) => (
+        <option key={n} value={n}>
+          {n}
+        </option>
+      ))}
+    </select>
+  );
+  const [extraCustomers, setExtraCustomers] = useState<{ code: string; name: string }[]>([]);
+  const [adding, setAdding] = useState(false);
+  const [nc, setNc] = useState({ code: '', name: '' });
 
   const set = <K extends keyof BizProjectInput>(k: K, v: BizProjectInput[K]) => setF((prev) => ({ ...prev, [k]: v }));
 
-  const setPhase = (i: number, k: keyof BizPhase, v: string) =>
-    setF((prev) => ({ ...prev, phases: prev.phases.map((p, j) => (j === i ? { ...p, [k]: v } : p)) }));
+  const customers = useMemo(() => {
+    const base = customerList(projects);
+    extraCustomers.forEach((c) => !base.some((b) => b.code === c.code) && base.push(c));
+    if (f.customerCode && !base.some((b) => b.code === f.customerCode)) base.push({ code: f.customerCode, name: f.customerName });
+    return base.sort((a, b) => a.code.localeCompare(b.code));
+  }, [projects, extraCustomers, f.customerCode, f.customerName]);
 
-  const setMaster = (master: string) =>
-    setF((prev) => ({ ...prev, masterCode: master, businessCode: master ? `${master}.1` : '', productionCode: master ? `${master}.2` : '' }));
-
-  const setCustomerCode = (cc: string) => {
-    set('customerCode', cc);
-    if (autoCode) setMaster(nextMasterCode(projects.filter((p) => p.id !== initial?.id), cc));
+  const pickCustomer = (code: string) => {
+    const c = customers.find((x) => x.code === code);
+    setF((prev) => ({ ...prev, customerCode: c?.code || '', customerName: c?.name || '' }));
+  };
+  const ncErr = !nc.code.trim() ? 'Nhập mã khách hàng' : customers.some((c) => c.code === nc.code.trim()) ? 'Mã khách hàng đã tồn tại' : !nc.name.trim() ? 'Nhập tên khách hàng' : '';
+  const addCustomer = () => {
+    if (ncErr) return;
+    const c = { code: nc.code.trim(), name: nc.name.trim() };
+    setExtraCustomers((prev) => [...prev, c]);
+    setF((prev) => ({ ...prev, customerCode: c.code, customerName: c.name }));
+    setNc({ code: '', name: '' });
+    setAdding(false);
   };
 
   const errors = useMemo(() => {
     const e: Partial<Record<keyof BizProjectInput, string>> = {};
     if (!f.name.trim()) e.name = 'Nhập tên dự án';
-    if (!f.customerCode.trim()) e.customerCode = 'Nhập mã khách hàng';
-    if (!f.customerName.trim()) e.customerName = 'Nhập tên khách hàng';
-    if (!f.division) e.division = 'Chọn khối';
+    if (!f.customerCode.trim()) e.customerCode = 'Chọn khách hàng';
     if (!f.projectType) e.projectType = 'Chọn loại dự án';
-    if (!f.masterCode.trim()) e.masterCode = 'Nhập mã Master';
-    else if (projects.some((p) => p.id !== initial?.id && p.masterCode === f.masterCode.trim())) e.masterCode = 'Mã Master đã tồn tại';
-    if (!f.startDate) e.startDate = 'Chọn ngày bắt đầu';
-    if (!f.endDate) e.endDate = 'Chọn ngày kết thúc';
-    else if (f.startDate && f.endDate < f.startDate) e.endDate = 'Ngày kết thúc phải sau ngày bắt đầu';
-    if (!f.expectedRevenue) e.expectedRevenue = 'Nhập doanh thu dự kiến';
-    const badPhase = f.phases.find((p) => p.start && p.end && p.end < p.start);
-    if (badPhase) e.phases = `${badPhase.code}: ngày kết thúc phải sau ngày bắt đầu`;
+    if (!f.division) e.division = 'Chọn khối';
     return e;
-  }, [f, projects, initial]);
+  }, [f]);
 
   const errCount = Object.keys(errors).length;
   const err = (k: keyof BizProjectInput) => (touched ? errors[k] : undefined);
@@ -1441,26 +1480,44 @@ const ProjectForm: React.FC<{
     onSubmit({
       ...f,
       name: f.name.trim(),
-      masterCode: f.masterCode.trim(),
-      am: amText.split(',').map((s) => s.trim()).filter(Boolean),
     });
   };
 
-  const cost = plannedCost(f);
-  const gp = grossProfit(f);
+  const autoText = 'Hệ thống tự sinh sau khi GĐK duyệt';
+  const codeBox = (v: string) => (
+    <input value={v || ''} placeholder={autoText} disabled className={`${inputCls} font-mono ${v ? 'font-bold text-[#1f5fa8]' : ''}`} />
+  );
+
+  const noop = () => {};
+  // Dự án nháp để hiển thị các bước: yêu cầu mới → xem trước; đang sửa → tiến độ thực tế.
+  const draft: BizProject = initial ? { ...initial, ...f } : ({ ...f, id: 'draft', version: 0, pakd: [], plan: [], actual: [], createdAt: '', updatedAt: '', history: [] } as BizProject);
 
   return (
-    <>
+    <div className="transition-[margin] duration-200" style={{ marginRight: drawer.open && wide ? drawer.width : 0 }}>
+      <WorkflowDrawer
+        project={draft}
+        role={role}
+        preview={!initial}
+        open={drawer.open}
+        width={drawer.width}
+        onOpenChange={drawer.setOpen}
+        onWidthChange={drawer.setWidth}
+        onApproveCode={noop}
+        onReopen={noop}
+        onSubmit={noop}
+        onDecide={noop}
+        onFinish={noop}
+      />
       <ErpTitleBar
-        crumbs={[...CRUMBS, initial ? `Sửa ${initial.masterCode}` : 'Tạo dự án']}
-        title={initial ? `Sửa dự án — ${initial.name}` : 'Khai báo thông tin dự án'}
+        crumbs={[...CRUMBS, initial ? `Sửa ${initial.masterCode || 'yêu cầu mở mã'}` : 'Yêu cầu mở mã dự án']}
+        title={initial ? `Sửa dự án — ${initial.name}` : 'Yêu cầu mở mã dự án'}
         actions={
           <>
             <Btn icon={X} onClick={onCancel}>
               Huỷ
             </Btn>
             <Btn variant="success" icon={Save} onClick={submit}>
-              {initial ? 'Lưu thay đổi' : 'Tạo dự án'}
+              {initial ? 'Lưu thay đổi' : 'Gửi yêu cầu'}
             </Btn>
           </>
         }
@@ -1473,59 +1530,51 @@ const ProjectForm: React.FC<{
         </div>
       )}
 
-      <Panel title="Thông tin chung" icon={LayoutList}>
-        <FormGrid>
-          <FormRow label="Mã Master" required error={err('masterCode')} hint={autoCode ? 'Tự sinh theo mã khách hàng — có thể sửa' : 'Mã KD = Master.1, Mã SX = Master.2'}>
-            <input
-              value={f.masterCode}
-              onChange={(e) => {
-                setAutoCode(false);
-                setMaster(e.target.value);
-              }}
-              placeholder="VD: 022.688"
-              className={`${inputCls} font-mono font-bold text-[#1f5fa8]`}
-            />
-          </FormRow>
+      <Panel
+        title="Yêu cầu mở mã dự án"
+        icon={LayoutList}
+        footer={
+          <span className="text-rose-600">
+            Sau khi GĐK duyệt, hệ thống tự sinh Mã dự án, Mã kinh doanh (= Mã dự án.1) và Mã sản xuất (= Mã dự án.2). Sau đó Khối cập nhật PAKD trong {PAKD_DAYS} ngày kể từ ngày GĐK phê duyệt → Kế toán duyệt; bị từ chối thì tự động trả về Khối cập nhật lại. GĐK tự tạo yêu cầu thì bỏ qua bước phê duyệt.
+          </span>
+        }
+      >
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-x-8 gap-y-2.5">
+          <FormRow label="Mã dự án">{codeBox(f.masterCode)}</FormRow>
           <FormRow label="Tên dự án" required error={err('name')}>
-            <input value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="VD: 022.NSG" className={inputCls} />
+            <input value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="Nhập tên dự án" className={inputCls} />
           </FormRow>
-          <FormRow label="Mã kinh doanh">
-            <input value={f.businessCode} disabled className={`${inputCls} font-mono`} />
-          </FormRow>
-          <FormRow label="PM kinh doanh">
-            <input value={f.businessPm} onChange={(e) => set('businessPm', e.target.value)} className={inputCls} />
-          </FormRow>
-          <FormRow label="Mã sản xuất">
-            <input value={f.productionCode} disabled className={`${inputCls} font-mono`} />
-          </FormRow>
-          <FormRow label="PM sản xuất">
-            <input value={f.productionPm} onChange={(e) => set('productionPm', e.target.value)} className={inputCls} />
-          </FormRow>
-          <FormRow label="Trạng thái">
-            <select value={f.status} onChange={(e) => set('status', e.target.value as BizStatus)} className={inputCls}>
-              {BIZ_STATUSES.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
-          </FormRow>
-          <FormRow label="Dự án KEY">
-            <span className="flex items-center gap-2 h-8 text-[13px]">
-              <input type="checkbox" checked={f.isKey} onChange={(e) => set('isKey', e.target.checked)} className="w-4 h-4 accent-amber-500" />
-              <Star size={13} className="fill-amber-400 text-amber-500" /> Đánh dấu là dự án trọng điểm
-            </span>
-          </FormRow>
-        </FormGrid>
-      </Panel>
-
-      <Panel title="Thông tin cơ hội kinh doanh" icon={Building2}>
-        <FormGrid>
-          <FormRow label="Khối" required error={err('division')}>
-            <select value={f.division} onChange={(e) => set('division', e.target.value)} className={inputCls}>
-              <option value="">— Chọn khối —</option>
-              {DIVISIONS.map((d) => (
-                <option key={d}>{d}</option>
-              ))}
-            </select>
+          <FormRow label="Mã kinh doanh">{codeBox(f.businessCode)}</FormRow>
+          <FormRow label="PM kinh doanh">{personSelect('businessPm', bizPms, '— Chọn PM kinh doanh —')}</FormRow>
+          <FormRow label="Mã sản xuất">{codeBox(f.productionCode)}</FormRow>
+          <FormRow label="PM sản xuất">{personSelect('productionPm', prodPms, '— Chọn PM sản xuất —')}</FormRow>
+          <FormRow label="Khách hàng" required error={err('customerCode')}>
+            <div className="flex items-center gap-2">
+              <select value={f.customerCode} onChange={(e) => pickCustomer(e.target.value)} className={`${inputCls} flex-1`}>
+                <option value="">— Chọn khách hàng —</option>
+                {customers.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.code} — {c.name}
+                  </option>
+                ))}
+              </select>
+              <button type="button" onClick={() => setAdding((v) => !v)} className="shrink-0 inline-flex items-center gap-1 text-[12.5px] font-semibold text-[#1f7ae0] hover:underline">
+                <Plus size={13} /> Thêm mới
+              </button>
+            </div>
+            {adding && (
+              <div className="mt-2 p-2.5 rounded-[4px] border border-[#bcd3f0] bg-[#f4f8fd] flex flex-wrap items-start gap-2">
+                <input value={nc.code} onChange={(e) => setNc((v) => ({ ...v, code: e.target.value }))} placeholder="Mã KH (VD: 088)" className={`${inputCls} w-36 font-mono`} />
+                <input value={nc.name} onChange={(e) => setNc((v) => ({ ...v, name: e.target.value }))} placeholder="Tên khách hàng" className={`${inputCls} flex-1 min-w-[200px]`} />
+                <Btn variant="primary" icon={Plus} className="h-8" disabled={!!ncErr} title={ncErr || undefined} onClick={addCustomer}>
+                  Thêm
+                </Btn>
+                <Btn className="h-8" onClick={() => setAdding(false)}>
+                  Huỷ
+                </Btn>
+                {ncErr && (nc.code || nc.name) && <p className="basis-full text-[11.5px] text-rose-600">{ncErr}</p>}
+              </div>
+            )}
           </FormRow>
           <FormRow label="Loại dự án" required error={err('projectType')}>
             <select value={f.projectType} onChange={(e) => set('projectType', e.target.value)} className={inputCls}>
@@ -1535,119 +1584,45 @@ const ProjectForm: React.FC<{
               ))}
             </select>
           </FormRow>
-          <FormRow label="Mã khách hàng" required error={err('customerCode')}>
-            <input value={f.customerCode} onChange={(e) => setCustomerCode(e.target.value)} placeholder="VD: 022" className={`${inputCls} font-mono`} />
-          </FormRow>
-          <FormRow label="Tên khách hàng" required error={err('customerName')}>
-            <input value={f.customerName} onChange={(e) => set('customerName', e.target.value)} className={inputCls} />
-          </FormRow>
-          <FormRow label="Giám đốc kinh doanh">
-            <input value={f.businessDirector} onChange={(e) => set('businessDirector', e.target.value)} className={inputCls} />
-          </FormRow>
-          <FormRow label="Giám đốc khối">
-            <input value={f.salesDirector} onChange={(e) => set('salesDirector', e.target.value)} className={inputCls} />
-          </FormRow>
-          <FormRow label="AM" hint="Nhiều người cách nhau bằng dấu phẩy">
-            <input value={amText} onChange={(e) => setAmText(e.target.value)} placeholder="Nguyễn Văn A, Trần Thị B" className={inputCls} />
-          </FormRow>
-          <FormRow label="Người tạo">
-            <input value={f.creator} disabled className={inputCls} />
-          </FormRow>
-          <FormRow label="Ngày bắt đầu" required error={err('startDate')}>
-            <input type="date" value={f.startDate} onChange={(e) => set('startDate', e.target.value)} className={inputCls} />
-          </FormRow>
-          <FormRow label="Ngày kết thúc" required error={err('endDate')}>
-            <input type="date" value={f.endDate} min={f.startDate} onChange={(e) => set('endDate', e.target.value)} className={inputCls} />
-          </FormRow>
-          <FormRow label="Dự kiến ký HĐ" hint="Thời điểm dự kiến ký hợp đồng">
-            <input type="date" value={f.expectedSignDate || ''} onChange={(e) => set('expectedSignDate', e.target.value)} className={inputCls} />
-          </FormRow>
-          <FormRow label="Hạn lập PAKD" hint={initial ? undefined : `Tự đặt khi cấp mã: ngày cấp mã + ${PAKD_DAYS} ngày`}>
-            <input type="date" value={f.pakdDeadline || ''} onChange={(e) => set('pakdDeadline', e.target.value)} className={inputCls} />
-          </FormRow>
-        </FormGrid>
-      </Panel>
-
-      <Panel
-        title="Các giai đoạn (KH01 → KH05)"
-        icon={Flag}
-        noPad
-        footer={err('phases') ? <span className="text-rose-600 font-semibold">{err('phases')}</span> : 'Chọn "Hiện tại" để đánh dấu giai đoạn đang thực hiện; các giai đoạn trước đó được coi là đã hoàn thành.'}
-      >
-        <div className="overflow-x-auto">
-          <table className={`${erp.table} min-w-[1000px]`}>
-            <thead>
-              <tr>
-                {['Hiện tại', 'Mã', 'Tên giai đoạn', 'Bắt đầu', 'Kết thúc', 'Phụ trách', 'Mục tiêu', 'Đầu ra'].map((h) => (
-                  <th key={h} className={`${erp.th} text-left border-t-0 first:border-l-0 last:border-r-0`}>
-                    {h}
-                  </th>
+          <FormRow label="GĐKD" hint="Giám đốc kinh doanh">{personSelect('businessDirector', directors, '— Chọn GĐKD —')}</FormRow>
+          <FormRow label="AM" hint="Chọn được nhiều AM">
+            <select
+              value=""
+              onChange={(e) => e.target.value && set('am', [...f.am, e.target.value])}
+              className={inputCls}
+            >
+              <option value="">{f.am.length ? '— Thêm AM —' : '— Chọn AM —'}</option>
+              {amPeople
+                .filter((n) => !f.am.includes(n))
+                .map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {f.phases.map((p, i) => (
-                <tr key={p.code} className={f.currentPhase === p.code ? 'bg-[#eaf2fc]' : ''}>
-                  <td className={`${erp.td} text-center w-16 border-l-0`}>
-                    <input type="radio" name="currentPhase" checked={f.currentPhase === p.code} onChange={() => set('currentPhase', p.code)} className="w-4 h-4 accent-[#1f5fa8] cursor-pointer" />
-                  </td>
-                  <td className={`${erp.td} ${erp.code} font-bold w-16`}>{p.code}</td>
-                  <td className="border border-slate-200 p-0 w-52">
-                    <input value={p.name} onChange={(e) => setPhase(i, 'name', e.target.value)} className={cellInput} />
-                  </td>
-                  <td className="border border-slate-200 p-0 w-36">
-                    <input type="date" value={p.start} onChange={(e) => setPhase(i, 'start', e.target.value)} className={cellInput} />
-                  </td>
-                  <td className="border border-slate-200 p-0 w-36">
-                    <input type="date" value={p.end} min={p.start} onChange={(e) => setPhase(i, 'end', e.target.value)} className={cellInput} />
-                  </td>
-                  <td className="border border-slate-200 p-0 w-44">
-                    <input value={p.pic} onChange={(e) => setPhase(i, 'pic', e.target.value)} className={cellInput} />
-                  </td>
-                  <td className="border border-slate-200 p-0">
-                    <input value={p.objective} onChange={(e) => setPhase(i, 'objective', e.target.value)} className={cellInput} />
-                  </td>
-                  <td className="border border-slate-200 border-r-0 p-0">
-                    <input value={p.output} onChange={(e) => setPhase(i, 'output', e.target.value)} className={cellInput} />
-                  </td>
-                </tr>
+            </select>
+            {f.am.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                {f.am.map((n) => (
+                  <span key={n} className="inline-flex items-center gap-1 pl-2 pr-1 py-[2px] rounded-[3px] bg-[#eaf2fc] border border-[#bcd3f0] text-[12px] text-[#1e3a5f]">
+                    {n}
+                    <button type="button" title={`Bỏ ${n}`} onClick={() => set('am', f.am.filter((x) => x !== n))} className="p-0.5 rounded hover:bg-[#d3e3f7] text-slate-500">
+                      <X size={11} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </FormRow>
+          <FormRow label="Khối" required error={err('division')}>
+            <select value={f.division} onChange={(e) => set('division', e.target.value)} className={inputCls}>
+              <option value="">— Chọn khối —</option>
+              {DIVISIONS.map((d) => (
+                <option key={d}>{d}</option>
               ))}
-            </tbody>
-          </table>
+            </select>
+          </FormRow>
         </div>
       </Panel>
-
-      <Panel title="Tài chính tổng dự án (VNĐ)" icon={Wallet}>
-        <FormGrid>
-          <FormRow label="Doanh thu dự kiến" required error={err('expectedRevenue')}>
-            <MoneyInput value={f.expectedRevenue} onChange={(v) => set('expectedRevenue', v)} />
-          </FormRow>
-          <FormRow label="Hợp đồng" hint={initial ? 'Cập nhật ký hợp đồng trên màn chi tiết dự án' : 'Sau khi tạo dự án, cập nhật ký hợp đồng trên màn chi tiết'}>
-            <span className="flex items-center h-8">
-              {f.contractSigned ? <Tag cls="bg-emerald-50 text-emerald-700 border-emerald-300">Đã ký</Tag> : <Tag cls="bg-slate-100 text-slate-600 border-slate-300">Chưa ký</Tag>}
-            </span>
-          </FormRow>
-          <FormRow label="Chi phí kinh doanh KH">
-            <MoneyInput value={f.plannedBusinessCost} onChange={(v) => set('plannedBusinessCost', v)} />
-          </FormRow>
-          <FormRow label="Chi phí sản xuất KH">
-            <MoneyInput value={f.plannedProductionCost} onChange={(v) => set('plannedProductionCost', v)} />
-          </FormRow>
-          <FormRow label="Ghi chú" className="xl:col-span-2">
-            <textarea value={f.note || ''} onChange={(e) => set('note', e.target.value)} rows={2} className={`${inputCls} h-auto py-1.5`} />
-          </FormRow>
-        </FormGrid>
-        <div className="mt-3 max-w-xl">
-          <FieldTable
-            labelWidth="55%"
-            rows={[
-              { label: 'Chi phí kế hoạch (tự tính)', value: money(cost), num: true },
-              { label: 'Lợi nhuận gộp kế hoạch (tự tính)', value: <span className={gp < 0 ? 'text-rose-600' : 'text-emerald-700'}>{money(gp)}</span>, num: true, strong: true },
-              { label: 'Biên lợi nhuận gộp', value: `${grossMargin(f).toFixed(1)}%`, num: true },
-            ]}
-          />
-        </div>
-      </Panel>
-    </>
+    </div>
   );
 };

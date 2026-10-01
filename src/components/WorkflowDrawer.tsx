@@ -6,8 +6,8 @@
  *  • Kéo mép trái của ngăn để đổi độ rộng; kéo hẹp quá thì ngăn tự ẩn.
  *  • Trạng thái mở / độ rộng được nhớ trên trình duyệt (localStorage).
  *
- * Các bước: Lập yêu cầu cấp mã → GĐK duyệt mã → PM lập & nộp PAKD → Kế toán (CFO) duyệt PAKD
- *           → Thực hiện dự án → Kết thúc. Nhánh đóng: … → PM lập & nộp PAKD → Đóng dự án.
+ * Các bước: Lập yêu cầu cấp mã → GĐK duyệt mã → GĐK lập & nộp PAKD → Kế toán (CFO) duyệt PAKD
+ *           → Thực hiện dự án → Kết thúc. Nhánh đóng: … → GĐK lập & nộp PAKD → Đóng dự án.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -53,6 +53,31 @@ interface Step {
 
 const lastHist = (p: BizProject, pred: (h: BizHistory) => boolean) => [...p.history].reverse().find(pred);
 
+/** Xem trước các bước trên form "Yêu cầu mở mã dự án" (chưa gửi). */
+const previewSteps = (p: BizProject, creatorRole: BizRole): { steps: Step[]; states: StepState[] } => {
+  const self = creatorRole === 'GĐK';
+  return {
+    steps: [
+      { key: 'req', title: 'Lập yêu cầu mở mã', who: p.creator, role: creatorRole, notes: [{ text: 'Đang lập — bấm "Gửi yêu cầu" để chuyển bước', tone: 'muted' }] },
+      {
+        key: 'code',
+        title: 'Giám đốc khối phê duyệt',
+        role: 'GĐK',
+        notes: [
+          self
+            ? { text: 'Bạn là GĐK tạo yêu cầu → tự động phê duyệt khi gửi, mã được cấp ngay', tone: 'warn' }
+            : { text: 'Sau khi gửi, chờ GĐK phê duyệt. Duyệt xong hệ thống sinh Mã dự án / Mã KD / Mã SX', tone: 'muted' },
+        ],
+      },
+      { key: 'pakd', title: 'Khối cập nhật PAKD', role: 'GĐK', notes: [{ text: `Hạn ${PAKD_DAYS} ngày kể từ ngày GĐK phê duyệt; quá hạn chưa có PAKD → dự án tự đóng`, tone: 'muted' }] },
+      { key: 'cfo', title: 'Kế toán duyệt PAKD', role: 'Kế toán (CFO)', notes: [{ text: 'Từ chối → tự động trả về bước "Khối cập nhật PAKD" để làm lại', tone: 'muted' }] },
+      { key: 'run', title: 'Thực hiện dự án', who: p.productionPm || '', role: 'PM sản xuất' },
+      { key: 'end', title: 'Kết thúc' },
+    ],
+    states: ['current', 'todo', 'todo', 'todo', 'todo', 'todo'],
+  };
+};
+
 const buildSteps = (p: BizProject): { steps: Step[]; states: StepState[] } => {
   const last = latestPakd(p);
   const created = p.history.find((h) => h.action === 'Tạo dự án');
@@ -64,34 +89,39 @@ const buildSteps = (p: BizProject): { steps: Step[]; states: StepState[] } => {
   const selfIssued = !approved && !!p.codeIssuedAt && p.status !== 'Chờ duyệt mã';
 
   const creator = p.creator || personOf(created?.by) || (p.am || [])[0] || '';
-  const s1: Step = { key: 'req', title: 'Lập yêu cầu cấp mã', who: creator, role: 'AM', at: created?.at || p.createdAt };
+  const s1: Step = { key: 'req', title: 'Lập yêu cầu mở mã', who: creator, role: 'AM', at: created?.at || p.createdAt };
   const s2: Step = {
     key: 'code',
-    title: 'Giám đốc khối duyệt mã',
-    who: approved ? personOf(approved.by) : selfIssued ? creator : p.businessDirector || '',
+    title: 'Giám đốc khối phê duyệt',
+    who: approved ? personOf(approved.by) : selfIssued ? creator : p.salesDirector || '',
     role: 'GĐK',
     at: approved?.at || (selfIssued ? p.codeIssuedAt : undefined),
-    notes: selfIssued ? [{ text: 'GĐK tạo yêu cầu — mã được cấp ngay', tone: 'muted' }] : undefined,
+    notes: [
+      ...(selfIssued ? [{ text: 'GĐK là người tạo yêu cầu → tự động phê duyệt', tone: 'muted' as const }] : []),
+      ...(p.masterCode && p.status !== 'Chờ duyệt mã' ? [{ text: `Mã dự án ${p.masterCode} · KD ${p.businessCode} · SX ${p.productionCode}`, tone: 'muted' as const }] : []),
+    ],
   };
 
-  // Bước PM lập & nộp PAKD
-  const s3: Step = { key: 'pakd', title: 'PM lập & nộp PAKD', who: p.businessPm || '', role: 'PM', notes: [] };
+  // Bước Khối cập nhật PAKD (hạn PAKD_DAYS ngày kể từ ngày GĐK phê duyệt)
+  const s3: Step = { key: 'pakd', title: 'Khối cập nhật PAKD', who: last ? personOf(last.submittedBy) : s2.who || '', role: 'GĐK', notes: [] };
   if (last) s3.at = last.submittedAt;
   p.pakd
     .filter((v) => v.state === 'Từ chối')
-    .forEach((v) => s3.notes!.push({ text: `V${v.version} bị từ chối ${dmy(v.decidedAt)}${v.note ? ` — ${v.note}` : ''}`, tone: 'bad' }));
-  if (p.status === 'Chưa có PAKD' && p.pakdDeadline) {
+    .forEach((v) => s3.notes!.push({ text: `Kế toán từ chối V${v.version} ${dmy(v.decidedAt)}${v.note ? ` — ${v.note}` : ''}`, tone: 'bad' }));
+  if (p.status === 'Chưa có PAKD' && last?.state === 'Từ chối') s3.notes!.push({ text: `Đã trả về bước này — cập nhật lại PAKD V${last.version + 1}`, tone: 'warn' });
+  // Hạn PAKD_DAYS ngày chỉ áp dụng cho lần cập nhật PAKD đầu tiên (bị từ chối thì làm lại, không tính hạn).
+  if (p.status === 'Chưa có PAKD' && p.pakdDeadline && !p.pakd.length) {
     const d = daysBetween(todayIso(), p.pakdDeadline);
     s3.notes!.push({
-      text: `Hạn nộp ${dmy(p.pakdDeadline)} · ${d > 0 ? `còn ${d} ngày` : d === 0 ? 'hết hạn hôm nay' : `quá hạn ${-d} ngày`}`,
+      text: `Hạn cập nhật ${dmy(p.pakdDeadline)} (${PAKD_DAYS} ngày từ ngày GĐK duyệt) · ${d > 0 ? `còn ${d} ngày` : d === 0 ? 'hết hạn hôm nay' : `quá hạn ${-d} ngày`}`,
       tone: d <= 3 ? 'warn' : 'muted',
     });
-    if (!p.pakd.length) s3.notes!.push({ text: `Quá ${PAKD_DAYS} ngày kể từ ngày cấp mã mà chưa nộp PAKD → dự án tự đóng`, tone: 'muted' });
+    s3.notes!.push({ text: `Quá hạn mà chưa có PAKD → dự án tự đóng`, tone: 'muted' });
   }
   if (reopened && p.status !== 'Đóng') s3.notes!.push({ text: `Mở lại ${dmyHm(reopened.at)} bởi ${personOf(reopened.by)}`, tone: 'muted' });
 
   if (p.status === 'Đóng') {
-    if (!p.pakd.length) s3.notes!.push({ text: 'Không nộp PAKD trong hạn', tone: 'bad' });
+    if (!p.pakd.length) s3.notes!.push({ text: 'Không cập nhật PAKD trong hạn', tone: 'bad' });
     const s4: Step = {
       key: 'closed',
       title: 'Đóng dự án',
@@ -107,11 +137,18 @@ const buildSteps = (p: BizProject): { steps: Step[]; states: StepState[] } => {
 
   const s4: Step = {
     key: 'cfo',
-    title: 'Kế toán (CFO) duyệt PAKD',
+    title: 'Kế toán duyệt PAKD',
     who: last?.state === 'Đã duyệt' ? personOf(cfoOk?.by) || '' : '',
     role: 'Kế toán (CFO)',
     at: last?.state === 'Đã duyệt' ? cfoOk?.at || last.decidedAt : undefined,
-    notes: last?.state === 'Chờ CFO' ? [{ text: `Đang chờ duyệt PAKD V${last.version}`, tone: 'warn' }] : last?.note && last.state === 'Đã duyệt' ? [{ text: last.note, tone: 'muted' }] : undefined,
+    notes:
+      last?.state === 'Chờ CFO'
+        ? [{ text: `Đang chờ duyệt PAKD V${last.version}`, tone: 'warn' }, { text: 'Từ chối → tự động trả về bước "Khối cập nhật PAKD"', tone: 'muted' }]
+        : last?.note && last.state === 'Đã duyệt'
+          ? [{ text: last.note, tone: 'muted' }]
+          : p.status === 'Chờ duyệt mã' || p.status === 'Chưa có PAKD'
+            ? [{ text: 'Từ chối → tự động trả về bước "Khối cập nhật PAKD"', tone: 'muted' }]
+            : undefined,
   };
   const s5: Step = { key: 'run', title: 'Thực hiện dự án', who: p.productionPm || '', role: 'PM sản xuất' };
   const s6: Step = { key: 'end', title: 'Kết thúc', who: finished ? personOf(finished.by) : '', at: finished?.at };
@@ -246,19 +283,22 @@ export const WorkflowDrawer: React.FC<{
   onSubmit: () => void;
   onDecide: () => void;
   onFinish: () => void;
-}> = ({ project: p, role, open, width, onOpenChange, onWidthChange, onApproveCode, onReopen, onSubmit, onDecide, onFinish }) => {
-  const { steps, states } = buildSteps(p);
+  /** Xem trước trên form yêu cầu mở mã (chưa gửi): không có nút thao tác. */
+  preview?: boolean;
+}> = ({ project: p, role, open, width, onOpenChange, onWidthChange, onApproveCode, onReopen, onSubmit, onDecide, onFinish, preview }) => {
+  const { steps, states } = preview ? previewSteps(p, role) : buildSteps(p);
   const last = latestPakd(p);
 
   // Nút thao tác gắn vào bước hiện tại (theo vai trò đang xem).
   const actionFor = (key: string): React.ReactNode => {
+    if (preview) return null;
     if (key === 'code' && p.status === 'Chờ duyệt mã' && role === 'GĐK')
       return (
         <Btn variant="primary" icon={CheckCircle2} className="h-7" onClick={onApproveCode}>
           Duyệt mã
         </Btn>
       );
-    if (key === 'pakd' && p.status === 'Chưa có PAKD' && role === 'PM')
+    if (key === 'pakd' && p.status === 'Chưa có PAKD' && role === 'GĐK')
       return (
         <Btn variant="success" icon={Send} className="h-7" disabled={!p.plan.length} title={p.plan.length ? undefined : 'Import kế hoạch theo tháng trước khi nộp'} onClick={onSubmit}>
           Nộp PAKD {p.pakd.length ? `V${p.pakd.length + 1}` : ''}
@@ -393,6 +433,7 @@ export const WorkflowDrawer: React.FC<{
               </ol>
 
               {/* Phiên bản PAKD */}
+              {!preview && (<>
               <p className="mt-5 mb-2 text-[12px] font-bold text-slate-600 uppercase tracking-wide">Phiên bản PAKD</p>
               {p.pakd.length ? (
                 <div className="space-y-2">
@@ -416,7 +457,7 @@ export const WorkflowDrawer: React.FC<{
                 </div>
               ) : (
                 <p className="text-[12px] text-slate-400">
-                  Chưa nộp PAKD.{p.status === 'Chưa có PAKD' && ' PM import kế hoạch theo tháng rồi bấm "Nộp PAKD".'}
+                  Chưa nộp PAKD.{p.status === 'Chưa có PAKD' && ' Khối import kế hoạch theo tháng rồi bấm "Nộp PAKD".'}
                 </p>
               )}
               {last?.state === 'Chờ CFO' && role !== 'CFO' && (
@@ -424,6 +465,7 @@ export const WorkflowDrawer: React.FC<{
                   <Lock size={12} /> Chọn vai trò Kế toán (CFO) để duyệt PAKD.
                 </p>
               )}
+              </>)}
             </div>
           </motion.aside>
         )}

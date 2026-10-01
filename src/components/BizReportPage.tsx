@@ -442,16 +442,16 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
           <table className={erp.table}>
             <thead>
               <tr>
-                <th rowSpan={2} className={`${erp.th} sticky left-0 z-10 text-left min-w-[230px] border-t-0 border-l-0`}>
+                <th rowSpan={2} className={`${erp.th} sticky left-0 z-10 text-center min-w-[230px] border-t-0 border-l-0`}>
                   Mã dự án
                 </th>
-                <th rowSpan={2} className={`${erp.th} text-left border-t-0`}>
+                <th rowSpan={2} className={`${erp.th} text-center border-t-0`}>
                   Start
                 </th>
-                <th rowSpan={2} className={`${erp.th} text-left border-t-0`}>
+                <th rowSpan={2} className={`${erp.th} text-center border-t-0`}>
                   End
                 </th>
-                <th rowSpan={2} className={`${erp.th} text-left border-t-0`}>
+                <th rowSpan={2} className={`${erp.th} text-center border-t-0`}>
                   Sức khoẻ
                 </th>
                 {REPORT_METRICS.map((m) => (
@@ -463,9 +463,9 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
               <tr>
                 {REPORT_METRICS.map((m) => (
                   <React.Fragment key={m.key}>
-                    <th className={`${erp.th} text-right font-medium`}>Kế hoạch</th>
-                    <th className={`${erp.th} text-right font-medium`}>Thực tế</th>
-                    <th className={`${erp.th} text-right font-medium`}>Chênh lệch (%)</th>
+                    <th className={`${erp.th} text-center font-medium`}>Kế hoạch</th>
+                    <th className={`${erp.th} text-center font-medium`}>Thực tế</th>
+                    <th className={`${erp.th} text-center font-medium`}>Chênh lệch (%)</th>
                   </React.Fragment>
                 ))}
               </tr>

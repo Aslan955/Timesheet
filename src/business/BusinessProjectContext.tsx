@@ -21,9 +21,9 @@ export const PROJECT_TYPES = ['Fixed Cost', 'Time & Material', 'ODC', 'Cho thuê
 
 /**
  * Vòng đời dự án:
- *   AM tạo yêu cầu cấp mã → Chờ duyệt mã → (GĐK duyệt) → Chưa có PAKD
+ *   AM tạo yêu cầu mở mã → Chờ duyệt mã → (GĐK duyệt → hệ thống sinh Mã dự án / Mã KD / Mã SX) → Chưa có PAKD
  *   (GĐK tự tạo yêu cầu → mã được cấp ngay, bỏ bước duyệt mã)
- *   → (PM nộp PAKD) → PAKD chờ duyệt → (Kế toán / CFO duyệt) → Đang thực hiện → Kết thúc.
+ *   → (GĐK lập & nộp PAKD) → PAKD chờ duyệt → (Kế toán / CFO duyệt) → Đang thực hiện → Kết thúc.
  * Sau PAKD_DAYS ngày kể từ ngày cấp mã mà chưa từng nộp PAKD → tự động "Đóng".
  *   Kế toán (CFO) có thể mở lại → "Chưa có PAKD" với hạn PAKD_DAYS ngày mới.
  * PAKD bị từ chối → quay về "Chưa có PAKD" để lập & nộp phiên bản mới (V2, V3…);
@@ -38,8 +38,7 @@ export const PAKD_DAYS = 30;
 export type BizRole = 'AM' | 'GĐK' | 'PM' | 'CFO';
 export const BIZ_ROLES: { key: BizRole; label: string }[] = [
   { key: 'AM', label: 'AM (tạo yêu cầu cấp mã)' },
-  { key: 'GĐK', label: 'GĐK (Giám đốc khối)' },
-  { key: 'PM', label: 'PM (lập PAKD)' },
+  { key: 'GĐK', label: 'GĐK (duyệt mã, lập PAKD)' },
   { key: 'CFO', label: 'Kế toán (CFO)' },
 ];
 
@@ -296,6 +295,9 @@ export const grossMargin = (p: Pick<BizProject, 'expectedRevenue' | 'plannedBusi
   p.expectedRevenue ? (grossProfit(p) / p.expectedRevenue) * 100 : 0;
 
 /** Gợi ý mã Master tiếp theo cho mã khách hàng (số thứ tự lớn nhất + 1). */
+/** Mã KD = Master.1, Mã SX = Master.2. */
+export const codesFrom = (master: string) => ({ masterCode: master, businessCode: master ? `${master}.1` : '', productionCode: master ? `${master}.2` : '' });
+
 export const nextMasterCode = (projects: BizProject[], customerCode: string) => {
   const cc = customerCode.trim();
   if (!cc) return '';
@@ -705,8 +707,8 @@ interface Ctx {
   /** Cập nhật ký hợp đồng → dự án chuyển "Đã ký"; tăng version. */
   saveContract: (id: string, contract: Omit<BizContract, 'updatedAt' | 'updatedBy'>, by: string) => void;
   /** Quy trình: duyệt mã / nộp PAKD / duyệt – từ chối PAKD / kết thúc dự án. */
-  /** GĐK duyệt mã → cấp mã, hạn PAKD = hôm nay + PAKD_DAYS. Trả về hạn PAKD. */
-  approveCode: (id: string, by: string) => string;
+  /** GĐK duyệt mã → hệ thống sinh Mã dự án / KD / SX, hạn PAKD = hôm nay + PAKD_DAYS. */
+  approveCode: (id: string, by: string) => { deadline: string; code: string };
   /** Kế toán mở lại dự án đã đóng → Chưa có PAKD, hạn PAKD mới. Trả về hạn PAKD. */
   reopenProject: (id: string, by: string) => string;
   submitPakd: (id: string, by: string) => void;
@@ -773,8 +775,16 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
   const dmyOf = (d: string) => d.split('-').reverse().join('/');
   const approveCode = (id: string, by: string) => {
     const pakdDeadline = addDays(today(), PAKD_DAYS);
-    patch(id, () => ({ status: 'Chưa có PAKD', codeIssuedAt: today(), pakdDeadline }), by, 'Duyệt mã dự án', `Hạn lập PAKD: ${dmyOf(pakdDeadline)}`);
-    return pakdDeadline;
+    const p0 = projects.find((p) => p.id === id);
+    const code = p0?.masterCode || nextMasterCode(projects, p0?.customerCode || '');
+    patch(
+      id,
+      () => ({ status: 'Chưa có PAKD', codeIssuedAt: today(), pakdDeadline, ...codesFrom(code) }),
+      by,
+      'Duyệt mã dự án',
+      `Cấp mã ${code} · Hạn lập PAKD: ${dmyOf(pakdDeadline)}`,
+    );
+    return { deadline: pakdDeadline, code };
   };
 
   const reopenProject = (id: string, by: string) => {
