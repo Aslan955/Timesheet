@@ -1,13 +1,19 @@
 /**
- * ProjectTracker — "Sổ theo dõi dự án": giá trị hợp đồng ký trong năm so với mục tiêu của từng khối.
+ * ProjectTracker — "Sổ theo dõi dự án": giá trị hợp đồng so với mục tiêu năm của từng khối.
  * Hiển thị trên màn danh sách Dự án kinh doanh, ngay dưới thanh lọc Năm / Khối.
  *
- *  • Ô tổng: Giá trị hợp đồng ký năm · Mục tiêu năm · Còn thiếu · Đạt %
- *  • Bảng theo khối: thanh tiến độ (Đã ký | Dự kiến ký còn lại | vạch Mục tiêu),
- *    Mục tiêu · Đã ký · Còn thiếu · Dự kiến ký còn lại · Sau khi ký hết (Dư / Thiếu), dòng Toàn công ty.
- *
- * Đã ký = tổng giá trị HĐ có ngày ký trong năm. Dự kiến ký còn lại = tổng doanh thu PAKD của
- * dự án chưa ký, dự kiến ký trong năm (chưa kết thúc). ĐVT: VNĐ.
+ *  • Ô tổng "Giá trị hợp đồng dự kiến ký năm X"
+ *      Giá trị   = Σ giá trị hợp đồng dự kiến (cột "Giá trị hợp đồng dự kiến") của các dự án ký / dự kiến ký trong năm
+ *      Mục tiêu  = Σ mục tiêu các khối đăng ký đầu năm
+ *      Còn thiếu = Mục tiêu − Giá trị hợp đồng dự kiến ký
+ *      Đạt       = Giá trị hợp đồng dự kiến ký / Mục tiêu × 100%
+ *  • Bảng theo khối (Z = mục tiêu, AA = đã ký, AB = chưa ký)
+ *      Giá trị mục tiêu (Z)   = mục tiêu khối đăng ký đầu năm
+ *      Giá trị đã ký (AA)     = Σ giá trị hợp đồng ký của dự án đã ký (ngày ký trong năm)
+ *      Giá trị chưa ký (AB)   = Σ giá trị hợp đồng dự kiến của dự án chưa ký (dự kiến ký trong năm, chưa đóng / kết thúc)
+ *      Còn thiếu so với mục tiêu = Z − AA − AB
+ *      % Đạt                  = (AA + AB) / Z
+ * ĐVT: VNĐ.
  */
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -24,59 +30,58 @@ interface Row {
   key: string;
   label: string;
   target: number;
-  signed: number;
-  expected: number;
+  signed: number; // AA — giá trị HĐ đã ký
+  expected: number; // AB — giá trị HĐ dự kiến của dự án chưa ký
+  planned: number; // Σ giá trị HĐ dự kiến (cột L) của dự án ký / dự kiến ký trong năm
 }
 
 /** Tính số theo khối cho 1 năm hoặc tất cả. */
 export const trackerRows = (projects: BizProject[], year: string, divisions: string[], targets: Record<string, number>): Row[] =>
   divisions.map((d) => {
     const list = projects.filter((p) => p.division === d);
-    const signed = list
-      .filter((p) => {
-        const sd = signedDate(p);
-        return sd ? (!year || sd.startsWith(year)) : false;
-      })
-      .reduce((s, p) => s + signedValue(p), 0);
-    const expected = list
-      .filter((p) => !p.contractSigned && p.status !== 'Kết thúc' && (!year || (p.expectedSignDate || '').startsWith(year)))
-      .reduce((s, p) => s + p.expectedRevenue, 0);
-    return { key: d, label: `Khối ${d}`, target: targets[d] || 0, signed, expected };
+    const signedList = list.filter((p) => {
+      const sd = signedDate(p);
+      return sd ? !year || sd.startsWith(year) : false;
+    });
+    const unsignedList = list.filter(
+      (p) => !p.contractSigned && p.status !== 'Kết thúc' && p.status !== 'Đóng' && (!year || (p.expectedSignDate || '').startsWith(year)),
+    );
+    const signed = signedList.reduce((s, p) => s + signedValue(p), 0);
+    const expected = unsignedList.reduce((s, p) => s + p.expectedRevenue, 0);
+    const planned = [...signedList, ...unsignedList].reduce((s, p) => s + p.expectedRevenue, 0);
+    return { key: d, label: `Khối ${d}`, target: targets[d] || 0, signed, expected, planned };
   });
 
-/** Thanh tiến độ của 1 khối (thang riêng từng dòng: max(mục tiêu, đã ký + dự kiến)):
- *  xanh đậm = đã ký, xanh nhạt = dự kiến ký còn lại, vạch đen = mục tiêu. */
+/** Thanh tiến độ của 1 khối (thang riêng từng dòng: max(mục tiêu, đã ký + chưa ký)):
+ *  xanh đậm = đã ký, xanh nhạt = chưa ký. */
 const Bullet: React.FC<{ r: Row }> = ({ r }) => {
   const scale = Math.max(1, r.target, r.signed + r.expected);
   const w = (v: number) => `${Math.min(100, (v / scale) * 100)}%`;
   return (
     <div
       className="relative h-4 bg-slate-100 rounded-[2px]"
-      title={`Đã ký ${money(r.signed)} · Dự kiến ký còn lại ${money(r.expected)} · Mục tiêu ${money(r.target)}`}
+      title={`Đã ký ${money(r.signed)} · Chưa ký ${money(r.expected)} · Mục tiêu ${money(r.target)}`}
     >
       <div className="absolute inset-y-0 left-0 rounded-[2px]" style={{ width: w(r.signed + r.expected), background: EXPECTED }} />
       <div className="absolute inset-y-0 left-0 rounded-l-[2px]" style={{ width: w(r.signed), background: SIGNED }} />
-      {r.target > 0 && <div className="absolute -top-1 -bottom-1 w-[2px] bg-slate-900" style={{ left: `calc(${w(r.target)} - 1px)` }} />}
     </div>
   );
 };
 
 const RowCells: React.FC<{ r: Row; total?: boolean }> = ({ r, total }) => {
-  const missing = Math.max(0, r.target - r.signed);
-  const after = r.signed + r.expected - r.target;
+  const missing = r.target - r.signed - r.expected; // Z − AA − AB
+  const rate = r.target ? (r.signed + r.expected) / r.target : 0; // (AA + AB) / Z
   return (
     <>
       <td className={`${erp.td} ${total ? 'font-bold' : 'font-semibold'} whitespace-nowrap border-l-0`}>{r.label}</td>
-      <td className={`${erp.td} min-w-[180px] w-[24%]`}>
-        {!total && <Bullet r={r} />}
-        <p className={`text-[11px] text-slate-500 ${total ? '' : 'mt-1'}`}>{r.target ? `Đã ký ${pct(r.signed / r.target)} mục tiêu` : 'Chưa đặt mục tiêu'}</p>
-      </td>
+      <td className={`${erp.td} min-w-[160px] w-[20%]`}>{!total && <Bullet r={r} />}</td>
       <td className={`${erp.td} ${erp.num}`}>{money(r.target)}</td>
       <td className={`${erp.td} ${erp.num} font-semibold`}>{money(r.signed)}</td>
-      <td className={`${erp.td} ${erp.num} ${missing ? 'text-rose-600 font-semibold' : 'text-slate-400'}`}>{money(missing)}</td>
-      <td className={`${erp.td} ${erp.num} font-semibold border-r-0 ${after >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-        {r.target ? `${after >= 0 ? 'Dư' : 'Thiếu'} ${money(Math.abs(after))}` : '—'}
+      <td className={`${erp.td} ${erp.num}`}>{money(r.expected)}</td>
+      <td className={`${erp.td} ${erp.num} font-semibold ${!r.target ? 'text-slate-400' : missing > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
+        {!r.target ? '—' : missing > 0 ? money(missing) : missing === 0 ? '0' : `Vượt ${money(-missing)}`}
       </td>
+      <td className={`${erp.td} ${erp.num} font-semibold border-r-0 ${r.target && rate >= 1 ? 'text-emerald-700' : ''}`}>{r.target ? pct(rate) : '—'}</td>
     </>
   );
 };
@@ -103,8 +108,10 @@ export const ProjectTracker: React.FC<{ projects: BizProject[]; year: string; di
     target: rows.reduce((s, r) => s + r.target, 0),
     signed: rows.reduce((s, r) => s + r.signed, 0),
     expected: rows.reduce((s, r) => s + r.expected, 0),
+    planned: rows.reduce((s, r) => s + r.planned, 0),
   };
-  const missing = Math.max(0, total.target - total.signed);
+  const missing = total.target - total.planned; // Mục tiêu − Giá trị HĐ dự kiến ký
+  const rate = total.target ? total.planned / total.target : 0; // Giá trị HĐ dự kiến ký / Mục tiêu
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[300px_1fr] gap-3">
@@ -112,19 +119,18 @@ export const ProjectTracker: React.FC<{ projects: BizProject[]; year: string; di
       <div className="bg-white border border-slate-300 border-t-[3px] border-t-[#1f5fa8] rounded-[4px] flex flex-col">
         <div className="px-4 pt-3">
           <p className="text-[12px] font-semibold text-slate-600">
-            Giá trị hợp đồng dự kiến
+            {year ? `Giá trị hợp đồng dự kiến ký năm ${year}` : 'Giá trị hợp đồng dự kiến ký (tất cả các năm)'}
             {division && ` · Khối ${division}`}
           </p>
-          <p className="text-right text-[26px] font-bold text-[#1e3a5f] tabular-nums leading-tight mt-2 break-all">{money(total.signed)}</p>
+          <p className="text-right text-[23px] font-bold text-[#1e3a5f] tabular-nums leading-tight mt-2 whitespace-nowrap">{money(total.planned)}</p>
           <p className="text-[11px] text-slate-400">VNĐ</p>
         </div>
         <table className="w-full border-collapse text-[13px] mt-3 tabular-nums">
           <tbody>
             {[
               [year ? 'Mục tiêu năm' : 'Mục tiêu luỹ kế', money(total.target), 'font-semibold'],
-              ['Còn thiếu', money(missing), missing ? 'text-rose-600 font-bold' : 'text-slate-400'],
-              ['Đạt', total.target ? pct(total.signed / total.target) : '—', total.signed >= total.target && total.target ? 'text-emerald-700 font-bold' : 'font-bold'],
-              ['Dự kiến ký còn lại', money(total.expected), ''],
+              ['Còn thiếu', !total.target ? '—' : missing > 0 ? money(missing) : missing === 0 ? '0' : `Vượt ${money(-missing)}`, missing > 0 ? 'text-rose-600 font-bold' : 'text-emerald-700 font-bold'],
+              ['Đạt', total.target ? pct(rate) : '—', total.target && rate >= 1 ? 'text-emerald-700 font-bold' : 'font-bold'],
             ].map(([k, v, cls]) => (
               <tr key={k}>
                 <th className="bg-[#f3f6fa] border-y border-slate-200 px-4 py-1.5 text-left font-medium text-slate-600">{k}</th>
@@ -136,7 +142,7 @@ export const ProjectTracker: React.FC<{ projects: BizProject[]; year: string; di
         {total.target > 0 && (
           <div className="px-4 py-3 mt-auto">
             <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-              <div className="h-full rounded-full" style={{ width: `${Math.min(100, (total.signed / total.target) * 100)}%`, background: SIGNED }} />
+              <div className="h-full rounded-full" style={{ width: `${Math.min(100, rate * 100)}%`, background: SIGNED }} />
             </div>
           </div>
         )}
@@ -154,10 +160,7 @@ export const ProjectTracker: React.FC<{ projects: BizProject[]; year: string; di
                 <span className="w-3 h-3 rounded-[2px]" style={{ background: SIGNED }} /> Đã ký
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-[2px]" style={{ background: EXPECTED }} /> Dự kiến ký còn lại
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-[2px] h-3.5 bg-slate-900" /> Mục tiêu
+                <span className="w-3 h-3 rounded-[2px]" style={{ background: EXPECTED }} /> Chưa ký
               </span>
             </span>
             <Btn icon={Target} className="h-7" onClick={() => setEditing(true)}>
@@ -165,13 +168,13 @@ export const ProjectTracker: React.FC<{ projects: BizProject[]; year: string; di
             </Btn>
           </>
         }
-        footer={year ? 'ĐVT: VNĐ · Đã ký = giá trị HĐ có ngày ký trong năm · Dự kiến ký còn lại = doanh thu PAKD của dự án chưa ký, dự kiến ký trong năm' : 'ĐVT: VNĐ · Đã ký = giá trị HĐ đã ký · Dự kiến ký còn lại = doanh thu PAKD của dự án chưa ký'}
+        footer={`ĐVT: VNĐ · Đã ký = Σ giá trị HĐ ký của dự án đã ký${year ? ' (ngày ký trong năm)' : ''} · Chưa ký = Σ giá trị HĐ dự kiến của dự án chưa ký${year ? ', dự kiến ký trong năm' : ''} · Còn thiếu = Mục tiêu − Đã ký − Chưa ký · % Đạt = (Đã ký + Chưa ký) / Mục tiêu`}
       >
         <div className="overflow-x-auto">
           <table className={erp.table}>
             <thead>
               <tr>
-                {['Khối', 'So với mục tiêu', 'Mục tiêu', 'Đã ký', 'Còn thiếu', 'Sau khi ký hết'].map((h, i) => (
+                {['Khối', 'So với mục tiêu', 'Giá trị mục tiêu', 'Giá trị đã ký', 'Giá trị chưa ký', 'Giá trị còn thiếu so với mục tiêu', '% Đạt'].map((h, i) => (
                   <th key={h} className={`${erp.th} ${i >= 2 ? 'text-right' : 'text-left'} border-t-0 first:border-l-0 last:border-r-0`}>
                     {h}
                   </th>

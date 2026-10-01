@@ -9,8 +9,9 @@
  * Dưới cùng là SỐ LIỆU THEO THÁNG (import Excel — BizMonthlyImportModal), 2 tab: Kế hoạch / Thực tế
  * (kế toán import). Chỉ tiêu (dọc) × tháng (ngang); chỉ Chi tách SX / KD; lọc theo năm.
  *
- * Quy trình: Chờ duyệt mã → Chưa có PAKD → PAKD chờ duyệt (GĐK → CFO) → Đang thực hiện → Kết thúc.
- *   Danh sách hiển thị Hạn lập PAKD, Phiên bản PAKD, nút thao tác theo vai trò (chọn PM / GĐK / CFO),
+ * Quy trình: AM tạo yêu cầu → Chờ duyệt mã (GĐK duyệt; GĐK tự tạo thì cấp mã ngay) → Chưa có PAKD
+ *   → PAKD chờ duyệt (Kế toán / CFO) → Đang thực hiện → Kết thúc. Quá 30 ngày chưa nộp PAKD → Đóng (CFO mở lại).
+ *   Danh sách hiển thị Hạn lập PAKD, Phiên bản PAKD, nút thao tác theo vai trò (chọn AM / GĐK / PM / CFO),
  *   và nhóm cột Thông tin về hợp đồng.
  * Đầu màn danh sách: Sổ theo dõi dự án (ProjectTracker) — lọc Năm / Khối, giá trị HĐ ký so với mục tiêu.
  * Hợp đồng: bấm vào trạng thái "Chưa ký" / "Đã ký" → ContractModal (Cập nhật ký hợp đồng);
@@ -25,6 +26,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft,
   Plus,
+  RotateCcw,
   Pencil,
   Save,
   Star,
@@ -63,6 +65,7 @@ import {
   latestPakd,
   pendingRole,
   addDays,
+  PAKD_DAYS,
   DIVISIONS,
   PROJECT_TYPES,
   useBusinessProjects,
@@ -99,6 +102,7 @@ const STATUS_CLS: Record<BizStatus, string> = {
   'PAKD chờ duyệt': 'bg-amber-50 text-amber-700 border-amber-300',
   'Đang thực hiện': 'bg-blue-50 text-blue-700 border-blue-300',
   'Kết thúc': 'bg-emerald-50 text-emerald-700 border-emerald-300',
+  'Đóng': 'bg-slate-200 text-slate-700 border-slate-400',
 };
 const StatusBadge: React.FC<{ status: BizStatus }> = ({ status }) => <Tag cls={STATUS_CLS[status]}>{status}</Tag>;
 const KeyBadge = () => (
@@ -110,7 +114,7 @@ const KeyBadge = () => (
 type View = { mode: 'list' } | { mode: 'detail'; id: string } | { mode: 'form'; id?: string };
 
 export const BusinessProjectPage: React.FC = () => {
-  const { projects, createProject, updateProject, deleteProject, importMonthly, saveContract, setAttachments, approveCode, submitPakd, decidePakd, finishProject } =
+  const { projects, createProject, updateProject, deleteProject, importMonthly, saveContract, setAttachments, approveCode, reopenProject, submitPakd, decidePakd, finishProject } =
     useBusinessProjects();
   const [view, setView] = useState<View>({ mode: 'list' });
   const [role, setRole] = useState<BizRole>('CFO');
@@ -125,7 +129,7 @@ export const BusinessProjectPage: React.FC = () => {
   const decide = (p: BizProject, approve: boolean, note: string) => {
     decidePakd(p.id, approve, role, actor, note);
     const v = latestPakd(p)!.version;
-    flash(!approve ? `${role} đã từ chối PAKD V${v} — trả về PM` : role === 'GĐK' ? `GĐK đã duyệt PAKD V${v} — chuyển CFO` : `CFO đã duyệt PAKD V${v} — dự án chuyển "Đang thực hiện"`);
+    flash(!approve ? `Kế toán đã từ chối PAKD V${v} — trả về PM` : `Kế toán đã duyệt PAKD V${v} — dự án chuyển "Đang thực hiện"`);
   };
   const signContract = (p: BizProject, c: Omit<BizContract, 'updatedAt' | 'updatedBy'>) => {
     saveContract(p.id, c, CURRENT_USER);
@@ -170,13 +174,16 @@ export const BusinessProjectPage: React.FC = () => {
           role={role}
           onRoleChange={setRole}
           onApproveCode={() => {
-            const deadline = addDays(new Date().toISOString().slice(0, 10), 7);
-            approveCode(current.id, actor, deadline);
+            const deadline = approveCode(current.id, actor);
             flash(`Đã duyệt mã ${current.masterCode} — hạn lập PAKD ${dmy(deadline)}`);
+          }}
+          onReopen={() => {
+            const deadline = reopenProject(current.id, actor);
+            flash(`Đã mở lại dự án ${current.masterCode} — hạn lập PAKD ${dmy(deadline)}`);
           }}
           onSubmitPakd={() => {
             submitPakd(current.id, actor);
-            flash(`Đã nộp PAKD V${current.pakd.length + 1} — chờ GĐK duyệt`);
+            flash(`Đã nộp PAKD V${current.pakd.length + 1} — chờ Kế toán (CFO) duyệt`);
           }}
           onDecide={(approve, note) => decide(current, approve, note)}
           onFinish={() => {
@@ -210,9 +217,15 @@ export const BusinessProjectPage: React.FC = () => {
               setView({ mode: 'detail', id: current.id });
               flash(`Đã cập nhật dự án — Version ${current.version + 1}`);
             } else {
-              const p = createProject(data, CURRENT_USER);
+              // AM tạo → chờ GĐK duyệt mã; GĐK tự tạo → mã được cấp ngay, hạn PAKD = hôm nay + PAKD_DAYS.
+              const issued = role === 'GĐK';
+              const d = todayIso();
+              const p = createProject(
+                issued ? { ...data, status: 'Chưa có PAKD', codeIssuedAt: d, pakdDeadline: addDays(d, PAKD_DAYS) } : { ...data, status: 'Chờ duyệt mã', codeIssuedAt: undefined, pakdDeadline: '' },
+                actor,
+              );
               setView({ mode: 'detail', id: p.id });
-              flash('Đã tạo dự án. Bước tiếp theo: import kế hoạch theo tháng.');
+              flash(issued ? `Đã cấp mã dự án — hạn lập PAKD ${dmy(addDays(d, PAKD_DAYS))}` : 'Đã gửi yêu cầu cấp mã — chờ GĐK duyệt');
             }
           }}
         />
@@ -231,6 +244,7 @@ const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.p
 const pakdDeadlineCell = (p: BizProject): { text: string; sub?: string; cls?: string } => {
   const last = latestPakd(p);
   if (p.status === 'Chờ duyệt mã') return { text: '—', cls: 'text-slate-400' };
+  if (p.status === 'Đóng') return { text: 'Đã đóng', sub: dmy(p.closedAt || p.pakdDeadline || ''), cls: 'text-slate-600 font-semibold' };
   if (p.status === 'Chưa có PAKD') {
     const sub = last?.state === 'Từ chối' ? `V${last.version} bị từ chối ${dmy(last.decidedAt || '')}` : undefined;
     if (!p.pakdDeadline) return { text: 'Chưa đặt hạn', sub, cls: 'text-slate-400' };
@@ -239,12 +253,12 @@ const pakdDeadlineCell = (p: BizProject): { text: string; sub?: string; cls?: st
     return { text: d === 0 ? 'Hết hạn hôm nay' : `Quá hạn ${-d} ngày`, sub, cls: 'text-rose-600 font-semibold' };
   }
   if (!last) return { text: '—', cls: 'text-slate-400' };
-  if (last.state === 'Chờ GĐK' || last.state === 'Chờ CFO')
+  if (last.state === 'Chờ CFO')
     return { text: last.version === 1 ? 'Nộp' : `Nộp v${last.version},`, sub: dmy(last.submittedAt) };
   return { text: 'Duyệt', sub: dmy(last.decidedAt || '') };
 };
 
-/** Cột "Phiên bản PAKD": "V1, chờ CFO" / "V2, chờ GĐK" / "V1, đã duyệt". */
+/** Cột "Phiên bản PAKD": "V1, chờ CFO" / "V1, đã duyệt" / "V2, từ chối". */
 const pakdVersionText = (p: BizProject) => {
   const last = latestPakd(p);
   return last ? `V${last.version}, ${last.state.charAt(0).toLowerCase()}${last.state.slice(1)}` : '—';
@@ -262,6 +276,8 @@ const rowAction = (p: BizProject, role: BizRole): RowAction => {
       return pendingRole(latestPakd(p)) === role ? { label: 'Duyệt', kind: 'decide' } : { label: 'Xem', kind: 'view' };
     case 'Đang thực hiện':
       return { label: 'Cập nhật', kind: 'view' };
+    case 'Đóng':
+      return { label: role === 'CFO' ? 'Mở lại' : 'Xem', kind: 'view' };
     default:
       return null;
   }
@@ -324,7 +340,7 @@ const PakdDecisionModal: React.FC<{ project: BizProject; role: BizRole; onClose:
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="Ý kiến phê duyệt / lý do từ chối" className={`${erp.inputFull} h-auto py-1.5`} />
           </FormRow>
           <p className="text-[11px] text-slate-500">
-            {role === 'GĐK' ? 'GĐK duyệt → chuyển CFO duyệt.' : 'CFO duyệt → PAKD được duyệt, dự án chuyển "Đang thực hiện".'} Từ chối → trả về PM lập phiên bản mới.
+            Kế toán (CFO) duyệt → PAKD được duyệt, dự án chuyển "Đang thực hiện". Từ chối → trả về PM lập phiên bản mới.
           </p>
         </div>
         <div className="flex justify-end gap-1.5 px-3 py-2 border-t border-slate-300 bg-slate-50 rounded-b-[3px]">
@@ -455,9 +471,11 @@ const ProjectList: React.FC<{
               </select>
             </label>
             <RoleSelect role={role} onChange={onRoleChange} />
-            <Btn variant="primary" icon={Plus} onClick={onCreate}>
-              Cấp mã dự án
-            </Btn>
+            {(role === 'AM' || role === 'GĐK') && (
+              <Btn variant="primary" icon={Plus} onClick={onCreate} title={role === 'GĐK' ? 'GĐK tạo → mã được cấp ngay' : 'AM tạo → chờ GĐK duyệt mã'}>
+                Cấp mã dự án
+              </Btn>
+            )}
           </>
         }
       />
@@ -665,11 +683,14 @@ const WorkflowPanel: React.FC<{
   project: BizProject;
   role: BizRole;
   onApproveCode: () => void;
+  onReopen: () => void;
   onSubmit: () => void;
   onDecide: () => void;
   onFinish: () => void;
-}> = ({ project: p, role, onApproveCode, onSubmit, onDecide, onFinish }) => {
-  const idx = WORKFLOW.indexOf(p.status);
+}> = ({ project: p, role, onApproveCode, onReopen, onSubmit, onDecide, onFinish }) => {
+  // Dự án bị đóng (quá hạn PAKD) đi nhánh riêng: Chờ duyệt mã → Chưa có PAKD → Đóng.
+  const steps: BizStatus[] = p.status === 'Đóng' ? ['Chờ duyệt mã', 'Chưa có PAKD', 'Đóng'] : WORKFLOW;
+  const idx = steps.indexOf(p.status);
   const last = latestPakd(p);
   const dl = pakdDeadlineCell(p);
   const actions: React.ReactNode[] = [];
@@ -693,6 +714,16 @@ const WorkflowPanel: React.FC<{
         <span key="sub" className="text-[12px] text-slate-500">Chờ PM lập & nộp PAKD</span>
       ),
     );
+  if (p.status === 'Đóng')
+    actions.push(
+      role === 'CFO' ? (
+        <Btn key="reopen" variant="primary" icon={RotateCcw} className="h-7" onClick={onReopen} title={`Mở lại → Chưa có PAKD, hạn ${PAKD_DAYS} ngày mới`}>
+          Mở lại dự án
+        </Btn>
+      ) : (
+        <span key="reopen" className="text-[12px] text-slate-500">Dự án đã đóng — chỉ Kế toán (CFO) được mở lại</span>
+      ),
+    );
   if (p.status === 'PAKD chờ duyệt')
     actions.push(
       pendingRole(last) === role ? (
@@ -700,7 +731,7 @@ const WorkflowPanel: React.FC<{
           Duyệt / Từ chối
         </Btn>
       ) : (
-        <span key="dec" className="text-[12px] text-slate-500">Chờ {pendingRole(last)} duyệt</span>
+        <span key="dec" className="text-[12px] text-slate-500">Chờ Kế toán (CFO) duyệt</span>
       ),
     );
   if (p.status === 'Đang thực hiện')
@@ -713,7 +744,7 @@ const WorkflowPanel: React.FC<{
   return (
     <Panel title="Quy trình & phê duyệt PAKD" icon={ClipboardCheck} noPad actions={actions}>
       <div className="flex border-b border-slate-300 overflow-x-auto">
-        {WORKFLOW.map((st, i) => (
+        {steps.map((st, i) => (
           <div
             key={st}
             className={`flex-1 min-w-[150px] px-3 py-2 text-[12px] border-r border-slate-200 last:border-r-0 flex items-center gap-2 ${
@@ -780,7 +811,6 @@ const WorkflowPanel: React.FC<{
 };
 
 const PAKD_CLS: Record<PakdState, string> = {
-  'Chờ GĐK': 'bg-amber-50 text-amber-700 border-amber-300',
   'Chờ CFO': 'bg-amber-50 text-amber-700 border-amber-300',
   'Đã duyệt': 'bg-emerald-50 text-emerald-700 border-emerald-300',
   'Từ chối': 'bg-rose-50 text-rose-700 border-rose-300',
@@ -1196,10 +1226,11 @@ const ProjectDetail: React.FC<{
   role: BizRole;
   onRoleChange: (r: BizRole) => void;
   onApproveCode: () => void;
+  onReopen: () => void;
   onSubmitPakd: () => void;
   onDecide: (approve: boolean, note: string) => void;
   onFinish: () => void;
-}> = ({ project: p, onBack, onEdit, onDelete, onImport, onSaveContract, onAttachments, role, onRoleChange, onApproveCode, onSubmitPakd, onDecide, onFinish }) => {
+}> = ({ project: p, onBack, onEdit, onDelete, onImport, onSaveContract, onAttachments, role, onRoleChange, onApproveCode, onReopen, onSubmitPakd, onDecide, onFinish }) => {
   const files = p.attachments || [];
   const [deciding, setDeciding] = useState(false);
   const [tab, setTab] = useState<'overview' | 'history'>('overview');
@@ -1250,7 +1281,7 @@ const ProjectDetail: React.FC<{
 
       {tab === 'overview' && (
         <>
-          <WorkflowPanel project={p} role={role} onApproveCode={onApproveCode} onSubmit={onSubmitPakd} onDecide={() => setDeciding(true)} onFinish={onFinish} />
+          <WorkflowPanel project={p} role={role} onApproveCode={onApproveCode} onReopen={onReopen} onSubmit={onSubmitPakd} onDecide={() => setDeciding(true)} onFinish={onFinish} />
           <Panel title="Mã dự án" icon={Hash} noPad>
             <table className={erp.table}>
               <thead>
@@ -1648,7 +1679,7 @@ const ProjectForm: React.FC<{
           <FormRow label="Dự kiến ký HĐ" hint="Thời điểm dự kiến ký hợp đồng">
             <input type="date" value={f.expectedSignDate || ''} onChange={(e) => set('expectedSignDate', e.target.value)} className={inputCls} />
           </FormRow>
-          <FormRow label="Hạn lập PAKD" hint={initial ? undefined : 'Mặc định đặt khi GĐK duyệt mã (7 ngày)'}>
+          <FormRow label="Hạn lập PAKD" hint={initial ? undefined : `Tự đặt khi cấp mã: ngày cấp mã + ${PAKD_DAYS} ngày`}>
             <input type="date" value={f.pakdDeadline || ''} onChange={(e) => set('pakdDeadline', e.target.value)} className={inputCls} />
           </FormRow>
         </FormGrid>
