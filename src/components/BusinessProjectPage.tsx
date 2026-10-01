@@ -351,7 +351,7 @@ const PakdDecisionModal: React.FC<{ project: BizProject; role: BizRole; onClose:
 // ==========================================================================
 // Danh sách
 // ==========================================================================
-const LIST_HEAD = ['TT', 'Mã dự án', 'Tên dự án', 'Tên khách hàng', 'Khối', 'Loại dự án', 'Thời điểm dự kiến ký HĐ', 'PM Kinh doanh', 'PM sản xuất', 'Trạng thái', 'Hạn lập PAKD', 'Phiên bản PAKD', 'Doanh thu PAKD', 'Thao tác'];
+const LIST_HEAD = ['TT', 'Mã dự án', 'Tên dự án', 'Tên khách hàng', 'Khối', 'Loại dự án', 'Thời điểm dự kiến ký HĐ', 'PM Kinh doanh', 'PM sản xuất', 'Trạng thái', 'Hạn lập PAKD', 'Phiên bản PAKD', 'Giá trị hợp đồng dự kiến', 'Thao tác'];
 
 const ProjectList: React.FC<{
   projects: BizProject[];
