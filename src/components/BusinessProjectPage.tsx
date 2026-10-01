@@ -20,13 +20,12 @@
  * Giao diện: khung kiểu phần mềm kế toán (src/components/erp/Erp.tsx).
  * Dữ liệu: src/business/BusinessProjectContext.tsx. Đơn vị: VNĐ.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft,
   Plus,
-  RotateCcw,
   Pencil,
   Save,
   Star,
@@ -35,6 +34,7 @@ import {
   FileUp,
   History,
   LayoutList,
+  ListChecks,
   AlertCircle,
   Wallet,
   Building2,
@@ -48,7 +48,6 @@ import {
   ClipboardCheck,
   XCircle,
   CheckCircle2,
-  Send,
   FileSignature,
   FileText,
   Paperclip,
@@ -61,7 +60,6 @@ import {
   BIZ_STATUSES,
   BizRole,
   BIZ_ROLES,
-  PakdState,
   latestPakd,
   pendingRole,
   addDays,
@@ -86,6 +84,7 @@ import { BizMonthlyImportModal, fmtMonth } from './BizMonthlyImportModal';
 import { LedgerDetailModal, LedgerDrill, drillCls } from './LedgerDetailModal';
 import { AttachmentList, ContractModal } from './ContractModal';
 import { ProjectTracker } from './ProjectTracker';
+import { WorkflowDrawer, useWorkflowDrawer } from './WorkflowDrawer';
 import { Btn, ErpPage, ErpTitleBar, FieldTable, FolderTabs, FormRow, Panel, Segmented, Tag, erp } from './erp/Erp';
 
 const CURRENT_USER = 'namnv';
@@ -367,7 +366,7 @@ const PakdDecisionModal: React.FC<{ project: BizProject; role: BizRole; onClose:
 // ==========================================================================
 // Danh sách
 // ==========================================================================
-const LIST_HEAD = ['TT', 'Mã dự án', 'Tên dự án', 'Tên khách hàng', 'Khối', 'Loại dự án', 'Thời điểm dự kiến ký HĐ', 'PM Kinh doanh', 'PM sản xuất', 'Trạng thái', 'Hạn lập PAKD', 'Phiên bản PAKD', 'Giá trị hợp đồng dự kiến', 'Thao tác'];
+const LIST_HEAD = ['TT', 'Mã dự án', 'Tên dự án', 'Tên khách hàng', 'Khối', 'Loại dự án', 'Thời điểm dự kiến ký HĐ', 'Giá trị hợp đồng dự kiến', 'PM Kinh doanh', 'PM sản xuất', 'Trạng thái', 'Hạn lập PAKD', 'Phiên bản PAKD', 'Thao tác'];
 
 const ProjectList: React.FC<{
   projects: BizProject[];
@@ -423,12 +422,12 @@ const ProjectList: React.FC<{
           p.division,
           p.projectType,
           dmy(p.expectedSignDate || ''),
+          p.expectedRevenue,
           p.businessPm,
           p.productionPm,
           p.status,
           [dl.text, dl.sub].filter(Boolean).join(' '),
           pakdVersionText(p),
-          p.expectedRevenue,
           p.contractSigned ? (p.contract?.value ?? p.expectedRevenue) : '',
           p.contract?.number || '',
           p.contract?.signDate ? dmy(p.contract.signDate) : p.contractSigned && p.expectedSignDate ? dmy(p.expectedSignDate) : '',
@@ -548,6 +547,7 @@ const ProjectList: React.FC<{
                     <td className={`${erp.td} text-center`}>{p.division}</td>
                     <td className={`${erp.td} whitespace-nowrap`}>{p.projectType}</td>
                     <td className={`${erp.td} text-center whitespace-nowrap`}>{dmy(p.expectedSignDate || '')}</td>
+                    <td className={`${erp.td} ${erp.num}`}>{money(p.expectedRevenue)}</td>
                     <td className={`${erp.td} whitespace-nowrap`}>{p.businessPm || '—'}</td>
                     <td className={`${erp.td} whitespace-nowrap`}>{p.productionPm || '—'}</td>
                     <td className={`${erp.td} whitespace-nowrap`}>
@@ -558,7 +558,6 @@ const ProjectList: React.FC<{
                       {dl.sub && <span className="block text-[11px] text-slate-500 font-normal">{dl.sub}</span>}
                     </td>
                     <td className={`${erp.td} whitespace-nowrap ${latestPakd(p)?.state === 'Từ chối' ? 'text-rose-600' : ''}`}>{pakdVersionText(p)}</td>
-                    <td className={`${erp.td} ${erp.num}`}>{money(p.expectedRevenue)}</td>
                     <td className={`${erp.td} text-center whitespace-nowrap`}>
                       {act && (
                         <button
@@ -631,11 +630,11 @@ const ProjectList: React.FC<{
             {rows.length > 0 && (
               <tfoot>
                 <tr className={erp.totalRow}>
-                  <td className={`${erp.td} border-l-0`} colSpan={12}>
+                  <td className={`${erp.td} border-l-0`} colSpan={7}>
                     Tổng cộng ({rows.length} dự án)
                   </td>
                   <td className={`${erp.td} ${erp.num}`}>{money(rev)}</td>
-                  <td className={`${erp.td}`} />
+                  <td className={`${erp.td}`} colSpan={6} />
                   <td className={`${erp.td} ${erp.num}`}>{money(contractRev)}</td>
                   <td className={`${erp.td} border-r-0`} colSpan={5} />
                 </tr>
@@ -674,147 +673,7 @@ const ProjectList: React.FC<{
   );
 };
 
-// ==========================================================================
-// Quy trình & phê duyệt PAKD (màn chi tiết)
-// ==========================================================================
-const WORKFLOW: BizStatus[] = ['Chờ duyệt mã', 'Chưa có PAKD', 'PAKD chờ duyệt', 'Đang thực hiện', 'Kết thúc'];
-
-const WorkflowPanel: React.FC<{
-  project: BizProject;
-  role: BizRole;
-  onApproveCode: () => void;
-  onReopen: () => void;
-  onSubmit: () => void;
-  onDecide: () => void;
-  onFinish: () => void;
-}> = ({ project: p, role, onApproveCode, onReopen, onSubmit, onDecide, onFinish }) => {
-  // Dự án bị đóng (quá hạn PAKD) đi nhánh riêng: Chờ duyệt mã → Chưa có PAKD → Đóng.
-  const steps: BizStatus[] = p.status === 'Đóng' ? ['Chờ duyệt mã', 'Chưa có PAKD', 'Đóng'] : WORKFLOW;
-  const idx = steps.indexOf(p.status);
-  const last = latestPakd(p);
-  const dl = pakdDeadlineCell(p);
-  const actions: React.ReactNode[] = [];
-  if (p.status === 'Chờ duyệt mã')
-    actions.push(
-      role === 'GĐK' ? (
-        <Btn key="code" variant="primary" icon={CheckCircle2} className="h-7" onClick={onApproveCode}>
-          Duyệt mã
-        </Btn>
-      ) : (
-        <span key="code" className="text-[12px] text-slate-500">Chờ GĐK duyệt mã</span>
-      ),
-    );
-  if (p.status === 'Chưa có PAKD')
-    actions.push(
-      role === 'PM' ? (
-        <Btn key="sub" variant="success" icon={Send} className="h-7" disabled={!p.plan.length} title={p.plan.length ? undefined : 'Import kế hoạch theo tháng trước khi nộp'} onClick={onSubmit}>
-          Nộp PAKD {p.pakd.length ? `V${p.pakd.length + 1}` : ''}
-        </Btn>
-      ) : (
-        <span key="sub" className="text-[12px] text-slate-500">Chờ PM lập & nộp PAKD</span>
-      ),
-    );
-  if (p.status === 'Đóng')
-    actions.push(
-      role === 'CFO' ? (
-        <Btn key="reopen" variant="primary" icon={RotateCcw} className="h-7" onClick={onReopen} title={`Mở lại → Chưa có PAKD, hạn ${PAKD_DAYS} ngày mới`}>
-          Mở lại dự án
-        </Btn>
-      ) : (
-        <span key="reopen" className="text-[12px] text-slate-500">Dự án đã đóng — chỉ Kế toán (CFO) được mở lại</span>
-      ),
-    );
-  if (p.status === 'PAKD chờ duyệt')
-    actions.push(
-      pendingRole(last) === role ? (
-        <Btn key="dec" variant="primary" icon={ClipboardCheck} className="h-7" onClick={onDecide}>
-          Duyệt / Từ chối
-        </Btn>
-      ) : (
-        <span key="dec" className="text-[12px] text-slate-500">Chờ Kế toán (CFO) duyệt</span>
-      ),
-    );
-  if (p.status === 'Đang thực hiện')
-    actions.push(
-      <Btn key="fin" icon={Flag} className="h-7" onClick={onFinish}>
-        Kết thúc dự án
-      </Btn>,
-    );
-
-  return (
-    <Panel title="Quy trình & phê duyệt PAKD" icon={ClipboardCheck} noPad actions={actions}>
-      <div className="flex border-b border-slate-300 overflow-x-auto">
-        {steps.map((st, i) => (
-          <div
-            key={st}
-            className={`flex-1 min-w-[150px] px-3 py-2 text-[12px] border-r border-slate-200 last:border-r-0 flex items-center gap-2 ${
-              i < idx ? 'bg-emerald-50 text-emerald-800' : i === idx ? 'bg-[#eaf2fc] text-[#1f5fa8] font-bold' : 'bg-white text-slate-400'
-            }`}
-          >
-            <span
-              className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
-                i < idx ? 'bg-emerald-600 text-white' : i === idx ? 'bg-[#1f5fa8] text-white' : 'bg-slate-200 text-slate-500'
-              }`}
-            >
-              {i < idx ? <Check size={11} strokeWidth={3} /> : i + 1}
-            </span>
-            {st}
-          </div>
-        ))}
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-3">
-        <FieldTable
-          rows={[
-            { label: 'Trạng thái', value: <StatusBadge status={p.status} /> },
-            { label: 'Hạn lập PAKD', value: <span className={dl.cls}>{[dl.text, dl.sub].filter(Boolean).join(' ')}</span> },
-            { label: 'Phiên bản PAKD', value: pakdVersionText(p) },
-            { label: 'Dự kiến ký HĐ', value: dmy(p.expectedSignDate || '') },
-          ]}
-        />
-        <div className="lg:col-span-2 border-l border-slate-200">
-          <table className={erp.table}>
-            <thead>
-              <tr>
-                {['Phiên bản', 'Ngày nộp', 'Người nộp', 'Kết quả', 'Ngày duyệt', 'Ý kiến'].map((h) => (
-                  <th key={h} className={`${erp.th} text-left border-t-0 last:border-r-0`}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {[...p.pakd].reverse().map((v) => (
-                <tr key={v.version} className={erp.tr}>
-                  <td className={`${erp.td} font-semibold`}>V{v.version}</td>
-                  <td className={`${erp.td} whitespace-nowrap`}>{dmy(v.submittedAt)}</td>
-                  <td className={erp.td}>{v.submittedBy}</td>
-                  <td className={erp.td}>
-                    <Tag cls={PAKD_CLS[v.state]}>{v.state}</Tag>
-                  </td>
-                  <td className={`${erp.td} whitespace-nowrap`}>{v.decidedAt ? `${dmy(v.decidedAt)} · ${v.decidedBy}` : '—'}</td>
-                  <td className={`${erp.td} text-slate-600 border-r-0`}>{v.note || '—'}</td>
-                </tr>
-              ))}
-              {!p.pakd.length && (
-                <tr>
-                  <td colSpan={6} className={`${erp.td} text-center text-slate-400 border-r-0`}>
-                    Chưa nộp PAKD. {p.status === 'Chưa có PAKD' && 'PM import kế hoạch theo tháng (khung bên dưới) rồi bấm "Nộp PAKD".'}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </Panel>
-  );
-};
-
-const PAKD_CLS: Record<PakdState, string> = {
-  'Chờ CFO': 'bg-amber-50 text-amber-700 border-amber-300',
-  'Đã duyệt': 'bg-emerald-50 text-emerald-700 border-emerald-300',
-  'Từ chối': 'bg-rose-50 text-rose-700 border-rose-300',
-};
+// Quy trình & phê duyệt PAKD (màn chi tiết): xem WorkflowDrawer.tsx — ngăn kéo dọc bên phải.
 
 // ==========================================================================
 // Giai đoạn KH01 → KH05 — stepper ngang
@@ -1236,9 +1095,31 @@ const ProjectDetail: React.FC<{
   const [tab, setTab] = useState<'overview' | 'history'>('overview');
   const [showContract, setShowContract] = useState(false);
   const gp = grossProfit(p);
+  const drawer = useWorkflowDrawer();
+  // Màn rộng (≥ 1280px): ngăn quy trình đẩy nội dung sang trái; màn hẹp: ngăn nổi đè lên nội dung.
+  const [wide, setWide] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1280px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1280px)');
+    const on = () => setWide(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
 
   return (
-    <>
+    <div className="transition-[margin] duration-200" style={{ marginRight: drawer.open && wide ? drawer.width : 0 }}>
+      <WorkflowDrawer
+        project={p}
+        role={role}
+        open={drawer.open}
+        width={drawer.width}
+        onOpenChange={drawer.setOpen}
+        onWidthChange={drawer.setWidth}
+        onApproveCode={onApproveCode}
+        onReopen={onReopen}
+        onSubmit={onSubmitPakd}
+        onDecide={() => setDeciding(true)}
+        onFinish={onFinish}
+      />
       <ErpTitleBar
         crumbs={[...CRUMBS, p.masterCode]}
         title={
@@ -1249,6 +1130,9 @@ const ProjectDetail: React.FC<{
         actions={
           <>
             <RoleSelect role={role} onChange={onRoleChange} />
+            <Btn icon={ListChecks} onClick={() => drawer.setOpen(!drawer.open)} title={drawer.open ? 'Ẩn quy trình' : 'Mở quy trình'}>
+              {drawer.open ? 'Ẩn quy trình' : 'Quy trình'}
+            </Btn>
             <Btn icon={ArrowLeft} onClick={onBack}>
               Quay lại
             </Btn>
@@ -1281,7 +1165,6 @@ const ProjectDetail: React.FC<{
 
       {tab === 'overview' && (
         <>
-          <WorkflowPanel project={p} role={role} onApproveCode={onApproveCode} onReopen={onReopen} onSubmit={onSubmitPakd} onDecide={() => setDeciding(true)} onFinish={onFinish} />
           <Panel title="Mã dự án" icon={Hash} noPad>
             <table className={erp.table}>
               <thead>
@@ -1445,7 +1328,7 @@ const ProjectDetail: React.FC<{
           </table>
         </Panel>
       )}
-    </>
+    </div>
   );
 };
 
