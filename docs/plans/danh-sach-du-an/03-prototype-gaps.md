@@ -78,11 +78,12 @@
 | AC14.2 Trường bắt buộc | `errors` (CM:93) | ✅ | |
 | AC14.3 Lệch quá 2% chỉ cảnh báo | Popup hợp đồng **bắt buộc** lý do với mọi mức lệch (CM:99) | ⚠️ | GAP-19 |
 | AC14.4 Phụ lục + tệp | Phụ lục, tệp đính kèm trong CM | ✅ | |
-| AC14.5 Lưu → Đã ký, cập nhật Sổ theo dõi | `saveContract` (CTX:856–863) | ✅ | |
+| AC14.5 Gửi CFO duyệt; chỉ tính Đã ký khi được duyệt | `saveContract` ghi nhận ngay, không qua duyệt (CTX:943) | ⚠️ | GAP-20 |
 | AC14.6 Người không có quyền chỉ xem | Chưa có chế độ chỉ xem | ❌ | GAP-12 |
 | AC15.1 Số tệp, mở xem | Cột *Tệp* (BPP:620) | ✅ | |
+| AC16.1–AC16.4 CFO duyệt hợp đồng | Không có | ❌ | GAP-20 |
 
-**Tổng hợp 56 AC (đã truy vết đủ 100%, cập nhật theo commit d8a9358):** 24 ✅ (43%) · 19 ⚠️ (34%) · 13 ❌ (23%).
+**Tổng hợp 60 AC (đã truy vết đủ 100%, cập nhật theo SRS v04):** 23 ✅ (38%) · 20 ⚠️ (33%) · 17 ❌ (28%).
 
 ## 2. Danh sách chỉnh sửa prototype
 
@@ -103,13 +104,14 @@
 | GAP-15 | Cao | BPP `ProjectList`: bộ lọc hợp đồng (bị bỏ ở d8a9358) | Không còn lọc *Đã ký / Chưa ký*. | **Khôi phục** ô lọc *Tất cả hợp đồng / Đã ký (n) / Chưa ký (n)*, số đếm theo các điều kiện còn lại. | AC4.2, AC4.3, BR22 |
 | GAP-16 | Cao | `WorkflowDrawer` (nút Lập PAKD), `StepActionBar`, `PakdForm` | **AM** được lập / nộp PAKD. Chưa có vai trò SM. | Chỉ **GĐK và SM** lập / nộp PAKD. AM không thấy PAKD (form, cột, thanh thao tác). | D10, D11, BR3, BR6 |
 | GAP-17 | Cao | CTX `savePakdForm` | Nộp PAKD là ghi đè ngay: giá trị HĐ dự kiến, chi phí, ngày dự kiến ký, kế hoạch tháng, cờ đã ký, hợp đồng. | Lúc nộp chỉ lưu PAKD. Số liệu chỉ ghi vào dự án khi **CFO duyệt** (`decidePakd` approve). | BR34, AC13.7 |
-| GAP-18 | Trung bình | BPP `ProjectList` → `base` (tìm kiếm), `exportXlsx` | Không tìm theo mã outsource; file xuất không có cột Mã outsource. | Tìm kiếm khớp cả mã outsource. File xuất thêm cột *Mã outsource* (các mã cách nhau bằng dấu phẩy). Không thêm cột trên màn. | BR12, BR21, BR24, AC4.1, AC9.1 |
+| GAP-18 | Trung bình | BPP `ProjectList` → `base` (tìm kiếm), `exportXlsx` | Không tìm theo mã outsource; file xuất không có cột Mã outsource. | Tìm kiếm khớp cả mã outsource **có hiệu lực**. File xuất thêm cột *Mã outsource* (các mã có hiệu lực, cách nhau bằng dấu phẩy). Không thêm cột trên màn. Cấu trúc mã đổi thành **Mã SX.1 … .5** (SRS v03), xem SRS Chi tiết dự án. | BR12, BR21, BR24, AC4.1, AC9.1 |
 | GAP-19 | Trung bình | CM `errors.deviationReason` (dòng 99), bảng so sánh chênh lệch | Lệch bất kỳ là bắt buộc nhập lý do, chặn lưu. | Bỏ bắt buộc. Lệch quá 2% thì cảnh báo (chữ vàng + dòng cảnh báo), vẫn cho lưu. | BR28, AC14.3 |
+| GAP-20 | Cao | CM, CTX `saveContract`, nhóm cột HĐ, `trackerRows` | Lưu hợp đồng là có hiệu lực ngay | Lưu = gửi CFO duyệt; CFO Duyệt / Từ chối; bản sửa chờ duyệt không thay bản hiệu lực; nhãn *Chờ duyệt HĐ* / *Có bản sửa chờ duyệt*; Sổ theo dõi chỉ tính HĐ đã duyệt | BR16, BR30, BR31, BR35, US16 |
 | GAP-14 | Thấp | Tác vụ hằng ngày (mô phỏng trong CTX) | Không có email nhắc hạn. | Mô phỏng email nhắc hạn: khi còn 3 ngày thì gửi cho GĐK, SM của dự án, mỗi hạn 1 lần. Prototype có thể chỉ hiện thông báo trong ứng dụng. | BR32, AC6.5 |
 | GAP-13 | Thấp | BPP `PakdDecisionModal` (322), `decide` (142) | Tiêu đề lấy theo vai trò đang chọn. Ghi chú "trả về GĐK lập lại", ngụ ý lập phiên bản mới. | Tiêu đề "CFO duyệt PAKD — V{n}". Ghi chú và toast: "trả về GĐK / SM chỉnh sửa, giữ nguyên phiên bản". | Mục 5, BR6 |
 
 ## 3. Đề xuất thứ tự sửa (nếu BA quyết định sửa)
-1. **Đợt 1, vòng đời và quyền:** GAP-01, GAP-03, GAP-04, GAP-09, GAP-11, GAP-15, GAP-16, GAP-17. Xong đợt này thì demo được đúng 6 trạng thái, đúng vai trò và đúng phiên bản PAKD.
+1. **Đợt 1, vòng đời và quyền:** GAP-01, GAP-03, GAP-04, GAP-09, GAP-11, GAP-15, GAP-16, GAP-17, GAP-20. Xong đợt này thì demo được đúng 6 trạng thái, đúng vai trò và đúng phiên bản PAKD.
 2. **Đợt 2, số liệu:** GAP-02, GAP-07. Xong đợt này thì Sổ theo dõi khớp mục tiêu chính thức và hợp đồng thật.
 3. **Đợt 3, hiển thị theo quyền:** GAP-05, GAP-06, GAP-10, GAP-12, GAP-13.
 4. **Đợt 4, điều chỉnh PAKD và nhắc hạn:** GAP-08 (làm cùng màn Chi tiết dự án), GAP-14.
@@ -138,3 +140,33 @@ So sánh code từ `2d0f5ac` đến `d8a9358`. Các file liên quan được s�
 | N6 → GAP-18 | Thêm **mã outsource** `Mã tổng.3`, `.4`, tối đa 2 mã, mỗi mã có PM phụ trách | **BA chốt (SRS v02):** tìm kiếm theo mã outsource, thêm cột trong file Excel, không thêm cột trên màn | Trung bình |
 | N7 | PAKD có ngưỡng **biên LN tối thiểu 20%** và cảnh báo **lệch giá trị HĐ > 2%** so với doanh thu PAKD | **BA chốt: chỉ cảnh báo khi lệch quá 2%** (BR28 v02). Popup hợp đồng cần sửa theo (GAP-19) | Trung bình |
 | N8 | Thanh thao tác `StepActionBar` vẫn dùng trạng thái *Đóng*, chỉ CFO mở lại | GAP-04, D15–D16 | Đã có trong GAP-04 |
+
+---
+
+## 5. Rà soát lần 3 sau khi pull code (commit `8cff07a`, 2026-10-02)
+
+Đối chiếu với SRS_DanhSachDuAn **v05**. Chi tiết thay đổi code xem `docs/plans/chi-tiet-du-an/05-ra-soat-8cff07a.md`.
+
+| Gap | Tình trạng ở 8cff07a | Còn phải sửa |
+|---|---|---|
+| GAP-01 | Đã thêm **SM** | Vai trò theo tài khoản; BOD, Admin; lọc phạm vi xem |
+| GAP-02 | Chưa sửa | Nút *Đặt mục tiêu* vẫn nhập tay |
+| GAP-03 | *Đóng* → **Pending** (màu cam) | Còn *Kết thúc*, chưa có **Close** |
+| GAP-04 | Pending đúng quy tắc (gồm cả PAKD chờ duyệt); mở lại về đúng bước, hạn +30 | Close, Admin mở lại |
+| GAP-05 | Chưa sửa | Ẩn cột PAKD với AM; thêm cột Mã KD / SX / outsource / Ngày cấp mã vào file Excel |
+| GAP-06 | Chưa sửa | Ẩn Sổ theo dõi với AM / SM |
+| GAP-07 | Chưa sửa | Đã ký chỉ tính HĐ đã nhập và đã duyệt |
+| GAP-08 | **Đã có** luồng điều chỉnh PAKD; CFO có *Duyệt điều chỉnh* trên danh sách | Cột Phiên bản PAKD hiển thị "V2, chờ CFO · hiệu lực V1" |
+| GAP-09 | SM có *Lập PAKD*; CFO *Duyệt điều chỉnh* | Bỏ AM khỏi *Lập PAKD*; ma trận 6 vai trò |
+| GAP-10 | Chưa sửa | Khoá Pending / Close |
+| GAP-11 | Dữ liệu giữ nguyên số phiên bản | Cột "Làm lại V{n+1}" và toast vẫn hiện số tăng |
+| GAP-12 | Chưa sửa | Quyền cập nhật hợp đồng, chế độ chỉ xem |
+| GAP-13 | Chưa sửa | Câu chữ popup duyệt |
+| GAP-14 | Chưa sửa | Email nhắc hạn |
+| GAP-15 | Chưa khôi phục | Bộ lọc Hợp đồng |
+| GAP-16 | SM đã được lập / sửa PAKD | AM vẫn lập được PAKD |
+| GAP-17 | Bản điều chỉnh đúng | Lần gửi đầu vẫn ghi đè số liệu |
+| GAP-18 | Chưa sửa | Mã outsource Mã SX.1…5, tìm kiếm / Excel |
+| GAP-19 | Chưa sửa | Lệch HĐ chỉ cảnh báo |
+| GAP-20 | Chưa sửa | Hợp đồng phải được CFO duyệt |
+| **GAP-21** (mới) | Lưu hợp đồng ghi thẳng thông tin HĐ vào PAKD đã duyệt (`syncContractToPakd`) | Chỉ điền vào bản điều chỉnh sau khi HĐ được duyệt (BR35) |

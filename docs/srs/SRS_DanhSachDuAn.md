@@ -5,12 +5,15 @@
 | Tên version | Ngày cập nhật | PIC | Mô tả |
 | :--- | :--- | :--- | :--- |
 | v01 | 2026-10-02 | AI Agent | - Khởi tạo tài liệu SRS màn Danh sách dự án.<br>- Mục 1: mô tả màn, quy trình dự án và PAKD (chỉ CFO duyệt), vai trò và phạm vi dữ liệu 6 vai trò, 6 trạng thái dự án (gồm Pending, Close), ma trận thao tác, sơ đồ luồng, state diagram, ERD, sequence diagram.<br>- Mục 2: 15 User Story / 4 Epic kèm AC.<br>- Mục 3: 33 Business Rule / 8 nhóm.<br>- Mục 4: Data Dictionary 6 bảng; mục 5: Interaction Details.<br>- Thêm mục lục; bổ sung trường hợp biên CFO duyệt khi dự án vừa chuyển Pending (BR6, BR10).<br>- Chốt câu hỏi mở: tác vụ Pending chạy 00:00 (BR8); chặn kết thúc khi còn PAKD điều chỉnh chờ CFO (BR11); thêm 3 cột Excel (BR24); thêm BR32 nhắc hạn PAKD (còn 3 ngày, gửi GĐK và SM, BA đã chốt), BR33 chuyển đổi dữ liệu cũ. |
-| **<span style="color:green">v02<br>(hiện tại)</span>** | **<span style="color:green">2026-10-02</span>** | **<span style="color:green">AI Agent</span>** | <span style="color:green">- Rà soát theo code commit d8a9358.<br>- Bộ lọc Năm / Khối chuyển xuống khung Danh sách dự án, vẫn áp dụng cho Sổ theo dõi (mục 1, mục 5).<br>- Giữ bộ lọc Hợp đồng (yêu cầu dev khôi phục).<br>- Thêm BR34: số liệu PAKD chỉ cập nhật vào dự án khi CFO duyệt; thêm AC13.7.<br>- Thêm mã outsource (BR12): tìm kiếm theo mã outsource (BR21, AC4.1), cột Mã outsource trong file Excel (BR24, AC9.1), bảng 4.7 BIZ_OUTSOURCE_CODE.<br>- BR28: lệch giá trị hợp đồng quá 2% chỉ cảnh báo, lý do lệch không bắt buộc (AC14.3, mục 4.4, mục 5).</span> |
+| v02 | 2026-10-02 | AI Agent | - Rà soát theo code commit d8a9358.<br>- Bộ lọc Năm / Khối chuyển xuống khung Danh sách dự án, vẫn áp dụng cho Sổ theo dõi (mục 1, mục 5).<br>- Giữ bộ lọc Hợp đồng (yêu cầu dev khôi phục).<br>- Thêm BR34: số liệu PAKD chỉ cập nhật vào dự án khi CFO duyệt; thêm AC13.7.<br>- Thêm mã outsource (BR12): tìm kiếm theo mã outsource (BR21, AC4.1), cột Mã outsource trong file Excel (BR24, AC9.1), bảng 4.7 BIZ_OUTSOURCE_CODE.<br>- BR28: lệch giá trị hợp đồng quá 2% chỉ cảnh báo, lý do lệch không bắt buộc (AC14.3, mục 4.4, mục 5). |
+| v03 | 2026-10-02 | AI Agent | - Đồng bộ với SRS Chi tiết dự án v01.<br>- Chỉ GĐK sửa PAKD (sau khi bị từ chối, và điều chỉnh bản đã duyệt); SM chỉ lập và nộp lần đầu.<br>- Mã outsource sinh từ mã sản xuất (Mã SX.1 … .5), tối đa 5, cần GĐK duyệt khi Admin tạo; chỉ mã có hiệu lực mới tìm kiếm / xuất Excel.<br>- Khách hàng tham chiếu danh mục `biz_customer`; thêm vai trò thành viên GĐK; tài liệu dự án dùng chung `biz_attachment`. |
+| v04 | 2026-10-02 | AI Agent | - Mọi hợp đồng (nhập qua popup, sửa sau đó, hoặc tạo từ PAKD Đã ký) phải được Kế toán (CFO) duyệt mới có hiệu lực: sửa BR16, BR30, BR31; thêm BR35, US16; bảng 4.4 lưu theo lần sửa (revision) kèm trạng thái duyệt. |
+| **<span style="color:green">v05<br>(hiện tại)</span>** | **<span style="color:green">2026-10-02</span>** | **<span style="color:green">AI Agent</span>** | <span style="color:green">- Đồng bộ với SRS Lập PAKD v02 / Chi tiết dự án v02 (code commit 8cff07a).<br>- GĐK **và SM** đều được sửa PAKD sau khi bị từ chối và điều chỉnh PAKD đã duyệt (quy trình, ma trận, BR7, AC13.5, mục 5).<br>- BR35: hợp đồng được CFO duyệt thì điền vào bản điều chỉnh PAKD, không ghi thẳng vào PAKD đã duyệt.<br>- Nút thao tác của CFO cho bản điều chỉnh ghi *Duyệt điều chỉnh*.</span> |
 
 ## Mục lục
 1. [Luồng trạng thái và Nghiệp vụ](#1-luồng-trạng-thái-và-nghiệp-vụ-business-flow): mô tả, quy trình, vai trò, trạng thái, ma trận thao tác, 4 sơ đồ
-2. [User Stories & Acceptance Criteria](#2-user-stories--acceptance-criteria-ac): 15 User Story / 4 Epic, 56 AC
-3. [Quy tắc nghiệp vụ](#3-quy-tắc-nghiệp-vụ-business-rules): 34 BR / 8 nhóm
+2. [User Stories & Acceptance Criteria](#2-user-stories--acceptance-criteria-ac): 16 User Story / 4 Epic, 60 AC
+3. [Quy tắc nghiệp vụ](#3-quy-tắc-nghiệp-vụ-business-rules): 35 BR / 9 nhóm
 4. [Đặc tả trường dữ liệu](#4-đặc-tả-trường-dữ-liệu-data-dictionary): 7 bảng
 5. [Mô tả các hiệu ứng tương tác](#5-mô-tả-các-hiệu-ứng-tương-tác-interaction-details)
 
@@ -41,8 +44,8 @@ Hai popup mở trực tiếp từ danh sách: **Duyệt PAKD** (chỉ Kế toán
 3. **Lập và nộp PAKD:** GĐK hoặc SM lập và nộp PAKD, tạo phiên bản **V1**. Bước duyệt chỉ xuất hiện sau khi PAKD đã được nộp.
 4. **CFO duyệt hoặc từ chối:**
    - **Duyệt:** dự án chuyển *Đang thực hiện*. Phiên bản này trở thành PAKD có hiệu lực.
-   - **Từ chối:** PAKD quay lại bước 3 để GĐK / SM chỉnh sửa và nộp lại, **giữ nguyên số phiên bản**.
-5. **Điều chỉnh PAKD khi dự án Đang thực hiện:** GĐK / SM chỉnh sửa PAKD đã duyệt thì tạo **phiên bản mới** (V2, V3…) và gửi CFO duyệt lại.
+   - **Từ chối:** PAKD quay lại bước 3 để **GĐK hoặc SM** chỉnh sửa và nộp lại, **giữ nguyên số phiên bản**.
+5. **Điều chỉnh PAKD khi dự án Đang thực hiện:** **GĐK hoặc SM** chỉnh sửa PAKD đã duyệt thì tạo **phiên bản mới** (V2, V3…) và gửi CFO duyệt lại.
    - Trong lúc chờ, dự án vẫn ở *Đang thực hiện*, và PAKD có hiệu lực vẫn là phiên bản đã duyệt gần nhất.
    - Phiên bản điều chỉnh bị từ chối thì quay lại chỉnh sửa, vẫn giữ số phiên bản đó.
 6. **Pending:** quá 30 ngày kể từ ngày cấp mã mà PAKD vẫn chưa được CFO duyệt thì hệ thống chuyển dự án sang **Pending**. Áp dụng cho cả hai trường hợp: chưa nộp PAKD, hoặc đã nộp nhưng còn chờ CFO duyệt / đang sửa sau khi bị từ chối. Ở trạng thái Pending, **không ai sửa được gì** trên dự án. CFO hoặc Admin mở lại thì dự án được làm tiếp.
@@ -83,7 +86,9 @@ Hai popup mở trực tiếp từ danh sách: **Duyệt PAKD** (chỉ Kế toán
 | Pending | Xem | Xem | Xem | **Mở lại** → mở Chi tiết | Xem | **Mở lại** → mở Chi tiết |
 | Close | Xem | Xem | Xem | **Mở lại** → mở Chi tiết | Xem | **Mở lại** → mở Chi tiết |
 
-> - *Cập nhật* nghĩa là cập nhật **thông tin dự án**. Với SM và GĐK, *Cập nhật* bao gồm cả chỉnh sửa PAKD (tạo phiên bản điều chỉnh).
+> - *Cập nhật* nghĩa là cập nhật **thông tin dự án**. Với GĐK và SM, *Cập nhật* bao gồm cả chỉnh sửa PAKD (sửa sau khi bị từ chối, hoặc tạo phiên bản điều chỉnh qua nút *Sửa PAKD*).
+> - Dự án *Chưa có PAKD* mà PAKD vừa bị từ chối: GĐK và SM thấy **Sửa PAKD**.
+> - Dự án *Đang thực hiện* có bản điều chỉnh chờ duyệt: nút của CFO ghi **Duyệt điều chỉnh**.
 > - Ở mọi trạng thái, bấm vào dòng dự án đều mở *Chi tiết dự án*.
 > - Nút *Cấp mã dự án* trên thanh tiêu đề hiện với AM, SM và GĐK.
 
@@ -105,7 +110,10 @@ flowchart TD
     F -- Bấm Đã ký hoặc Chưa ký --> L{Có quyền cập nhật hợp đồng?}
     L -- Có --> N[Popup Cập nhật ký hợp đồng]
     L -- Không --> O[Chỉ xem thông tin hợp đồng]
-    N --> P[Lưu hợp đồng - danh sách và Sổ theo dõi cập nhật giá trị đã ký]
+    N --> P[Gửi hợp đồng - chờ CFO duyệt]
+    P --> P2{CFO duyệt hợp đồng?}
+    P2 -- Duyệt --> P3[Hợp đồng có hiệu lực - danh sách và Sổ theo dõi cập nhật giá trị đã ký]
+    P2 -- Từ chối, bắt buộc ý kiến --> N
     F -- Xuất Excel --> Q[Tải file danh sách đang lọc]
     E -- AM, SM hoặc GĐK bấm Cấp mã dự án --> R[Mở Form cấp mã dự án]
 ```
@@ -143,14 +151,15 @@ stateDiagram-v2
 **Lát cắt ERD:**
 ```mermaid
 erDiagram
+    BIZ_CUSTOMER ||--o{ BIZ_PROJECT : "là khách hàng của"
     DIVISION ||--o{ BIZ_PROJECT : "quản lý"
     USER ||--o{ BIZ_PROJECT : "tạo"
     BIZ_PROJECT ||--o{ BIZ_PROJECT_MEMBER : "có thành viên"
     USER ||--o{ BIZ_PROJECT_MEMBER : "tham gia"
     BIZ_PROJECT ||--o{ BIZ_PAKD_VERSION : "có phiên bản PAKD"
-    BIZ_PROJECT ||--o{ BIZ_OUTSOURCE_CODE : "có tối đa 2 mã outsource"
+    BIZ_PROJECT ||--o{ BIZ_OUTSOURCE_CODE : "có tối đa 5 mã outsource"
     USER ||--o{ BIZ_OUTSOURCE_CODE : "phụ trách"
-    BIZ_PROJECT ||--o| BIZ_CONTRACT : "có hợp đồng"
+    BIZ_PROJECT ||--o{ BIZ_CONTRACT : "có hợp đồng theo từng lần sửa"
     BIZ_CONTRACT ||--o{ BIZ_CONTRACT_ADDENDUM : "có phụ lục"
     BIZ_CONTRACT ||--o{ BIZ_ATTACHMENT : "đính kèm"
     BIZ_CONTRACT_ADDENDUM ||--o{ BIZ_ATTACHMENT : "đính kèm"
@@ -163,8 +172,7 @@ erDiagram
         string production_code
         string project_name
         boolean is_key
-        string customer_code
-        string customer_name
+        string biz_customer_id FK
         string division_id FK
         string project_type
         date expected_sign_date
@@ -210,9 +218,14 @@ erDiagram
         string biz_outsource_code_id PK
         string biz_project_id FK
         string outsource_code
+        int sequence_no
+        string status
         string pm_user_id FK
         datetime created_at
         string created_by_user_id FK
+        datetime decided_at
+        string decided_by_user_id FK
+        string reject_reason
     }
 
     BIZ_CONTRACT {
@@ -224,6 +237,14 @@ erDiagram
         date period_from
         date period_to
         string deviation_reason
+        int revision_no
+        string approval_status
+        string source
+        datetime submitted_at
+        string submitted_by_user_id FK
+        datetime decided_at
+        string decided_by_user_id FK
+        string cfo_note
         datetime updated_at
         string updated_by_user_id FK
     }
@@ -251,6 +272,12 @@ erDiagram
         string division_id FK
         int plan_year
         decimal target_value_vnd
+    }
+
+    BIZ_CUSTOMER {
+        string biz_customer_id PK
+        string customer_code
+        string customer_name
     }
 
     DIVISION {
@@ -403,7 +430,7 @@ sequenceDiagram
     *   **AC13.2:** Trước khi quyết định, CFO xem được tóm tắt: dự án, người nộp và ngày nộp, doanh thu PAKD, chi phí kế hoạch, LN gộp kế hoạch và tỷ lệ, tình trạng import kế hoạch theo tháng. Với PAKD điều chỉnh, CFO biết phiên bản đang có hiệu lực *(BR6, BR7)*.
     *   **AC13.3:** Khi duyệt, ý kiến không bắt buộc. Khi từ chối, ý kiến là bắt buộc *(BR6)*.
     *   **AC13.4:** Duyệt PAKD lần đầu thì dự án chuyển *Đang thực hiện*. Duyệt PAKD điều chỉnh thì phiên bản đó trở thành phiên bản có hiệu lực *(BR6, BR7)*.
-    *   **AC13.5:** Từ chối thì PAKD quay về GĐK / SM chỉnh sửa và giữ nguyên số phiên bản *(BR7)* **[Mới]**.
+    *   **AC13.5:** Từ chối thì PAKD quay về **GĐK hoặc SM** chỉnh sửa và giữ nguyên số phiên bản *(BR7)* **[Mới]**.
     *   **AC13.6:** Mọi quyết định đều được ghi lịch sử dự án, kèm người quyết định, thời điểm và ý kiến.
     *   **AC13.7:** Số liệu của PAKD (giá trị HĐ dự kiến, chi phí kế hoạch, thời điểm dự kiến ký, kế hoạch theo tháng) chỉ được cập nhật vào dự án, danh sách và Sổ theo dõi **sau khi CFO duyệt**. Lúc nộp hoặc khi bị từ chối, số liệu dự án giữ nguyên *(BR34)* **[Mới]**.
 
@@ -417,12 +444,19 @@ sequenceDiagram
     *   **AC14.2:** Hệ thống chỉ ghi nhận hợp đồng khi có đủ số HĐ, ngày ký, giá trị HĐ và thời hạn thực hiện hợp lệ *(BR27)*.
     *   **AC14.3:** Khi giá trị HĐ lệch quá 2% so với giá trị HĐ dự kiến đã khai báo, người dùng được cảnh báo. Lý do lệch có thể ghi thêm nhưng không bắt buộc *(BR28)* **[Mới]**.
     *   **AC14.4:** Người dùng thêm được phụ lục điều chỉnh và tài liệu đính kèm cho hợp đồng *(BR29)*.
-    *   **AC14.5:** Sau khi lưu, dự án được tính là *Đã ký*, và giá trị đã ký ở Sổ theo dõi cập nhật theo hợp đồng vừa nhập *(BR16, BR31)*.
+    *   **AC14.5:** Hợp đồng nhập mới hoặc sửa được gửi Kế toán (CFO) duyệt. Chỉ khi CFO duyệt, dự án mới được tính là *Đã ký* và Sổ theo dõi mới cập nhật giá trị đã ký. Trong lúc chờ, hợp đồng đã duyệt trước đó (nếu có) vẫn có hiệu lực *(BR16, BR31, BR35)* **[Mới]**.
     *   **AC14.6:** Người không có quyền chỉ xem được thông tin hợp đồng đã có.
 
 ### User Story 15: Xem tài liệu hợp đồng — Là người dùng, tôi muốn mở nhanh các tài liệu hợp đồng đã đính kèm từ danh sách.
 *   **Acceptance Criteria:**
     *   **AC15.1:** Người dùng biết dự án có bao nhiêu tệp hợp đồng đính kèm và mở xem được *(BR30)*.
+
+### User Story 16: CFO duyệt hợp đồng — Là Kế toán (CFO), tôi muốn duyệt hợp đồng trước khi được ghi nhận là đã ký, để số liệu ký hợp đồng chính xác. **[Mới]**
+*   **Acceptance Criteria:**
+    *   **AC16.1:** CFO được báo và mở được các hợp đồng đang chờ duyệt, gồm hợp đồng nhập qua popup, hợp đồng sửa và hợp đồng tạo từ PAKD Đã ký *(BR35)*.
+    *   **AC16.2:** CFO xem được toàn bộ thông tin hợp đồng chờ duyệt, phần chênh lệch so với giá trị dự kiến, và bản đang có hiệu lực (nếu là bản sửa) *(BR35)*.
+    *   **AC16.3:** CFO duyệt được (ý kiến không bắt buộc) hoặc từ chối (ý kiến bắt buộc). Từ chối thì người cập nhật sửa và gửi lại *(BR35)*.
+    *   **AC16.4:** Mọi quyết định đều được ghi lịch sử *(BR35)*.
 
 ---
 
@@ -455,8 +489,8 @@ sequenceDiagram
     *   CFO chỉ quyết định được khi dự án đang có PAKD *chờ CFO* và **không ở Pending / Close**. Nếu dự án vừa chuyển Pending trong lúc CFO đang mở popup, quyết định bị chặn và CFO được báo "Dự án đã chuyển Pending — cần mở lại trước khi duyệt".
 *   **BR7 (Phiên bản PAKD):**
     *   Nộp PAKD lần đầu thì tạo **V1**.
-    *   CFO từ chối thì GĐK / SM chỉnh sửa và nộp lại trên **cùng phiên bản**.
-    *   Phiên bản mới (V2, V3…) chỉ sinh khi GĐK / SM chỉnh sửa PAKD **đã được duyệt** lúc dự án đang *Đang thực hiện*. Phiên bản điều chỉnh chỉ cần CFO duyệt.
+    *   CFO từ chối thì **GĐK hoặc SM** chỉnh sửa và nộp lại trên **cùng phiên bản**.
+    *   Phiên bản mới (V2, V3…) chỉ sinh khi **GĐK hoặc SM** chỉnh sửa PAKD **đã được duyệt** lúc dự án đang *Đang thực hiện*. Phiên bản điều chỉnh chỉ cần CFO duyệt.
     *   Trong lúc chờ, dự án giữ trạng thái *Đang thực hiện*. Phiên bản có hiệu lực (`effective_pakd_version`) vẫn là phiên bản được duyệt gần nhất, và chỉ đổi khi phiên bản điều chỉnh được duyệt. **[Mới]**
 *   **BR8 (Hạn 30 ngày và Pending):**
     *   Hạn PAKD = ngày cấp mã + **30 ngày**.
@@ -480,7 +514,7 @@ sequenceDiagram
 *   **BR12 (Cấu trúc mã):**
     *   Mã tổng (Master) = `<Mã khách hàng>.<số thứ tự 3 chữ số>`. Số thứ tự bằng số lớn nhất đang có của cùng mã khách hàng + 1. Ví dụ: `022.061`.
     *   Mã kinh doanh = Master + `.1`. Mã sản xuất = Master + `.2`.
-    *   **Mã outsource:** mỗi dự án đã có mã được tạo thêm **tối đa 2** mã outsource, lần lượt là Master + `.3` và Master + `.4`. Mỗi mã gán một PM phụ trách. Mã outsource được tạo / xoá ở màn Chi tiết dự án. Trên màn Danh sách, mã outsource **không có cột riêng**, chỉ dùng cho tìm kiếm (BR21) và file xuất (BR24). **[Mới]**
+    *   **Mã outsource:** sinh từ mã sản xuất: Mã SX + `.<số thứ tự 1–5>`, ví dụ `022.061.2.1`. Mỗi dự án có **tối đa 5** mã, số thứ tự không dùng lại. Mỗi mã gán một PM phụ trách. Mã outsource được tạo / duyệt / xoá ở màn Chi tiết dự án (SRS_ChiTietDuAn BR11, BR12). Chỉ mã **có hiệu lực** mới được dùng. Trên màn Danh sách, mã outsource **không có cột riêng**, chỉ dùng cho tìm kiếm (BR21) và file xuất (BR24). **[Mới]**
     *   Dự án chưa được cấp mã hiển thị "Chờ cấp mã".
 
 **Nhóm 4 — Hiển thị hạn và phiên bản PAKD**
@@ -504,7 +538,7 @@ sequenceDiagram
     *   Giá trị mục tiêu của khối trong năm lấy từ `division_sign_target`, tức mục tiêu chính thức BOD đã duyệt (SRS_MucTieuKinhDoanh BR27).
     *   Sổ theo dõi không cho nhập mục tiêu.
     *   Chức năng *Đặt mục tiêu* dẫn GĐK tới tab lập của khối mình, và dẫn BOD tới tab phê duyệt (SRS_MucTieuKinhDoanh BR28). Vai trò khác không thấy chức năng này. **[Mới]**
-*   **BR16 (Giá trị đã ký):** Σ giá trị hợp đồng (`contract_value`) của các dự án đã nhập hợp đồng có **ngày ký thuộc năm đang xem**. Dự án đánh dấu đã ký nhưng chưa nhập hợp đồng thì không được tính. **[Mới]**
+*   **BR16 (Giá trị đã ký):** Σ giá trị hợp đồng (`contract_value`) của **bản hợp đồng có hiệu lực** (đã được CFO duyệt, BR35) có **ngày ký thuộc năm đang xem**. Hợp đồng đang chờ duyệt chưa được tính. Dự án đánh dấu đã ký nhưng chưa nhập hợp đồng thì không được tính. **[Mới]**
 *   **BR17 (Giá trị chưa ký):** Σ giá trị HĐ dự kiến (`expected_revenue`) của các dự án chưa ký thỏa cả 3 điều kiện:
     *   Có thời điểm dự kiến ký HĐ thuộc năm đang xem.
     *   Không ở *Pending* hoặc *Close*.
@@ -519,12 +553,12 @@ sequenceDiagram
 **Nhóm 6 — Tra cứu, tổng và xuất Excel**
 
 *   **BR20 (Năm của dự án trên danh sách):** Năm dùng để lọc danh sách được xác định theo thứ tự ưu tiên: năm ký trên hợp đồng đã nhập → năm của thời điểm dự kiến ký HĐ → năm tạo dự án.
-*   **BR21 (Tìm kiếm):** Tìm không phân biệt hoa thường, khớp một phần với: mã dự án, mã outsource, tên dự án, mã khách hàng, tên khách hàng, PM kinh doanh, PM sản xuất.
+*   **BR21 (Tìm kiếm):** Tìm không phân biệt hoa thường, khớp một phần với: mã dự án, mã outsource có hiệu lực, tên dự án, mã khách hàng, tên khách hàng, PM kinh doanh, PM sản xuất.
 *   **BR22 (Bộ lọc và số đếm):** Lọc Trạng thái và Hợp đồng kết hợp với Năm, Khối và từ khoá tìm kiếm. Số đếm cạnh mỗi lựa chọn tính theo các điều kiện lọc còn lại. Ví dụ: số đếm của trạng thái tính theo Năm, Khối, từ khoá và lọc Hợp đồng.
 *   **BR23 (Dòng tổng):**
     *   Chân bảng ghi "{số dự án đang hiển thị} / {tổng số dự án trong phạm vi xem} dự án".
     *   Dòng tổng gồm: Σ Giá trị HĐ dự kiến, và Σ Giá trị HĐ ký (chỉ hợp đồng đã nhập).
-*   **BR24 (Xuất Excel):** Xuất đúng danh sách đang lọc, theo thứ tự đang hiển thị, đủ các cột trừ cột *Thao tác*, kèm nhóm cột hợp đồng. File có thêm 4 cột không hiển thị trên màn: **Mã kinh doanh**, **Mã sản xuất**, **Mã outsource** (các mã cách nhau bằng dấu phẩy, trống nếu không có), **Ngày cấp mã**. Áp dụng BR3 cho AM. Tên file: `du-an-kinh-doanh.xlsx`.
+*   **BR24 (Xuất Excel):** Xuất đúng danh sách đang lọc, theo thứ tự đang hiển thị, đủ các cột trừ cột *Thao tác*, kèm nhóm cột hợp đồng. File có thêm 4 cột không hiển thị trên màn: **Mã kinh doanh**, **Mã sản xuất**, **Mã outsource** (các mã có hiệu lực, cách nhau bằng dấu phẩy, trống nếu không có), **Ngày cấp mã**. Áp dụng BR3 cho AM. Tên file: `du-an-kinh-doanh.xlsx`.
 *   **BR25 (Danh sách năm và thứ tự):** Danh sách năm gồm năm hiện tại, các năm của dự án trong phạm vi xem (BR20) và các năm đã có mục tiêu kinh doanh, sắp tăng dần. Danh sách dự án mặc định sắp **dự án tạo mới nhất lên đầu**.
 
 **Nhóm 7 — Hợp đồng**
@@ -540,10 +574,19 @@ sequenceDiagram
     *   Ngưỡng 2% dùng chung với cảnh báo lệch trong form PAKD. **[Mới]**
 *   **BR29 (Phụ lục và tài liệu):** Hợp đồng có thể có nhiều phụ lục. Mỗi phụ lục bắt buộc có số phụ lục và ngày ký, kèm nội dung điều chỉnh và tệp (không bắt buộc). Hợp đồng và phụ lục đính kèm được nhiều tệp.
 *   **BR30 (Hiển thị hợp đồng trên danh sách):**
-    *   Dự án đã nhập hợp đồng: hiển thị giá trị HĐ ký, số HĐ, ngày ký, ngày hết hạn (= ngày cuối của thời hạn thực hiện), số tệp và *Đã ký*.
+    *   Dự án có hợp đồng **có hiệu lực**: hiển thị giá trị HĐ ký, số HĐ, ngày ký, ngày hết hạn (= ngày cuối của thời hạn thực hiện), số tệp và *Đã ký*.
+    *   Dự án có hợp đồng **chờ CFO duyệt**:
+        *   Nếu là lần đầu, các cột hợp đồng để trống, cột Trạng thái hiển thị nhãn vàng **"Chờ duyệt HĐ"**.
+        *   Nếu là bản sửa, các cột hiển thị theo bản đang có hiệu lực, kèm nhãn **"Có bản sửa chờ duyệt"**. **[Mới]**
     *   Dự án đánh dấu đã ký nhưng chưa nhập hợp đồng: các cột để trống, kèm nhãn **"Chưa nhập HĐ"**. Không lấy số dự kiến thay thế. **[Mới]**
     *   Dự án chưa ký: hiển thị *Chưa ký*.
-*   **BR31 (Ghi nhận khi lưu hợp đồng):** Lưu hợp đồng hợp lệ thì dự án được đánh dấu đã ký (`contract_signed = true`), ghi lịch sử *Xác nhận ký hợp đồng* (lần đầu) hoặc *Cập nhật hợp đồng*, và Sổ theo dõi tính lại theo BR16, BR17.
+*   **BR31 (Gửi hợp đồng chờ duyệt):**
+    *   Lưu hợp đồng hợp lệ trong popup là **gửi Kế toán (CFO) duyệt**.
+        *   Lần đầu thì tạo bản hợp đồng lần 1.
+        *   Sửa hợp đồng đã có hiệu lực thì tạo bản mới (lần n+1). Bản đang có hiệu lực vẫn giữ nguyên cho tới khi bản mới được duyệt.
+    *   Mỗi dự án chỉ có tối đa 1 bản hợp đồng chờ duyệt. Trong lúc chờ, hợp đồng không sửa được.
+    *   Ghi lịch sử *Gửi hợp đồng chờ duyệt*, kèm số HĐ và giá trị.
+    *   Hợp đồng tạo từ PAKD Đã ký (SRS_LapPAKD BR22) đi cùng luồng này, với nguồn là PAKD. **[Mới]**
 
 **Nhóm 8 — Nhắc hạn, chuyển đổi dữ liệu và đồng bộ PAKD**
 
@@ -557,6 +600,22 @@ sequenceDiagram
     *   Các số liệu lập trong PAKD được ghi vào dự án **chỉ khi CFO duyệt** phiên bản PAKD đó. Gồm: giá trị HĐ dự kiến (`expected_revenue`), chi phí kinh doanh / sản xuất kế hoạch, thời điểm dự kiến ký HĐ, kế hoạch theo tháng.
     *   Khi GĐK / SM lưu nháp hoặc nộp PAKD, hoặc khi CFO từ chối, số liệu dự án **không thay đổi**. Danh sách và Sổ theo dõi tiếp tục hiển thị theo phiên bản đang có hiệu lực.
     *   Với PAKD điều chỉnh (BR7), số liệu chỉ đổi khi phiên bản điều chỉnh được duyệt. **[Mới]**
+
+**Nhóm 9 — Duyệt hợp đồng**
+
+*   **BR35 (CFO duyệt hợp đồng):**
+    *   Mọi bản hợp đồng chờ duyệt (BR31) chỉ có hiệu lực khi **Kế toán (CFO) duyệt**. CFO nhận email khi có hợp đồng chờ duyệt.
+    *   **Duyệt** (ý kiến không bắt buộc):
+        *   Bản đó trở thành hợp đồng có hiệu lực, dự án được đánh dấu đã ký (`contract_signed = true`).
+        *   Version dự án tăng 1 (SRS_ChiTietDuAn BR9).
+        *   Sổ theo dõi tính lại theo BR16, BR17.
+        *   Ghi lịch sử *CFO duyệt hợp đồng*.
+        *   Thông tin hợp đồng **không** ghi thẳng vào PAKD đã duyệt; hệ thống điền vào bản điều chỉnh PAKD để GĐK / SM gửi CFO duyệt (SRS_LapPAKD BR22).
+    *   **Từ chối** (ý kiến bắt buộc, không chấp nhận chỉ có khoảng trắng):
+        *   Bản bị từ chối không được ghi nhận. Bản có hiệu lực trước đó (nếu có) giữ nguyên.
+        *   Người có quyền (BR26) sửa và gửi lại trên cùng lần sửa.
+        *   Ghi lịch sử *CFO từ chối hợp đồng*, và người gửi nhận email kèm ý kiến.
+    *   CFO không quyết định được khi dự án đang *Pending* / *Close* (BR10). **[Mới]**
 
 ---
 
@@ -577,8 +636,7 @@ Chỉ liệt kê các trường mà màn Danh sách dự án dùng để hiển 
 | `production_code` | String | Không | Mã sản xuất = `master_code` + `.2`. |
 | `project_name` | String | Có | Tên dự án. |
 | `is_key` | Boolean | Có | Dự án KEY, mặc định `false`. |
-| `customer_code` | String | Có | Mã khách hàng, dùng để sinh mã tổng. |
-| `customer_name` | String | Có | Tên khách hàng. |
+| `biz_customer_id` | Foreign Key | Có | Liên kết danh mục khách hàng `biz_customer` (SRS_ChiTietDuAn mục 4.1). Mã KH dùng để sinh mã tổng; mã và tên KH hiển thị trên danh sách lấy từ danh mục này. |
 | `division_id` | Foreign Key | Có | Liên kết bảng `division`: khối quản lý dự án. |
 | `project_type` | String | Có | Loại dự án. |
 | `expected_sign_date` | Date | Không | Thời điểm dự kiến ký HĐ, dùng cho Sổ theo dõi (BR17) và năm của dự án (BR20). |
@@ -608,7 +666,7 @@ Ràng buộc duy nhất: (`biz_project_id`, `user_id`, `member_role`).
 | `biz_project_member_id` | String (PK) | Có | Khoá chính, tự sinh. |
 | `biz_project_id` | Foreign Key | Có | Liên kết bảng `biz_project`. |
 | `user_id` | Foreign Key | Có | Liên kết bảng `user`. |
-| `member_role` | Enum | Có | `am` = AM · `sm` = SM · `business_pm` = PM kinh doanh · `production_pm` = PM sản xuất · `business_director` = GĐKD. Cột *PM Kinh doanh* / *PM sản xuất* trên danh sách lấy theo vai trò này. |
+| `member_role` | Enum | Có | `am` = AM · `sm` = SM · `business_pm` = PM kinh doanh · `production_pm` = PM sản xuất · `business_director` = GĐKD · `division_director` = GĐK. Cột *PM Kinh doanh* / *PM sản xuất* trên danh sách lấy theo vai trò này. |
 
 ### 4.3. Bảng BIZ_PAKD_VERSION (Phiên bản PAKD)
 Ràng buộc duy nhất: (`biz_project_id`, `version`). Bị từ chối thì sửa và nộp lại trên **cùng bản ghi** (BR7).
@@ -626,7 +684,7 @@ Ràng buộc duy nhất: (`biz_project_id`, `version`). Bị từ chối thì s�
 | `cfo_note` | String | Không | Ý kiến của CFO. Bắt buộc khi `state = rejected` (BR6). |
 
 ### 4.4. Bảng BIZ_CONTRACT (Hợp đồng)
-Mỗi dự án có tối đa một hợp đồng. Ràng buộc duy nhất: `biz_project_id`.
+Mỗi bản ghi là **một lần gửi hợp đồng** (revision). Ràng buộc duy nhất: (`biz_project_id`, `revision_no`). Mỗi dự án có tối đa 1 bản `pending`. Hợp đồng có hiệu lực là bản `approved` có `revision_no` lớn nhất (BR35).
 
 | Tên trường | Loại data | Bắt buộc? | Mô tả |
 | :--- | :--- | :--- | :--- |
@@ -638,6 +696,14 @@ Mỗi dự án có tối đa một hợp đồng. Ràng buộc duy nhất: `biz_
 | `period_from` | Date | Có | Thời hạn thực hiện từ ngày. |
 | `period_to` | Date | Có | Thời hạn thực hiện đến ngày, sau hoặc bằng `period_from`. Hiển thị ở cột *Ngày hết hạn*. |
 | `deviation_reason` | String | Không | Lý do lệch so với `expected_revenue`. Không bắt buộc. Hệ thống chỉ cảnh báo khi lệch quá 2% (BR28). |
+| `revision_no` | Number | Có | Lần sửa, bắt đầu từ 1 (BR31). Bị từ chối thì sửa và gửi lại trên cùng lần. |
+| `approval_status` | Enum | Có | `pending` = Chờ CFO duyệt · `approved` = Đã duyệt · `rejected` = Từ chối (BR35). |
+| `source` | Enum | Có | `popup` = Nhập qua popup Cập nhật ký hợp đồng · `pakd` = Tạo từ PAKD Đã ký (SRS_LapPAKD BR22). |
+| `submitted_at` | DateTime | Có | Thời điểm gửi duyệt gần nhất. |
+| `submitted_by_user_id` | Foreign Key | Có | Liên kết bảng `user`: người gửi (AM, SM, GĐK; hoặc hệ thống khi tạo từ PAKD). |
+| `decided_at` | DateTime | Không | Thời điểm CFO quyết định. |
+| `decided_by_user_id` | Foreign Key | Không | Liên kết bảng `user`: CFO. |
+| `cfo_note` | String | Không | Ý kiến CFO, bắt buộc khi `approval_status = rejected`. |
 | `updated_at` | DateTime | Có | Thời điểm cập nhật gần nhất. |
 | `updated_by_user_id` | Foreign Key | Có | Liên kết bảng `user`: người cập nhật gần nhất. |
 
@@ -658,7 +724,7 @@ Mỗi dự án có tối đa một hợp đồng. Ràng buộc duy nhất: `biz_
 | Tên trường | Loại data | Bắt buộc? | Mô tả |
 | :--- | :--- | :--- | :--- |
 | `biz_attachment_id` | String (PK) | Có | Khoá chính, tự sinh. |
-| `owner_type` | Enum | Có | `contract` = Tệp hợp đồng · `addendum` = Tệp phụ lục. |
+| `owner_type` | Enum | Có | `project` = Tài liệu dự án (SRS_ChiTietDuAn) · `contract` = Tệp hợp đồng · `addendum` = Tệp phụ lục · `pakd_cost` / `pakd_phase` = Tệp của chi phí / giai đoạn PAKD (SRS_LapPAKD). |
 | `owner_id` | String | Có | Mã bản ghi sở hữu: `biz_contract_id` hoặc `biz_contract_addendum_id`. |
 | `file_name` | String | Có | Tên tệp, hiển thị trong tooltip của cột *Tệp*. |
 | `file_url` | String | Có | Đường dẫn lưu tệp. |
@@ -674,16 +740,21 @@ Mỗi dự án có tối đa một hợp đồng. Ràng buộc duy nhất: `biz_
 | `target_value_vnd` | Number | Có | Mục tiêu chính thức (VNĐ), dùng làm *Giá trị mục tiêu* ở Sổ theo dõi (BR15). |
 
 ### 4.7. Bảng BIZ_OUTSOURCE_CODE (Mã outsource)
-Ràng buộc duy nhất: `outsource_code`. Mỗi dự án có tối đa 2 bản ghi (BR12).
+Ràng buộc duy nhất: `outsource_code`, và (`biz_project_id`, `sequence_no`). Mỗi dự án có tối đa 5 bản ghi, tính cả mã đã xoá / bị từ chối (BR12; SRS_ChiTietDuAn BR11).
 
 | Tên trường | Loại data | Bắt buộc? | Mô tả |
 | :--- | :--- | :--- | :--- |
 | `biz_outsource_code_id` | String (PK) | Có | Khoá chính, tự sinh. |
 | `biz_project_id` | Foreign Key | Có | Liên kết bảng `biz_project`. |
-| `outsource_code` | String | Có | `master_code` + `.3` hoặc `.4`. Dùng cho tìm kiếm (BR21) và cột *Mã outsource* trong file xuất (BR24). |
+| `outsource_code` | String | Có | `production_code` + `.` + `sequence_no`, ví dụ `022.061.2.1`. Chỉ mã có hiệu lực mới dùng cho tìm kiếm (BR21) và cột *Mã outsource* trong file xuất (BR24). |
+| `sequence_no` | Number | Có | Số thứ tự 1–5. Lấy số lớn nhất đã dùng + 1, không dùng lại. |
+| `status` | Enum | Có | `pending` = Chờ duyệt · `active` = Có hiệu lực · `rejected` = Từ chối · `deleted` = Đã xoá. |
 | `pm_user_id` | Foreign Key | Không | Liên kết bảng `user`: PM phụ trách mã outsource. |
 | `created_at` | DateTime | Có | Thời điểm tạo mã. |
-| `created_by_user_id` | Foreign Key | Có | Liên kết bảng `user`: người tạo mã. |
+| `created_by_user_id` | Foreign Key | Có | Liên kết bảng `user`: người tạo mã (GĐK hoặc Admin). |
+| `decided_at` | DateTime | Không | Thời điểm GĐK duyệt / từ chối. |
+| `decided_by_user_id` | Foreign Key | Không | Liên kết bảng `user`: GĐK duyệt / từ chối. |
+| `reject_reason` | String | Không | Lý do từ chối, bắt buộc khi `status = rejected`. |
 
 ---
 
@@ -767,7 +838,14 @@ Ràng buộc duy nhất: `outsource_code`. Mỗi dự án có tối đa 2 bản 
     *   Lỗi chỉ hiện sau lần bấm *Lưu* đầu tiên.
     *   Mỗi trường lỗi có chữ đỏ ngay dưới trường.
     *   Đầu popup có hộp tổng hợp "Còn N mục chưa hợp lệ: …" (BR27).
-*   **Toast:** "Đã xác nhận ký hợp đồng {số HĐ} — {mã dự án}" (lần đầu) hoặc "Đã cập nhật hợp đồng {số HĐ} — {mã dự án}".
+*   **Nút gửi:** đổi tên thành **Gửi CFO duyệt** (BR31) **[Mới]**.
+*   **Toast:** "Đã gửi hợp đồng {số HĐ} — chờ Kế toán (CFO) duyệt".
+*   **Chế độ CFO duyệt** **[Mới]**:
+    *   CFO mở hợp đồng đang chờ thì popup ở chế độ chỉ đọc, tiêu đề "CFO duyệt hợp đồng — lần {n}".
+    *   Nếu là bản sửa, có thêm cột so sánh *Bản đang hiệu lực* / *Bản chờ duyệt*.
+    *   Có ô *Ý kiến* (bắt buộc khi từ chối) và các nút *Huỷ*, *Từ chối* (đỏ), *Duyệt* (xanh lá).
+    *   Toast sau quyết định: "Kế toán đã duyệt hợp đồng {số HĐ} — {mã dự án}" / "Kế toán đã từ chối hợp đồng {số HĐ} — trả về cập nhật lại".
+*   **Danh sách:** nhãn vàng *Chờ duyệt HĐ* / *Có bản sửa chờ duyệt* ở cột Trạng thái hợp đồng. CFO bấm vào nhãn thì mở chế độ duyệt.
 *   **Chế độ chỉ xem:** các trường bị khoá, không có nút *Lưu* (BR26).
 
 **Chung**

@@ -47,8 +47,11 @@
 | D25 | Giữ SRS về quyền lập PAKD (GĐK, SM; AM không xem) và phiên bản PAKD; báo dev sửa code | GAP-11, GAP-16 |
 | D26 | Số liệu PAKD chỉ cập nhật vào dự án khi CFO duyệt | BR34, AC13.7, GAP-17 |
 | D27 | Xác nhận lại: AM chỉ tạo dự án, không lập PAKD; SM tạo dự án và lập PAKD | GAP-16 |
-| D28 | Mã outsource (.3, .4): tìm kiếm được, có cột trong file Excel, không thêm cột trên màn | BR12, BR21, BR24, GAP-18 |
+| D28 | Mã outsource: tìm kiếm được, có cột trong file Excel, không thêm cột trên màn (cấu trúc mã cập nhật ở D30) | BR12, BR21, BR24, GAP-18 |
 | D29 | Lệch giá trị hợp đồng quá 2% so với giá trị dự kiến: chỉ cảnh báo, lý do không bắt buộc | BR28, AC14.3, GAP-19 |
+| D30 | (Từ SRS Chi tiết dự án) Chỉ GĐK sửa PAKD; mã outsource = Mã SX.1…5, tối đa 5, GĐK duyệt khi Admin tạo, chỉ mã có hiệu lực mới dùng. SRS v03 | BR7, BR12, BR21, BR24, 4.7 |
+| D31 | Mọi hợp đồng (popup, sửa, tạo từ PAKD) phải được CFO duyệt mới có hiệu lực; bản sửa chờ duyệt không thay bản đang hiệu lực. SRS v04 | BR16, BR30, BR31, BR35, US16, 4.4 |
+| D32 | (Rà soát 8cff07a) GĐK **và SM** sửa PAKD; HĐ được duyệt thì điền vào bản điều chỉnh PAKD. SRS v05 | BR7, BR35, AC13.5, mục 5 |
 
 ## Dàn ý SRS
 | Mục | Nội dung | Độ phức tạp | Song song? |

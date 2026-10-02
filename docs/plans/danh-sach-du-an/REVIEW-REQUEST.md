@@ -9,11 +9,11 @@ SRS đặc tả màn **Danh sách dự án** (module Quản trị dự án & Tà
 Phạm vi lần này gồm màn danh sách và 2 popup mở từ danh sách. Form cấp mã và Chi tiết dự án sẽ có SRS riêng.
 
 ## Sản phẩm bàn giao
-- **SRS:** `docs/srs/SRS_DanhSachDuAn.md` (**v02**, 2026-10-02, đã rà soát theo code commit d8a9358). Gồm 15 User Story, 56 AC, 34 BR, 7 bảng dữ liệu, 4 sơ đồ Mermaid.
+- **SRS:** `docs/srs/SRS_DanhSachDuAn.md` (**v04**, 2026-10-02, đã rà soát theo code commit d8a9358 và đồng bộ với SRS Chi tiết dự án / Lập PAKD). Gồm 16 User Story, 60 AC, 35 BR, 7 bảng dữ liệu, 4 sơ đồ Mermaid.
 - **Prototype:** ứng dụng React đã có sẵn. Chạy `npm run dev` trong `Timesheet/`, rồi vào menu *Quản trị dự án & Tài chính → Danh sách dự án*.
-  - **Lưu ý:** prototype **chưa được sửa** theo SRS. 19 điểm lệch được liệt kê trong `03-prototype-gaps.md`. Danh sách việc cho dev: `04-dev-tasks.md`.
-- **Đối soát:** `docs/plans/danh-sach-du-an/03-prototype-gaps.md`. Truy vết đủ 56/56 AC: 24 khớp, 19 lệch, 13 chưa có.
-- **Bối cảnh:** `01-design-brief.md`, `02-plan.md` (29 quyết định D1–D29 đã chốt với BA).
+  - **Lưu ý:** prototype **chưa được sửa** theo SRS. 20 điểm lệch được liệt kê trong `03-prototype-gaps.md`. Danh sách việc cho dev: `04-dev-tasks.md`.
+- **Đối soát:** `docs/plans/danh-sach-du-an/03-prototype-gaps.md`. Truy vết đủ 60/60 AC: 23 khớp, 20 lệch, 17 chưa có.
+- **Bối cảnh:** `01-design-brief.md`, `02-plan.md` (31 quyết định D1–D31 đã chốt với BA).
 
 ## Kết quả checklist tiền-review
 | Nhóm | Kết quả |
@@ -22,7 +22,7 @@ Phạm vi lần này gồm màn danh sách và 2 popup mở từ danh sách. For
 | Sơ đồ Mermaid | ✅ 4/4 render được bằng mermaid-cli, không dùng ngoặc tròn hay Markdown trong sơ đồ |
 | User Story / AC / BR đánh số liền mạch | ✅ Đã kiểm tra bằng script. Mọi BR được AC tham chiếu đều có định nghĩa |
 | Data Dictionary `snake_case`, PK / FK | ✅ Khớp 100% với ERD ở mục 1, đã kiểm tra chéo bằng script |
-| Truy vết AC ↔ prototype | ✅ 56/56 AC có thành phần tương ứng hoặc được ghi rõ là "chưa có" |
+| Truy vết AC ↔ prototype | ✅ 60/60 AC có thành phần tương ứng hoặc được ghi rõ là "chưa có" |
 | Prototype HTML / `index.html` | ➖ Không áp dụng: prototype là ứng dụng React có sẵn, không dựng HTML mới (đã thống nhất trong kế hoạch) |
 | Mục lục, thuật ngữ thống nhất | ✅ Đã thêm mục lục. GĐK = HOD được định nghĩa ở mục 1 |
 | Trường hợp biên | ✅ Đã bổ sung trường hợp CFO duyệt đúng lúc dự án chuyển Pending (BR6, BR10) |
