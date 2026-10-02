@@ -189,7 +189,7 @@ export function Segmented<K extends string>({
 // Bảng thuộc tính (nhãn | giá trị) kẻ ô
 // ==========================================================================
 export interface FieldRow {
-  label: string;
+  label: React.ReactNode;
   value: React.ReactNode;
   num?: boolean; // canh phải
   strong?: boolean;

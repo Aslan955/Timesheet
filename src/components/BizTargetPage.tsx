@@ -187,7 +187,7 @@ export const BizTargetProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   return <TargetCtx.Provider value={{ plans, savePlan, decide }}>{children}</TargetCtx.Provider>;
 };
-const useTargets = () => {
+export const useBizTargets = () => {
   const c = useContext(TargetCtx);
   if (!c) throw new Error('BizTargetProvider missing');
   return c;
@@ -665,7 +665,7 @@ const FlowNote = () => <span className="text-[12px] text-slate-600">GĐK lập h
 // Tab 1: GĐK lập mục tiêu
 // ==========================================================================
 const GdkTab: React.FC<{ flash: (m: string) => void }> = ({ flash }) => {
-  const { plans, savePlan } = useTargets();
+  const { plans, savePlan } = useBizTargets();
   const { projects } = useBusinessProjects();
   const today = new Date();
   // Quý 4 (tháng 10–12) mặc định chuẩn bị mục tiêu năm sau; còn lại là năm hiện tại.
@@ -802,7 +802,7 @@ const GdkTab: React.FC<{ flash: (m: string) => void }> = ({ flash }) => {
 // Tab 2: BOD phê duyệt
 // ==========================================================================
 const BodTab: React.FC<{ flash: (m: string) => void }> = ({ flash }) => {
-  const { plans, decide } = useTargets();
+  const { plans, decide } = useBizTargets();
   const [openId, setOpenId] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [err, setErr] = useState('');
@@ -915,7 +915,7 @@ const BodTab: React.FC<{ flash: (m: string) => void }> = ({ flash }) => {
 // ==========================================================================
 export const BizTargetPage: React.FC = () => {
   const [tab, setTab] = useState<'gdk' | 'bod'>('gdk');
-  const { plans } = useTargets();
+  const { plans } = useBizTargets();
   const [toast, setToast] = useState<string | null>(null);
   const flash = (m: string) => {
     setToast(m);

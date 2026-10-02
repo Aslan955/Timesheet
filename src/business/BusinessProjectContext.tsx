@@ -15,6 +15,7 @@
  * Đơn vị tiền: VNĐ (cả thông tin dự án và kế hoạch theo tháng).
  */
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { PakdFormData, pakdMonthlyPlan, pakdTotals } from './pakd';
 
 export const DIVISIONS = ['G1', 'G2', 'G3', 'G4', 'BFSI', 'GPDV'];
 export const PROJECT_TYPES = ['Fixed Cost', 'Time & Material', 'ODC', 'Cho thuê lao động', 'Nội bộ'];
@@ -214,6 +215,8 @@ export interface BizProject {
   productionCode: string;
   businessPm: string;
   productionPm: string;
+  /** Mã outsource (tối đa MAX_OUTSOURCE): Mã tổng.3, .4 — mỗi mã có PM phụ trách. */
+  outsourceCodes?: BizOutsource[];
 
   division: string;
   projectType: string;
@@ -234,6 +237,7 @@ export interface BizProject {
   codeIssuedAt?: string; // YYYY-MM-DD — ngày cấp mã (GĐK duyệt / GĐK tự tạo)
   pakdDeadline?: string; // Hạn lập PAKD = ngày cấp mã (hoặc mở lại) + PAKD_DAYS
   closedAt?: string; // YYYY-MM-DD — ngày dự án bị đóng
+  pakdForm?: PakdFormData; // Nội dung PAKD lập trên hệ thống (AM / GĐK nhập trong hạn PAKD_DAYS ngày)
   pakd: PakdVersion[]; // các phiên bản PAKD đã nộp
   contract?: BizContract; // thông tin ký hợp đồng (cập nhật trên màn chi tiết)
   attachments?: BizAttachment[]; // tài liệu đính kèm của dự án (PAKD, báo giá, biên bản…)
@@ -296,6 +300,22 @@ export const grossMargin = (p: Pick<BizProject, 'expectedRevenue' | 'plannedBusi
 
 /** Gợi ý mã Master tiếp theo cho mã khách hàng (số thứ tự lớn nhất + 1). */
 /** Mã KD = Master.1, Mã SX = Master.2. */
+export interface BizOutsource {
+  code: string;
+  pm: string;
+  createdAt: string;
+  createdBy: string;
+}
+/** Số mã outsource tối đa của một dự án. */
+export const MAX_OUTSOURCE = 2;
+/** Mã outsource kế tiếp còn trống: Mã tổng.3, Mã tổng.4. */
+export const nextOutsourceCode = (p: Pick<BizProject, 'masterCode' | 'outsourceCodes'>) => {
+  if (!p.masterCode) return '';
+  const used = new Set((p.outsourceCodes || []).map((o) => o.code));
+  for (let i = 3; i < 3 + MAX_OUTSOURCE; i++) if (!used.has(`${p.masterCode}.${i}`)) return `${p.masterCode}.${i}`;
+  return '';
+};
+
 export const codesFrom = (master: string) => ({ masterCode: master, businessCode: master ? `${master}.1` : '', productionCode: master ? `${master}.2` : '' });
 
 export const nextMasterCode = (projects: BizProject[], customerCode: string) => {
@@ -712,10 +732,18 @@ interface Ctx {
   /** Kế toán mở lại dự án đã đóng → Chưa có PAKD, hạn PAKD mới. Trả về hạn PAKD. */
   reopenProject: (id: string, by: string) => string;
   submitPakd: (id: string, by: string) => void;
+  /** Lưu nháp / gửi duyệt PAKD lập trên hệ thống. Gửi duyệt → cập nhật số liệu dự án + kế hoạch theo tháng. */
+  savePakdForm: (id: string, form: PakdFormData, by: string, submit: boolean) => void;
   decidePakd: (id: string, approve: boolean, role: BizRole, by: string, note: string) => void;
   finishProject: (id: string, by: string) => void;
   /** Thêm / xoá tài liệu đính kèm của dự án (ghi lịch sử, không tăng version). */
   setAttachments: (id: string, files: BizAttachment[], by: string, note: string) => void;
+  /** Tạo mã outsource (tối đa MAX_OUTSOURCE). Trả về mã mới hoặc '' nếu đã đủ / chưa có mã tổng. */
+  addOutsourceCode: (id: string, pm: string, by: string) => string;
+  /** Đổi PM phụ trách mã outsource. */
+  setOutsourcePm: (id: string, code: string, pm: string, by: string) => void;
+  /** Xoá mã outsource. */
+  removeOutsourceCode: (id: string, code: string, by: string) => void;
   /** Mục tiêu giá trị hợp đồng ký theo năm / khối. */
   targets: SignTargets;
   setYearTargets: (year: string, byDivision: Record<string, number>) => void;
@@ -824,6 +852,47 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
       'Chờ Kế toán (CFO) duyệt',
     );
 
+  const savePakdForm = (id: string, form: PakdFormData, by: string, submit: boolean) => {
+    const f: PakdFormData = { ...form, savedAt: now(), savedBy: by };
+    if (!submit) return patch(id, () => ({ pakdForm: f }), by, 'Lưu nháp PAKD');
+    const t = pakdTotals(f);
+    const signed = f.contractState === 'Đã ký';
+    const plan = pakdMonthlyPlan(f);
+    patch(
+      id,
+      (p) => ({
+        pakdForm: f,
+        status: 'PAKD chờ duyệt',
+        pakd: [...p.pakd, { version: p.pakd.length + 1, submittedAt: today(), submittedBy: by, state: 'Chờ CFO' }],
+        expectedRevenue: t.revenue,
+        plannedProductionCost: t.sx,
+        plannedBusinessCost: t.kd,
+        contractSigned: signed,
+        expectedSignDate: signed ? f.actualSignDate || f.contractDate || p.expectedSignDate : f.expectedSignMonth ? `${f.expectedSignMonth}-01` : p.expectedSignDate,
+        ...(signed && f.startMonth ? { startDate: `${f.startMonth}-01` } : {}),
+        ...(signed && f.endMonth ? { endDate: `${f.endMonth}-28` } : {}),
+        ...(plan.length ? { plan, planImport: { fileName: 'PAKD lập trên hệ thống', at: now(), by } } : {}),
+        ...(signed
+          ? {
+              contract: {
+                ...(p.contract || { deviationReason: '', files: [], addenda: [] }),
+                number: f.contractNo || p.contract?.number || '',
+                signDate: f.actualSignDate || f.contractDate || p.contract?.signDate || '',
+                value: f.contractValue,
+                from: f.startMonth ? `${f.startMonth}-01` : p.contract?.from || '',
+                to: f.endMonth ? `${f.endMonth}-28` : p.contract?.to || '',
+                updatedAt: now(),
+                updatedBy: by,
+              },
+            }
+          : {}),
+      }),
+      by,
+      'Nộp PAKD',
+      `${signed ? 'Đã ký' : 'Chưa ký'} · Doanh thu ${Math.round(t.revenue).toLocaleString('en-US')} · Chi phí ${Math.round(t.cost).toLocaleString('en-US')} · Chờ Kế toán (CFO) duyệt`,
+    );
+  };
+
   const decidePakd = (id: string, approve: boolean, role: BizRole, by: string, note: string) =>
     patch(
       id,
@@ -843,6 +912,24 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
     );
 
   const finishProject = (id: string, by: string) => patch(id, () => ({ status: 'Kết thúc' }), by, 'Kết thúc dự án');
+
+  const addOutsourceCode = (id: string, pm: string, by: string) => {
+    const p0 = projects.find((p) => p.id === id);
+    const code = p0 && (p0.outsourceCodes || []).length < MAX_OUTSOURCE ? nextOutsourceCode(p0) : '';
+    if (!code) return '';
+    patch(
+      id,
+      (p) => ({ outsourceCodes: [...(p.outsourceCodes || []), { code, pm, createdAt: now(), createdBy: by }].sort((a, b) => a.code.localeCompare(b.code)) }),
+      by,
+      'Tạo mã outsource',
+      `${code}${pm ? ` · PM ${pm}` : ''}`,
+    );
+    return code;
+  };
+  const setOutsourcePm = (id: string, code: string, pm: string, by: string) =>
+    patch(id, (p) => ({ outsourceCodes: (p.outsourceCodes || []).map((o) => (o.code === code ? { ...o, pm } : o)) }), by, 'Cập nhật PM outsource', `${code} · ${pm || 'bỏ PM'}`);
+  const removeOutsourceCode = (id: string, code: string, by: string) =>
+    patch(id, (p) => ({ outsourceCodes: (p.outsourceCodes || []).filter((o) => o.code !== code) }), by, 'Xoá mã outsource', code);
 
   const setAttachments = (id: string, files: BizAttachment[], by: string, note: string) => {
     const at = now();
@@ -943,7 +1030,7 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
   };
 
   return (
-    <BusinessProjectContext.Provider value={{ projects, ledger, importLedger, createProject, updateProject, deleteProject, importMonthly, saveContract, setAttachments, approveCode, reopenProject, submitPakd, decidePakd, finishProject, targets, setYearTargets }}>
+    <BusinessProjectContext.Provider value={{ projects, ledger, importLedger, createProject, updateProject, deleteProject, importMonthly, saveContract, setAttachments, addOutsourceCode, setOutsourcePm, removeOutsourceCode, approveCode, reopenProject, submitPakd, savePakdForm, decidePakd, finishProject, targets, setYearTargets }}>
       {children}
     </BusinessProjectContext.Provider>
   );

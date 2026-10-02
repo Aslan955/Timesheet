@@ -379,8 +379,14 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
 
   return (
     <>
-      <Panel title="Điều kiện lọc" icon={Filter}>
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+      <MetricCards plan={planT} actual={actualT} onDrillMetric={(k) => drillFor(k, scoped, actualT[k], `${scopeTitle} · ${scoped.length} dự án`)} />
+
+      {/* Điều kiện lọc + điều khiển biểu đồ gộp chung một khung */}
+      <Panel title="Biểu đồ kế hoạch – thực tế" icon={BarChart3}>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pb-3 mb-3 border-b border-slate-200">
+          <span className="flex items-center gap-1.5 text-[12px] font-semibold text-[#1e3a5f]">
+            <Filter size={13} /> Điều kiện lọc
+          </span>
           <FilterField label="Từ tháng">
             <input type="month" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} className={`${erp.input} w-40`} />
           </FilterField>
@@ -397,28 +403,18 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
             </select>
           </FilterField>
         </div>
-      </Panel>
-
-      <MetricCards plan={planT} actual={actualT} onDrillMetric={(k) => drillFor(k, scoped, actualT[k], `${scopeTitle} · ${scoped.length} dự án`)} />
-
-      <Panel
-        title="Biểu đồ kế hoạch – thực tế"
-        icon={BarChart3}
-        actions={
-          <>
-            <ChartLegend metric={metric} />
-            <Segmented options={METRIC_OPTIONS} value={metric} onChange={setMetric} />
-            <Segmented
-              options={[
-                { key: 'month', label: 'Theo tháng' },
-                { key: 'project', label: 'Theo dự án' },
-              ]}
-              value={axis}
-              onChange={setAxis}
-            />
-          </>
-        }
-      >
+        <div className="flex flex-wrap items-center gap-3 mb-3">
+          <ChartLegend metric={metric} />
+          <Segmented options={METRIC_OPTIONS} value={metric} onChange={setMetric} />
+          <Segmented
+            options={[
+              { key: 'month', label: 'Theo tháng' },
+              { key: 'project', label: 'Theo dự án' },
+            ]}
+            value={axis}
+            onChange={setAxis}
+          />
+        </div>
         <PlanActualChart groups={groups} metric={metric} />
       </Panel>
 

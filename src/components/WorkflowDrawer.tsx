@@ -277,10 +277,11 @@ export const WorkflowDrawer: React.FC<{
           Duyệt mã
         </Btn>
       );
-    if (key === 'pakd' && p.status === 'Chưa có PAKD' && role === 'GĐK')
+    // AM / GĐK lập PAKD trên form ngay trong màn chi tiết (cuộn tới form "Lập phương án kinh doanh").
+    if (key === 'pakd' && p.status === 'Chưa có PAKD' && (role === 'GĐK' || role === 'AM'))
       return (
-        <Btn variant="success" icon={Send} className="h-7" disabled={!p.plan.length} title={p.plan.length ? undefined : 'Import kế hoạch theo tháng trước khi nộp'} onClick={onSubmit}>
-          Nộp PAKD {p.pakd.length ? `V${p.pakd.length + 1}` : ''}
+        <Btn variant="success" icon={Send} className="h-7" onClick={onLapPakd || onSubmit}>
+          {p.pakd.length ? `Lập lại PAKD V${p.pakd.length + 1}` : 'Lập PAKD'}
         </Btn>
       );
     if (key === 'cfo' && p.status === 'PAKD chờ duyệt' && role === 'CFO')

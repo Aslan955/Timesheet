@@ -50,7 +50,6 @@ export const PM_VISIBLE_SCREENS = [
 ];
 /** Các màn bổ sung của Project Management (đang là khung trống). */
 export const PM_PLACEHOLDER_SCREENS: Record<string, string> = {
-  'PM · Tổng quan': 'Tổng quan',
   'Công nợ phải thu': 'Công nợ phải thu',
   'Dòng tiền': 'Dòng tiền',
   'Nhật ký dự án': 'Nhật ký dự án',

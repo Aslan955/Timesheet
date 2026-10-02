@@ -28,6 +28,7 @@ import { PmPlaceholderPage } from './components/PmPlaceholderPage';
 import { BizTargetPage, BizTargetProvider } from './components/BizTargetPage';
 import { PM_PLACEHOLDER_SCREENS } from './constants';
 import { BizReportPage } from './components/BizReportPage';
+import { OverviewPage } from './components/OverviewPage';
 import { BusinessProjectProvider } from './business/BusinessProjectContext';
 import { OnsiteReportPage } from './components/OnsiteReportPage';
 import { LeaveReportPage } from './components/LeaveReportPage';
@@ -70,6 +71,8 @@ export default function App() {
         return <ProjectsPage />;
       case 'Dự án kinh doanh':
         return <BusinessProjectPage />;
+      case 'PM · Tổng quan':
+        return <OverviewPage />;
       case 'Mục tiêu kinh doanh':
         return <BizTargetPage />;
       case 'Báo cáo hiệu quả dự án':

@@ -36,7 +36,6 @@ import {
   LayoutList,
   ListChecks,
   AlertCircle,
-  Wallet,
   Building2,
   Hash,
   Check,
@@ -51,6 +50,9 @@ import {
   FileSignature,
   FileText,
   Paperclip,
+  Send,
+  RotateCcw,
+  Info,
 } from 'lucide-react';
 import {
   BizPhase,
@@ -73,6 +75,7 @@ import {
   grossMargin,
   nextMasterCode,
   codesFrom,
+  MAX_OUTSOURCE,
   blankPhases,
   BizMonthRow,
   BizAttachment,
@@ -87,6 +90,8 @@ import { LedgerDetailModal, LedgerDrill, drillCls } from './LedgerDetailModal';
 import { AttachmentList, ContractModal } from './ContractModal';
 import { ProjectTracker } from './ProjectTracker';
 import { WorkflowDrawer, useWorkflowDrawer } from './WorkflowDrawer';
+import { PakdForm } from './PakdForm';
+import type { PakdFormData } from '../business/pakd';
 import { Btn, ErpPage, ErpTitleBar, FieldTable, FolderTabs, FormRow, Panel, Segmented, Tag, erp } from './erp/Erp';
 
 const CURRENT_USER = 'namnv';
@@ -127,7 +132,7 @@ const useWide = () => {
 type View = { mode: 'list' } | { mode: 'detail'; id: string } | { mode: 'form'; id?: string };
 
 export const BusinessProjectPage: React.FC = () => {
-  const { projects, createProject, updateProject, deleteProject, importMonthly, saveContract, setAttachments, approveCode, reopenProject, submitPakd, decidePakd, finishProject } =
+  const { projects, createProject, updateProject, deleteProject, importMonthly, saveContract, setAttachments, approveCode, reopenProject, submitPakd, savePakdForm, decidePakd, finishProject } =
     useBusinessProjects();
   const [view, setView] = useState<View>({ mode: 'list' });
   const [role, setRole] = useState<BizRole>('CFO');
@@ -198,6 +203,11 @@ export const BusinessProjectPage: React.FC = () => {
             submitPakd(current.id, actor);
             flash(`Đã nộp PAKD V${current.pakd.length + 1} — chờ Kế toán (CFO) duyệt`);
           }}
+          onSavePakd={(form, submit) => {
+            savePakdForm(current.id, form, actor, submit);
+            flash(submit ? `Đã gửi PAKD V${current.pakd.length + 1} — chờ Kế toán (CFO) duyệt` : 'Đã lưu nháp PAKD');
+          }}
+          actor={actor}
           onDecide={(approve, note) => decide(current, approve, note)}
           onFinish={() => {
             if (!window.confirm(`Kết thúc dự án "${current.name}"?`)) return;
@@ -221,13 +231,18 @@ export const BusinessProjectPage: React.FC = () => {
 
       {view.mode === 'form' && (
         <ProjectForm
+          key={current?.id || 'new'}
           initial={current}
           projects={projects}
           role={role}
+          onRoleChange={setRole}
+          actor={actor}
           onCancel={() => setView(current ? { mode: 'detail', id: current.id } : { mode: 'list' })}
-          onSubmit={(data) => {
+          onSubmit={(data, files) => {
             if (current) {
               updateProject(current.id, data, CURRENT_USER);
+              const before = (current.attachments || []).map((x) => x.id).join();
+              if (files.map((x) => x.id).join() !== before) setAttachments(current.id, files, CURRENT_USER, `Cập nhật tài liệu đính kèm (${files.length} tệp)`);
               setView({ mode: 'detail', id: current.id });
               flash(`Đã cập nhật dự án — Version ${current.version + 1}`);
             } else {
@@ -241,6 +256,7 @@ export const BusinessProjectPage: React.FC = () => {
                   : { ...data, ...codesFrom(''), status: 'Chờ duyệt mã', codeIssuedAt: undefined, pakdDeadline: '' },
                 actor,
               );
+              if (files.length) setAttachments(p.id, files, CURRENT_USER, `Đính kèm ${files.map((x) => x.name).join(', ')}`);
               setView({ mode: 'detail', id: p.id });
               flash(issued ? `Đã cấp mã ${code} — GĐK lập PAKD trước ${dmy(addDays(d, PAKD_DAYS))}` : 'Đã gửi yêu cầu mở mã dự án — chờ GĐK duyệt');
             }
@@ -403,7 +419,6 @@ const ProjectList: React.FC<{
   const [q, setQ] = useState('');
   const [division, setDivision] = useState('');
   const [status, setStatus] = useState('');
-  const [contractFilter, setContractFilter] = useState<'all' | 'signed' | 'unsigned'>('all');
   const { targets } = useBusinessProjects();
   const years = useMemo(() => {
     const ys = new Set([String(new Date().getFullYear())]);
@@ -426,15 +441,12 @@ const ProjectList: React.FC<{
     );
   }, [projects, q, year, division]);
   const byStatus = (p: BizProject) => !status || p.status === status;
-  const byContract = (p: BizProject) => contractFilter === 'all' || (contractFilter === 'signed' ? p.contractSigned : !p.contractSigned);
-  const rows = useMemo(() => base.filter((p) => byStatus(p) && byContract(p)), [base, status, contractFilter]);
+  const rows = useMemo(() => base.filter(byStatus), [base, status]);
 
   const rev = rows.reduce((s, p) => s + p.expectedRevenue, 0);
   const contractRev = rows.reduce((s, p) => s + (p.contract?.value ?? (p.contractSigned ? p.expectedRevenue : 0)), 0);
   // Số đếm trong ô lọc: theo các bộ lọc còn lại (để chọn vào là ra đúng số đó).
-  const count = (st: BizStatus) => base.filter((p) => p.status === st && byContract(p)).length;
-  const signedCount = base.filter((p) => p.contractSigned && byStatus(p)).length;
-  const unsignedCount = base.filter((p) => !p.contractSigned && byStatus(p)).length;
+  const count = (st: BizStatus) => base.filter((p) => p.status === st).length;
 
   const exportXlsx = () => {
     const data = [
@@ -478,24 +490,6 @@ const ProjectList: React.FC<{
         title="Sổ theo dõi dự án"
         actions={
           <>
-            <label className="flex items-center gap-1.5 text-[12px] text-slate-600">
-              Năm
-              <select value={year} onChange={(e) => setYear(e.target.value)} className={`${erp.input} w-28`}>
-                <option value="">Tất cả</option>
-                {years.map((y) => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
-              </select>
-            </label>
-            <label className="flex items-center gap-1.5 text-[12px] text-slate-600">
-              Khối
-              <select value={division} onChange={(e) => setDivision(e.target.value)} className={`${erp.input} w-32`}>
-                <option value="">Tất cả</option>
-                {DIVISIONS.map((d) => (
-                  <option key={d}>{d}</option>
-                ))}
-              </select>
-            </label>
             <RoleSelect role={role} onChange={onRoleChange} />
             {(role === 'AM' || role === 'GĐK') && (
               <Btn variant="primary" icon={Plus} onClick={onCreate} title={role === 'GĐK' ? 'GĐK tạo → mã được cấp ngay' : 'AM tạo → chờ GĐK duyệt mã'}>
@@ -514,6 +508,24 @@ const ProjectList: React.FC<{
         noPad
         actions={
           <>
+            <label className="flex items-center gap-1.5 text-[12px] text-slate-600">
+              Năm
+              <select value={year} onChange={(e) => setYear(e.target.value)} className={`${erp.input} h-7 w-24`}>
+                <option value="">Tất cả</option>
+                {years.map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-1.5 text-[12px] text-slate-600">
+              Khối
+              <select value={division} onChange={(e) => setDivision(e.target.value)} className={`${erp.input} h-7 w-28`}>
+                <option value="">Tất cả</option>
+                {DIVISIONS.map((d) => (
+                  <option key={d}>{d}</option>
+                ))}
+              </select>
+            </label>
             <div className="relative w-60">
               <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm mã, tên dự án, khách hàng, PM..." className={`${erp.inputFull} h-7 pl-7`} />
@@ -525,11 +537,6 @@ const ProjectList: React.FC<{
                   {s} ({count(s)})
                 </option>
               ))}
-            </select>
-            <select value={contractFilter} onChange={(e) => setContractFilter(e.target.value as 'all' | 'signed' | 'unsigned')} className={`${erp.input} h-7 w-36`}>
-              <option value="all">Tất cả hợp đồng</option>
-              <option value="signed">Đã ký ({signedCount})</option>
-              <option value="unsigned">Chưa ký ({unsignedCount})</option>
             </select>
             <Btn icon={FileSpreadsheet} onClick={exportXlsx} className="h-7">
               Xuất Excel
@@ -1029,6 +1036,181 @@ const Files: React.FC<{ files: BizAttachment[] }> = ({ files }) =>
     <span className="text-slate-400">Chưa có tệp</span>
   );
 
+/**
+ * Bảng "Mã dự án": Mã tổng (không gắn PM) · Mã kinh doanh · Mã sản xuất · tối đa MAX_OUTSOURCE mã outsource
+ * (Mã tổng.3, .4) — mỗi mã outsource chọn PM phụ trách, có thể xoá.
+ */
+const CodeTable: React.FC<{ project: BizProject; actor: string }> = ({ project: p, actor }) => {
+  const { projects, addOutsourceCode, setOutsourcePm, removeOutsourceCode } = useBusinessProjects();
+  const outs = p.outsourceCodes || [];
+  const pms = useMemo(
+    () => peopleOf(projects, (x) => [x.businessPm, x.productionPm, ...(x.outsourceCodes || []).map((o) => o.pm)]),
+    [projects],
+  );
+  const canAdd = !!p.masterCode && outs.length < MAX_OUTSOURCE;
+  const td = `${erp.td} bg-[#f3f6fa] text-slate-600 w-[30%] border-l-0`;
+  const pmSelect = (value: string, onChange: (v: string) => void) => (
+    <select value={value} onChange={(e) => onChange(e.target.value)} className={`${erp.input} h-7 w-full max-w-[280px]`}>
+      <option value="">— Chọn PM outsource —</option>
+      {pms.map((n) => (
+        <option key={n}>{n}</option>
+      ))}
+    </select>
+  );
+  return (
+    <Panel
+      title="Mã dự án"
+      icon={Hash}
+      noPad
+      actions={
+        p.masterCode ? (
+          <Btn icon={Plus} className="h-7" disabled={!canAdd} onClick={() => addOutsourceCode(p.id, '', actor)} title={canAdd ? 'Tạo mã outsource' : `Tối đa ${MAX_OUTSOURCE} mã outsource`}>
+            Tạo mã outsource ({outs.length}/{MAX_OUTSOURCE})
+          </Btn>
+        ) : undefined
+      }
+    >
+      <table className={erp.table}>
+        <thead>
+          <tr>
+            {['Loại mã', 'Mã', 'PM phụ trách'].map((h) => (
+              <th key={h} className={`${erp.th} text-left border-t-0 first:border-l-0 last:border-r-0`}>
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="text-[13px]">
+          {/* Mã tổng không gắn PM — chỉ mã kinh doanh / sản xuất / outsource có PM phụ trách. */}
+          <tr className={erp.tr}>
+            <td className={td}>Mã dự án (mã tổng)</td>
+            <td className={`${erp.td} ${erp.code} font-bold`}>{p.masterCode || 'Chờ cấp mã'}</td>
+            <td className={`${erp.td} border-r-0`} />
+          </tr>
+          <tr className={erp.tr}>
+            <td className={td}>Mã kinh doanh (PAKD)</td>
+            <td className={`${erp.td} ${erp.code} font-bold`}>{p.businessCode}</td>
+            <td className={`${erp.td} border-r-0`}>{p.businessPm || '—'}</td>
+          </tr>
+          <tr className={erp.tr}>
+            <td className={td}>Mã sản xuất</td>
+            <td className={`${erp.td} ${erp.code} font-bold`}>{p.productionCode}</td>
+            <td className={`${erp.td} border-r-0`}>{p.productionPm || '—'}</td>
+          </tr>
+          {outs.map((o, i) => (
+            <tr key={o.code} className={erp.tr}>
+              <td className={td}>Mã outsource {outs.length > 1 ? i + 1 : ''}</td>
+              <td className={`${erp.td} ${erp.code} font-bold`}>{o.code}</td>
+              <td className={`${erp.td} border-r-0 py-1`}>
+                <div className="flex items-center gap-2">
+                  {pmSelect(o.pm, (v) => setOutsourcePm(p.id, o.code, v, actor))}
+                  <button
+                    type="button"
+                    onClick={() => removeOutsourceCode(p.id, o.code, actor)}
+                    className="ml-auto p-1 text-slate-400 hover:text-rose-600 cursor-pointer"
+                    title="Xoá mã outsource"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+          {!outs.length && (
+            <tr className={erp.tr}>
+              <td className={td}>Mã outsource</td>
+              <td className={`${erp.td} text-slate-400 italic`} colSpan={2}>
+                {p.masterCode ? `Chưa có — bấm "Tạo mã outsource" (tối đa ${MAX_OUTSOURCE} mã)` : 'Tạo sau khi được cấp mã dự án'}
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </Panel>
+  );
+};
+
+/**
+ * Thanh thao tác của bước hiện tại — luôn hiện dưới thanh tiêu đề (kể cả khi đã ẩn bảng quy trình bên phải):
+ * GĐK duyệt mã · AM / GĐK lập PAKD · Kế toán (CFO) duyệt PAKD · Kế toán mở lại dự án đã đóng.
+ * Vai trò không có quyền thao tác chỉ thấy thông báo đang chờ ai.
+ */
+const StepActionBar: React.FC<{
+  project: BizProject;
+  role: BizRole;
+  onApproveCode: () => void;
+  onLapPakd: () => void;
+  onDecide: () => void;
+  onReopen: () => void;
+}> = ({ project: p, role, onApproveCode, onLapPakd, onDecide, onReopen }) => {
+  const last = latestPakd(p);
+  const left = p.pakdDeadline ? Math.ceil((new Date(`${p.pakdDeadline}T00:00:00`).getTime() - new Date(new Date().toDateString()).getTime()) / 86_400_000) : null;
+  let text: React.ReactNode = null;
+  let action: React.ReactNode = null;
+  let waitingFor = '';
+  if (p.status === 'Chờ duyệt mã') {
+    if (role === 'GĐK') {
+      text = <>Yêu cầu mở mã dự án đang chờ <b>Giám đốc khối</b> duyệt. Duyệt xong hệ thống sinh Mã dự án / Mã KD / Mã SX và bắt đầu đếm {PAKD_DAYS} ngày lập PAKD.</>;
+      action = (
+        <Btn variant="primary" icon={CheckCircle2} onClick={onApproveCode}>
+          Duyệt mã dự án
+        </Btn>
+      );
+    } else waitingFor = 'Giám đốc khối duyệt mã dự án';
+  } else if (p.status === 'Chưa có PAKD') {
+    if (role === 'GĐK' || role === 'AM') {
+      text = (
+        <>
+          {last?.state === 'Từ chối' ? <>PAKD V{last.version} bị từ chối{last.note ? ` (${last.note})` : ''} — cần lập lại. </> : 'Dự án cần lập phương án kinh doanh (PAKD). '}
+          Hạn lập: <b>{dmy(p.pakdDeadline || '')}</b>
+          {left !== null && <> ({left >= 0 ? `còn ${left} ngày` : `quá hạn ${-left} ngày`})</>}
+        </>
+      );
+      action = (
+        <Btn variant="success" icon={Send} onClick={onLapPakd}>
+          {p.pakd.length ? `Lập lại PAKD V${p.pakd.length + 1}` : 'Lập PAKD'}
+        </Btn>
+      );
+    } else waitingFor = `AM / Giám đốc khối lập PAKD (hạn ${dmy(p.pakdDeadline || '')})`;
+  } else if (p.status === 'PAKD chờ duyệt') {
+    if (role === 'CFO') {
+      text = <>PAKD V{last?.version} đang chờ <b>Kế toán (CFO)</b> duyệt.</>;
+      action = (
+        <Btn variant="primary" icon={ClipboardCheck} onClick={onDecide}>
+          Duyệt / Từ chối PAKD
+        </Btn>
+      );
+    } else waitingFor = `Kế toán (CFO) duyệt PAKD V${last?.version ?? ''}`;
+  } else if (p.status === 'Đóng') {
+    if (role === 'CFO') {
+      text = <>Dự án đã đóng do quá hạn lập PAKD. Kế toán có thể mở lại để khối lập PAKD.</>;
+      action = (
+        <Btn icon={RotateCcw} onClick={onReopen}>
+          Mở lại dự án
+        </Btn>
+      );
+    } else waitingFor = 'Kế toán (CFO) mở lại dự án';
+  }
+  if (!text && !waitingFor) return null;
+  if (!text)
+    return (
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2 rounded-[4px] border border-slate-300 bg-slate-50 text-[12.5px] text-slate-600">
+        <Info size={14} className="text-slate-400 shrink-0" />
+        <span>
+          Đang chờ <b className="text-slate-800">{waitingFor}</b>.
+        </span>
+        <span className="text-slate-400">Đổi “Vai trò” ở góc trên nếu bạn là người thực hiện bước này.</span>
+      </div>
+    );
+  return (
+    <div className="flex flex-wrap items-center gap-3 px-3 py-2 rounded-[4px] border border-amber-300 bg-amber-50 text-[12.5px] text-amber-900">
+      <AlertCircle size={15} className="text-amber-600 shrink-0" />
+      <span className="flex-1 min-w-[240px]">{text}</span>
+      {action}
+    </div>
+  );
+};
+
 const ContractPanel: React.FC<{ project: BizProject; onEdit: () => void }> = ({ project: p, onEdit }) => {
   const c = p.contract!;
   const diff = c.value - p.expectedRevenue;
@@ -1121,22 +1303,21 @@ const ProjectDetail: React.FC<{
   onApproveCode: () => void;
   onReopen: () => void;
   onSubmitPakd: () => void;
+  onSavePakd: (form: PakdFormData, submit: boolean) => void;
+  actor: string;
   onDecide: (approve: boolean, note: string) => void;
   onFinish: () => void;
-}> = ({ project: p, onBack, onEdit, onDelete, onImport, onSaveContract, onAttachments, role, onRoleChange, onApproveCode, onReopen, onSubmitPakd, onDecide, onFinish }) => {
+}> = ({ project: p, onBack, onEdit, onDelete, onImport, onSaveContract, onAttachments, role, onRoleChange, onApproveCode, onReopen, onSubmitPakd, onSavePakd, actor, onDecide, onFinish }) => {
   const files = p.attachments || [];
   const [deciding, setDeciding] = useState(false);
   const [tab, setTab] = useState<'overview' | 'history'>('overview');
   const [showContract, setShowContract] = useState(false);
-  const gp = grossProfit(p);
   const drawer = useWorkflowDrawer();
   const wide = useWide();
-  const [importReq, setImportReq] = useState(0);
-  /** "Lập PAKD": về tab thông tin, cuộn tới bảng kế hoạch theo tháng và mở import kế hoạch. */
+  /** "Lập PAKD": về tab thông tin và cuộn tới form "Lập phương án kinh doanh". */
   const lapPakd = () => {
     setTab('overview');
-    setImportReq((n) => n + 1);
-    setTimeout(() => document.getElementById('pakd-plan')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    setTimeout(() => document.getElementById('pakd-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   };
 
   return (
@@ -1190,6 +1371,8 @@ const ProjectDetail: React.FC<{
         ]}
       />
 
+      <StepActionBar project={p} role={role} onApproveCode={onApproveCode} onLapPakd={lapPakd} onDecide={() => setDeciding(true)} onReopen={onReopen} />
+
       <FolderTabs
         tabs={[
           { key: 'overview', label: 'Thông tin dự án', icon: LayoutList },
@@ -1201,116 +1384,97 @@ const ProjectDetail: React.FC<{
 
       {tab === 'overview' && (
         <>
-          <Panel title="Mã dự án" icon={Hash} noPad>
-            <table className={erp.table}>
-              <thead>
-                <tr>
-                  {['Loại mã', 'Mã', 'PM phụ trách'].map((h) => (
-                    <th key={h} className={`${erp.th} text-left border-t-0 first:border-l-0 last:border-r-0`}>
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="text-[13px]">
-                {[
-                  ['Mã dự án (mã tổng)', p.masterCode || 'Chờ cấp mã', '—'],
-                  ['Mã kinh doanh (PAKD)', p.businessCode, p.businessPm],
-                  ['Mã sản xuất', p.productionCode, p.productionPm],
-                ].map(([k, c, pm]) => (
-                  <tr key={k} className={erp.tr}>
-                    <td className={`${erp.td} bg-[#f3f6fa] text-slate-600 w-[30%] border-l-0`}>{k}</td>
-                    <td className={`${erp.td} ${erp.code} font-bold`}>{c}</td>
-                    <td className={`${erp.td} border-r-0`}>{pm || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Panel>
+          <CodeTable project={p} actor={actor} />
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <Panel title="Thông tin cơ hội kinh doanh" icon={Building2} noPad>
-              <FieldTable
-                rows={[
-                  { label: 'Khối', value: p.division },
-                  { label: 'Loại dự án', value: p.projectType },
-                  { label: 'Tên khách hàng', value: p.customerName },
-                  { label: 'Mã khách hàng', value: <span className="font-mono">{p.customerCode}</span> },
-                  { label: 'Giám đốc kinh doanh', value: p.businessDirector },
-                  { label: 'Giám đốc khối', value: p.salesDirector },
-                  { label: 'Người tạo', value: p.creator },
-                  { label: 'AM', value: p.am.join(', ') },
-                  { label: 'Thời gian', value: `${dmy(p.startDate)} → ${dmy(p.endDate)}` },
-                  ...(p.note ? [{ label: 'Ghi chú', value: p.note }] : []),
-                ]}
-              />
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+            <Panel title="Thông tin chi tiết dự án" icon={Building2} noPad className="xl:col-span-2">
+              <div className="grid grid-cols-1 lg:grid-cols-2">
+                <FieldTable
+                  rows={[
+                    { label: 'Khối', value: p.division },
+                    { label: 'Loại dự án', value: p.projectType },
+                    { label: 'Tên khách hàng', value: p.customerName },
+                    { label: 'Mã khách hàng', value: <span className="font-mono">{p.customerCode}</span> },
+                    { label: 'Thời gian', value: `${dmy(p.startDate)} → ${dmy(p.endDate)}` },
+                  ]}
+                />
+                <FieldTable
+                  rows={[
+                    { label: 'Giám đốc kinh doanh', value: p.businessDirector },
+                    { label: 'Giám đốc khối', value: p.salesDirector },
+                    { label: 'AM', value: p.am.join(', ') },
+                    { label: 'Người tạo', value: p.creator },
+                    ...(p.note ? [{ label: 'Ghi chú', value: p.note }] : []),
+                  ]}
+                />
+              </div>
             </Panel>
-            <Panel title="Tài chính (VNĐ)" icon={Wallet} noPad>
-              <FieldTable
-                labelWidth="50%"
-                rows={[
-                  { label: 'Doanh thu dự kiến', value: money(p.expectedRevenue), num: true, strong: true },
-                  { label: 'Chi phí kế hoạch', value: money(plannedCost(p)), num: true },
-                  { label: '   └ Chi phí kinh doanh kế hoạch', value: money(p.plannedBusinessCost), num: true },
-                  { label: '   └ Chi phí sản xuất kế hoạch', value: money(p.plannedProductionCost), num: true },
-                  {
-                    label: 'Lợi nhuận gộp kế hoạch',
-                    value: <span className={gp < 0 ? 'text-rose-600' : 'text-emerald-700'}>{money(gp)}</span>,
-                    num: true,
-                    strong: true,
-                  },
-                  { label: 'Biên lợi nhuận gộp', value: `${grossMargin(p).toFixed(1)}%`, num: true },
-                  {
-                    label: 'Hợp đồng',
-                    value: (
-                      <button
-                        type="button"
-                        onClick={() => setShowContract(true)}
-                        className="inline-flex items-center gap-1.5 cursor-pointer group"
-                        title={p.contractSigned ? 'Xem / cập nhật hợp đồng' : 'Cập nhật ký hợp đồng'}
-                      >
-                        {p.contractSigned ? (
-                          <Tag cls="bg-emerald-50 text-emerald-700 border-emerald-300 group-hover:border-emerald-500" icon={FileSignature}>
-                            Đã ký
-                          </Tag>
+
+            <Panel title="Hợp đồng & tài liệu" icon={FileSignature} noPad>
+              <div className="divide-y divide-slate-200">
+                {/* Hợp đồng */}
+                <div className="px-3 py-2.5">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1.5">Hợp đồng</p>
+                  <div className="flex items-start gap-2.5">
+                    <span
+                      className={`mt-0.5 w-8 h-8 shrink-0 rounded-full flex items-center justify-center ${
+                        p.contractSigned ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                      }`}
+                    >
+                      <FileSignature size={15} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      {p.contractSigned ? (
+                        <Tag cls="bg-emerald-50 text-emerald-700 border-emerald-300">Đã ký</Tag>
+                      ) : (
+                        <Tag cls="bg-slate-100 text-slate-600 border-slate-300">Chưa ký</Tag>
+                      )}
+                      <p className="text-[12.5px] text-slate-700 mt-1 truncate">
+                        {p.contract ? (
+                          <>
+                            Số <span className="font-semibold">{p.contract.number}</span> · ký {dmy(p.contract.signDate)}
+                          </>
+                        ) : p.contractSigned ? (
+                          'Chưa có thông tin chi tiết hợp đồng'
                         ) : (
-                          <Tag cls="bg-slate-100 text-slate-600 border-slate-300 group-hover:border-[#1f5fa8] group-hover:text-[#1f5fa8]" icon={FileSignature}>
-                            Chưa ký
-                          </Tag>
+                          'Chưa có thông tin ký hợp đồng'
                         )}
-                        <span className="text-[12px] text-[#1f5fa8] group-hover:underline">
-                          {p.contract ? `Số ${p.contract.number}` : p.contractSigned ? 'Bổ sung thông tin HĐ' : 'Cập nhật ký hợp đồng'}
-                        </span>
-                      </button>
-                    ),
-                  },
-                  {
-                    label: `Tài liệu đính kèm (${files.length})`,
-                    value: (
-                      <AttachmentList
-                        compact
-                        files={files}
-                        label="Đính kèm tài liệu"
-                        onAdd={(added) => onAttachments([...files, ...added], `Thêm ${added.map((f) => f.name).join(', ')}`)}
-                        onRemove={(id) =>
-                          onAttachments(
-                            files.filter((f) => f.id !== id),
-                            `Xoá ${files.find((f) => f.id === id)?.name}`,
-                          )
-                        }
-                      />
-                    ),
-                  },
-                ]}
-              />
+                      </p>
+                      {p.contract && (
+                        <p className="text-[12px] text-slate-500">
+                          Thời hạn {dmy(p.contract.from)} → {dmy(p.contract.to)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <Btn icon={p.contract ? Pencil : FileSignature} className="h-7 mt-2 w-full justify-center" onClick={() => setShowContract(true)}>
+                    {p.contract ? 'Xem / cập nhật hợp đồng' : p.contractSigned ? 'Bổ sung thông tin HĐ' : 'Cập nhật ký hợp đồng'}
+                  </Btn>
+                </div>
+                {/* Tài liệu đính kèm */}
+                <div className="px-3 py-2.5">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1.5">Tài liệu đính kèm ({files.length})</p>
+                  <AttachmentList
+                    compact
+                    files={files}
+                    label="Đính kèm tài liệu"
+                    onAdd={(added) => onAttachments([...files, ...added], `Thêm ${added.map((f) => f.name).join(', ')}`)}
+                    onRemove={(id) =>
+                      onAttachments(
+                        files.filter((f) => f.id !== id),
+                        `Xoá ${files.find((f) => f.id === id)?.name}`,
+                      )
+                    }
+                  />
+                </div>
+              </div>
             </Panel>
           </div>
+
+          {/* PAKD: hiện sau khi GĐK duyệt mã — AM / GĐK nhập trong hạn PAKD_DAYS ngày */}
+          {p.status !== 'Chờ duyệt mã' && <PakdForm key={p.id} project={p} role={role} actor={actor} onSave={onSavePakd} />}
 
           {p.contract && <ContractPanel project={p} onEdit={() => setShowContract(true)} />}
-          <PhaseStepper key={p.id + p.version} phases={p.phases} current={p.currentPhase} />
-          <div id="pakd-plan" className="scroll-mt-16">
-            <FinanceSection project={p} onImport={onImport} importRequest={importReq} />
-          </div>
         </>
       )}
 
@@ -1425,39 +1589,33 @@ const peopleOf = (projects: BizProject[], pick: (p: BizProject) => (string | und
   [...new Set(projects.flatMap((p) => pick(p)).map((x) => (x || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'vi'));
 
 /**
- * Form "Yêu cầu mở mã dự án" (tạo mới) / "Sửa thông tin dự án".
- * Trường: Mã dự án · Mã kinh doanh · Mã sản xuất (hệ thống tự sinh sau khi GĐK duyệt) · Tên dự án ·
- *         PM kinh doanh · PM sản xuất · Khách hàng (chọn / thêm mới) · Loại dự án · GĐKD · AM · Khối · Dự án KEY.
+ * Màn tạo dự án (Yêu cầu mở mã) / Sửa dự án — dựng giống màn chi tiết dự án, các ô nhập ngay tại chỗ:
+ *   Thanh tiêu đề (Tên dự án · Dự án trọng điểm) · Mã dự án (mã tự sinh sau khi GĐK duyệt, chọn PM KD / PM SX)
+ *   · Thông tin chi tiết dự án · Hợp đồng & tài liệu · Lập PAKD (mở sau khi GĐK duyệt mã).
+ * AM tạo → Gửi GĐK duyệt; GĐK tạo → hệ thống cấp mã ngay, bắt đầu đếm PAKD_DAYS ngày lập PAKD.
  */
 const ProjectForm: React.FC<{
   initial?: BizProject;
   projects: BizProject[];
   role: BizRole;
+  onRoleChange: (r: BizRole) => void;
+  actor: string;
   onCancel: () => void;
-  onSubmit: (data: BizProjectInput) => void;
-}> = ({ initial, projects, role, onCancel, onSubmit }) => {
+  onSubmit: (data: BizProjectInput, files: BizAttachment[]) => void;
+}> = ({ initial, projects, role, onRoleChange, actor, onCancel, onSubmit }) => {
   const [f, setF] = useState<BizProjectInput>(() => (initial ? toInput(initial) : emptyInput()));
+  const [files, setFiles] = useState<BizAttachment[]>(() => initial?.attachments || []);
   const [touched, setTouched] = useState(false);
   const directors = useMemo(() => peopleOf(projects, (p) => [p.businessDirector, p.salesDirector]), [projects]);
   const amPeople = useMemo(() => peopleOf(projects, (p) => [...(p.am || []), p.businessPm]), [projects]);
   const bizPms = useMemo(() => peopleOf(projects, (p) => [p.businessPm]), [projects]);
   const prodPms = useMemo(() => peopleOf(projects, (p) => [p.productionPm]), [projects]);
-  /** Ô chọn 1 người; giữ cả giá trị cũ nếu không còn trong danh sách. */
-  const personSelect = (k: 'businessDirector' | 'businessPm' | 'productionPm', list: string[], ph: string) => (
-    <select value={f[k]} onChange={(e) => set(k, e.target.value)} className={inputCls}>
-      <option value="">{ph}</option>
-      {[...new Set([...list, f[k]].filter(Boolean))].map((n) => (
-        <option key={n} value={n}>
-          {n}
-        </option>
-      ))}
-    </select>
-  );
   const [extraCustomers, setExtraCustomers] = useState<{ code: string; name: string }[]>([]);
   const [adding, setAdding] = useState(false);
   const [nc, setNc] = useState({ code: '', name: '' });
-
   const set = <K extends keyof BizProjectInput>(k: K, v: BizProjectInput[K]) => setF((prev) => ({ ...prev, [k]: v }));
+  const isEdit = !!initial;
+  const willIssue = !isEdit && role === 'GĐK';
 
   const customers = useMemo(() => {
     const base = customerList(projects);
@@ -1465,7 +1623,6 @@ const ProjectForm: React.FC<{
     if (f.customerCode && !base.some((b) => b.code === f.customerCode)) base.push({ code: f.customerCode, name: f.customerName });
     return base.sort((a, b) => a.code.localeCompare(b.code));
   }, [projects, extraCustomers, f.customerCode, f.customerName]);
-
   const pickCustomer = (code: string) => {
     const c = customers.find((x) => x.code === code);
     setF((prev) => ({ ...prev, customerCode: c?.code || '', customerName: c?.name || '' }));
@@ -1483,166 +1640,333 @@ const ProjectForm: React.FC<{
   const errors = useMemo(() => {
     const e: Partial<Record<keyof BizProjectInput, string>> = {};
     if (!f.name.trim()) e.name = 'Nhập tên dự án';
-    if (!f.customerCode.trim()) e.customerCode = 'Chọn khách hàng';
-    if (!f.projectType) e.projectType = 'Chọn loại dự án';
     if (!f.division) e.division = 'Chọn khối';
+    if (!f.projectType) e.projectType = 'Chọn loại dự án';
+    if (!f.customerCode.trim()) e.customerCode = 'Chọn khách hàng';
+    if (f.startDate && f.endDate && f.endDate < f.startDate) e.endDate = 'Ngày kết thúc phải sau ngày bắt đầu';
     return e;
   }, [f]);
-
-  const errCount = Object.keys(errors).length;
+  const errList = Object.values(errors);
   const err = (k: keyof BizProjectInput) => (touched ? errors[k] : undefined);
-
   const submit = () => {
     setTouched(true);
-    if (errCount) return;
-    onSubmit({
-      ...f,
-      name: f.name.trim(),
-    });
+    if (errList.length) return;
+    onSubmit({ ...f, name: f.name.trim() }, files);
   };
 
-  const autoText = 'Hệ thống tự sinh sau khi GĐK duyệt';
-  const codeBox = (v: string) => (
-    <input value={v || ''} placeholder={autoText} disabled className={`${inputCls} font-mono ${v ? 'font-bold text-[#1f5fa8]' : ''}`} />
+  // ---- ô nhập dùng trong bảng ----
+  const cell = (k: keyof BizProjectInput) =>
+    `${erp.inputFull} h-8 ${err(k) ? '!border-rose-400 bg-rose-50/40' : ''}`;
+  const req = (label: string) => (
+    <>
+      {label} <span className="text-rose-500">*</span>
+    </>
   );
+  const errText = (k: keyof BizProjectInput) => err(k) && <p className="text-[11.5px] text-rose-600 mt-0.5">{err(k)}</p>;
+  const personSelect = (k: 'businessDirector' | 'salesDirector' | 'businessPm' | 'productionPm', list: string[], ph: string) => (
+    <select value={f[k]} onChange={(e) => set(k, e.target.value)} className={cell(k)}>
+      <option value="">{ph}</option>
+      {[...new Set([...list, f[k]].filter(Boolean))].map((n) => (
+        <option key={n} value={n}>
+          {n}
+        </option>
+      ))}
+    </select>
+  );
+  const td = `${erp.td} bg-[#f3f6fa] text-slate-600 w-[30%] border-l-0`;
+  const auto = <span className="text-slate-400 italic font-sans font-normal text-[12.5px]">Tự sinh sau khi GĐK duyệt</span>;
 
   return (
     <>
       <ErpTitleBar
-        crumbs={[...CRUMBS, initial ? `Sửa ${initial.masterCode || 'yêu cầu mở mã'}` : 'Yêu cầu mở mã dự án']}
-        title={initial ? `Sửa dự án — ${initial.name}` : 'Yêu cầu mở mã dự án'}
+        crumbs={[...CRUMBS, isEdit ? `Sửa ${initial!.masterCode || 'yêu cầu mở mã'}` : 'Yêu cầu mở mã dự án']}
+        title={
+          <span className="flex flex-wrap items-center gap-2 w-full">
+            <input
+              value={f.name}
+              onChange={(e) => set('name', e.target.value)}
+              placeholder="Nhập tên dự án *"
+              autoFocus={!isEdit}
+              className={`min-w-[280px] w-[min(560px,60vw)] h-9 px-2.5 rounded-[3px] border text-[17px] font-bold text-[#1e3a5f] placeholder:text-slate-400 placeholder:font-semibold focus:outline-none focus:ring-2 focus:ring-[#1f5fa8]/30 ${
+                err('name') ? 'border-rose-400 bg-rose-50/40' : 'border-slate-300'
+              }`}
+            />
+            <button
+              type="button"
+              onClick={() => set('isKey', !f.isKey)}
+              title="Đánh dấu dự án trọng điểm"
+              className={`inline-flex items-center gap-1 h-7 px-2 rounded-[3px] border text-[12px] font-semibold cursor-pointer ${
+                f.isKey ? 'bg-amber-50 border-amber-400 text-amber-700' : 'bg-white border-slate-300 text-slate-500 hover:border-amber-400'
+              }`}
+            >
+              <Star size={13} className={f.isKey ? 'fill-amber-400 text-amber-500' : ''} /> {f.isKey ? 'Dự án trọng điểm (KEY)' : 'Đánh dấu KEY'}
+            </button>
+          </span>
+        }
         actions={
           <>
+            {!isEdit && <RoleSelect role={role} onChange={onRoleChange} />}
             <Btn icon={X} onClick={onCancel}>
               Huỷ
             </Btn>
-            <Btn variant="success" icon={Save} onClick={submit}>
-              {initial ? 'Lưu thay đổi' : 'Gửi yêu cầu'}
+            <Btn variant="success" icon={isEdit ? Save : Send} onClick={submit}>
+              {isEdit ? 'Lưu thay đổi' : willIssue ? 'Tạo & cấp mã' : 'Gửi GĐK duyệt'}
             </Btn>
           </>
         }
-        meta={initial ? [{ label: 'Version hiện tại', value: `v${initial.version}` }, { label: 'Lưu sẽ tạo', value: `v${initial.version + 1}` }] : undefined}
+        meta={[
+          { label: 'Mã dự án', value: f.masterCode ? <span className={erp.code}>{f.masterCode}</span> : <span className="text-slate-400">Chờ GĐK duyệt</span> },
+          { label: 'Version', value: isEdit ? `v${initial!.version} → v${initial!.version + 1}` : 'Mới' },
+          { label: 'Trạng thái', value: isEdit ? <StatusBadge status={initial!.status} /> : <Tag cls="bg-slate-100 text-slate-600 border-slate-300">Đang soạn</Tag> },
+          { label: 'Khối', value: f.division || '—' },
+          { label: 'Người tạo', value: f.creator || actor },
+        ]}
       />
 
-      {touched && errCount > 0 && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-[4px] bg-rose-50 border border-rose-300 text-[12px] font-semibold text-rose-700">
-          <AlertCircle size={14} /> Còn {errCount} trường chưa hợp lệ — kiểm tra các ô đánh dấu đỏ.
+      {!isEdit && (
+        <div className="flex flex-wrap items-center gap-3 px-3 py-2 rounded-[4px] border border-emerald-600/60 bg-emerald-50/60 text-[12.5px] text-slate-700">
+          <Info size={15} className="text-emerald-700 shrink-0" />
+          <span className="flex-1 min-w-[240px]">
+            <b className="text-[#1e3a5f]">Hướng dẫn quy trình: </b>
+            {willIssue
+              ? 'Giám đốc khối tạo → hệ thống cấp mã ngay (bỏ bước duyệt mã)'
+              : 'AM gửi yêu cầu → Giám đốc khối duyệt → hệ thống cấp Mã dự án / Mã KD / Mã SX'}
+            {` → AM / GĐK lập PAKD trong ${PAKD_DAYS} ngày → Kế toán (CFO) duyệt; bị từ chối thì trả về lập lại.`}
+          </span>
         </div>
       )}
 
-      <Panel
-        title="Yêu cầu mở mã dự án"
-        icon={LayoutList}
-        footer={
-          <span className="text-rose-600">
-            Sau khi GĐK duyệt, hệ thống tự sinh Mã dự án, Mã kinh doanh (= Mã dự án.1) và Mã sản xuất (= Mã dự án.2). Sau đó Khối cập nhật PAKD trong {PAKD_DAYS} ngày kể từ ngày GĐK phê duyệt → Kế toán duyệt; bị từ chối thì tự động trả về Khối cập nhật lại. GĐK tự tạo yêu cầu thì bỏ qua bước phê duyệt.
+      {touched && errList.length > 0 && (
+        <div className="flex items-start gap-2 px-3 py-2 rounded-[4px] bg-rose-50 border border-rose-300 text-[12px] text-rose-700">
+          <AlertCircle size={14} className="mt-0.5 shrink-0" />
+          <span>
+            <b>Còn {errList.length} thông tin cần bổ sung:</b> {errList.join(' · ')}
           </span>
-        }
-      >
-        {/* Hướng dẫn quy trình cấp mã */}
-        <div className="mb-3 space-y-1.5">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 rounded-[4px] border border-emerald-600/70 bg-emerald-50/40 text-[13px]">
-            <span className="font-bold text-[#1e3a5f]">Hướng dẫn quy trình</span>
-            <span className="text-slate-700">
-              ▸ {role === 'GĐK' && !f.masterCode ? 'Gửi yêu cầu -> GĐK tự duyệt (người tạo là GĐK) -> Hệ thống cấp mã' : 'Gửi GĐK duyệt -> GĐK duyệt -> Hệ thống cấp mã'}
+        </div>
+      )}
+
+      {/* Mã dự án */}
+      <Panel title="Mã dự án" icon={Hash} noPad>
+        <table className={erp.table}>
+          <thead>
+            <tr>
+              {['Loại mã', 'Mã', 'PM phụ trách'].map((h) => (
+                <th key={h} className={`${erp.th} text-left border-t-0 first:border-l-0 last:border-r-0`}>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="text-[13px]">
+            <tr className={erp.tr}>
+              <td className={td}>Mã dự án (mã tổng)</td>
+              <td className={`${erp.td} ${erp.code} font-bold`}>{f.masterCode || auto}</td>
+              <td className={`${erp.td} border-r-0`} />
+            </tr>
+            <tr className={erp.tr}>
+              <td className={td}>Mã kinh doanh (PAKD)</td>
+              <td className={`${erp.td} ${erp.code} font-bold`}>{f.businessCode || auto}</td>
+              <td className={`${erp.td} border-r-0 py-1`}>
+                <div className="max-w-[320px]">{personSelect('businessPm', bizPms, '— Chọn PM kinh doanh —')}</div>
+              </td>
+            </tr>
+            <tr className={erp.tr}>
+              <td className={td}>Mã sản xuất</td>
+              <td className={`${erp.td} ${erp.code} font-bold`}>{f.productionCode || auto}</td>
+              <td className={`${erp.td} border-r-0 py-1`}>
+                <div className="max-w-[320px]">{personSelect('productionPm', prodPms, '— Chọn PM sản xuất —')}</div>
+              </td>
+            </tr>
+            <tr className={erp.tr}>
+              <td className={td}>Mã outsource</td>
+              <td className={`${erp.td} text-slate-400 italic border-r-0`} colSpan={2}>
+                {isEdit ? `${(initial!.outsourceCodes || []).map((o) => o.code).join(', ') || 'Chưa có'} — tạo / sửa trên màn chi tiết dự án` : 'Tạo sau khi được cấp mã dự án (tối đa 2 mã)'}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </Panel>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+        <Panel title="Thông tin chi tiết dự án" icon={Building2} noPad className="xl:col-span-2">
+          <div className="grid grid-cols-1 lg:grid-cols-2">
+            <FieldTable
+              rows={[
+                {
+                  label: req('Khối'),
+                  value: (
+                    <>
+                      <select value={f.division} onChange={(e) => set('division', e.target.value)} className={cell('division')}>
+                        <option value="">— Chọn khối —</option>
+                        {DIVISIONS.map((d) => (
+                          <option key={d}>{d}</option>
+                        ))}
+                      </select>
+                      {errText('division')}
+                    </>
+                  ),
+                },
+                {
+                  label: req('Loại dự án'),
+                  value: (
+                    <>
+                      <select value={f.projectType} onChange={(e) => set('projectType', e.target.value)} className={cell('projectType')}>
+                        <option value="">— Chọn loại dự án —</option>
+                        {PROJECT_TYPES.map((t) => (
+                          <option key={t}>{t}</option>
+                        ))}
+                      </select>
+                      {errText('projectType')}
+                    </>
+                  ),
+                },
+                {
+                  label: req('Tên khách hàng'),
+                  value: (
+                    <>
+                      <div className="flex items-center gap-1.5">
+                        <select value={f.customerCode} onChange={(e) => pickCustomer(e.target.value)} className={`${cell('customerCode')} flex-1 min-w-0`}>
+                          <option value="">— Chọn khách hàng —</option>
+                          {customers.map((c) => (
+                            <option key={c.code} value={c.code}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setAdding((v) => !v)}
+                          className="shrink-0 inline-flex items-center gap-0.5 text-[12px] font-semibold text-[#1f7ae0] hover:underline cursor-pointer"
+                          title="Thêm khách hàng mới"
+                        >
+                          <Plus size={13} /> Mới
+                        </button>
+                      </div>
+                      {errText('customerCode')}
+                      {adding && (
+                        <div className="mt-1.5 p-2 rounded-[4px] border border-[#bcd3f0] bg-[#f4f8fd] space-y-1.5">
+                          <div className="flex gap-1.5">
+                            <input value={nc.code} onChange={(e) => setNc((v) => ({ ...v, code: e.target.value }))} placeholder="Mã KH" className={`${erp.inputFull} h-8 w-24 font-mono`} />
+                            <input value={nc.name} onChange={(e) => setNc((v) => ({ ...v, name: e.target.value }))} placeholder="Tên khách hàng" className={`${erp.inputFull} h-8 flex-1`} />
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <Btn variant="primary" icon={Plus} className="h-7" disabled={!!ncErr} title={ncErr || undefined} onClick={addCustomer}>
+                              Thêm
+                            </Btn>
+                            <Btn className="h-7" onClick={() => setAdding(false)}>
+                              Huỷ
+                            </Btn>
+                            {ncErr && (nc.code || nc.name) && <span className="text-[11.5px] text-rose-600">{ncErr}</span>}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ),
+                },
+                { label: 'Mã khách hàng', value: f.customerCode ? <span className="font-mono">{f.customerCode}</span> : <span className="text-slate-400 text-[12.5px]">Theo khách hàng</span> },
+                {
+                  label: 'Thời gian',
+                  value: (
+                    <>
+                      <div className="flex items-center gap-1.5">
+                        <input type="date" value={f.startDate} onChange={(e) => set('startDate', e.target.value)} className={`${cell('startDate')} min-w-0`} />
+                        <span className="text-slate-400">→</span>
+                        <input type="date" value={f.endDate} onChange={(e) => set('endDate', e.target.value)} className={`${cell('endDate')} min-w-0`} />
+                      </div>
+                      {errText('endDate')}
+                    </>
+                  ),
+                },
+              ]}
+            />
+            <FieldTable
+              rows={[
+                { label: 'Giám đốc kinh doanh', value: personSelect('businessDirector', directors, '— Chọn GĐKD —') },
+                { label: 'Giám đốc khối', value: personSelect('salesDirector', directors, '— Chọn GĐ khối —') },
+                {
+                  label: 'AM',
+                  value: (
+                    <>
+                      <select value="" onChange={(e) => e.target.value && set('am', [...f.am, e.target.value])} className={`${erp.inputFull} h-8`}>
+                        <option value="">{f.am.length ? '— Thêm AM —' : '— Chọn AM —'}</option>
+                        {amPeople
+                          .filter((n) => !f.am.includes(n))
+                          .map((n) => (
+                            <option key={n} value={n}>
+                              {n}
+                            </option>
+                          ))}
+                      </select>
+                      {f.am.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {f.am.map((n) => (
+                            <span key={n} className="inline-flex items-center gap-1 pl-2 pr-1 py-[1px] rounded-[3px] bg-[#eaf2fc] border border-[#bcd3f0] text-[12px] text-[#1e3a5f]">
+                              {n}
+                              <button type="button" title={`Bỏ ${n}`} onClick={() => set('am', f.am.filter((x) => x !== n))} className="p-0.5 rounded hover:bg-[#d3e3f7] text-slate-500 cursor-pointer">
+                                <X size={11} />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ),
+                },
+                { label: 'Người tạo', value: f.creator || actor },
+                {
+                  label: 'Ghi chú',
+                  value: <input value={f.note || ''} onChange={(e) => set('note', e.target.value)} placeholder="Ghi chú (nếu có)" className={`${erp.inputFull} h-8`} />,
+                },
+              ]}
+            />
+          </div>
+        </Panel>
+
+        <Panel title="Hợp đồng & tài liệu" icon={FileSignature} noPad>
+          <div className="divide-y divide-slate-200">
+            <div className="px-3 py-2.5">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1.5">Hợp đồng</p>
+              <div className="flex items-start gap-2.5">
+                <span className={`mt-0.5 w-8 h-8 shrink-0 rounded-full flex items-center justify-center ${f.contractSigned ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                  <FileSignature size={15} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  {f.contractSigned ? <Tag cls="bg-emerald-50 text-emerald-700 border-emerald-300">Đã ký</Tag> : <Tag cls="bg-slate-100 text-slate-600 border-slate-300">Chưa ký</Tag>}
+                  <p className="text-[12.5px] text-slate-600 mt-1">
+                    {initial?.contract ? `Số ${initial.contract.number} · ký ${dmy(initial.contract.signDate)}` : 'Cập nhật ký hợp đồng trên màn chi tiết sau khi dự án được cấp mã.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="px-3 py-2.5">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1.5">Tài liệu đính kèm ({files.length})</p>
+              <AttachmentList compact files={files} label="Đính kèm tài liệu" onAdd={(added) => setFiles((x) => [...x, ...added])} onRemove={(id) => setFiles((x) => x.filter((y) => y.id !== id))} />
+            </div>
+          </div>
+        </Panel>
+      </div>
+
+      {!isEdit && (
+        <Panel title="Lập phương án kinh doanh (PAKD)" icon={ClipboardCheck}>
+          <div className="flex items-center gap-2.5 text-[12.5px] text-slate-500 py-3 justify-center text-center">
+            <Info size={15} className="text-slate-400 shrink-0" />
+            <span>
+              {willIssue
+                ? `Phần nhập PAKD mở ngay sau khi tạo — Giám đốc khối / AM có ${PAKD_DAYS} ngày kể từ ngày cấp mã để lập PAKD.`
+                : `Phần nhập PAKD mở sau khi Giám đốc khối duyệt mã — AM / Giám đốc khối có ${PAKD_DAYS} ngày kể từ ngày duyệt để lập PAKD.`}
             </span>
           </div>
-          <p className="text-[12.5px] text-slate-600">
-            {f.masterCode
-              ? `Mã dự án đã được cấp: ${f.masterCode}${f.pakdDeadline ? ` · Ngày đến hạn lập PAKD: ${dmy(f.pakdDeadline)}` : ''}.`
-              : 'Mã dự án chưa được cấp. Ngày đến hạn lập PAKD được xác định sau khi hệ thống cấp mã.'}
-          </p>
-        </div>
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-x-8 gap-y-2.5">
-          <FormRow label="Mã dự án">{codeBox(f.masterCode)}</FormRow>
-          <FormRow label="Tên dự án" required error={err('name')}>
-            <input value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="Nhập tên dự án" className={inputCls} />
-          </FormRow>
-          <FormRow label="Mã kinh doanh">{codeBox(f.businessCode)}</FormRow>
-          <FormRow label="PM kinh doanh">{personSelect('businessPm', bizPms, '— Chọn PM kinh doanh —')}</FormRow>
-          <FormRow label="Mã sản xuất">{codeBox(f.productionCode)}</FormRow>
-          <FormRow label="PM sản xuất">{personSelect('productionPm', prodPms, '— Chọn PM sản xuất —')}</FormRow>
-          <FormRow label="Khách hàng" required error={err('customerCode')}>
-            <div className="flex items-center gap-2">
-              <select value={f.customerCode} onChange={(e) => pickCustomer(e.target.value)} className={`${inputCls} flex-1`}>
-                <option value="">— Chọn khách hàng —</option>
-                {customers.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.code} — {c.name}
-                  </option>
-                ))}
-              </select>
-              <button type="button" onClick={() => setAdding((v) => !v)} className="shrink-0 inline-flex items-center gap-1 text-[12.5px] font-semibold text-[#1f7ae0] hover:underline">
-                <Plus size={13} /> Thêm mới
-              </button>
-            </div>
-            {adding && (
-              <div className="mt-2 p-2.5 rounded-[4px] border border-[#bcd3f0] bg-[#f4f8fd] flex flex-wrap items-start gap-2">
-                <input value={nc.code} onChange={(e) => setNc((v) => ({ ...v, code: e.target.value }))} placeholder="Mã KH (VD: 088)" className={`${inputCls} w-36 font-mono`} />
-                <input value={nc.name} onChange={(e) => setNc((v) => ({ ...v, name: e.target.value }))} placeholder="Tên khách hàng" className={`${inputCls} flex-1 min-w-[200px]`} />
-                <Btn variant="primary" icon={Plus} className="h-8" disabled={!!ncErr} title={ncErr || undefined} onClick={addCustomer}>
-                  Thêm
-                </Btn>
-                <Btn className="h-8" onClick={() => setAdding(false)}>
-                  Huỷ
-                </Btn>
-                {ncErr && (nc.code || nc.name) && <p className="basis-full text-[11.5px] text-rose-600">{ncErr}</p>}
-              </div>
-            )}
-          </FormRow>
-          <FormRow label="Loại dự án" required error={err('projectType')}>
-            <select value={f.projectType} onChange={(e) => set('projectType', e.target.value)} className={inputCls}>
-              <option value="">— Chọn loại dự án —</option>
-              {PROJECT_TYPES.map((t) => (
-                <option key={t}>{t}</option>
-              ))}
-            </select>
-          </FormRow>
-          <FormRow label="GĐKD" hint="Giám đốc kinh doanh">{personSelect('businessDirector', directors, '— Chọn GĐKD —')}</FormRow>
-          <FormRow label="AM" hint="Chọn được nhiều AM">
-            <select
-              value=""
-              onChange={(e) => e.target.value && set('am', [...f.am, e.target.value])}
-              className={inputCls}
-            >
-              <option value="">{f.am.length ? '— Thêm AM —' : '— Chọn AM —'}</option>
-              {amPeople
-                .filter((n) => !f.am.includes(n))
-                .map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-            </select>
-            {f.am.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-1.5">
-                {f.am.map((n) => (
-                  <span key={n} className="inline-flex items-center gap-1 pl-2 pr-1 py-[2px] rounded-[3px] bg-[#eaf2fc] border border-[#bcd3f0] text-[12px] text-[#1e3a5f]">
-                    {n}
-                    <button type="button" title={`Bỏ ${n}`} onClick={() => set('am', f.am.filter((x) => x !== n))} className="p-0.5 rounded hover:bg-[#d3e3f7] text-slate-500">
-                      <X size={11} />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-          </FormRow>
-          <FormRow label="Khối" required error={err('division')}>
-            <select value={f.division} onChange={(e) => set('division', e.target.value)} className={inputCls}>
-              <option value="">— Chọn khối —</option>
-              {DIVISIONS.map((d) => (
-                <option key={d}>{d}</option>
-              ))}
-            </select>
-          </FormRow>
-          <FormRow label="Dự án KEY">
-            <label className="flex items-center gap-2 h-8 text-[13px] cursor-pointer w-fit">
-              <input type="checkbox" checked={f.isKey} onChange={(e) => set('isKey', e.target.checked)} className="w-4 h-4 accent-amber-500" />
-              <Star size={13} className="fill-amber-400 text-amber-500" /> Đánh dấu là dự án trọng điểm
-            </label>
-          </FormRow>
-        </div>
-      </Panel>
+        </Panel>
+      )}
+
+      <div className="flex justify-end gap-2">
+        <Btn icon={X} onClick={onCancel}>
+          Huỷ
+        </Btn>
+        <Btn variant="success" icon={isEdit ? Save : Send} onClick={submit}>
+          {isEdit ? 'Lưu thay đổi' : willIssue ? 'Tạo & cấp mã' : 'Gửi GĐK duyệt'}
+        </Btn>
+      </div>
     </>
   );
 };
