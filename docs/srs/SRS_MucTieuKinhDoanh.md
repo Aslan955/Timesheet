@@ -83,7 +83,7 @@ stateDiagram-v2
     state "Chờ BOD duyệt" as ChoDuyet
     state "Đã duyệt" as DaDuyet
     state "Từ chối" as TuChoi
-    state "Đã rút" as DaRut
+    state "Đã rút" as DaRutLên
 
     [*] --> BanNhap: GĐK tạo hồ sơ Khối - Năm
     BanNhap --> BanNhap: Lưu nháp
