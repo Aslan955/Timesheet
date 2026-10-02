@@ -145,7 +145,7 @@ So sánh code từ `2d0f5ac` đến `d8a9358`. Các file liên quan được s�
 
 ## 5. Rà soát lần 3 sau khi pull code (commit `8cff07a`, 2026-10-02)
 
-Đối chiếu với SRS_DanhSachDuAn **v05**. Chi tiết thay đổi code xem `docs/plans/chi-tiet-du-an/05-ra-soat-8cff07a.md`.
+Đối chiếu với SRS_DanhSachDuAn **v05**. Chi tiết thay đổi code xem `docs/plans/chi-tiet-du-an/03-prototype-gaps.md`, mục 5 *Nhật ký rà soát code*.
 
 | Gap | Tình trạng ở 8cff07a | Còn phải sửa |
 |---|---|---|
