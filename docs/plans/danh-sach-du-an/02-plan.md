@@ -42,6 +42,13 @@
 | D20 | Cần email nhắc khi sắp hết hạn PAKD: còn 3 ngày, gửi GĐK và SM; email báo CFO khi có PAKD chờ duyệt đã có sẵn | BR32, AC6.5 |
 | D21 | Chỉ kết thúc dự án khi PAKD điều chỉnh đã qua CFO duyệt | BR11 |
 | D22 | File Excel thêm Mã KD, Mã SX, Ngày cấp mã | BR24, AC9.1 |
+| D23 | Rà soát commit d8a9358: **khôi phục** bộ lọc Hợp đồng | AC4.2, AC4.3, BR22, GAP-15 |
+| D24 | Chấp nhận vị trí mới của bộ lọc Năm / Khối (trong khung Danh sách, vẫn áp dụng cho Sổ theo dõi) | Mục 1, mục 5 (SRS v02) |
+| D25 | Giữ SRS về quyền lập PAKD (GĐK, SM; AM không xem) và phiên bản PAKD; báo dev sửa code | GAP-11, GAP-16 |
+| D26 | Số liệu PAKD chỉ cập nhật vào dự án khi CFO duyệt | BR34, AC13.7, GAP-17 |
+| D27 | Xác nhận lại: AM chỉ tạo dự án, không lập PAKD; SM tạo dự án và lập PAKD | GAP-16 |
+| D28 | Mã outsource (.3, .4): tìm kiếm được, có cột trong file Excel, không thêm cột trên màn | BR12, BR21, BR24, GAP-18 |
+| D29 | Lệch giá trị hợp đồng quá 2% so với giá trị dự kiến: chỉ cảnh báo, lý do không bắt buộc | BR28, AC14.3, GAP-19 |
 
 ## Dàn ý SRS
 | Mục | Nội dung | Độ phức tạp | Song song? |
