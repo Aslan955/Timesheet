@@ -872,11 +872,13 @@ const BodTab: React.FC<{ flash: (m: string) => void }> = ({ flash }) => {
         icon={ClipboardCheck}
         footer={
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <FlowNote />
-            <span className="flex items-center gap-2">
+            <span className="flex flex-wrap items-center gap-3">
               <Btn icon={ArrowLeft} className="h-8" onClick={() => setOpenId(null)}>
                 Quay lại danh sách
               </Btn>
+              <FlowNote />
+            </span>
+            <span className="ml-auto flex items-center gap-2">
               {canDecide && (
                 <>
                   <Btn variant="danger" icon={XCircle} className="h-8" onClick={() => act(false)}>

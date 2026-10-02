@@ -495,6 +495,14 @@ const MiniChart: React.FC<{ months: string[]; series: Series[]; empty: string }>
 // --------------------------------------------------------------------------
 // Form
 // --------------------------------------------------------------------------
+/** Nút thao tác PAKD hiển thị trên đầu trang. */
+export interface PakdHeaderActions {
+  mode: 'lap' | 'adjust';
+  save: (submit: boolean) => void;
+  cancel: () => void;
+  cancelLabel: string;
+}
+
 export const PakdForm: React.FC<{
   project: BizProject;
   role: BizRole;
@@ -503,11 +511,15 @@ export const PakdForm: React.FC<{
   /** GĐK / SM sửa PAKD khi dự án đang thực hiện (bản điều chỉnh → Kế toán duyệt lại). */
   onAdjust?: (form: PakdFormData, submit: boolean) => void;
   onCancelAdjust?: () => void;
-  /** Cho phép sửa PAKD đã duyệt (chỉ bật trong popup "Sửa" → tab PAKD). */
+  /** Cho phép sửa PAKD đã duyệt ngay trên khung (SM / GĐK). */
   allowAdjust?: boolean;
   /** Mở sẵn chế độ sửa khi hiển thị. */
   startAdjust?: boolean;
-}> = ({ project: p, role, actor, onSave, onAdjust, onCancelAdjust, allowAdjust = false, startAdjust = false }) => {
+  /** Tăng giá trị → mở chế độ sửa PAKD (nút "Sửa PAKD" trên thanh thao tác). */
+  adjustSignal?: number;
+  /** Đưa các nút Lưu nháp / Gửi duyệt lên đầu trang: báo cho màn cha khi nào cần hiện nút. Có prop này thì chân khung không hiện nút. */
+  onHeaderActions?: (a: PakdHeaderActions | null) => void;
+}> = ({ project: p, role, actor, onSave, onAdjust, onCancelAdjust, allowAdjust = false, startAdjust = false, adjustSignal = 0, onHeaderActions }) => {
   const running = p.status === 'Đang thực hiện';
   const initial = (useDraft = true) => {
     const src = useDraft && running && p.pakdDraft ? p.pakdDraft : p.pakdForm;
@@ -530,6 +542,11 @@ export const PakdForm: React.FC<{
   const [f, setF] = useState<PakdFormData>(() => initial());
   const [errors, setErrors] = useState<string[]>([]);
   const [adjusting, setAdjusting] = useState(() => startAdjust && allowAdjust && p.status === 'Đang thực hiện' && canAdjustPakd(role));
+  const [lastSignal, setLastSignal] = useState(adjustSignal);
+  if (adjustSignal !== lastSignal) {
+    setLastSignal(adjustSignal);
+    if (allowAdjust && p.status === 'Đang thực hiện' && canAdjustPakd(role)) setAdjusting(true);
+  }
   const key = `${p.id}-${p.pakdForm?.savedAt || ''}-${p.pakdDraft?.savedAt || ''}-${p.pakd.length}-${latestPakd(p)?.state || ''}-${p.contract?.updatedAt || ''}`;
   const [lastKey, setLastKey] = useState(key);
   if (key !== lastKey) {
@@ -621,7 +638,10 @@ export const PakdForm: React.FC<{
   const save = (submit: boolean) => {
     const e = submit ? validatePakd(f) : [];
     setErrors(e);
-    if (e.length) return;
+    if (e.length) {
+      setTimeout(() => document.getElementById('pakd-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 30);
+      return;
+    }
     if (inAdjust && onAdjust) {
       onAdjust(f, submit);
       if (submit) setAdjusting(false);
@@ -635,6 +655,29 @@ export const PakdForm: React.FC<{
     setErrors([]);
     setF(initial(false));
   };
+
+  // Nút trên đầu trang (màn chi tiết dự án): Lưu nháp · Gửi Kế toán duyệt (lập lần đầu) / Huỷ · Lưu nháp · Gửi duyệt điều chỉnh.
+  const saveRef = useRef(save);
+  saveRef.current = save;
+  const cancelRef = useRef(cancelAdjust);
+  cancelRef.current = cancelAdjust;
+  const headerMode: PakdHeaderActions['mode'] | null = !editable ? null : inAdjust ? 'adjust' : 'lap';
+  const hasDraft = !!p.pakdDraft;
+  useEffect(() => {
+    if (!onHeaderActions) return;
+    onHeaderActions(
+      headerMode
+        ? {
+            mode: headerMode,
+            save: (submit) => saveRef.current(submit),
+            cancel: () => cancelRef.current(),
+            cancelLabel: hasDraft ? 'Huỷ bản điều chỉnh' : 'Huỷ sửa',
+          }
+        : null,
+    );
+  }, [headerMode, hasDraft]);
+  useEffect(() => () => onHeaderActions?.(null), []);
+  const footerButtons = !onHeaderActions;
 
   // Hàng tiêu đề: Người lập · Hạn lập PAKD · Thời gian còn lại · Trạng thái PAKD
   const header: [string, React.ReactNode][] = [
@@ -665,13 +708,11 @@ export const PakdForm: React.FC<{
                 : running
                   ? canAdjust
                     ? 'PAKD đã được duyệt. Bấm "Sửa PAKD" để điều chỉnh — gửi Kế toán duyệt lại, duyệt xong sinh phiên bản mới.'
-                    : allowAdjust
-                      ? 'PAKD đã được duyệt — chỉ Giám đốc khối / Giám đốc kinh doanh (SM) được sửa PAKD.'
-                      : 'PAKD đã được duyệt. Muốn điều chỉnh: bấm "Sửa" → tab Phương án kinh doanh (SM / GĐK).'
+                    : 'PAKD đã được duyệt — chỉ Giám đốc khối / Giám đốc kinh doanh (SM) được sửa PAKD.'
                   : editable
-                    ? `AM / SM / GĐK nhập PAKD trong ${PAKD_DAYS} ngày kể từ ngày GĐK duyệt → Gửi Kế toán (CFO) duyệt. Quá hạn chưa được duyệt → dự án Pending.`
+                    ? `SM / GĐK nhập PAKD trong ${PAKD_DAYS} ngày kể từ ngày GĐK duyệt → Gửi Kế toán (CFO) duyệt. Quá hạn chưa được duyệt → dự án Pending.`
                     : p.status === 'Chưa có PAKD'
-                      ? 'Chọn vai trò AM, SM hoặc GĐK để nhập PAKD.'
+                      ? 'Chọn vai trò SM hoặc GĐK để nhập PAKD.'
                       : p.status === 'Pending'
                         ? 'Dự án Pending (quá hạn PAKD) — Kế toán mở lại để tiếp tục.'
                       : 'PAKD đã gửi duyệt — chỉ xem.'}
@@ -682,7 +723,7 @@ export const PakdForm: React.FC<{
               </>
             )}
           </span>
-          {inAdjust && editable && (
+          {footerButtons && inAdjust && editable && (
             <span className="flex items-center gap-2">
               <Btn icon={X} className="h-8" onClick={cancelAdjust}>
                 {p.pakdDraft ? 'Huỷ bản điều chỉnh' : 'Huỷ sửa'}
@@ -695,7 +736,7 @@ export const PakdForm: React.FC<{
               </Btn>
             </span>
           )}
-          {editable && !inAdjust && (
+          {footerButtons && editable && !inAdjust && (
             <span className="flex items-center gap-2">
               <Btn icon={Save} className="h-8" onClick={() => save(false)}>
                 Lưu nháp

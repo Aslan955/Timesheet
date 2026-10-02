@@ -24,10 +24,10 @@ export const PROJECT_TYPES = ['Fixed Cost', 'Time & Material', 'ODC', 'Cho thuê
  * Vòng đời dự án:
  *   AM / SM (Giám đốc kinh doanh) / GĐK tạo dự án → Chờ duyệt mã → (GĐK duyệt → hệ thống sinh Mã dự án / KD / SX) → Chưa có PAKD
  *   (GĐK tự tạo → mã được cấp ngay, bỏ bước duyệt)
- *   → (AM / SM / GĐK lập & nộp PAKD trong PAKD_DAYS ngày) → PAKD chờ duyệt → (Kế toán / CFO duyệt → V1) → Đang thực hiện → Kết thúc.
+ *   → (SM / GĐK lập & nộp PAKD trong PAKD_DAYS ngày) → PAKD chờ duyệt → (Kế toán / CFO duyệt → V1) → Đang thực hiện → Kết thúc.
  * Hết PAKD_DAYS ngày mà PAKD chưa có hoặc chưa được Kế toán duyệt → tự động "Pending".
  *   Kế toán (CFO) có thể mở lại → hạn PAKD_DAYS ngày mới.
- * Dự án đã duyệt: bấm "Sửa" → popup: Thông tin cơ bản (AM / SM / GĐK) · PAKD (SM / GĐK) → gửi Kế toán duyệt lại;
+ * Dự án đã duyệt: bấm "Sửa" → sửa trực tiếp thông tin cơ bản trên màn chi tiết (AM / SM / GĐK); "Sửa PAKD" ngay trên khung PAKD (SM / GĐK) → gửi Kế toán duyệt lại;
  *   mỗi lần Kế toán duyệt sinh phiên bản mới V2, V3…
  */
 export type BizStatus = 'Chờ duyệt mã' | 'Chưa có PAKD' | 'PAKD chờ duyệt' | 'Đang thực hiện' | 'Kết thúc' | 'Pending';
@@ -35,11 +35,15 @@ export const BIZ_STATUSES: BizStatus[] = ['Chờ duyệt mã', 'Chưa có PAKD',
 /** Vai trò được tạo dự án / sửa thông tin cơ bản. */
 export const canCreateProject = (role: BizRole) => role === 'AM' || role === 'SM' || role === 'GĐK';
 /** Vai trò được lập PAKD lần đầu (trong hạn PAKD_DAYS ngày). */
-export const canLapPakd = (role: BizRole) => role === 'AM' || role === 'SM' || role === 'GĐK';
+export const canLapPakd = (role: BizRole) => role === 'SM' || role === 'GĐK';
+/** Vai trò được xem PAKD của dự án: SM / GĐK (lập, sửa) và Kế toán (duyệt). AM không xem được PAKD. */
+export const canViewPakd = (role: BizRole) => role === 'SM' || role === 'GĐK' || role === 'CFO';
 /** Số phiên bản PAKD kế tiếp = số bản đã được Kế toán duyệt + 1 (V1, V2, V3… sinh khi duyệt). */
 export const nextPakdVersion = (p: Pick<BizProject, 'pakd'>) => p.pakd.filter((v) => v.state === 'Đã duyệt').length + 1;
 /** Số ngày (kể từ ngày cấp mã / mở lại) để có PAKD được Kế toán duyệt, quá hạn → Pending. */
 export const PAKD_DAYS = 30;
+/** Chỉ xoá được dự án khi Giám đốc khối chưa duyệt (trạng thái "Chờ duyệt mã"). Đã duyệt / đã cấp mã thì không xoá được. */
+export const canDeleteProject = (p: Pick<BizProject, 'status'>) => p.status === 'Chờ duyệt mã';
 
 /** Vai trò trong quy trình (chưa có đăng nhập — chọn trên màn để thao tác thử). */
 export type BizRole = 'AM' | 'GĐK' | 'SM' | 'PM' | 'CFO';
@@ -809,7 +813,7 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
     );
   };
 
-  const deleteProject = (id: string) => setProjects((prev) => prev.filter((p) => p.id !== id));
+  const deleteProject = (id: string) => setProjects((prev) => prev.filter((p) => p.id !== id || !canDeleteProject(p)));
 
   const today = () => now().slice(0, 10);
   /** Cập nhật 1 dự án + ghi lịch sử. */

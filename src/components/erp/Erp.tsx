@@ -7,7 +7,7 @@
  * góc bo nhỏ, không đổ bóng lớn; chữ 12–13px.
  */
 import React from 'react';
-import { ChevronRight } from 'lucide-react';
+import { ArrowLeft, ChevronRight } from 'lucide-react';
 
 // ==========================================================================
 // Class dùng chung
@@ -38,14 +38,28 @@ export const ErpPage: React.FC<{ children: React.ReactNode }> = ({ children }) =
 );
 
 export const ErpTitleBar: React.FC<{
-  crumbs: string[];
-  title: React.ReactNode;
+  /** Bỏ trống crumbs + title (vd màn có nút Quay lại) → chỉ hiện nút Quay lại bên trái. */
+  crumbs?: string[];
+  title?: React.ReactNode;
   actions?: React.ReactNode;
   meta?: { label: string; value: React.ReactNode }[];
-}> = ({ crumbs, title, actions, meta }) => (
+  /** Dòng thông báo / thao tác của bước hiện tại, hiện ở cuối khung đầu trang. */
+  notice?: React.ReactNode;
+  /** Nút "Quay lại" — luôn nằm bên trái (trước tiêu đề); các nút tác vụ nằm bên phải. */
+  onBack?: () => void;
+  backLabel?: string;
+}> = ({ crumbs = [], title, actions, meta, notice, onBack, backLabel = 'Quay lại' }) => (
   <div className="bg-white border border-slate-300 rounded-[4px]">
     <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5">
-      <div className="min-w-0">
+      <div className="min-w-0 flex items-center gap-3">
+        {onBack && (
+          <Btn icon={ArrowLeft} onClick={onBack} className="shrink-0">
+            {backLabel}
+          </Btn>
+        )}
+        {(crumbs.length > 0 || title) && (
+        <div className="min-w-0">
+        {crumbs.length > 0 && (
         <nav className="flex items-center gap-1 text-[11px] text-slate-500">
           {crumbs.map((c, i) => (
             <span key={i} className="flex items-center gap-1">
@@ -54,9 +68,12 @@ export const ErpTitleBar: React.FC<{
             </span>
           ))}
         </nav>
-        <h1 className="text-[17px] font-bold text-[#1e3a5f] leading-tight mt-0.5 flex items-center gap-2 flex-wrap">{title}</h1>
+        )}
+        {title && <h1 className="text-[17px] font-bold text-[#1e3a5f] leading-tight mt-0.5 flex items-center gap-2 flex-wrap">{title}</h1>}
+        </div>
+        )}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-1.5">{actions}</div>}
+      {actions && <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">{actions}</div>}
     </div>
     {meta && meta.length > 0 && (
       <div className="flex flex-wrap border-t border-slate-200 bg-slate-50 text-[12px]">
@@ -68,6 +85,7 @@ export const ErpTitleBar: React.FC<{
         ))}
       </div>
     )}
+    {notice && <div className="border-t border-slate-200 rounded-b-[4px] overflow-hidden empty:hidden">{notice}</div>}
   </div>
 );
 
@@ -90,7 +108,7 @@ export const Panel: React.FC<{
         {Icon && <Icon size={13} className="text-[#1f5fa8]" />}
         {title}
       </h2>
-      {actions && <div className="flex flex-wrap items-center gap-1.5">{actions}</div>}
+      {actions && <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">{actions}</div>}
     </header>
     <div className={noPad ? '' : 'p-3'}>{children}</div>
     {footer && <div className="px-3 py-1.5 border-t border-slate-200 bg-slate-50 text-[11px] text-slate-500">{footer}</div>}

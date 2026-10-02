@@ -20,7 +20,7 @@
  * Giao diện: khung kiểu phần mềm kế toán (src/components/erp/Erp.tsx).
  * Dữ liệu: src/business/BusinessProjectContext.tsx. Đơn vị: VNĐ.
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -53,6 +53,7 @@ import {
   Send,
   RotateCcw,
   Info,
+  Lock,
 } from 'lucide-react';
 import {
   BizPhase,
@@ -68,6 +69,8 @@ import {
   canAdjustPakd,
   canCreateProject,
   canLapPakd,
+  canViewPakd,
+  canDeleteProject,
   addDays,
   PAKD_DAYS,
   DIVISIONS,
@@ -92,7 +95,7 @@ import { BizMonthlyImportModal, fmtMonth } from './BizMonthlyImportModal';
 import { LedgerDetailModal, LedgerDrill, drillCls } from './LedgerDetailModal';
 import { AttachmentList, ContractModal } from './ContractModal';
 import { ProjectTracker } from './ProjectTracker';
-import { PakdForm } from './PakdForm';
+import { PakdForm, PakdHeaderActions } from './PakdForm';
 import { pakdTotals, type PakdFormData } from '../business/pakd';
 import { Btn, ErpPage, ErpTitleBar, FieldTable, FolderTabs, FormRow, Panel, Segmented, Tag, erp } from './erp/Erp';
 
@@ -326,7 +329,7 @@ const rowAction = (p: BizProject, role: BizRole): RowAction => {
     case 'Chờ duyệt mã':
       return { label: role === 'GĐK' ? 'Duyệt mã' : 'Xem', kind: 'view' };
     case 'Chưa có PAKD':
-      return { label: 'Lập PAKD', kind: 'view' };
+      return { label: canLapPakd(role) ? 'Lập PAKD' : 'Xem', kind: 'view' };
     case 'PAKD chờ duyệt':
       return pendingRole(latestPakd(p)) === role ? { label: 'Duyệt', kind: 'decide' } : { label: 'Xem', kind: 'view' };
     case 'Đang thực hiện':
@@ -1051,28 +1054,6 @@ const FinanceSection: React.FC<{
   );
 };
 
-// ==========================================================================
-// Thông tin hợp đồng (sau khi ký)
-// ==========================================================================
-const Files: React.FC<{ files: BizAttachment[] }> = ({ files }) =>
-  files.length ? (
-    <span className="flex flex-wrap gap-x-3 gap-y-0.5">
-      {files.map((f) =>
-        f.url ? (
-          <a key={f.id} href={f.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[#1f5fa8] hover:underline">
-            <FileText size={12} /> {f.name}
-          </a>
-        ) : (
-          <span key={f.id} className="inline-flex items-center gap-1">
-            <FileText size={12} /> {f.name}
-          </span>
-        ),
-      )}
-    </span>
-  ) : (
-    <span className="text-slate-400">Chưa có tệp</span>
-  );
-
 /**
  * Thẻ "Mã dự án" gọn: bên trái Mã dự án (mã tổng, không gắn PM) · bên phải từng dòng
  * MÃ KINH DOANH · MÃ SẢN XUẤT · MÃ OUTSOURCE (tối đa MAX_OUTSOURCE) kèm PM phụ trách.
@@ -1173,7 +1154,7 @@ const CodeTable: React.FC<{ project: BizProject; actor: string }> = ({ project: 
 
 /**
  * Thanh thao tác của bước hiện tại — luôn hiện dưới thanh tiêu đề (kể cả khi đã ẩn bảng quy trình bên phải):
- * GĐK duyệt mã · AM / SM / GĐK lập PAKD · Kế toán (CFO) duyệt PAKD · SM / GĐK sửa PAKD · Kế toán mở lại dự án Pending.
+ * GĐK duyệt mã · SM / GĐK lập PAKD · Kế toán (CFO) duyệt PAKD · SM / GĐK sửa PAKD · Kế toán mở lại dự án Pending.
  * Vai trò không có quyền thao tác chỉ thấy thông báo đang chờ ai.
  */
 const StepActionBar: React.FC<{
@@ -1193,12 +1174,8 @@ const StepActionBar: React.FC<{
   let waitingFor = '';
   if (p.status === 'Chờ duyệt mã') {
     if (role === 'GĐK') {
-      text = <>Yêu cầu mở mã dự án đang chờ <b>Giám đốc khối</b> duyệt. Duyệt xong hệ thống sinh Mã dự án / Mã KD / Mã SX và bắt đầu đếm {PAKD_DAYS} ngày lập PAKD.</>;
-      action = (
-        <Btn variant="primary" icon={CheckCircle2} onClick={onApproveCode}>
-          Duyệt mã dự án
-        </Btn>
-      );
+      // Nút "Duyệt mã dự án" nằm trên thanh tiêu đề (cạnh nút Sửa).
+      text = <>Yêu cầu mở mã dự án đang chờ <b>Giám đốc khối</b> duyệt — bấm <b>Duyệt mã dự án</b> ở góc phải. Duyệt xong hệ thống sinh Mã dự án / Mã KD / Mã SX và bắt đầu đếm {PAKD_DAYS} ngày lập PAKD.</>;
     } else waitingFor = 'Giám đốc khối duyệt mã dự án';
   } else if (p.status === 'Chưa có PAKD') {
     if (canLapPakd(role)) {
@@ -1207,14 +1184,11 @@ const StepActionBar: React.FC<{
           {last?.state === 'Từ chối' ? <>PAKD V{last.version} bị từ chối{last.note ? ` (${last.note})` : ''} — cần lập lại. </> : 'Dự án cần lập phương án kinh doanh (PAKD). '}
           Hạn lập: <b>{dmy(p.pakdDeadline || '')}</b>
           {left !== null && <> ({left >= 0 ? `còn ${left} ngày` : `quá hạn ${-left} ngày`})</>}
+          {' '}— nhập PAKD bên dưới rồi bấm <b>Gửi Kế toán duyệt</b> ở góc phải.
         </>
       );
-      action = (
-        <Btn variant="primary" icon={Send} onClick={onLapPakd}>
-          {p.pakd.length ? `Lập lại PAKD V${p.pakd.length + 1}` : 'Lập PAKD'}
-        </Btn>
-      );
-    } else waitingFor = `AM / SM / Giám đốc khối lập PAKD (hạn ${dmy(p.pakdDeadline || '')})`;
+      // Nút "Lập PAKD" nằm trên thanh tiêu đề (cạnh nút Sửa).
+    } else waitingFor = `SM / Giám đốc khối lập PAKD (hạn ${dmy(p.pakdDeadline || '')})`;
   } else if (p.status === 'PAKD chờ duyệt') {
     if (role === 'CFO') {
       text = <>PAKD V{last?.version} đang chờ <b>Kế toán (CFO)</b> duyệt.</>;
@@ -1242,7 +1216,7 @@ const StepActionBar: React.FC<{
       );
       action = (
         <span className="flex gap-2">
-          <Btn variant="primary" icon={Pencil} onClick={onAdjust} title="Mở popup Sửa → tab Phương án kinh doanh">
+          <Btn variant="primary" icon={Pencil} onClick={onAdjust} title="Sửa PAKD ngay trên khung Phương án kinh doanh">
             {p.pakdDraft ? 'Tiếp tục sửa PAKD' : 'Sửa PAKD'}
           </Btn>
           <Btn icon={Flag} onClick={onFinish}>
@@ -1251,7 +1225,7 @@ const StepActionBar: React.FC<{
         </span>
       );
     } else return (
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-2 bg-slate-50">
         <Btn icon={Flag} onClick={onFinish}>
           Kết thúc dự án
         </Btn>
@@ -1283,7 +1257,7 @@ const StepActionBar: React.FC<{
   if (!text && !waitingFor) return null;
   if (!text)
     return (
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2 rounded-[4px] border border-slate-300 bg-slate-50 text-[12.5px] text-slate-600">
+      <div className="flex flex-wrap items-center gap-2 px-4 py-2 bg-slate-50 text-[12.5px] text-slate-600">
         <Info size={14} className="text-slate-400 shrink-0" />
         <span>
           Đang chờ <b className="text-slate-800">{waitingFor}</b>.
@@ -1292,7 +1266,7 @@ const StepActionBar: React.FC<{
       </div>
     );
   return (
-    <div className="flex flex-wrap items-center gap-3 px-3 py-2 rounded-[4px] border border-[#bcd3f0] bg-[#eef4fb] text-[12.5px] text-[#1e3a5f]">
+    <div className="flex flex-wrap items-center gap-3 px-4 py-2 bg-[#eef4fb] text-[12.5px] text-[#1e3a5f]">
       <AlertCircle size={15} className="text-[#1f5fa8] shrink-0" />
       <span className="flex-1 min-w-[240px]">{text}</span>
       {action}
@@ -1335,189 +1309,6 @@ const InfoGrid: React.FC<{ left: InfoItem[]; right: InfoItem[] }> = ({ left, rig
   );
 };
 
-/**
- * Popup "Sửa dự án":
- *   • Thông tin cơ bản — AM / SM / GĐK sửa được (lưu tạo version mới của dự án).
- *   • Phương án kinh doanh (PAKD) — chỉ SM / GĐK; dự án đã duyệt thì sửa xong gửi Kế toán duyệt lại,
- *     Kế toán duyệt sinh phiên bản mới V2, V3…
- */
-const EditProjectModal: React.FC<{
-  project: BizProject;
-  role: BizRole;
-  actor: string;
-  tab: 'basic' | 'pakd';
-  onTab: (t: 'basic' | 'pakd') => void;
-  onClose: () => void;
-  onSubmitBasic: (data: BizProjectInput, files: BizAttachment[]) => void;
-  onSavePakd: (form: PakdFormData, submit: boolean) => void;
-  onAdjustPakd: (form: PakdFormData, submit: boolean) => void;
-  onCancelAdjust: () => void;
-}> = ({ project: p, role, actor, tab, onTab, onClose, onSubmitBasic, onSavePakd, onAdjustPakd, onCancelAdjust }) => {
-  const { projects } = useBusinessProjects();
-  const note = (icon: React.ReactNode, text: React.ReactNode) => (
-    <div className="bg-white border border-slate-300 rounded-[4px] px-4 py-10 flex flex-col items-center text-center gap-2 text-[13px] text-slate-600">
-      {icon}
-      {text}
-    </div>
-  );
-  return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-3">
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/40" />
-      <motion.div
-        initial={{ scale: 0.98, opacity: 0, y: 12 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.98, opacity: 0, y: 12 }}
-        className="relative z-10 bg-[#eef1f5] w-[min(1400px,97vw)] h-[94vh] rounded-[6px] border border-slate-400 shadow-2xl flex flex-col overflow-hidden"
-      >
-        <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-[#1e3a5f] text-white">
-          <h3 className="text-[14px] font-bold flex items-center gap-2 min-w-0">
-            <Pencil size={15} /> <span className="truncate">Sửa dự án — {p.masterCode ? `${p.masterCode} · ` : ''}{p.name}</span>
-          </h3>
-          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-white/10 cursor-pointer" title="Đóng">
-            <X size={18} />
-          </button>
-        </div>
-        <div className="flex items-end gap-1 px-4 pt-2 bg-white border-b border-slate-300">
-          {(
-            [
-              ['basic', 'Thông tin cơ bản', 'AM / SM / GĐK'],
-              ['pakd', 'Phương án kinh doanh (PAKD)', 'SM / GĐK'],
-            ] as const
-          ).map(([k, label, who]) => (
-            <button
-              key={k}
-              type="button"
-              onClick={() => onTab(k)}
-              className={`px-4 py-2 -mb-px rounded-t-[4px] border text-[13px] font-semibold cursor-pointer ${
-                tab === k ? 'bg-[#eef1f5] border-slate-300 border-b-[#eef1f5] text-[#1f5fa8]' : 'bg-white border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              {label} <span className="ml-1 text-[11px] font-normal text-slate-400">{who}</span>
-            </button>
-          ))}
-        </div>
-        <div className="flex-1 overflow-y-auto p-3 space-y-3">
-          {tab === 'basic' ? (
-            canCreateProject(role) ? (
-              <ProjectForm
-                embedded
-                initial={p}
-                projects={projects}
-                role={role}
-                onRoleChange={() => undefined}
-                actor={actor}
-                onCancel={onClose}
-                onSubmit={(data, files) => {
-                  onSubmitBasic(data, files);
-                  onClose();
-                }}
-              />
-            ) : (
-              note(<Info size={22} className="text-slate-400" />, <>Chỉ <b>AM / SM / Giám đốc khối</b> được sửa thông tin cơ bản.</>)
-            )
-          ) : p.status === 'Chờ duyệt mã' ? (
-            note(<Info size={22} className="text-slate-400" />, <>PAKD được lập sau khi <b>Giám đốc khối duyệt</b> dự án.</>)
-          ) : (
-            <PakdForm
-              key={`${p.id}-modal`}
-              project={p}
-              role={role}
-              actor={actor}
-              allowAdjust
-              startAdjust
-              onSave={(f, submit) => {
-                onSavePakd(f, submit);
-                if (submit) onClose();
-              }}
-              onAdjust={(f, submit) => {
-                onAdjustPakd(f, submit);
-                if (submit) onClose();
-              }}
-              onCancelAdjust={onCancelAdjust}
-            />
-          )}
-        </div>
-      </motion.div>
-    </div>
-  );
-};
-
-const ContractPanel: React.FC<{ project: BizProject; onEdit: () => void }> = ({ project: p, onEdit }) => {
-  const c = p.contract!;
-  const diff = c.value - p.expectedRevenue;
-  return (
-    <Panel
-      title="Thông tin hợp đồng"
-      icon={FileSignature}
-      noPad
-      actions={
-        <Btn icon={Pencil} className="h-7" onClick={onEdit}>
-          Cập nhật
-        </Btn>
-      }
-      footer={`Cập nhật bởi ${c.updatedBy} lúc ${dt(c.updatedAt)}`}
-    >
-      <div className="grid grid-cols-1 lg:grid-cols-2">
-        <FieldTable
-          rows={[
-            { label: 'Số hợp đồng', value: <span className="font-semibold">{c.number}</span> },
-            { label: 'Ngày ký', value: dmy(c.signDate) },
-            { label: 'Thời hạn thực hiện', value: `${dmy(c.from)} → ${dmy(c.to)}` },
-            { label: 'Tệp tài liệu', value: <Files files={c.files} /> },
-          ]}
-        />
-        <FieldTable
-          labelWidth="50%"
-          rows={[
-            { label: 'Giá trị hợp đồng (VNĐ)', value: money(c.value), num: true, strong: true },
-            { label: 'Giá trị đã khai báo (VNĐ)', value: money(p.expectedRevenue), num: true },
-            {
-              label: 'Chênh lệch',
-              value: <span className={diff ? 'text-amber-700 font-semibold' : 'text-slate-400'}>{diff ? `${diff > 0 ? '+' : ''}${money(diff)}` : '0'}</span>,
-              num: true,
-            },
-            { label: 'Lý do lệch', value: c.deviationReason },
-          ]}
-        />
-      </div>
-      <div className="border-t border-slate-300">
-        <p className="px-3 py-1.5 text-[12px] font-bold text-[#1e3a5f] bg-[#f3f6fa] border-b border-slate-300">Phụ lục điều chỉnh ({c.addenda.length})</p>
-        <table className={erp.table}>
-          <thead>
-            <tr>
-              {['STT', 'Số phụ lục', 'Ngày ký', 'Nội dung điều chỉnh', 'File phụ lục'].map((h) => (
-                <th key={h} className={`${erp.th} text-left border-t-0 first:border-l-0 last:border-r-0`}>
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {c.addenda.map((a, i) => (
-              <tr key={a.id} className={erp.tr}>
-                <td className={`${erp.td} text-center text-slate-500 w-12 border-l-0`}>{i + 1}</td>
-                <td className={`${erp.td} font-semibold whitespace-nowrap`}>{a.number}</td>
-                <td className={`${erp.td} whitespace-nowrap`}>{dmy(a.signDate)}</td>
-                <td className={erp.td}>{a.content || '—'}</td>
-                <td className={`${erp.td} border-r-0`}>
-                  <Files files={a.files} />
-                </td>
-              </tr>
-            ))}
-            {!c.addenda.length && (
-              <tr>
-                <td colSpan={5} className={`${erp.td} text-center text-slate-400 border-x-0`}>
-                  Chưa có phụ lục điều chỉnh.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </Panel>
-  );
-};
-
 // ==========================================================================
 // Chi tiết
 // ==========================================================================
@@ -1542,11 +1333,25 @@ const ProjectDetail: React.FC<{
   onFinish: () => void;
 }> = ({ project: p, onBack, onUpdateBasic, onDelete, onImport, onSaveContract, onAttachments, role, onRoleChange, onApproveCode, onReopen, onSubmitPakd, onSavePakd, onAdjustPakd, onCancelAdjust, actor, onDecide, onFinish }) => {
   const files = p.attachments || [];
+  const { projects } = useBusinessProjects();
   const [deciding, setDeciding] = useState(false);
   const [tab, setTab] = useState<'overview' | 'history'>('overview');
   const [showContract, setShowContract] = useState(false);
-  /** Popup "Sửa": tab Thông tin cơ bản (AM / SM / GĐK) · tab Phương án kinh doanh (SM / GĐK). */
-  const [editTab, setEditTab] = useState<'basic' | 'pakd' | null>(null);
+  /** "Sửa": sửa trực tiếp thông tin cơ bản trên màn chi tiết (AM / SM / GĐK). */
+  const [editingRaw, setEditing] = useState(false);
+  const editing = editingRaw && canCreateProject(role);
+  const submitRef = useRef<(() => void) | null>(null);
+  /** "Sửa PAKD": mở chế độ sửa ngay trên khung PAKD (SM / GĐK). */
+  const [adjustSignal, setAdjustSignal] = useState(0);
+  /** Nút Lưu nháp / Gửi duyệt của khung PAKD — hiện trên đầu trang khi đang lập / sửa PAKD. */
+  const [pakdActions, setPakdActions] = useState<PakdHeaderActions | null>(null);
+  const showPakd = canViewPakd(role);
+  const startAdjust = () => {
+    setEditing(false);
+    setTab('overview');
+    setAdjustSignal((n) => n + 1);
+    setTimeout(() => document.getElementById('pakd-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+  };
   /** "Lập PAKD": về tab thông tin và cuộn tới form "Lập phương án kinh doanh". */
   const lapPakd = () => {
     setTab('overview');
@@ -1556,64 +1361,126 @@ const ProjectDetail: React.FC<{
   return (
     <div>
       <ErpTitleBar
-        crumbs={[...CRUMBS, p.masterCode || 'Yêu cầu mở mã']}
-        title={
-          <>
-            {p.name} {p.isKey && <KeyBadge />}
-          </>
-        }
+        title={editing ? 'Sửa dự án' : undefined}
+        onBack={editing ? undefined : onBack}
         actions={
           <>
             <RoleSelect role={role} onChange={onRoleChange} />
-            <Btn icon={ArrowLeft} onClick={onBack}>
-              Quay lại
-            </Btn>
+            {editing ? (
+              <>
+                <Btn icon={X} onClick={() => setEditing(false)}>
+                  Huỷ sửa
+                </Btn>
+                <Btn variant="primary" icon={Save} onClick={() => submitRef.current?.()}>
+                  Lưu thay đổi
+                </Btn>
+              </>
+            ) : (
+            <>
+            {p.status === 'Chờ duyệt mã' && role === 'GĐK' && (
+              <Btn variant="primary" icon={CheckCircle2} onClick={onApproveCode}>
+                Duyệt mã dự án
+              </Btn>
+            )}
+            {pakdActions && (
+              <>
+                {pakdActions.mode === 'adjust' && (
+                  <Btn icon={X} onClick={pakdActions.cancel}>
+                    {pakdActions.cancelLabel}
+                  </Btn>
+                )}
+                <Btn icon={Save} onClick={() => pakdActions.save(false)}>
+                  Lưu nháp
+                </Btn>
+                <Btn variant="primary" icon={Send} onClick={() => pakdActions.save(true)}>
+                  {pakdActions.mode === 'adjust' ? 'Gửi Kế toán duyệt điều chỉnh' : 'Gửi Kế toán duyệt'}
+                </Btn>
+              </>
+            )}
             {canCreateProject(role) && (
-              <Btn variant="primary" icon={Pencil} onClick={() => setEditTab('basic')}>
+              <Btn variant="primary" icon={Pencil} onClick={() => (setEditing(true), setTab('overview'))}>
                 Sửa
               </Btn>
             )}
-            <Btn variant="danger" icon={Trash2} onClick={onDelete}>
+            <Btn
+              variant="danger"
+              icon={Trash2}
+              onClick={onDelete}
+              disabled={!canDeleteProject(p)}
+              title={canDeleteProject(p) ? 'Xoá yêu cầu mở mã (chưa được Giám đốc khối duyệt)' : 'Dự án đã được Giám đốc khối duyệt — không xoá được'}
+            >
               Xoá
             </Btn>
+            </>
+            )}
           </>
         }
         meta={[
-          { label: 'Mã dự án', value: p.masterCode ? <span className={erp.code}>{p.masterCode}</span> : <span className="text-slate-400">Chờ GĐK duyệt</span> },
           { label: 'Version', value: `v${p.version}` },
           { label: 'Trạng thái', value: <StatusBadge status={p.status} /> },
-          { label: 'Khối', value: p.division },
-          { label: 'PAKD', value: pakdVersionText(p) },
+          ...(showPakd ? [{ label: 'PAKD', value: pakdVersionText(p) }] : []),
           { label: 'Cập nhật', value: dt(p.updatedAt) },
         ]}
+        notice={
+          !editing && (
+            <StepActionBar
+              project={p}
+              role={role}
+              onApproveCode={onApproveCode}
+              onLapPakd={lapPakd}
+              onDecide={() => setDeciding(true)}
+              onReopen={onReopen}
+              onFinish={onFinish}
+              onAdjust={startAdjust}
+            />
+          )
+        }
       />
 
-      <CodeTable project={p} actor={actor} />
-
-      <StepActionBar
-        project={p}
-        role={role}
-        onApproveCode={onApproveCode}
-        onLapPakd={lapPakd}
-        onDecide={() => setDeciding(true)}
-        onReopen={onReopen}
-        onFinish={onFinish}
-        onAdjust={() => setEditTab('pakd')}
-      />
-
-      <FolderTabs
-        tabs={[
-          { key: 'overview', label: 'Thông tin dự án', icon: LayoutList },
-          { key: 'history', label: `Lịch sử (${p.history.length})`, icon: History },
-        ]}
-        value={tab}
-        onChange={setTab}
-      />
-
-      {tab === 'overview' && (
+      {editing ? (
         <>
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
-            <Panel title="Thông tin chi tiết dự án" icon={Building2} noPad className="xl:col-span-2">
+          {/* Sửa trực tiếp trên màn chi tiết: các khối Mã dự án / Thông tin chi tiết / Hợp đồng & tài liệu chuyển sang ô nhập */}
+          <div className="flex flex-wrap items-center gap-3 px-3 py-2 rounded-[4px] border border-[#bcd3f0] bg-[#eef4fb] text-[12.5px] text-[#1e3a5f]">
+            <Pencil size={14} className="text-[#1f5fa8] shrink-0" />
+            <span className="flex-1 min-w-[240px]">
+              <b>Đang sửa thông tin dự án.</b> Sửa trực tiếp các ô bên dưới (đổi PM bằng nút <b>Update PM</b>), xong bấm <b>Lưu thay đổi</b> — tạo Version v{p.version + 1}.
+            </span>
+          </div>
+          <ProjectForm
+            embedded
+            initial={p}
+            projects={projects}
+            role={role}
+            onRoleChange={() => undefined}
+            actor={actor}
+            submitRef={submitRef}
+            onCancel={() => setEditing(false)}
+            onSubmit={(data, f) => {
+              onUpdateBasic(data, f);
+              setEditing(false);
+            }}
+          />
+        </>
+      ) : (
+        <>
+          <CodeTable project={p} actor={actor} />
+
+          <FolderTabs
+            tabs={[
+              { key: 'overview', label: 'Thông tin dự án', icon: LayoutList },
+              { key: 'history', label: `Lịch sử (${p.history.length})`, icon: History },
+            ]}
+            value={tab}
+            onChange={setTab}
+          />
+        </>
+      )}
+
+      {(editing || tab === 'overview') && (
+        <>
+          {!editing && (
+          <div className="space-y-3">
+            <Panel title="Thông tin chi tiết dự án" icon={Building2} noPad>
               <InfoGrid
                 left={[
                     { label: 'Khối', value: p.division },
@@ -1633,7 +1500,7 @@ const ProjectDetail: React.FC<{
             </Panel>
 
             <Panel title="Hợp đồng & tài liệu" icon={FileSignature} noPad>
-              <div className="divide-y divide-slate-200">
+              <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-200">
                 {/* Hợp đồng */}
                 <div className="px-3 py-2.5">
                   <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1.5">Hợp đồng</p>
@@ -1669,7 +1536,7 @@ const ProjectDetail: React.FC<{
                       )}
                     </div>
                   </div>
-                  <Btn icon={p.contract ? Pencil : FileSignature} className="h-7 mt-2 w-full justify-center" onClick={() => setShowContract(true)}>
+                  <Btn icon={p.contract ? Pencil : FileSignature} className="h-7 mt-2" onClick={() => setShowContract(true)}>
                     {p.contract ? 'Xem / cập nhật hợp đồng' : p.contractSigned ? 'Bổ sung thông tin HĐ' : 'Cập nhật ký hợp đồng'}
                   </Btn>
                 </div>
@@ -1692,33 +1559,37 @@ const ProjectDetail: React.FC<{
               </div>
             </Panel>
           </div>
-
-          {/* PAKD: hiện sau khi GĐK duyệt mã — AM / GĐK nhập trong hạn PAKD_DAYS ngày */}
-          {p.status !== 'Chờ duyệt mã' && (
-            <PakdForm key={p.id} project={p} role={role} actor={actor} onSave={onSavePakd} onAdjust={onAdjustPakd} onCancelAdjust={onCancelAdjust} />
           )}
 
-          {p.contract && <ContractPanel project={p} onEdit={() => setShowContract(true)} />}
+          {/* PAKD: hiện sau khi GĐK duyệt mã. Chỉ SM / GĐK (lập, sửa) và Kế toán (duyệt) xem được — AM không xem PAKD. */}
+          {p.status !== 'Chờ duyệt mã' &&
+            (showPakd ? (
+              <PakdForm
+                key={p.id}
+                project={p}
+                role={role}
+                actor={actor}
+                allowAdjust
+                adjustSignal={adjustSignal}
+                onHeaderActions={setPakdActions}
+                onSave={onSavePakd}
+                onAdjust={onAdjustPakd}
+                onCancelAdjust={onCancelAdjust}
+              />
+            ) : (
+              <Panel title="Phương án kinh doanh (PAKD)" icon={ClipboardCheck}>
+                <div className="flex items-center justify-center gap-2.5 py-3 text-[12.5px] text-slate-500 text-center">
+                  <Lock size={15} className="text-slate-400 shrink-0" />
+                  <span>
+                    PAKD của dự án chỉ hiển thị với <b>Giám đốc kinh doanh (SM)</b>, <b>Giám đốc khối</b> và Kế toán duyệt.
+                  </span>
+                </div>
+              </Panel>
+            ))}
+
         </>
       )}
 
-      <AnimatePresence>
-        {editTab && (
-          <EditProjectModal
-            key="edit"
-            project={p}
-            role={role}
-            actor={actor}
-            tab={editTab}
-            onTab={setEditTab}
-            onClose={() => setEditTab(null)}
-            onSubmitBasic={onUpdateBasic}
-            onSavePakd={onSavePakd}
-            onAdjustPakd={onAdjustPakd}
-            onCancelAdjust={onCancelAdjust}
-          />
-        )}
-      </AnimatePresence>
 
       <AnimatePresence>
         {deciding && (
@@ -1746,7 +1617,7 @@ const ProjectDetail: React.FC<{
         )}
       </AnimatePresence>
 
-      {tab === 'history' && (
+      {!editing && tab === 'history' && (
         <Panel title="Lịch sử thay đổi" icon={History} noPad>
           <table className={erp.table}>
             <thead>
@@ -1871,9 +1742,11 @@ const ProjectForm: React.FC<{
   actor: string;
   onCancel: () => void;
   onSubmit: (data: BizProjectInput, files: BizAttachment[]) => void;
-  /** Hiển thị trong popup "Sửa" (ẩn thanh tiêu đề, hướng dẫn, khung PAKD). */
+  /** Sửa trực tiếp trên màn chi tiết (ẩn thanh tiêu đề, hướng dẫn, khung PAKD). */
   embedded?: boolean;
-}> = ({ initial, projects, role, onRoleChange, actor, onCancel, onSubmit, embedded = false }) => {
+  /** Cho màn chi tiết gọi "Lưu thay đổi" từ thanh tiêu đề. */
+  submitRef?: React.MutableRefObject<(() => void) | null>;
+}> = ({ initial, projects, role, onRoleChange, actor, onCancel, onSubmit, embedded = false, submitRef }) => {
   const [f, setF] = useState<BizProjectInput>(() => (initial ? toInput(initial) : emptyInput()));
   const [files, setFiles] = useState<BizAttachment[]>(() => initial?.attachments || []);
   const [touched, setTouched] = useState(false);
@@ -1936,6 +1809,7 @@ const ProjectForm: React.FC<{
     if (errList.length) return;
     onSubmit({ ...f, name: f.name.trim() }, files);
   };
+  if (submitRef) submitRef.current = submit;
 
   // ---- ô nhập dùng trong bảng ----
   const cell = (k: keyof BizProjectInput) =>
@@ -1995,8 +1869,7 @@ const ProjectForm: React.FC<{
     <>
       {!embedded && (
       <ErpTitleBar
-        crumbs={[...CRUMBS, isEdit ? `Sửa ${initial!.masterCode || 'yêu cầu mở mã'}` : 'Yêu cầu mở mã dự án']}
-        title={isEdit ? `Sửa dự án — ${initial!.name}` : 'Yêu cầu mở mã dự án'}
+        onBack={onCancel}
         actions={
           <>
             {!isEdit && <RoleSelect role={role} onChange={onRoleChange} />}
@@ -2009,10 +1882,8 @@ const ProjectForm: React.FC<{
           </>
         }
         meta={[
-          { label: 'Mã dự án', value: f.masterCode ? <span className={erp.code}>{f.masterCode}</span> : <span className="text-slate-400">Chờ GĐK duyệt</span> },
           { label: 'Version', value: isEdit ? `v${initial!.version} → v${initial!.version + 1}` : 'Mới' },
           { label: 'Trạng thái', value: isEdit ? <StatusBadge status={initial!.status} /> : <Tag cls="bg-slate-100 text-slate-600 border-slate-300">Đang soạn</Tag> },
-          { label: 'Khối', value: f.division || '—' },
           { label: 'Người tạo', value: f.creator || actor },
         ]}
       />
@@ -2026,7 +1897,7 @@ const ProjectForm: React.FC<{
             {willIssue
               ? 'Giám đốc khối tạo → hệ thống cấp mã ngay (bỏ bước duyệt mã)'
               : 'AM / SM gửi yêu cầu → Giám đốc khối duyệt → hệ thống cấp Mã dự án / Mã KD / Mã SX'}
-            {` → AM / SM / GĐK lập PAKD trong ${PAKD_DAYS} ngày → Kế toán (CFO) duyệt; quá hạn chưa được duyệt → dự án Pending.`}
+            {` → SM / GĐK lập PAKD trong ${PAKD_DAYS} ngày → Kế toán (CFO) duyệt; quá hạn chưa được duyệt → dự án Pending.`}
           </span>
         </div>
       )}
@@ -2051,7 +1922,7 @@ const ProjectForm: React.FC<{
               label: 'Mã outsource',
               value: (
                 <span className="text-slate-400 italic text-[12.5px]">
-                  {isEdit ? `${(initial!.outsourceCodes || []).map((o) => o.code).join(', ') || 'Chưa có'} — tạo / sửa trên màn chi tiết` : `Tạo sau khi được cấp mã (tối đa ${MAX_OUTSOURCE} mã)`}
+                  {isEdit ? `${(initial!.outsourceCodes || []).map((o) => o.code).join(', ') || 'Chưa có'} — tạo / sửa ở khối Mã dự án sau khi lưu` : `Tạo sau khi được cấp mã (tối đa ${MAX_OUTSOURCE} mã)`}
                 </span>
               ),
             },
@@ -2104,8 +1975,8 @@ const ProjectForm: React.FC<{
         />
       </Panel>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
-        <Panel title="Thông tin chi tiết dự án" icon={Building2} noPad className="xl:col-span-2">
+      <div className="space-y-3">
+        <Panel title="Thông tin chi tiết dự án" icon={Building2} noPad>
           <InfoGrid
             left={[
                 {
@@ -2223,7 +2094,7 @@ const ProjectForm: React.FC<{
         </Panel>
 
         <Panel title="Hợp đồng & tài liệu" icon={FileSignature} noPad>
-          <div className="divide-y divide-slate-200">
+          <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-200">
             <div className="px-3 py-2.5">
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1.5">Hợp đồng</p>
               <div className="flex items-start gap-2.5">
@@ -2252,8 +2123,8 @@ const ProjectForm: React.FC<{
             <Info size={15} className="text-slate-400 shrink-0" />
             <span>
               {willIssue
-                ? `Phần nhập PAKD mở ngay sau khi tạo — AM / SM / Giám đốc khối có ${PAKD_DAYS} ngày kể từ ngày cấp mã để có PAKD được Kế toán duyệt.`
-                : `Phần nhập PAKD mở sau khi Giám đốc khối duyệt — AM / SM / Giám đốc khối có ${PAKD_DAYS} ngày kể từ ngày duyệt để có PAKD được Kế toán duyệt.`}
+                ? `Phần nhập PAKD mở ngay sau khi tạo — SM / Giám đốc khối có ${PAKD_DAYS} ngày kể từ ngày cấp mã để có PAKD được Kế toán duyệt.`
+                : `Phần nhập PAKD mở sau khi Giám đốc khối duyệt — SM / Giám đốc khối có ${PAKD_DAYS} ngày kể từ ngày duyệt để có PAKD được Kế toán duyệt.`}
             </span>
           </div>
         </Panel>
