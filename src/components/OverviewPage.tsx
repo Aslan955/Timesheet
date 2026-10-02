@@ -457,7 +457,7 @@ export const OverviewPage: React.FC = () => {
       Object.entries(targets[year] || ({} as Record<string, number>)).forEach(([d, v]) => (planByDiv[d] = Number(v)));
       source = 'Theo mục tiêu ký HĐ của khối';
     }
-    const inYear = projects.filter((p) => signYear(p) === year && p.status !== 'Đóng');
+    const inYear = projects.filter((p) => signYear(p) === year && p.status !== 'Pending');
     const estByDiv: Record<string, number> = {};
     const signByDiv: Record<string, number> = {};
     inYear.forEach((p) => {

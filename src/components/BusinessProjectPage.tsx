@@ -10,7 +10,7 @@
  * (kế toán import). Chỉ tiêu (dọc) × tháng (ngang); chỉ Chi tách SX / KD; lọc theo năm.
  *
  * Quy trình: AM tạo yêu cầu → Chờ duyệt mã (GĐK duyệt; GĐK tự tạo thì cấp mã ngay) → Chưa có PAKD
- *   → PAKD chờ duyệt (Kế toán / CFO) → Đang thực hiện → Kết thúc. Quá 30 ngày chưa nộp PAKD → Đóng (CFO mở lại).
+ *   → PAKD chờ duyệt (Kế toán / CFO) → Đang thực hiện → Kết thúc. Quá 30 ngày PAKD chưa được duyệt → Pending (CFO mở lại).
  *   Danh sách hiển thị Hạn lập PAKD, Phiên bản PAKD, nút thao tác theo vai trò (chọn AM / GĐK / PM / CFO),
  *   và nhóm cột Thông tin về hợp đồng.
  * Đầu màn danh sách: Sổ theo dõi dự án (ProjectTracker) — lọc Năm / Khối, giá trị HĐ ký so với mục tiêu.
@@ -65,6 +65,9 @@ import {
   latestPakd,
   signedDate,
   pendingRole,
+  canAdjustPakd,
+  canCreateProject,
+  canLapPakd,
   addDays,
   PAKD_DAYS,
   DIVISIONS,
@@ -89,9 +92,8 @@ import { BizMonthlyImportModal, fmtMonth } from './BizMonthlyImportModal';
 import { LedgerDetailModal, LedgerDrill, drillCls } from './LedgerDetailModal';
 import { AttachmentList, ContractModal } from './ContractModal';
 import { ProjectTracker } from './ProjectTracker';
-import { WorkflowDrawer, useWorkflowDrawer } from './WorkflowDrawer';
 import { PakdForm } from './PakdForm';
-import type { PakdFormData } from '../business/pakd';
+import { pakdTotals, type PakdFormData } from '../business/pakd';
 import { Btn, ErpPage, ErpTitleBar, FieldTable, FolderTabs, FormRow, Panel, Segmented, Tag, erp } from './erp/Erp';
 
 const CURRENT_USER = 'namnv';
@@ -108,7 +110,7 @@ const STATUS_CLS: Record<BizStatus, string> = {
   'PAKD chờ duyệt': 'bg-amber-50 text-amber-700 border-amber-300',
   'Đang thực hiện': 'bg-blue-50 text-blue-700 border-blue-300',
   'Kết thúc': 'bg-emerald-50 text-emerald-700 border-emerald-300',
-  'Đóng': 'bg-slate-200 text-slate-700 border-slate-400',
+  Pending: 'bg-orange-50 text-orange-700 border-orange-300',
 };
 const StatusBadge: React.FC<{ status: BizStatus }> = ({ status }) => <Tag cls={STATUS_CLS[status]}>{status}</Tag>;
 const KeyBadge = () => (
@@ -132,7 +134,7 @@ const useWide = () => {
 type View = { mode: 'list' } | { mode: 'detail'; id: string } | { mode: 'form'; id?: string };
 
 export const BusinessProjectPage: React.FC = () => {
-  const { projects, createProject, updateProject, deleteProject, importMonthly, saveContract, setAttachments, approveCode, reopenProject, submitPakd, savePakdForm, decidePakd, finishProject } =
+  const { projects, createProject, updateProject, deleteProject, importMonthly, saveContract, setAttachments, approveCode, reopenProject, submitPakd, savePakdForm, savePakdAdjust, cancelPakdAdjust, decidePakd, finishProject } =
     useBusinessProjects();
   const [view, setView] = useState<View>({ mode: 'list' });
   const [role, setRole] = useState<BizRole>('CFO');
@@ -146,7 +148,9 @@ export const BusinessProjectPage: React.FC = () => {
 
   const decide = (p: BizProject, approve: boolean, note: string) => {
     decidePakd(p.id, approve, role, actor, note);
-    const v = latestPakd(p)!.version;
+    const last = latestPakd(p)!;
+    const v = last.version;
+    if (last.adjust) return flash(!approve ? `Kế toán đã từ chối bản điều chỉnh PAKD V${v} — giữ bản đang áp dụng` : `Kế toán đã duyệt bản điều chỉnh PAKD V${v} — đã cập nhật số liệu dự án`);
     flash(!approve ? `Kế toán đã từ chối PAKD V${v} — trả về GĐK lập lại` : `Kế toán đã duyệt PAKD V${v} — dự án chuyển "Đang thực hiện"`);
   };
   const signContract = (p: BizProject, c: Omit<BizContract, 'updatedAt' | 'updatedBy'>) => {
@@ -188,7 +192,12 @@ export const BusinessProjectPage: React.FC = () => {
         <ProjectDetail
           project={current}
           onBack={() => setView({ mode: 'list' })}
-          onEdit={() => setView({ mode: 'form', id: current.id })}
+          onUpdateBasic={(data, files) => {
+            updateProject(current.id, data, CURRENT_USER);
+            const before = (current.attachments || []).map((x) => x.id).join();
+            if (files.map((x) => x.id).join() !== before) setAttachments(current.id, files, CURRENT_USER, `Cập nhật tài liệu đính kèm (${files.length} tệp)`);
+            flash(`Đã cập nhật thông tin cơ bản — Version ${current.version + 1}`);
+          }}
           role={role}
           onRoleChange={setRole}
           onApproveCode={() => {
@@ -202,6 +211,14 @@ export const BusinessProjectPage: React.FC = () => {
           onSubmitPakd={() => {
             submitPakd(current.id, actor);
             flash(`Đã nộp PAKD V${current.pakd.length + 1} — chờ Kế toán (CFO) duyệt`);
+          }}
+          onAdjustPakd={(form, submit) => {
+            savePakdAdjust(current.id, form, actor, submit);
+            flash(submit ? `Đã gửi bản điều chỉnh PAKD V${current.pakd.length + 1} — chờ Kế toán (CFO) duyệt lại` : 'Đã lưu nháp bản điều chỉnh PAKD');
+          }}
+          onCancelAdjust={() => {
+            cancelPakdAdjust(current.id, actor);
+            flash('Đã huỷ bản điều chỉnh PAKD');
           }}
           onSavePakd={(form, submit) => {
             savePakdForm(current.id, form, actor, submit);
@@ -277,7 +294,7 @@ const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.p
 const pakdDeadlineCell = (p: BizProject): { text: string; sub?: string; cls?: string } => {
   const last = latestPakd(p);
   if (p.status === 'Chờ duyệt mã') return { text: '—', cls: 'text-slate-400' };
-  if (p.status === 'Đóng') return { text: 'Đã đóng', sub: dmy(p.closedAt || p.pakdDeadline || ''), cls: 'text-slate-600 font-semibold' };
+  if (p.status === 'Pending') return { text: 'Pending', sub: dmy(p.closedAt || p.pakdDeadline || ''), cls: 'text-slate-600 font-semibold' };
   if (p.status === 'Chưa có PAKD') {
     const sub = last?.state === 'Từ chối' ? `V${last.version} bị từ chối ${dmy(last.decidedAt || '')}` : undefined;
     // Bị Kế toán từ chối → trả về cập nhật lại PAKD (hạn 30 ngày chỉ áp dụng lần đầu).
@@ -313,8 +330,8 @@ const rowAction = (p: BizProject, role: BizRole): RowAction => {
     case 'PAKD chờ duyệt':
       return pendingRole(latestPakd(p)) === role ? { label: 'Duyệt', kind: 'decide' } : { label: 'Xem', kind: 'view' };
     case 'Đang thực hiện':
-      return { label: 'Cập nhật', kind: 'view' };
-    case 'Đóng':
+      return latestPakd(p)?.adjust && pendingRole(latestPakd(p)) === role ? { label: 'Duyệt điều chỉnh', kind: 'decide' } : { label: 'Cập nhật', kind: 'view' };
+    case 'Pending':
       return { label: role === 'CFO' ? 'Mở lại' : 'Xem', kind: 'view' };
     default:
       return null;
@@ -356,7 +373,7 @@ const PakdDecisionModal: React.FC<{ project: BizProject; role: BizRole; onClose:
       >
         <div className="flex items-center justify-between px-4 py-2.5 bg-[#1e3a5f] text-white rounded-t-[3px]">
           <h3 className="text-[14px] font-bold flex items-center gap-2">
-            <ClipboardCheck size={16} /> {role} duyệt PAKD — V{last.version}
+            <ClipboardCheck size={16} /> {role} duyệt {last.adjust ? 'bản điều chỉnh ' : ''}PAKD — V{last.version}
           </h3>
           <button onClick={onClose} className="p-1 rounded hover:bg-white/10 cursor-pointer">
             <X size={18} />
@@ -368,17 +385,37 @@ const PakdDecisionModal: React.FC<{ project: BizProject; role: BizRole; onClose:
             rows={[
               { label: 'Dự án', value: `${p.masterCode} — ${p.name}` },
               { label: 'Người nộp / ngày nộp', value: `${last.submittedBy} · ${dmy(last.submittedAt)}` },
-              { label: 'Doanh thu PAKD (VNĐ)', value: money(p.expectedRevenue), num: true, strong: true },
-              { label: 'Chi phí kế hoạch (VNĐ)', value: money(plannedCost(p)), num: true },
-              { label: 'LN gộp kế hoạch (VNĐ)', value: `${money(gp)} (${grossMargin(p).toFixed(1)}%)`, num: true },
-              { label: 'Kế hoạch theo tháng', value: p.plan.length ? `${p.plan.length} tháng` : <span className="text-rose-600">Chưa import</span> },
+              ...(last.adjust && p.pakdDraft
+                ? (() => {
+                    const t = pakdTotals(p.pakdDraft);
+                    const arrow = (a: number, b: number) => (
+                      <span>
+                        <span className="text-slate-400 line-through mr-1.5">{money(a)}</span>→ <b>{money(b)}</b>
+                      </span>
+                    );
+                    return [
+                      { label: 'Tình trạng hợp đồng', value: `${p.contractSigned ? 'Đã ký' : 'Chưa ký'} → ${p.pakdDraft.contractState}` },
+                      { label: 'Doanh thu (VNĐ)', value: arrow(p.expectedRevenue, t.revenue), num: true },
+                      { label: 'Chi phí kế hoạch (VNĐ)', value: arrow(plannedCost(p), t.cost), num: true },
+                      { label: 'LN gộp kế hoạch (VNĐ)', value: <>{arrow(gp, t.profit)} ({(t.margin * 100).toFixed(1)}%)</>, num: true },
+                      ...(p.pakdDraft.contractState === 'Đã ký' ? [{ label: 'Số HĐ / ngày ký', value: `${p.pakdDraft.contractNo || '—'} · ${dmy(p.pakdDraft.actualSignDate || p.pakdDraft.contractDate || '')}` }] : []),
+                    ];
+                  })()
+                : [
+                    { label: 'Doanh thu PAKD (VNĐ)', value: money(p.expectedRevenue), num: true, strong: true },
+                    { label: 'Chi phí kế hoạch (VNĐ)', value: money(plannedCost(p)), num: true },
+                    { label: 'LN gộp kế hoạch (VNĐ)', value: `${money(gp)} (${grossMargin(p).toFixed(1)}%)`, num: true },
+                    { label: 'Kế hoạch theo tháng', value: p.plan.length ? `${p.plan.length} tháng` : <span className="text-rose-600">Chưa import</span> },
+                  ]),
             ]}
           />
           <FormRow label="Ý kiến" required={needNote} error={needNote && !note.trim() ? 'Nhập lý do từ chối' : undefined}>
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="Ý kiến phê duyệt / lý do từ chối" className={`${erp.inputFull} h-auto py-1.5`} />
           </FormRow>
           <p className="text-[11px] text-slate-500">
-            Kế toán (CFO) duyệt → PAKD được duyệt, dự án chuyển "Đang thực hiện". Từ chối → trả về GĐK lập phiên bản mới.
+            {last.adjust
+              ? 'Duyệt → áp dụng bản điều chỉnh (doanh thu, chi phí, hợp đồng, kế hoạch theo tháng). Từ chối → giữ bản đang áp dụng, bản điều chỉnh trả về GĐK / SM sửa tiếp.'
+              : 'Kế toán (CFO) duyệt → PAKD được duyệt, dự án chuyển "Đang thực hiện". Từ chối → trả về GĐK lập phiên bản mới.'}
           </p>
         </div>
         <div className="flex justify-end gap-1.5 px-3 py-2 border-t border-slate-300 bg-slate-50 rounded-b-[3px]">
@@ -393,7 +430,7 @@ const PakdDecisionModal: React.FC<{ project: BizProject; role: BizRole; onClose:
           >
             Từ chối
           </Btn>
-          <Btn variant="success" icon={CheckCircle2} onClick={() => onDecide(true, note.trim())}>
+          <Btn variant="primary" icon={CheckCircle2} onClick={() => onDecide(true, note.trim())}>
             Duyệt
           </Btn>
         </div>
@@ -491,8 +528,8 @@ const ProjectList: React.FC<{
         actions={
           <>
             <RoleSelect role={role} onChange={onRoleChange} />
-            {(role === 'AM' || role === 'GĐK') && (
-              <Btn variant="primary" icon={Plus} onClick={onCreate} title={role === 'GĐK' ? 'GĐK tạo → mã được cấp ngay' : 'AM tạo → chờ GĐK duyệt mã'}>
+            {canCreateProject(role) && (
+              <Btn variant="primary" icon={Plus} onClick={onCreate} title={role === 'GĐK' ? 'GĐK tạo → mã được cấp ngay' : 'AM / SM tạo → chờ GĐK duyệt mã'}>
                 Cấp mã dự án
               </Btn>
             )}
@@ -707,7 +744,7 @@ const ProjectList: React.FC<{
   );
 };
 
-// Quy trình & phê duyệt PAKD (màn chi tiết): xem WorkflowDrawer.tsx — ngăn kéo dọc bên phải.
+// Quy trình & phê duyệt PAKD (màn chi tiết): thanh thao tác StepActionBar ngay dưới thẻ Mã dự án.
 
 // ==========================================================================
 // Giai đoạn KH01 → KH05 — stepper ngang
@@ -869,7 +906,7 @@ const FinanceSection: React.FC<{
       noPad
       actions={
         data.length > 0 && (
-          <Btn variant="success" icon={FileUp} onClick={() => setShowImport(true)} className="h-7">
+          <Btn variant="primary" icon={FileUp} onClick={() => setShowImport(true)} className="h-7">
             {text.importBtn}
           </Btn>
         )
@@ -904,7 +941,7 @@ const FinanceSection: React.FC<{
             Import file Excel, tháng nằm ngang từ {fmtMonth(p.startDate.slice(0, 7))} → {fmtMonth(p.endDate.slice(0, 7))}; chỉ tiêu nằm dọc:{' '}
             {FIN_METRICS[kind].map((m) => m.label).join(', ')}.
           </p>
-          <Btn variant="success" icon={FileUp} onClick={() => setShowImport(true)} className="mt-3">
+          <Btn variant="primary" icon={FileUp} onClick={() => setShowImport(true)} className="mt-3">
             {text.importBtn}
           </Btn>
         </div>
@@ -1037,9 +1074,38 @@ const Files: React.FC<{ files: BizAttachment[] }> = ({ files }) =>
   );
 
 /**
- * Bảng "Mã dự án": Mã tổng (không gắn PM) · Mã kinh doanh · Mã sản xuất · tối đa MAX_OUTSOURCE mã outsource
- * (Mã tổng.3, .4) — mỗi mã outsource chọn PM phụ trách, có thể xoá.
+ * Thẻ "Mã dự án" gọn: bên trái Mã dự án (mã tổng, không gắn PM) · bên phải từng dòng
+ * MÃ KINH DOANH · MÃ SẢN XUẤT · MÃ OUTSOURCE (tối đa MAX_OUTSOURCE) kèm PM phụ trách.
  */
+type CodeLine = { label: string; code: React.ReactNode; pm: React.ReactNode; extra?: React.ReactNode };
+const CodeCard: React.FC<{ master: React.ReactNode; lines: CodeLine[]; actions?: React.ReactNode; note?: React.ReactNode; header?: React.ReactNode }> = ({ master, lines, actions, note, header }) => (
+  <section className="bg-white border border-[#bcd3f0] rounded-[6px] px-4 py-3 flex flex-wrap items-stretch gap-x-5 gap-y-3">
+    <div className="flex flex-col justify-center min-w-[170px] pr-5 border-r border-slate-200">
+      <p className="text-[11.5px] font-bold uppercase tracking-wide text-slate-500">Mã dự án</p>
+      <div className="text-[24px] font-bold font-mono text-[#1f5fa8] leading-tight">{master}</div>
+    </div>
+    <div className="flex-1 min-w-[320px] flex flex-col justify-center gap-1.5">
+      {header}
+      {lines.map((l) => (
+        <div key={l.label} className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[13px] min-h-[30px]">
+          <span className="w-[132px] shrink-0 text-[11.5px] font-bold uppercase tracking-wide text-slate-600">{l.label}</span>
+          <span className="min-w-[110px] font-mono font-bold text-[#1f5fa8]">{l.code}</span>
+          <span className="flex items-center gap-1.5 text-slate-600 min-w-0">{l.pm}</span>
+          {l.extra}
+        </div>
+      ))}
+      {actions && <div className="pt-0.5">{actions}</div>}
+      {note && <p className="text-[12px] text-slate-400 italic">{note}</p>}
+    </div>
+  </section>
+);
+const PmText: React.FC<{ name?: string }> = ({ name }) => (
+  <span>
+    (PM: <b className="font-semibold text-slate-800">{name || '—'}</b>)
+  </span>
+);
+const AutoCode = () => <span className="font-sans font-normal italic text-slate-400 text-[12.5px]">Tự sinh sau khi GĐK duyệt</span>;
+
 const CodeTable: React.FC<{ project: BizProject; actor: string }> = ({ project: p, actor }) => {
   const { projects, addOutsourceCode, setOutsourcePm, removeOutsourceCode } = useBusinessProjects();
   const outs = p.outsourceCodes || [];
@@ -1048,15 +1114,8 @@ const CodeTable: React.FC<{ project: BizProject; actor: string }> = ({ project: 
     [projects],
   );
   const canAdd = !!p.masterCode && outs.length < MAX_OUTSOURCE;
-  const td = `${erp.td} bg-[#f3f6fa] text-slate-600 w-[30%] border-l-0`;
-  const pmSelect = (value: string, onChange: (v: string) => void) => (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className={`${erp.input} h-7 w-full max-w-[280px]`}>
-      <option value="">— Chọn PM outsource —</option>
-      {pms.map((n) => (
-        <option key={n}>{n}</option>
-      ))}
-    </select>
-  );
+  const auto = <span className="text-slate-400 italic text-[12.5px]">Tự sinh sau khi GĐK duyệt</span>;
+  const code = (c: string) => (c ? <span className="font-mono font-bold text-[#1f5fa8]">{c}</span> : auto);
   return (
     <Panel
       title="Mã dự án"
@@ -1064,75 +1123,57 @@ const CodeTable: React.FC<{ project: BizProject; actor: string }> = ({ project: 
       noPad
       actions={
         p.masterCode ? (
-          <Btn icon={Plus} className="h-7" disabled={!canAdd} onClick={() => addOutsourceCode(p.id, '', actor)} title={canAdd ? 'Tạo mã outsource' : `Tối đa ${MAX_OUTSOURCE} mã outsource`}>
+          <Btn icon={Plus} className="h-7 !text-[12px]" disabled={!canAdd} onClick={() => addOutsourceCode(p.id, '', actor)} title={canAdd ? 'Tạo mã outsource' : `Tối đa ${MAX_OUTSOURCE} mã outsource`}>
             Tạo mã outsource ({outs.length}/{MAX_OUTSOURCE})
           </Btn>
         ) : undefined
       }
     >
-      <table className={erp.table}>
-        <thead>
-          <tr>
-            {['Loại mã', 'Mã', 'PM phụ trách'].map((h) => (
-              <th key={h} className={`${erp.th} text-left border-t-0 first:border-l-0 last:border-r-0`}>
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="text-[13px]">
-          {/* Mã tổng không gắn PM — chỉ mã kinh doanh / sản xuất / outsource có PM phụ trách. */}
-          <tr className={erp.tr}>
-            <td className={td}>Mã dự án (mã tổng)</td>
-            <td className={`${erp.td} ${erp.code} font-bold`}>{p.masterCode || 'Chờ cấp mã'}</td>
-            <td className={`${erp.td} border-r-0`} />
-          </tr>
-          <tr className={erp.tr}>
-            <td className={td}>Mã kinh doanh (PAKD)</td>
-            <td className={`${erp.td} ${erp.code} font-bold`}>{p.businessCode}</td>
-            <td className={`${erp.td} border-r-0`}>{p.businessPm || '—'}</td>
-          </tr>
-          <tr className={erp.tr}>
-            <td className={td}>Mã sản xuất</td>
-            <td className={`${erp.td} ${erp.code} font-bold`}>{p.productionCode}</td>
-            <td className={`${erp.td} border-r-0`}>{p.productionPm || '—'}</td>
-          </tr>
-          {outs.map((o, i) => (
-            <tr key={o.code} className={erp.tr}>
-              <td className={td}>Mã outsource {outs.length > 1 ? i + 1 : ''}</td>
-              <td className={`${erp.td} ${erp.code} font-bold`}>{o.code}</td>
-              <td className={`${erp.td} border-r-0 py-1`}>
-                <div className="flex items-center gap-2">
-                  {pmSelect(o.pm, (v) => setOutsourcePm(p.id, o.code, v, actor))}
-                  <button
-                    type="button"
-                    onClick={() => removeOutsourceCode(p.id, o.code, actor)}
-                    className="ml-auto p-1 text-slate-400 hover:text-rose-600 cursor-pointer"
-                    title="Xoá mã outsource"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </td>
-            </tr>
-          ))}
-          {!outs.length && (
-            <tr className={erp.tr}>
-              <td className={td}>Mã outsource</td>
-              <td className={`${erp.td} text-slate-400 italic`} colSpan={2}>
-                {p.masterCode ? `Chưa có — bấm "Tạo mã outsource" (tối đa ${MAX_OUTSOURCE} mã)` : 'Tạo sau khi được cấp mã dự án'}
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+      <InfoGrid
+        left={[
+          { label: 'Mã dự án', value: p.masterCode ? <span className="font-mono font-bold text-[#1f5fa8] text-[15px]">{p.masterCode}</span> : <span className="text-slate-400 font-semibold">Chờ GĐK duyệt</span> },
+          { label: 'Mã kinh doanh', value: code(p.businessCode) },
+          { label: 'Mã sản xuất', value: code(p.productionCode) },
+          ...outs.map((o, i) => ({ label: `Mã outsource${outs.length > 1 ? ` ${i + 1}` : ''}`, value: code(o.code) })),
+          ...(!outs.length ? [{ label: 'Mã outsource', value: <span className="text-slate-400 italic text-[12.5px]">{p.masterCode ? `Chưa có (tối đa ${MAX_OUTSOURCE} mã)` : 'Tạo sau khi được cấp mã'}</span> }] : []),
+        ]}
+        right={[
+          {
+            label: 'Tên dự án',
+            value: (
+              <span className="flex items-center gap-2 font-semibold">
+                {p.name} {p.isKey && <KeyBadge />}
+              </span>
+            ),
+          },
+          { label: 'PM kinh doanh', value: p.businessPm },
+          { label: 'PM sản xuất', value: p.productionPm },
+          ...(!outs.length ? [{ label: 'PM outsource', value: p.outsourcePm }] : []),
+          ...outs.map((o) => ({
+            label: 'PM outsource',
+            value: (
+              <span className="flex items-center gap-1.5 w-full">
+                <select value={o.pm} onChange={(e) => setOutsourcePm(p.id, o.code, e.target.value, actor)} className={`${erp.inputFull} h-8 flex-1`}>
+                  <option value="">— Chọn PM outsource —</option>
+                  {[...new Set([...pms, o.pm].filter(Boolean))].map((n) => (
+                    <option key={n}>{n}</option>
+                  ))}
+                </select>
+                <button type="button" onClick={() => removeOutsourceCode(p.id, o.code, actor)} className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer" title="Xoá mã outsource">
+                  <Trash2 size={14} />
+                </button>
+              </span>
+            ),
+          })),
+        ]}
+      />
     </Panel>
   );
 };
 
 /**
  * Thanh thao tác của bước hiện tại — luôn hiện dưới thanh tiêu đề (kể cả khi đã ẩn bảng quy trình bên phải):
- * GĐK duyệt mã · AM / GĐK lập PAKD · Kế toán (CFO) duyệt PAKD · Kế toán mở lại dự án đã đóng.
+ * GĐK duyệt mã · AM / SM / GĐK lập PAKD · Kế toán (CFO) duyệt PAKD · SM / GĐK sửa PAKD · Kế toán mở lại dự án Pending.
  * Vai trò không có quyền thao tác chỉ thấy thông báo đang chờ ai.
  */
 const StepActionBar: React.FC<{
@@ -1142,7 +1183,9 @@ const StepActionBar: React.FC<{
   onLapPakd: () => void;
   onDecide: () => void;
   onReopen: () => void;
-}> = ({ project: p, role, onApproveCode, onLapPakd, onDecide, onReopen }) => {
+  onFinish: () => void;
+  onAdjust: () => void;
+}> = ({ project: p, role, onApproveCode, onLapPakd, onDecide, onReopen, onFinish, onAdjust }) => {
   const last = latestPakd(p);
   const left = p.pakdDeadline ? Math.ceil((new Date(`${p.pakdDeadline}T00:00:00`).getTime() - new Date(new Date().toDateString()).getTime()) / 86_400_000) : null;
   let text: React.ReactNode = null;
@@ -1158,7 +1201,7 @@ const StepActionBar: React.FC<{
       );
     } else waitingFor = 'Giám đốc khối duyệt mã dự án';
   } else if (p.status === 'Chưa có PAKD') {
-    if (role === 'GĐK' || role === 'AM') {
+    if (canLapPakd(role)) {
       text = (
         <>
           {last?.state === 'Từ chối' ? <>PAKD V{last.version} bị từ chối{last.note ? ` (${last.note})` : ''} — cần lập lại. </> : 'Dự án cần lập phương án kinh doanh (PAKD). '}
@@ -1167,11 +1210,11 @@ const StepActionBar: React.FC<{
         </>
       );
       action = (
-        <Btn variant="success" icon={Send} onClick={onLapPakd}>
+        <Btn variant="primary" icon={Send} onClick={onLapPakd}>
           {p.pakd.length ? `Lập lại PAKD V${p.pakd.length + 1}` : 'Lập PAKD'}
         </Btn>
       );
-    } else waitingFor = `AM / Giám đốc khối lập PAKD (hạn ${dmy(p.pakdDeadline || '')})`;
+    } else waitingFor = `AM / SM / Giám đốc khối lập PAKD (hạn ${dmy(p.pakdDeadline || '')})`;
   } else if (p.status === 'PAKD chờ duyệt') {
     if (role === 'CFO') {
       text = <>PAKD V{last?.version} đang chờ <b>Kế toán (CFO)</b> duyệt.</>;
@@ -1181,15 +1224,61 @@ const StepActionBar: React.FC<{
         </Btn>
       );
     } else waitingFor = `Kế toán (CFO) duyệt PAKD V${last?.version ?? ''}`;
-  } else if (p.status === 'Đóng') {
-    if (role === 'CFO') {
-      text = <>Dự án đã đóng do quá hạn lập PAKD. Kế toán có thể mở lại để khối lập PAKD.</>;
+  } else if (p.status === 'Đang thực hiện') {
+    const pending = last?.adjust && last.state === 'Chờ CFO';
+    if (pending && role === 'CFO') {
+      text = <>Bản điều chỉnh <b>PAKD V{last!.version}</b> đang chờ <b>Kế toán (CFO)</b> duyệt lại.</>;
       action = (
-        <Btn icon={RotateCcw} onClick={onReopen}>
-          Mở lại dự án
+        <Btn variant="primary" icon={ClipboardCheck} onClick={onDecide}>
+          Duyệt / Từ chối điều chỉnh
         </Btn>
       );
-    } else waitingFor = 'Kế toán (CFO) mở lại dự án';
+    } else if (pending) waitingFor = `Kế toán (CFO) duyệt bản điều chỉnh PAKD V${last!.version}`;
+    else if (canAdjustPakd(role)) {
+      text = p.pakdDraft ? (
+        <>Có bản điều chỉnh PAKD {last?.adjust && last.state === 'Từ chối' ? <b>bị Kế toán từ chối</b> : 'đang soạn'} — sửa tiếp và gửi Kế toán duyệt lại.</>
+      ) : (
+        <>Dự án đang thực hiện. Giám đốc khối / Giám đốc kinh doanh (SM) có thể <b>sửa PAKD</b> (cập nhật đã ký hợp đồng, thông tin HĐ, chi phí) — Kế toán duyệt lại.</>
+      );
+      action = (
+        <span className="flex gap-2">
+          <Btn variant="primary" icon={Pencil} onClick={onAdjust} title="Mở popup Sửa → tab Phương án kinh doanh">
+            {p.pakdDraft ? 'Tiếp tục sửa PAKD' : 'Sửa PAKD'}
+          </Btn>
+          <Btn icon={Flag} onClick={onFinish}>
+            Kết thúc dự án
+          </Btn>
+        </span>
+      );
+    } else return (
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Btn icon={Flag} onClick={onFinish}>
+          Kết thúc dự án
+        </Btn>
+      </div>
+    );
+  } else if (p.status === 'Pending') {
+    const waitingPakd = last?.state === 'Chờ CFO';
+    if (role === 'CFO') {
+      text = (
+        <>
+          Dự án <b>Pending</b>: quá {PAKD_DAYS} ngày (hạn {dmy(p.pakdDeadline || '')}) {waitingPakd ? `PAKD V${last!.version} chưa được duyệt` : 'chưa có PAKD được duyệt'}. Kế toán mở lại để có thêm {PAKD_DAYS} ngày
+          {waitingPakd ? ', hoặc duyệt PAKD đang chờ' : ''}.
+        </>
+      );
+      action = (
+        <span className="flex gap-2">
+          {waitingPakd && (
+            <Btn variant="primary" icon={ClipboardCheck} onClick={onDecide}>
+              Duyệt / Từ chối PAKD
+            </Btn>
+          )}
+          <Btn icon={RotateCcw} onClick={onReopen}>
+            Mở lại dự án
+          </Btn>
+        </span>
+      );
+    } else waitingFor = `Kế toán (CFO) mở lại dự án Pending (quá hạn PAKD ${dmy(p.pakdDeadline || '')})`;
   }
   if (!text && !waitingFor) return null;
   if (!text)
@@ -1203,10 +1292,152 @@ const StepActionBar: React.FC<{
       </div>
     );
   return (
-    <div className="flex flex-wrap items-center gap-3 px-3 py-2 rounded-[4px] border border-amber-300 bg-amber-50 text-[12.5px] text-amber-900">
-      <AlertCircle size={15} className="text-amber-600 shrink-0" />
+    <div className="flex flex-wrap items-center gap-3 px-3 py-2 rounded-[4px] border border-[#bcd3f0] bg-[#eef4fb] text-[12.5px] text-[#1e3a5f]">
+      <AlertCircle size={15} className="text-[#1f5fa8] shrink-0" />
       <span className="flex-1 min-w-[240px]">{text}</span>
       {action}
+    </div>
+  );
+};
+
+/**
+ * Lưới thông tin 2 cột dạng bảng (nhãn | giá trị | nhãn | giá trị) — các hàng hai bên thẳng hàng nhau,
+ * nhãn một dòng, căn giữa theo chiều dọc. Dùng cho "Thông tin chi tiết dự án" (xem & nhập).
+ */
+type InfoItem = { label: React.ReactNode; value: React.ReactNode };
+const InfoGrid: React.FC<{ left: InfoItem[]; right: InfoItem[] }> = ({ left, right }) => {
+  const n = Math.max(left.length, right.length);
+  const lab = 'bg-[#f3f6fa] border-b border-r border-slate-200 px-3 py-2 flex items-center text-[13px] font-medium text-slate-600 whitespace-nowrap';
+  const val = 'border-b border-slate-200 px-3 py-1.5 flex flex-col justify-center min-h-[44px] text-[13px] text-slate-800 min-w-0';
+  const show = (v: React.ReactNode) => (v === '' || v === null || v === undefined ? <span className="text-slate-400">—</span> : v);
+  return (
+    <div className="grid grid-cols-[136px_minmax(0,1fr)] lg:grid-cols-[136px_minmax(0,1fr)_168px_minmax(0,1fr)] -mb-px">
+      {Array.from({ length: n }, (_, i) => (
+        <React.Fragment key={i}>
+          {[left[i], right[i]].map((it, j) =>
+            it ? (
+              <React.Fragment key={j}>
+                <div className={`${lab} ${j === 1 ? 'lg:border-l' : ''}`}>
+                  <span>{it.label}</span>
+                </div>
+                <div className={`${val} ${j === 0 ? 'lg:border-r lg:border-slate-200' : ''}`}>{show(it.value)}</div>
+              </React.Fragment>
+            ) : (
+              <React.Fragment key={j}>
+                <div className={`${lab} hidden lg:flex ${j === 1 ? 'lg:border-l' : ''}`} />
+                <div className={`${val} hidden lg:flex`} />
+              </React.Fragment>
+            ),
+          )}
+        </React.Fragment>
+      ))}
+    </div>
+  );
+};
+
+/**
+ * Popup "Sửa dự án":
+ *   • Thông tin cơ bản — AM / SM / GĐK sửa được (lưu tạo version mới của dự án).
+ *   • Phương án kinh doanh (PAKD) — chỉ SM / GĐK; dự án đã duyệt thì sửa xong gửi Kế toán duyệt lại,
+ *     Kế toán duyệt sinh phiên bản mới V2, V3…
+ */
+const EditProjectModal: React.FC<{
+  project: BizProject;
+  role: BizRole;
+  actor: string;
+  tab: 'basic' | 'pakd';
+  onTab: (t: 'basic' | 'pakd') => void;
+  onClose: () => void;
+  onSubmitBasic: (data: BizProjectInput, files: BizAttachment[]) => void;
+  onSavePakd: (form: PakdFormData, submit: boolean) => void;
+  onAdjustPakd: (form: PakdFormData, submit: boolean) => void;
+  onCancelAdjust: () => void;
+}> = ({ project: p, role, actor, tab, onTab, onClose, onSubmitBasic, onSavePakd, onAdjustPakd, onCancelAdjust }) => {
+  const { projects } = useBusinessProjects();
+  const note = (icon: React.ReactNode, text: React.ReactNode) => (
+    <div className="bg-white border border-slate-300 rounded-[4px] px-4 py-10 flex flex-col items-center text-center gap-2 text-[13px] text-slate-600">
+      {icon}
+      {text}
+    </div>
+  );
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-3">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/40" />
+      <motion.div
+        initial={{ scale: 0.98, opacity: 0, y: 12 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.98, opacity: 0, y: 12 }}
+        className="relative z-10 bg-[#eef1f5] w-[min(1400px,97vw)] h-[94vh] rounded-[6px] border border-slate-400 shadow-2xl flex flex-col overflow-hidden"
+      >
+        <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-[#1e3a5f] text-white">
+          <h3 className="text-[14px] font-bold flex items-center gap-2 min-w-0">
+            <Pencil size={15} /> <span className="truncate">Sửa dự án — {p.masterCode ? `${p.masterCode} · ` : ''}{p.name}</span>
+          </h3>
+          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-white/10 cursor-pointer" title="Đóng">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="flex items-end gap-1 px-4 pt-2 bg-white border-b border-slate-300">
+          {(
+            [
+              ['basic', 'Thông tin cơ bản', 'AM / SM / GĐK'],
+              ['pakd', 'Phương án kinh doanh (PAKD)', 'SM / GĐK'],
+            ] as const
+          ).map(([k, label, who]) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => onTab(k)}
+              className={`px-4 py-2 -mb-px rounded-t-[4px] border text-[13px] font-semibold cursor-pointer ${
+                tab === k ? 'bg-[#eef1f5] border-slate-300 border-b-[#eef1f5] text-[#1f5fa8]' : 'bg-white border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              {label} <span className="ml-1 text-[11px] font-normal text-slate-400">{who}</span>
+            </button>
+          ))}
+        </div>
+        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          {tab === 'basic' ? (
+            canCreateProject(role) ? (
+              <ProjectForm
+                embedded
+                initial={p}
+                projects={projects}
+                role={role}
+                onRoleChange={() => undefined}
+                actor={actor}
+                onCancel={onClose}
+                onSubmit={(data, files) => {
+                  onSubmitBasic(data, files);
+                  onClose();
+                }}
+              />
+            ) : (
+              note(<Info size={22} className="text-slate-400" />, <>Chỉ <b>AM / SM / Giám đốc khối</b> được sửa thông tin cơ bản.</>)
+            )
+          ) : p.status === 'Chờ duyệt mã' ? (
+            note(<Info size={22} className="text-slate-400" />, <>PAKD được lập sau khi <b>Giám đốc khối duyệt</b> dự án.</>)
+          ) : (
+            <PakdForm
+              key={`${p.id}-modal`}
+              project={p}
+              role={role}
+              actor={actor}
+              allowAdjust
+              startAdjust
+              onSave={(f, submit) => {
+                onSavePakd(f, submit);
+                if (submit) onClose();
+              }}
+              onAdjust={(f, submit) => {
+                onAdjustPakd(f, submit);
+                if (submit) onClose();
+              }}
+              onCancelAdjust={onCancelAdjust}
+            />
+          )}
+        </div>
+      </motion.div>
     </div>
   );
 };
@@ -1293,7 +1524,7 @@ const ContractPanel: React.FC<{ project: BizProject; onEdit: () => void }> = ({ 
 const ProjectDetail: React.FC<{
   project: BizProject;
   onBack: () => void;
-  onEdit: () => void;
+  onUpdateBasic: (data: BizProjectInput, files: BizAttachment[]) => void;
   onDelete: () => void;
   onImport: (kind: FinKind, rows: BizMonthRow[], fileName: string, summary: string) => void;
   onSaveContract: (c: Omit<BizContract, 'updatedAt' | 'updatedBy'>) => void;
@@ -1304,16 +1535,18 @@ const ProjectDetail: React.FC<{
   onReopen: () => void;
   onSubmitPakd: () => void;
   onSavePakd: (form: PakdFormData, submit: boolean) => void;
+  onAdjustPakd: (form: PakdFormData, submit: boolean) => void;
+  onCancelAdjust: () => void;
   actor: string;
   onDecide: (approve: boolean, note: string) => void;
   onFinish: () => void;
-}> = ({ project: p, onBack, onEdit, onDelete, onImport, onSaveContract, onAttachments, role, onRoleChange, onApproveCode, onReopen, onSubmitPakd, onSavePakd, actor, onDecide, onFinish }) => {
+}> = ({ project: p, onBack, onUpdateBasic, onDelete, onImport, onSaveContract, onAttachments, role, onRoleChange, onApproveCode, onReopen, onSubmitPakd, onSavePakd, onAdjustPakd, onCancelAdjust, actor, onDecide, onFinish }) => {
   const files = p.attachments || [];
   const [deciding, setDeciding] = useState(false);
   const [tab, setTab] = useState<'overview' | 'history'>('overview');
   const [showContract, setShowContract] = useState(false);
-  const drawer = useWorkflowDrawer();
-  const wide = useWide();
+  /** Popup "Sửa": tab Thông tin cơ bản (AM / SM / GĐK) · tab Phương án kinh doanh (SM / GĐK). */
+  const [editTab, setEditTab] = useState<'basic' | 'pakd' | null>(null);
   /** "Lập PAKD": về tab thông tin và cuộn tới form "Lập phương án kinh doanh". */
   const lapPakd = () => {
     setTab('overview');
@@ -1321,22 +1554,7 @@ const ProjectDetail: React.FC<{
   };
 
   return (
-    <div className="transition-[margin] duration-200" style={{ marginRight: drawer.open && wide ? drawer.width : 0 }}>
-      <WorkflowDrawer
-        project={p}
-        role={role}
-        open={drawer.open}
-        width={drawer.width}
-        onOpenChange={drawer.setOpen}
-        onWidthChange={drawer.setWidth}
-        onApproveCode={onApproveCode}
-        onReopen={onReopen}
-        onSubmit={onSubmitPakd}
-        onDecide={() => setDeciding(true)}
-        onFinish={onFinish}
-        onLapPakd={lapPakd}
-        onEditInfo={onEdit}
-      />
+    <div>
       <ErpTitleBar
         crumbs={[...CRUMBS, p.masterCode || 'Yêu cầu mở mã']}
         title={
@@ -1347,15 +1565,14 @@ const ProjectDetail: React.FC<{
         actions={
           <>
             <RoleSelect role={role} onChange={onRoleChange} />
-            <Btn icon={ListChecks} onClick={() => drawer.setOpen(!drawer.open)} title={drawer.open ? 'Ẩn quy trình' : 'Mở quy trình'}>
-              {drawer.open ? 'Ẩn quy trình' : 'Quy trình'}
-            </Btn>
             <Btn icon={ArrowLeft} onClick={onBack}>
               Quay lại
             </Btn>
-            <Btn variant="primary" icon={Pencil} onClick={onEdit}>
-              Sửa
-            </Btn>
+            {canCreateProject(role) && (
+              <Btn variant="primary" icon={Pencil} onClick={() => setEditTab('basic')}>
+                Sửa
+              </Btn>
+            )}
             <Btn variant="danger" icon={Trash2} onClick={onDelete}>
               Xoá
             </Btn>
@@ -1371,7 +1588,18 @@ const ProjectDetail: React.FC<{
         ]}
       />
 
-      <StepActionBar project={p} role={role} onApproveCode={onApproveCode} onLapPakd={lapPakd} onDecide={() => setDeciding(true)} onReopen={onReopen} />
+      <CodeTable project={p} actor={actor} />
+
+      <StepActionBar
+        project={p}
+        role={role}
+        onApproveCode={onApproveCode}
+        onLapPakd={lapPakd}
+        onDecide={() => setDeciding(true)}
+        onReopen={onReopen}
+        onFinish={onFinish}
+        onAdjust={() => setEditTab('pakd')}
+      />
 
       <FolderTabs
         tabs={[
@@ -1384,30 +1612,24 @@ const ProjectDetail: React.FC<{
 
       {tab === 'overview' && (
         <>
-          <CodeTable project={p} actor={actor} />
-
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
             <Panel title="Thông tin chi tiết dự án" icon={Building2} noPad className="xl:col-span-2">
-              <div className="grid grid-cols-1 lg:grid-cols-2">
-                <FieldTable
-                  rows={[
+              <InfoGrid
+                left={[
                     { label: 'Khối', value: p.division },
                     { label: 'Loại dự án', value: p.projectType },
                     { label: 'Tên khách hàng', value: p.customerName },
                     { label: 'Mã khách hàng', value: <span className="font-mono">{p.customerCode}</span> },
-                    { label: 'Thời gian', value: `${dmy(p.startDate)} → ${dmy(p.endDate)}` },
+                    { label: 'Thời gian', value: p.startDate || p.endDate ? <span className="tabular-nums">{dmy(p.startDate)} → {dmy(p.endDate)}</span> : '' },
                   ]}
-                />
-                <FieldTable
-                  rows={[
+                right={[
                     { label: 'Giám đốc kinh doanh', value: p.businessDirector },
                     { label: 'Giám đốc khối', value: p.salesDirector },
                     { label: 'AM', value: p.am.join(', ') },
                     { label: 'Người tạo', value: p.creator },
-                    ...(p.note ? [{ label: 'Ghi chú', value: p.note }] : []),
+                    { label: 'Ghi chú', value: p.note },
                   ]}
-                />
-              </div>
+              />
             </Panel>
 
             <Panel title="Hợp đồng & tài liệu" icon={FileSignature} noPad>
@@ -1472,11 +1694,31 @@ const ProjectDetail: React.FC<{
           </div>
 
           {/* PAKD: hiện sau khi GĐK duyệt mã — AM / GĐK nhập trong hạn PAKD_DAYS ngày */}
-          {p.status !== 'Chờ duyệt mã' && <PakdForm key={p.id} project={p} role={role} actor={actor} onSave={onSavePakd} />}
+          {p.status !== 'Chờ duyệt mã' && (
+            <PakdForm key={p.id} project={p} role={role} actor={actor} onSave={onSavePakd} onAdjust={onAdjustPakd} onCancelAdjust={onCancelAdjust} />
+          )}
 
           {p.contract && <ContractPanel project={p} onEdit={() => setShowContract(true)} />}
         </>
       )}
+
+      <AnimatePresence>
+        {editTab && (
+          <EditProjectModal
+            key="edit"
+            project={p}
+            role={role}
+            actor={actor}
+            tab={editTab}
+            onTab={setEditTab}
+            onClose={() => setEditTab(null)}
+            onSubmitBasic={onUpdateBasic}
+            onSavePakd={onSavePakd}
+            onAdjustPakd={onAdjustPakd}
+            onCancelAdjust={onCancelAdjust}
+          />
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {deciding && (
@@ -1588,6 +1830,33 @@ const customerList = (projects: BizProject[]) => {
 const peopleOf = (projects: BizProject[], pick: (p: BizProject) => (string | undefined)[]) =>
   [...new Set(projects.flatMap((p) => pick(p)).map((x) => (x || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'vi'));
 
+/** Ô nhập kiểu nhãn phía trên. */
+const FormField: React.FC<{ label: string; required?: boolean; hint?: string; className?: string; children: React.ReactNode }> = ({ label, required, hint, className = '', children }) => (
+  <div className={`min-w-0 ${className}`}>
+    <div className="flex items-baseline justify-between gap-2 mb-1">
+      <span className="text-[12.5px] font-semibold text-slate-700">
+        {label}
+        {required && <span className="text-rose-500"> *</span>}
+      </span>
+      {hint && <span className="text-[11.5px] text-slate-400 truncate">{hint}</span>}
+    </div>
+    {children}
+  </div>
+);
+const FormSection: React.FC<{ n: number; title: string; sub?: string; children: React.ReactNode }> = ({ n, title, sub, children }) => (
+  <section className="px-5 py-4 border-b border-slate-200 last:border-b-0">
+    <div className="flex items-center gap-2.5 mb-3">
+      <span className="w-6 h-6 rounded-full bg-[#1f5fa8] text-white text-[12px] font-bold flex items-center justify-center shrink-0">{n}</span>
+      <div>
+        <h3 className="text-[14px] font-bold text-[#1e3a5f] leading-tight">{title}</h3>
+        {sub && <p className="text-[12px] text-slate-500">{sub}</p>}
+      </div>
+    </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-3.5">{children}</div>
+  </section>
+);
+
+
 /**
  * Màn tạo dự án (Yêu cầu mở mã) / Sửa dự án — dựng giống màn chi tiết dự án, các ô nhập ngay tại chỗ:
  *   Thanh tiêu đề (Tên dự án · Dự án trọng điểm) · Mã dự án (mã tự sinh sau khi GĐK duyệt, chọn PM KD / PM SX)
@@ -1602,7 +1871,9 @@ const ProjectForm: React.FC<{
   actor: string;
   onCancel: () => void;
   onSubmit: (data: BizProjectInput, files: BizAttachment[]) => void;
-}> = ({ initial, projects, role, onRoleChange, actor, onCancel, onSubmit }) => {
+  /** Hiển thị trong popup "Sửa" (ẩn thanh tiêu đề, hướng dẫn, khung PAKD). */
+  embedded?: boolean;
+}> = ({ initial, projects, role, onRoleChange, actor, onCancel, onSubmit, embedded = false }) => {
   const [f, setF] = useState<BizProjectInput>(() => (initial ? toInput(initial) : emptyInput()));
   const [files, setFiles] = useState<BizAttachment[]>(() => initial?.attachments || []);
   const [touched, setTouched] = useState(false);
@@ -1610,9 +1881,11 @@ const ProjectForm: React.FC<{
   const amPeople = useMemo(() => peopleOf(projects, (p) => [...(p.am || []), p.businessPm]), [projects]);
   const bizPms = useMemo(() => peopleOf(projects, (p) => [p.businessPm]), [projects]);
   const prodPms = useMemo(() => peopleOf(projects, (p) => [p.productionPm]), [projects]);
-  const [extraCustomers, setExtraCustomers] = useState<{ code: string; name: string }[]>([]);
+  const [extraCustomers, setExtraCustomers] = useState<{ code: string; name: string; internal?: boolean; address?: string; email?: string; phone?: string; description?: string }[]>([]);
   const [adding, setAdding] = useState(false);
-  const [nc, setNc] = useState({ code: '', name: '' });
+  const EMPTY_NC = { code: '', name: '', internal: false, address: '', email: '', phone: '', description: '' };
+  const [nc, setNc] = useState(EMPTY_NC);
+  const [ncTouched, setNcTouched] = useState(false);
   const set = <K extends keyof BizProjectInput>(k: K, v: BizProjectInput[K]) => setF((prev) => ({ ...prev, [k]: v }));
   const isEdit = !!initial;
   const willIssue = !isEdit && role === 'GĐK';
@@ -1627,13 +1900,23 @@ const ProjectForm: React.FC<{
     const c = customers.find((x) => x.code === code);
     setF((prev) => ({ ...prev, customerCode: c?.code || '', customerName: c?.name || '' }));
   };
-  const ncErr = !nc.code.trim() ? 'Nhập mã khách hàng' : customers.some((c) => c.code === nc.code.trim()) ? 'Mã khách hàng đã tồn tại' : !nc.name.trim() ? 'Nhập tên khách hàng' : '';
+  const ncNameErr = !nc.name.trim() ? 'Nhập tên khách hàng' : '';
+  const ncCodeErr = !nc.code.trim()
+    ? 'Nhập mã khách hàng'
+    : !/^[A-Z0-9]{3}$/.test(nc.code.trim())
+      ? 'Mã KH gồm đúng 3 ký tự chữ / số, viết liền, không dấu'
+      : customers.some((c) => c.code === nc.code.trim())
+        ? 'Mã khách hàng đã tồn tại'
+        : '';
+  const ncEmailErr = nc.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nc.email.trim()) ? 'Email không hợp lệ' : '';
+  const ncErr = ncNameErr || ncCodeErr || ncEmailErr;
   const addCustomer = () => {
+    setNcTouched(true);
     if (ncErr) return;
     const c = { code: nc.code.trim(), name: nc.name.trim() };
-    setExtraCustomers((prev) => [...prev, c]);
+    setExtraCustomers((prev) => [...prev, { ...c, internal: nc.internal, address: nc.address.trim(), email: nc.email.trim(), phone: nc.phone.trim(), description: nc.description.trim() }]);
     setF((prev) => ({ ...prev, customerCode: c.code, customerName: c.name }));
-    setNc({ code: '', name: '' });
+    setNc(EMPTY_NC);
     setAdding(false);
   };
 
@@ -1673,43 +1956,54 @@ const ProjectForm: React.FC<{
       ))}
     </select>
   );
+  /** Sửa dự án: PM hiện tại + nút "Update PM" (bấm mới hiện ô chọn PM khác); tạo mới thì chọn trực tiếp. */
+  const [pmEditing, setPmEditing] = useState<Record<string, boolean>>({});
+  const pmField = (k: 'businessPm' | 'productionPm' | 'outsourcePm', select: React.ReactNode) => {
+    if (!isEdit || pmEditing[k])
+      return isEdit ? (
+        <span className="flex items-center gap-1.5 w-full">
+          <span className="flex-1 min-w-0">{select}</span>
+          <button
+            type="button"
+            onClick={() => {
+              set(k, (initial![k] as string) || '');
+              setPmEditing((x) => ({ ...x, [k]: false }));
+            }}
+            className="shrink-0 p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+            title="Huỷ đổi PM"
+          >
+            <X size={14} />
+          </button>
+        </span>
+      ) : (
+        select
+      );
+    return (
+      <span className="flex items-center justify-between gap-2 w-full">
+        <span className={f[k] ? 'text-slate-800' : 'text-slate-400'}>{(f[k] as string) || '—'}</span>
+        <Btn icon={UserCog} className="h-7 !text-[12px] shrink-0" onClick={() => setPmEditing((x) => ({ ...x, [k]: true }))}>
+          Update PM
+        </Btn>
+      </span>
+    );
+  };
   const td = `${erp.td} bg-[#f3f6fa] text-slate-600 w-[30%] border-l-0`;
   const auto = <span className="text-slate-400 italic font-sans font-normal text-[12.5px]">Tự sinh sau khi GĐK duyệt</span>;
 
+
   return (
     <>
+      {!embedded && (
       <ErpTitleBar
         crumbs={[...CRUMBS, isEdit ? `Sửa ${initial!.masterCode || 'yêu cầu mở mã'}` : 'Yêu cầu mở mã dự án']}
-        title={
-          <span className="flex flex-wrap items-center gap-2 w-full">
-            <input
-              value={f.name}
-              onChange={(e) => set('name', e.target.value)}
-              placeholder="Nhập tên dự án *"
-              autoFocus={!isEdit}
-              className={`min-w-[280px] w-[min(560px,60vw)] h-9 px-2.5 rounded-[3px] border text-[17px] font-bold text-[#1e3a5f] placeholder:text-slate-400 placeholder:font-semibold focus:outline-none focus:ring-2 focus:ring-[#1f5fa8]/30 ${
-                err('name') ? 'border-rose-400 bg-rose-50/40' : 'border-slate-300'
-              }`}
-            />
-            <button
-              type="button"
-              onClick={() => set('isKey', !f.isKey)}
-              title="Đánh dấu dự án trọng điểm"
-              className={`inline-flex items-center gap-1 h-7 px-2 rounded-[3px] border text-[12px] font-semibold cursor-pointer ${
-                f.isKey ? 'bg-amber-50 border-amber-400 text-amber-700' : 'bg-white border-slate-300 text-slate-500 hover:border-amber-400'
-              }`}
-            >
-              <Star size={13} className={f.isKey ? 'fill-amber-400 text-amber-500' : ''} /> {f.isKey ? 'Dự án trọng điểm (KEY)' : 'Đánh dấu KEY'}
-            </button>
-          </span>
-        }
+        title={isEdit ? `Sửa dự án — ${initial!.name}` : 'Yêu cầu mở mã dự án'}
         actions={
           <>
             {!isEdit && <RoleSelect role={role} onChange={onRoleChange} />}
             <Btn icon={X} onClick={onCancel}>
               Huỷ
             </Btn>
-            <Btn variant="success" icon={isEdit ? Save : Send} onClick={submit}>
+            <Btn variant="primary" icon={isEdit ? Save : Send} onClick={submit}>
               {isEdit ? 'Lưu thay đổi' : willIssue ? 'Tạo & cấp mã' : 'Gửi GĐK duyệt'}
             </Btn>
           </>
@@ -1722,16 +2016,17 @@ const ProjectForm: React.FC<{
           { label: 'Người tạo', value: f.creator || actor },
         ]}
       />
+      )}
 
-      {!isEdit && (
-        <div className="flex flex-wrap items-center gap-3 px-3 py-2 rounded-[4px] border border-emerald-600/60 bg-emerald-50/60 text-[12.5px] text-slate-700">
-          <Info size={15} className="text-emerald-700 shrink-0" />
+      {!isEdit && !embedded && (
+        <div className="flex flex-wrap items-center gap-3 px-3 py-2 rounded-[4px] border border-[#bcd3f0] bg-[#eef4fb] text-[12.5px] text-slate-700">
+          <Info size={15} className="text-[#1f5fa8] shrink-0" />
           <span className="flex-1 min-w-[240px]">
             <b className="text-[#1e3a5f]">Hướng dẫn quy trình: </b>
             {willIssue
               ? 'Giám đốc khối tạo → hệ thống cấp mã ngay (bỏ bước duyệt mã)'
-              : 'AM gửi yêu cầu → Giám đốc khối duyệt → hệ thống cấp Mã dự án / Mã KD / Mã SX'}
-            {` → AM / GĐK lập PAKD trong ${PAKD_DAYS} ngày → Kế toán (CFO) duyệt; bị từ chối thì trả về lập lại.`}
+              : 'AM / SM gửi yêu cầu → Giám đốc khối duyệt → hệ thống cấp Mã dự án / Mã KD / Mã SX'}
+            {` → AM / SM / GĐK lập PAKD trong ${PAKD_DAYS} ngày → Kế toán (CFO) duyệt; quá hạn chưa được duyệt → dự án Pending.`}
           </span>
         </div>
       )}
@@ -1745,53 +2040,74 @@ const ProjectForm: React.FC<{
         </div>
       )}
 
-      {/* Mã dự án */}
+      {/* Mã dự án — cùng kiểu bảng với "Thông tin chi tiết dự án" */}
       <Panel title="Mã dự án" icon={Hash} noPad>
-        <table className={erp.table}>
-          <thead>
-            <tr>
-              {['Loại mã', 'Mã', 'PM phụ trách'].map((h) => (
-                <th key={h} className={`${erp.th} text-left border-t-0 first:border-l-0 last:border-r-0`}>
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="text-[13px]">
-            <tr className={erp.tr}>
-              <td className={td}>Mã dự án (mã tổng)</td>
-              <td className={`${erp.td} ${erp.code} font-bold`}>{f.masterCode || auto}</td>
-              <td className={`${erp.td} border-r-0`} />
-            </tr>
-            <tr className={erp.tr}>
-              <td className={td}>Mã kinh doanh (PAKD)</td>
-              <td className={`${erp.td} ${erp.code} font-bold`}>{f.businessCode || auto}</td>
-              <td className={`${erp.td} border-r-0 py-1`}>
-                <div className="max-w-[320px]">{personSelect('businessPm', bizPms, '— Chọn PM kinh doanh —')}</div>
-              </td>
-            </tr>
-            <tr className={erp.tr}>
-              <td className={td}>Mã sản xuất</td>
-              <td className={`${erp.td} ${erp.code} font-bold`}>{f.productionCode || auto}</td>
-              <td className={`${erp.td} border-r-0 py-1`}>
-                <div className="max-w-[320px]">{personSelect('productionPm', prodPms, '— Chọn PM sản xuất —')}</div>
-              </td>
-            </tr>
-            <tr className={erp.tr}>
-              <td className={td}>Mã outsource</td>
-              <td className={`${erp.td} text-slate-400 italic border-r-0`} colSpan={2}>
-                {isEdit ? `${(initial!.outsourceCodes || []).map((o) => o.code).join(', ') || 'Chưa có'} — tạo / sửa trên màn chi tiết dự án` : 'Tạo sau khi được cấp mã dự án (tối đa 2 mã)'}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <InfoGrid
+          left={[
+            { label: 'Mã dự án', value: f.masterCode ? <span className="font-mono font-bold text-[#1f5fa8] text-[15px]">{f.masterCode}</span> : auto },
+            { label: 'Mã kinh doanh', value: f.businessCode ? <span className="font-mono font-bold text-[#1f5fa8]">{f.businessCode}</span> : auto },
+            { label: 'Mã sản xuất', value: f.productionCode ? <span className="font-mono font-bold text-[#1f5fa8]">{f.productionCode}</span> : auto },
+            {
+              label: 'Mã outsource',
+              value: (
+                <span className="text-slate-400 italic text-[12.5px]">
+                  {isEdit ? `${(initial!.outsourceCodes || []).map((o) => o.code).join(', ') || 'Chưa có'} — tạo / sửa trên màn chi tiết` : `Tạo sau khi được cấp mã (tối đa ${MAX_OUTSOURCE} mã)`}
+                </span>
+              ),
+            },
+          ]}
+          right={[
+            {
+              label: req('Tên dự án'),
+              value: (
+                <>
+                  <span className="flex items-center gap-1.5">
+                    <input
+                      value={f.name}
+                      onChange={(e) => set('name', e.target.value)}
+                      placeholder="Nhập tên dự án"
+                      autoFocus={!isEdit}
+                      className={`${cell('name')} flex-1 min-w-0 font-semibold`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => set('isKey', !f.isKey)}
+                      title="Đánh dấu dự án trọng điểm"
+                      className={`shrink-0 inline-flex items-center gap-1 h-8 px-2 rounded-[3px] border text-[12px] font-semibold cursor-pointer whitespace-nowrap ${
+                        f.isKey ? 'bg-amber-50 border-amber-400 text-amber-700' : 'bg-white border-slate-300 text-slate-500 hover:border-amber-400'
+                      }`}
+                    >
+                      <Star size={13} className={f.isKey ? 'fill-amber-400 text-amber-500' : ''} /> KEY
+                    </button>
+                  </span>
+                  {errText('name')}
+                </>
+              ),
+            },
+            { label: 'PM kinh doanh', value: pmField('businessPm', personSelect('businessPm', bizPms, '— Chọn PM kinh doanh —')) },
+            { label: 'PM sản xuất', value: pmField('productionPm', personSelect('productionPm', prodPms, '— Chọn PM sản xuất —')) },
+            {
+              label: 'PM outsource',
+              value: pmField(
+                'outsourcePm',
+                <select value={f.outsourcePm || ''} onChange={(e) => set('outsourcePm', e.target.value)} className={`${erp.inputFull} h-8`} title="Gán mặc định cho mã outsource khi được tạo">
+                  <option value="">— Chọn PM outsource —</option>
+                  {[...new Set([...bizPms, ...prodPms, f.outsourcePm || ''].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'vi')).map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>,
+              ),
+            },
+          ]}
+        />
       </Panel>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
         <Panel title="Thông tin chi tiết dự án" icon={Building2} noPad className="xl:col-span-2">
-          <div className="grid grid-cols-1 lg:grid-cols-2">
-            <FieldTable
-              rows={[
+          <InfoGrid
+            left={[
                 {
                   label: req('Khối'),
                   value: (
@@ -1835,7 +2151,11 @@ const ProjectForm: React.FC<{
                         </select>
                         <button
                           type="button"
-                          onClick={() => setAdding((v) => !v)}
+                          onClick={() => {
+                            setNc(EMPTY_NC);
+                            setNcTouched(false);
+                            setAdding(true);
+                          }}
                           className="shrink-0 inline-flex items-center gap-0.5 text-[12px] font-semibold text-[#1f7ae0] hover:underline cursor-pointer"
                           title="Thêm khách hàng mới"
                         >
@@ -1843,23 +2163,6 @@ const ProjectForm: React.FC<{
                         </button>
                       </div>
                       {errText('customerCode')}
-                      {adding && (
-                        <div className="mt-1.5 p-2 rounded-[4px] border border-[#bcd3f0] bg-[#f4f8fd] space-y-1.5">
-                          <div className="flex gap-1.5">
-                            <input value={nc.code} onChange={(e) => setNc((v) => ({ ...v, code: e.target.value }))} placeholder="Mã KH" className={`${erp.inputFull} h-8 w-24 font-mono`} />
-                            <input value={nc.name} onChange={(e) => setNc((v) => ({ ...v, name: e.target.value }))} placeholder="Tên khách hàng" className={`${erp.inputFull} h-8 flex-1`} />
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <Btn variant="primary" icon={Plus} className="h-7" disabled={!!ncErr} title={ncErr || undefined} onClick={addCustomer}>
-                              Thêm
-                            </Btn>
-                            <Btn className="h-7" onClick={() => setAdding(false)}>
-                              Huỷ
-                            </Btn>
-                            {ncErr && (nc.code || nc.name) && <span className="text-[11.5px] text-rose-600">{ncErr}</span>}
-                          </div>
-                        </div>
-                      )}
                     </>
                   ),
                 },
@@ -1869,18 +2172,16 @@ const ProjectForm: React.FC<{
                   value: (
                     <>
                       <div className="flex items-center gap-1.5">
-                        <input type="date" value={f.startDate} onChange={(e) => set('startDate', e.target.value)} className={`${cell('startDate')} min-w-0`} />
+                        <input type="date" value={f.startDate} onChange={(e) => set('startDate', e.target.value)} className={`${cell('startDate')} min-w-0 flex-1 !px-1.5 text-[12.5px]`} />
                         <span className="text-slate-400">→</span>
-                        <input type="date" value={f.endDate} onChange={(e) => set('endDate', e.target.value)} className={`${cell('endDate')} min-w-0`} />
+                        <input type="date" value={f.endDate} onChange={(e) => set('endDate', e.target.value)} className={`${cell('endDate')} min-w-0 flex-1 !px-1.5 text-[12.5px]`} />
                       </div>
                       {errText('endDate')}
                     </>
                   ),
                 },
               ]}
-            />
-            <FieldTable
-              rows={[
+            right={[
                 { label: 'Giám đốc kinh doanh', value: personSelect('businessDirector', directors, '— Chọn GĐKD —') },
                 { label: 'Giám đốc khối', value: personSelect('salesDirector', directors, '— Chọn GĐ khối —') },
                 {
@@ -1918,8 +2219,7 @@ const ProjectForm: React.FC<{
                   value: <input value={f.note || ''} onChange={(e) => set('note', e.target.value)} placeholder="Ghi chú (nếu có)" className={`${erp.inputFull} h-8`} />,
                 },
               ]}
-            />
-          </div>
+          />
         </Panel>
 
         <Panel title="Hợp đồng & tài liệu" icon={FileSignature} noPad>
@@ -1946,24 +2246,111 @@ const ProjectForm: React.FC<{
         </Panel>
       </div>
 
-      {!isEdit && (
+      {!isEdit && !embedded && (
         <Panel title="Lập phương án kinh doanh (PAKD)" icon={ClipboardCheck}>
           <div className="flex items-center gap-2.5 text-[12.5px] text-slate-500 py-3 justify-center text-center">
             <Info size={15} className="text-slate-400 shrink-0" />
             <span>
               {willIssue
-                ? `Phần nhập PAKD mở ngay sau khi tạo — Giám đốc khối / AM có ${PAKD_DAYS} ngày kể từ ngày cấp mã để lập PAKD.`
-                : `Phần nhập PAKD mở sau khi Giám đốc khối duyệt mã — AM / Giám đốc khối có ${PAKD_DAYS} ngày kể từ ngày duyệt để lập PAKD.`}
+                ? `Phần nhập PAKD mở ngay sau khi tạo — AM / SM / Giám đốc khối có ${PAKD_DAYS} ngày kể từ ngày cấp mã để có PAKD được Kế toán duyệt.`
+                : `Phần nhập PAKD mở sau khi Giám đốc khối duyệt — AM / SM / Giám đốc khối có ${PAKD_DAYS} ngày kể từ ngày duyệt để có PAKD được Kế toán duyệt.`}
             </span>
           </div>
         </Panel>
       )}
 
+      {/* Popup thêm khách hàng mới */}
+      <AnimatePresence>
+        {adding && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setAdding(false)} className="absolute inset-0 bg-black/40" />
+            <motion.div
+              initial={{ scale: 0.97, opacity: 0, y: 12 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.97, opacity: 0, y: 12 }}
+              className="relative bg-white w-full max-w-2xl rounded-[6px] border border-slate-300 shadow-2xl z-10"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') addCustomer();
+                if (e.key === 'Escape') setAdding(false);
+              }}
+            >
+              <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200">
+                <h3 className="text-[16px] font-bold text-slate-800">Thêm khách hàng</h3>
+                <button type="button" onClick={() => setAdding(false)} className="p-1 rounded text-slate-500 hover:bg-slate-100 cursor-pointer" title="Đóng">
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-3 text-[13px]">
+                {(() => {
+                  const lab = (t: string, req?: boolean) => (
+                    <span className="block font-semibold text-slate-700 mb-1">
+                      {t}
+                      {req && <span className="text-rose-500"> *</span>}
+                    </span>
+                  );
+                  const inp = (bad?: string) => `${erp.inputFull} h-9 ${ncTouched && bad ? '!border-rose-400 bg-rose-50/40' : ''}`;
+                  const msg = (m?: string) => ncTouched && m && <span className="block text-[11.5px] text-rose-600 mt-0.5">{m}</span>;
+                  return (
+                    <>
+                      <div className="sm:col-span-2 flex items-start gap-5">
+                        <label className="flex-1 min-w-0">
+                          {lab('Tên khách hàng', true)}
+                          <input autoFocus value={nc.name} onChange={(e) => setNc((v) => ({ ...v, name: e.target.value }))} placeholder="Nhập tên khách hàng" className={inp(ncNameErr)} />
+                          {msg(ncNameErr)}
+                        </label>
+                        <label className="shrink-0 flex flex-col items-start cursor-pointer">
+                          {lab('Nội bộ')}
+                          <input type="checkbox" checked={nc.internal} onChange={(e) => setNc((v) => ({ ...v, internal: e.target.checked }))} className="w-5 h-5 mt-1.5 accent-[#1f5fa8] cursor-pointer" />
+                        </label>
+                      </div>
+                      <label>
+                        {lab('Mã KH', true)}
+                        <input
+                          value={nc.code}
+                          maxLength={3}
+                          onChange={(e) => setNc((v) => ({ ...v, code: e.target.value.toUpperCase().replace(/\s/g, '') }))}
+                          placeholder="VD: VCB, 022 (đúng 3 ký tự, viết liền, không dấu)"
+                          className={`${inp(ncCodeErr)} font-mono uppercase placeholder:font-sans placeholder:normal-case`}
+                        />
+                        {msg(ncCodeErr)}
+                      </label>
+                      <label>
+                        {lab('Địa chỉ')}
+                        <input value={nc.address} onChange={(e) => setNc((v) => ({ ...v, address: e.target.value }))} placeholder="Nhập địa chỉ" className={inp()} />
+                      </label>
+                      <label>
+                        {lab('Email')}
+                        <input type="email" value={nc.email} onChange={(e) => setNc((v) => ({ ...v, email: e.target.value }))} placeholder="Nhập email" className={inp(ncEmailErr)} />
+                        {msg(ncEmailErr)}
+                      </label>
+                      <label>
+                        {lab('Số điện thoại')}
+                        <input value={nc.phone} onChange={(e) => setNc((v) => ({ ...v, phone: e.target.value }))} placeholder="Nhập số điện thoại" className={inp()} />
+                      </label>
+                      <label className="sm:col-span-2">
+                        {lab('Mô tả')}
+                        <textarea value={nc.description} onChange={(e) => setNc((v) => ({ ...v, description: e.target.value }))} rows={3} placeholder="Nhập mô tả" className={`${erp.inputFull} h-auto py-1.5`} />
+                      </label>
+                    </>
+                  );
+                })()}
+              </div>
+              <div className="flex justify-end gap-2 px-5 pb-4">
+                <Btn onClick={() => setAdding(false)}>Huỷ</Btn>
+                <Btn variant="primary" icon={Save} onClick={addCustomer}>
+                  Lưu
+                </Btn>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       <div className="flex justify-end gap-2">
         <Btn icon={X} onClick={onCancel}>
           Huỷ
         </Btn>
-        <Btn variant="success" icon={isEdit ? Save : Send} onClick={submit}>
+        <Btn variant="primary" icon={isEdit ? Save : Send} onClick={submit}>
           {isEdit ? 'Lưu thay đổi' : willIssue ? 'Tạo & cấp mã' : 'Gửi GĐK duyệt'}
         </Btn>
       </div>

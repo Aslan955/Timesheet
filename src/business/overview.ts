@@ -141,7 +141,7 @@ export const RULES = [
   'Công nợ quá hạn > 60 ngày: Cao · 31-60 ngày: Trung bình (hạn xử lý = hạn thanh toán + 60 ngày; bỏ qua khoản < 0,5% giá trị HĐ)',
   'Chi phí thực tế ≥ 130% kế hoạch cùng kỳ: Cao · ≥ 110%: Trung bình',
   'Dòng tiền thu ≤ 65% kế hoạch: Cao · Doanh thu ≤ 85% kế hoạch: Trung bình',
-  'Hạn lập PAKD còn ≤ 7 ngày / PAKD bị từ chối: Trung bình · PAKD chờ duyệt quá 5 ngày: Trung bình, còn lại Thấp',
+  'Dự án Pending (quá hạn PAKD): Cao · Hạn lập PAKD còn ≤ 7 ngày / PAKD bị từ chối: Trung bình · PAKD chờ duyệt quá 5 ngày: Trung bình, còn lại Thấp',
   'Quá thời điểm dự kiến ký mà chưa ký HĐ / dự án lỗ: Trung bình · Biên LN thực tế < 20%: Thấp · Chờ duyệt mã quá 3 ngày: Thấp',
 ];
 
@@ -210,6 +210,8 @@ export const detectIssues = (projects: BizProject[], cutoffMonth: string, today 
       const due = addDaysIso(last.submittedAt, 5);
       add('Phê duyệt', daysBetween(due, today) > 0 ? 'Trung bình' : 'Thấp', `PAKD V${last.version} chờ Kế toán (CFO) duyệt`, due, 'Kế toán (CFO)');
     }
+    if (p.status === 'Pending' && p.pakdDeadline)
+      add('PAKD', 'Cao', `Dự án Pending — quá hạn PAKD ${p.pakd.length ? '(chưa được Kế toán duyệt)' : '(chưa có PAKD)'}`, p.pakdDeadline, 'Kế toán (CFO)');
     if (p.status === 'Chờ duyệt mã') {
       const due = addDaysIso(p.createdAt, 3);
       if (daysBetween(due, today) > 0) add('Phê duyệt', 'Thấp', 'Yêu cầu mở mã chờ Giám đốc khối duyệt', due, p.salesDirector);
