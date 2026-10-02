@@ -15,6 +15,7 @@
 | 3 | **Lưu hợp đồng không ghi thẳng vào PAKD đã duyệt.** Bỏ ghi vào `pakdForm` trong `syncContractToPakd`. Sau khi CFO duyệt HĐ, điền thông tin HĐ vào bản điều chỉnh (`pakdDraft`, tạo mới nếu chưa có) và báo GĐK / SM | PK:273–292, BPC `saveContract` | PAKD BR22, AC11.5 | P09 |
 | 4 | **Sửa dự án là màn hình riêng**, không phải popup. Giữ 2 tab Thông tin cơ bản / PAKD | `EditProjectModal` (BPP:1344) → view mới | CT BR22, AC5.2, AC9.1 (PAKD) | C13 |
 | 5 | *Kết thúc dự án* chỉ GĐK của khối | `StepActionBar` (BPP:1227–1259) | CT BR13, AC13.1 | C10 |
+| 5b | Dự án **Pending**: CFO **không** duyệt / từ chối PAKD được; bỏ nút *Duyệt / Từ chối PAKD* và câu "…hoặc duyệt PAKD đang chờ". CFO *Mở lại dự án* trước, sau đó mới duyệt | `StepActionBar` (nhánh Pending) | CT BR19; DS BR6, BR10 | C14 |
 
 ## Ưu tiên 2: Duyệt và trạng thái
 | # | Việc | Chỗ sửa | Nghiệm thu | Gap |

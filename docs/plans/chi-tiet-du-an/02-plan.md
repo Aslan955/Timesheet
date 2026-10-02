@@ -46,6 +46,7 @@
 | C23 | Sửa dự án là **màn hình riêng** (không phải popup), 2 tab Thông tin cơ bản / PAKD; khu Mã dự án luôn hiển thị; PM outsource; Update PM | CT v02 BR21, BR22 |
 | C24 | Mọi hợp đồng tạo mới / cập nhật đều phải CFO duyệt; HĐ được duyệt thì điền vào bản điều chỉnh PAKD, không ghi thẳng vào PAKD đã duyệt | PAKD v02 BR22; DS v05 BR35 |
 | C25 | Chấp nhận: popup Thêm khách hàng (mã 3 ký tự, thêm trường), kế hoạch chi phí theo tháng, tự điền khi chuyển Đã ký, biểu đồ cột | CT v02 BR7; PAKD v02 BR5, BR6, BR24 |
+| C26 | Dự án Pending: phải mở lại xong CFO mới được duyệt PAKD (giữ SRS, báo dev sửa) | DS BR6, BR10; CT BR19; gap C14 |
 
 ## Dàn ý SRS_ChiTietDuAn
 | Mục | Nội dung | Độ phức tạp |

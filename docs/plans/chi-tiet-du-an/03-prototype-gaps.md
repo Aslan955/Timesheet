@@ -127,6 +127,7 @@
 | C10 | Cao | Đã ẩn khi có bản điều chỉnh chờ | Chỉ GĐK của khối | CT BR13 | |
 | C11 | Trung bình | Chưa sửa | Chỉ *Chờ duyệt mã*, người tạo / GĐK; xoá mềm | CT BR15 | |
 | C12 | Thấp | Một phần | Câu hướng dẫn: "GĐK / SM lập PAKD" | CT mục 5 | |
+| **C14** | Cao | **Mới** | Dự án *Pending* có PAKD chờ duyệt: bỏ nút *Duyệt / Từ chối PAKD* của CFO trên thanh thao tác; CFO phải *Mở lại dự án* trước, sau đó mới duyệt (BA chốt) | CT BR19; DS BR6, BR10 | |
 | **C13** | Trung bình | **Mới** | Đổi popup `EditProjectModal` (BPP:1344) thành **màn hình Sửa dự án** riêng, giữ 2 tab | CT BR22 | |
 | P01 | Cao | SM đã có | Bỏ AM khỏi `canLapPakd` (BPC:38) | PAKD BR1, BR2 | DS GAP-16 |
 | P02 | Thấp | Chưa sửa | Câu chú thích theo PAKD BR3 | PAKD BR3 | |
@@ -139,7 +140,7 @@
 | **P09** | Cao | **Mới** | `syncContractToPakd` (PK:273–292) không được ghi thẳng vào `pakdForm` đã duyệt; chỉ điền vào bản điều chỉnh sau khi HĐ được CFO duyệt | PAKD BR22, AC11.5 | |
 
 ## 4. Đề xuất thứ tự sửa
-1. **Đợt 1:** C05 / P01, P04, P09, C10, C13.
+1. **Đợt 1:** C05 / P01, P04, P09, C10, C13, C14.
 2. **Đợt 2:** C09, P08, C04, C07, C11.
 3. **Đợt 3:** C01, C02, C03, C08, P07.
 4. **Đợt 4:** C06, C12, P02, P03, P05.
