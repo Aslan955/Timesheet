@@ -322,7 +322,7 @@ export const ContractModal: React.FC<{ project: BizProject; onClose: () => void;
             <Btn icon={X} onClick={onClose}>
               Huỷ
             </Btn>
-            <Btn variant="success" icon={Save} onClick={save}>
+            <Btn variant="primary" icon={Save} onClick={save}>
               {p.contract ? 'Lưu thay đổi' : 'Lưu & xác nhận đã ký'}
             </Btn>
           </div>

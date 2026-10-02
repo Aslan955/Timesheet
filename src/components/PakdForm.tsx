@@ -107,7 +107,14 @@ const MonthIn: React.FC<{ value: string; onChange: (ym: string) => void; classNa
   return (
     <input
       value={text}
-      onChange={(e) => setText(e.target.value)}
+      maxLength={7}
+      onFocus={(e) => e.currentTarget.select()}
+      onChange={(e) => {
+        // Chỉ nhận số, tự chèn dấu "/" → MM/YYYY (tránh gõ thừa kiểu 01/20262)
+        const d = e.target.value.replace(/\D/g, '').slice(0, 6);
+        setText(d.length > 2 ? `${d.slice(0, 2)}/${d.slice(2)}` : d);
+        setBad(false);
+      }}
       onBlur={commit}
       onKeyDown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
       placeholder="MM/YYYY"
@@ -513,6 +520,7 @@ export const PakdForm: React.FC<{
           ...emptyPakd(p.contractSigned, p.contract?.value ?? p.expectedRevenue),
           contractNo: p.contract?.number || '',
           contractDate: p.contract?.signDate || '',
+          actualSignDate: p.contract?.signDate || '',
           startMonth: (p.contract?.from || p.startDate || '').slice(0, 7),
           endMonth: (p.contract?.to || p.endDate || '').slice(0, 7),
           expectedSignMonth: (p.expectedSignDate || '').slice(0, 7),
@@ -522,7 +530,7 @@ export const PakdForm: React.FC<{
   const [f, setF] = useState<PakdFormData>(() => initial());
   const [errors, setErrors] = useState<string[]>([]);
   const [adjusting, setAdjusting] = useState(() => startAdjust && allowAdjust && p.status === 'Đang thực hiện' && canAdjustPakd(role));
-  const key = `${p.id}-${p.pakdForm?.savedAt || ''}-${p.pakdDraft?.savedAt || ''}-${p.pakd.length}-${latestPakd(p)?.state || ''}`;
+  const key = `${p.id}-${p.pakdForm?.savedAt || ''}-${p.pakdDraft?.savedAt || ''}-${p.pakd.length}-${latestPakd(p)?.state || ''}-${p.contract?.updatedAt || ''}`;
   const [lastKey, setLastKey] = useState(key);
   if (key !== lastKey) {
     setLastKey(key);
@@ -549,9 +557,9 @@ export const PakdForm: React.FC<{
       : inAdjust
         ? 'Đang điều chỉnh'
         : !last
-          ? 'Nháp'
+          ? 'Chưa có PAKD'
           : last.state === 'Chờ CFO'
-            ? 'Chờ duyệt'
+            ? 'Đã có PAKD · chờ Kế toán duyệt'
             : last.state === 'Đã duyệt'
               ? 'Đã duyệt'
               : p.status === 'Chưa có PAKD'
@@ -562,7 +570,7 @@ export const PakdForm: React.FC<{
   const stateCls =
     state === 'Đã duyệt'
       ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
-      : state.startsWith('Chờ duyệt')
+      : state.startsWith('Chờ duyệt') || state.includes('chờ Kế toán')
         ? 'bg-amber-50 text-amber-700 border-amber-300'
         : state.startsWith('Từ chối') || state.includes('bị từ chối')
           ? 'bg-rose-50 text-rose-700 border-rose-300'
@@ -682,7 +690,7 @@ export const PakdForm: React.FC<{
               <Btn icon={Save} className="h-8" onClick={() => save(false)}>
                 Lưu nháp
               </Btn>
-              <Btn variant="success" icon={Send} className="h-8" onClick={() => save(true)}>
+              <Btn variant="primary" icon={Send} className="h-8" onClick={() => save(true)}>
                 Gửi Kế toán duyệt điều chỉnh
               </Btn>
             </span>
@@ -692,7 +700,7 @@ export const PakdForm: React.FC<{
               <Btn icon={Save} className="h-8" onClick={() => save(false)}>
                 Lưu nháp
               </Btn>
-              <Btn variant="success" icon={Send} className="h-8" onClick={() => save(true)}>
+              <Btn variant="primary" icon={Send} className="h-8" onClick={() => save(true)}>
                 Gửi Kế toán duyệt
               </Btn>
             </span>

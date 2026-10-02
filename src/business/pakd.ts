@@ -256,3 +256,37 @@ export const validatePakd = (f: PakdFormData): string[] => {
   }
   return e;
 };
+
+/** Chi phí từng giai đoạn (dự án chưa ký) → kế hoạch chi phí theo tháng (chia đều Từ → Đến). */
+export const phasesToCosts = (f: PakdFormData): PakdCost[] =>
+  f.phases
+    .filter((x) => x.from)
+    .flatMap((x) => {
+      const ms = monthRange(x.from, x.to || x.from);
+      return [
+        ...(x.sx ? [{ ...newCost('Sản xuất', x.name || 'Sản xuất'), amounts: spreadEven(x.sx, ms) }] : []),
+        ...(x.kd ? [{ ...newCost('Kinh doanh', x.name || 'Kinh doanh'), amounts: spreadEven(x.kd, ms) }] : []),
+      ];
+    });
+
+/** Đồng bộ thông tin hợp đồng (cập nhật ở khung Hợp đồng) vào PAKD: tình trạng Đã ký, số HĐ, ngày ký, giá trị, kỳ thực hiện. */
+export const syncContractToPakd = (
+  f: PakdFormData | undefined,
+  c: { number: string; signDate: string; value: number; from: string; to: string },
+): PakdFormData | undefined => {
+  if (!f) return f;
+  const wasUnsigned = f.contractState === 'Chưa ký';
+  const noCost = !f.costs.some((x) => costTotal(x) > 0);
+  const converted = wasUnsigned && noCost ? phasesToCosts(f) : [];
+  return {
+    ...f,
+    contractState: 'Đã ký',
+    contractNo: c.number || f.contractNo,
+    contractDate: c.signDate || f.contractDate,
+    actualSignDate: c.signDate || f.actualSignDate,
+    contractValue: c.value || f.contractValue,
+    startMonth: (c.from || '').slice(0, 7) || f.startMonth,
+    endMonth: (c.to || '').slice(0, 7) || f.endMonth,
+    costs: converted.length ? converted : f.costs,
+  };
+};

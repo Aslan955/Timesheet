@@ -15,7 +15,7 @@
  * Đơn vị tiền: VNĐ (cả thông tin dự án và kế hoạch theo tháng).
  */
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { PakdFormData, pakdMonthlyPlan, pakdTotals } from './pakd';
+import { PakdFormData, pakdMonthlyPlan, pakdTotals, syncContractToPakd } from './pakd';
 
 export const DIVISIONS = ['G1', 'G2', 'G3', 'G4', 'BFSI', 'GPDV'];
 export const PROJECT_TYPES = ['Fixed Cost', 'Time & Material', 'ODC', 'Cho thuê lao động', 'Nội bộ'];
@@ -228,6 +228,8 @@ export interface BizProject {
   productionPm: string;
   /** Mã outsource (tối đa MAX_OUTSOURCE): Mã tổng.3, .4 — mỗi mã có PM phụ trách. */
   outsourceCodes?: BizOutsource[];
+  /** PM outsource (chọn khi tạo dự án) — gán mặc định cho mã outsource khi được tạo. */
+  outsourcePm?: string;
 
   division: string;
   projectType: string;
@@ -980,6 +982,7 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
     const p0 = projects.find((p) => p.id === id);
     const code = p0 && (p0.outsourceCodes || []).length < MAX_OUTSOURCE ? nextOutsourceCode(p0) : '';
     if (!code) return '';
+    pm = pm || p0?.outsourcePm || '';
     patch(
       id,
       (p) => ({ outsourceCodes: [...(p.outsourceCodes || []), { code, pm, createdAt: now(), createdBy: by }].sort((a, b) => a.code.localeCompare(b.code)) }),
@@ -1012,6 +1015,9 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
               ...p,
               contractSigned: true,
               contract: { ...contract, updatedAt: at, updatedBy: by },
+              // Thông tin HĐ tự cập nhật xuống PAKD (bản đang áp dụng và bản điều chỉnh nếu có)
+              pakdForm: syncContractToPakd(p.pakdForm, contract),
+              pakdDraft: syncContractToPakd(p.pakdDraft, contract),
               version: p.version + 1,
               updatedAt: at,
               history: [
