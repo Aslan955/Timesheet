@@ -44,7 +44,7 @@ export const trackerRows = (projects: BizProject[], year: string, divisions: str
       return sd ? !year || sd.startsWith(year) : false;
     });
     const unsignedList = list.filter(
-      (p) => !p.contractSigned && p.status !== 'Kết thúc' && p.status !== 'Đóng' && (!year || (p.expectedSignDate || '').startsWith(year)),
+      (p) => !p.contractSigned && p.status !== 'Kết thúc' && p.status !== 'Pending' && (!year || (p.expectedSignDate || '').startsWith(year)),
     );
     const signed = signedList.reduce((s, p) => s + signedValue(p), 0);
     const expected = unsignedList.reduce((s, p) => s + p.expectedRevenue, 0);

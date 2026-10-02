@@ -22,24 +22,31 @@ export const PROJECT_TYPES = ['Fixed Cost', 'Time & Material', 'ODC', 'Cho thuê
 
 /**
  * Vòng đời dự án:
- *   AM tạo yêu cầu mở mã → Chờ duyệt mã → (GĐK duyệt → hệ thống sinh Mã dự án / Mã KD / Mã SX) → Chưa có PAKD
- *   (GĐK tự tạo yêu cầu → mã được cấp ngay, bỏ bước duyệt mã)
- *   → (GĐK lập & nộp PAKD) → PAKD chờ duyệt → (Kế toán / CFO duyệt) → Đang thực hiện → Kết thúc.
- * Sau PAKD_DAYS ngày kể từ ngày cấp mã mà chưa từng nộp PAKD → tự động "Đóng".
- *   Kế toán (CFO) có thể mở lại → "Chưa có PAKD" với hạn PAKD_DAYS ngày mới.
- * PAKD bị từ chối → quay về "Chưa có PAKD" để lập & nộp phiên bản mới (V2, V3…);
- *   dự án đã nộp PAKD thì không còn bị tự động đóng.
+ *   AM / SM (Giám đốc kinh doanh) / GĐK tạo dự án → Chờ duyệt mã → (GĐK duyệt → hệ thống sinh Mã dự án / KD / SX) → Chưa có PAKD
+ *   (GĐK tự tạo → mã được cấp ngay, bỏ bước duyệt)
+ *   → (AM / SM / GĐK lập & nộp PAKD trong PAKD_DAYS ngày) → PAKD chờ duyệt → (Kế toán / CFO duyệt → V1) → Đang thực hiện → Kết thúc.
+ * Hết PAKD_DAYS ngày mà PAKD chưa có hoặc chưa được Kế toán duyệt → tự động "Pending".
+ *   Kế toán (CFO) có thể mở lại → hạn PAKD_DAYS ngày mới.
+ * Dự án đã duyệt: bấm "Sửa" → popup: Thông tin cơ bản (AM / SM / GĐK) · PAKD (SM / GĐK) → gửi Kế toán duyệt lại;
+ *   mỗi lần Kế toán duyệt sinh phiên bản mới V2, V3…
  */
-export type BizStatus = 'Chờ duyệt mã' | 'Chưa có PAKD' | 'PAKD chờ duyệt' | 'Đang thực hiện' | 'Kết thúc' | 'Đóng';
-export const BIZ_STATUSES: BizStatus[] = ['Chờ duyệt mã', 'Chưa có PAKD', 'PAKD chờ duyệt', 'Đang thực hiện', 'Kết thúc', 'Đóng'];
-/** Số ngày (kể từ ngày cấp mã / mở lại) để nộp PAKD trước khi dự án bị đóng. */
+export type BizStatus = 'Chờ duyệt mã' | 'Chưa có PAKD' | 'PAKD chờ duyệt' | 'Đang thực hiện' | 'Kết thúc' | 'Pending';
+export const BIZ_STATUSES: BizStatus[] = ['Chờ duyệt mã', 'Chưa có PAKD', 'PAKD chờ duyệt', 'Đang thực hiện', 'Kết thúc', 'Pending'];
+/** Vai trò được tạo dự án / sửa thông tin cơ bản. */
+export const canCreateProject = (role: BizRole) => role === 'AM' || role === 'SM' || role === 'GĐK';
+/** Vai trò được lập PAKD lần đầu (trong hạn PAKD_DAYS ngày). */
+export const canLapPakd = (role: BizRole) => role === 'AM' || role === 'SM' || role === 'GĐK';
+/** Số phiên bản PAKD kế tiếp = số bản đã được Kế toán duyệt + 1 (V1, V2, V3… sinh khi duyệt). */
+export const nextPakdVersion = (p: Pick<BizProject, 'pakd'>) => p.pakd.filter((v) => v.state === 'Đã duyệt').length + 1;
+/** Số ngày (kể từ ngày cấp mã / mở lại) để có PAKD được Kế toán duyệt, quá hạn → Pending. */
 export const PAKD_DAYS = 30;
 
 /** Vai trò trong quy trình (chưa có đăng nhập — chọn trên màn để thao tác thử). */
-export type BizRole = 'AM' | 'GĐK' | 'PM' | 'CFO';
+export type BizRole = 'AM' | 'GĐK' | 'SM' | 'PM' | 'CFO';
 export const BIZ_ROLES: { key: BizRole; label: string }[] = [
   { key: 'AM', label: 'AM (tạo yêu cầu cấp mã)' },
   { key: 'GĐK', label: 'GĐK (duyệt mã, lập PAKD)' },
+  { key: 'SM', label: 'Giám đốc kinh doanh (SM)' },
   { key: 'CFO', label: 'Kế toán (CFO)' },
 ];
 
@@ -53,7 +60,11 @@ export interface PakdVersion {
   decidedAt?: string; // ngày duyệt / từ chối cuối cùng
   decidedBy?: string;
   note?: string;
+  /** Bản điều chỉnh PAKD sau khi dự án đã được duyệt (GĐK / SM sửa → Kế toán duyệt lại). */
+  adjust?: boolean;
 }
+/** Vai trò được sửa (điều chỉnh) PAKD khi dự án đang thực hiện. */
+export const canAdjustPakd = (role: BizRole) => role === 'GĐK' || role === 'SM';
 /** Vai trò đang phải duyệt phiên bản này (nếu còn chờ). */
 export const pendingRole = (v?: PakdVersion): BizRole | null => (v?.state === 'Chờ CFO' ? 'CFO' : null);
 export const latestPakd = (p: Pick<BizProject, 'pakd'>) => p.pakd[p.pakd.length - 1] as PakdVersion | undefined;
@@ -236,8 +247,9 @@ export interface BizProject {
   expectedSignDate?: string; // Thời điểm dự kiến ký HĐ
   codeIssuedAt?: string; // YYYY-MM-DD — ngày cấp mã (GĐK duyệt / GĐK tự tạo)
   pakdDeadline?: string; // Hạn lập PAKD = ngày cấp mã (hoặc mở lại) + PAKD_DAYS
-  closedAt?: string; // YYYY-MM-DD — ngày dự án bị đóng
+  closedAt?: string; // YYYY-MM-DD — ngày dự án chuyển Pending
   pakdForm?: PakdFormData; // Nội dung PAKD lập trên hệ thống (AM / GĐK nhập trong hạn PAKD_DAYS ngày)
+  pakdDraft?: PakdFormData; // Bản điều chỉnh PAKD (GĐK / SM sửa khi dự án đang thực hiện) — nháp / chờ Kế toán duyệt
   pakd: PakdVersion[]; // các phiên bản PAKD đã nộp
   contract?: BizContract; // thông tin ký hợp đồng (cập nhật trên màn chi tiết)
   attachments?: BizAttachment[]; // tài liệu đính kèm của dự án (PAKD, báo giá, biên bản…)
@@ -729,12 +741,16 @@ interface Ctx {
   /** Quy trình: duyệt mã / nộp PAKD / duyệt – từ chối PAKD / kết thúc dự án. */
   /** GĐK duyệt mã → hệ thống sinh Mã dự án / KD / SX, hạn PAKD = hôm nay + PAKD_DAYS. */
   approveCode: (id: string, by: string) => { deadline: string; code: string };
-  /** Kế toán mở lại dự án đã đóng → Chưa có PAKD, hạn PAKD mới. Trả về hạn PAKD. */
+  /** Kế toán mở lại dự án Pending → hạn PAKD mới. Trả về hạn PAKD. */
   reopenProject: (id: string, by: string) => string;
   submitPakd: (id: string, by: string) => void;
   /** Lưu nháp / gửi duyệt PAKD lập trên hệ thống. Gửi duyệt → cập nhật số liệu dự án + kế hoạch theo tháng. */
   savePakdForm: (id: string, form: PakdFormData, by: string, submit: boolean) => void;
   decidePakd: (id: string, approve: boolean, role: BizRole, by: string, note: string) => void;
+  /** GĐK / SM sửa PAKD khi dự án đang thực hiện: lưu nháp hoặc gửi Kế toán duyệt lại (bản điều chỉnh). */
+  savePakdAdjust: (id: string, form: PakdFormData, by: string, submit: boolean) => void;
+  /** Huỷ bản điều chỉnh đang soạn (chưa gửi). */
+  cancelPakdAdjust: (id: string, by: string) => void;
   finishProject: (id: string, by: string) => void;
   /** Thêm / xoá tài liệu đính kèm của dự án (ghi lịch sử, không tăng version). */
   setAttachments: (id: string, files: BizAttachment[], by: string, note: string) => void;
@@ -817,26 +833,41 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
 
   const reopenProject = (id: string, by: string) => {
     const pakdDeadline = addDays(today(), PAKD_DAYS);
-    patch(id, () => ({ status: 'Chưa có PAKD', pakdDeadline, closedAt: undefined }), by, 'Mở lại dự án', `Hạn lập PAKD mới: ${dmyOf(pakdDeadline)}`);
+    patch(
+      id,
+      (p) => ({ status: latestPakd(p)?.state === 'Chờ CFO' ? 'PAKD chờ duyệt' : 'Chưa có PAKD', pakdDeadline, closedAt: undefined }),
+      by,
+      'Mở lại dự án',
+      `Hạn PAKD mới: ${dmyOf(pakdDeadline)}`,
+    );
     return pakdDeadline;
   };
 
-  /** Tự động đóng dự án đã cấp mã quá PAKD_DAYS ngày mà chưa từng nộp PAKD. */
+  /** Hết hạn PAKD_DAYS ngày mà PAKD chưa có / chưa được Kế toán duyệt → tự động chuyển Pending. */
   useEffect(() => {
     const t = today();
-    const overdue = projects.filter((p) => p.status === 'Chưa có PAKD' && p.pakd.length === 0 && p.pakdDeadline && p.pakdDeadline < t);
+    const waiting = (p: BizProject) => p.status === 'Chưa có PAKD' || p.status === 'PAKD chờ duyệt';
+    const overdue = projects.filter((p) => waiting(p) && !p.pakd.some((v) => v.state === 'Đã duyệt') && p.pakdDeadline && p.pakdDeadline < t);
     if (!overdue.length) return;
     const at = now();
     const ids = new Set(overdue.map((p) => p.id));
     setProjects((prev) =>
       prev.map((p) =>
-        ids.has(p.id) && p.status === 'Chưa có PAKD'
+        ids.has(p.id) && waiting(p)
           ? {
               ...p,
-              status: 'Đóng',
+              status: 'Pending',
               closedAt: t,
               updatedAt: at,
-              history: [...p.history, { at, by: 'Hệ thống', action: 'Tự động đóng dự án', note: `Quá ${PAKD_DAYS} ngày kể từ ngày cấp mã chưa nộp PAKD (hạn ${dmyOf(p.pakdDeadline!)})` }],
+              history: [
+                ...p.history,
+                {
+                  at,
+                  by: 'Hệ thống',
+                  action: 'Tự động chuyển Pending',
+                  note: `Quá ${PAKD_DAYS} ngày (hạn ${dmyOf(p.pakdDeadline!)}) ${p.pakd.length ? 'PAKD chưa được Kế toán duyệt' : 'chưa có PAKD'}`,
+                },
+              ],
             }
           : p,
       ),
@@ -852,46 +883,73 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
       'Chờ Kế toán (CFO) duyệt',
     );
 
-  const savePakdForm = (id: string, form: PakdFormData, by: string, submit: boolean) => {
-    const f: PakdFormData = { ...form, savedAt: now(), savedBy: by };
-    if (!submit) return patch(id, () => ({ pakdForm: f }), by, 'Lưu nháp PAKD');
+  /** Áp số liệu PAKD vào dự án: doanh thu, chi phí, hợp đồng, thời gian, kế hoạch theo tháng. */
+  const applyPakd = (p: BizProject, f: PakdFormData, by: string): Partial<BizProject> => {
     const t = pakdTotals(f);
     const signed = f.contractState === 'Đã ký';
     const plan = pakdMonthlyPlan(f);
+    return {
+      expectedRevenue: t.revenue,
+      plannedProductionCost: t.sx,
+      plannedBusinessCost: t.kd,
+      contractSigned: signed,
+      expectedSignDate: signed ? f.actualSignDate || f.contractDate || p.expectedSignDate : f.expectedSignMonth ? `${f.expectedSignMonth}-01` : p.expectedSignDate,
+      ...(signed && f.startMonth ? { startDate: `${f.startMonth}-01` } : {}),
+      ...(signed && f.endMonth ? { endDate: `${f.endMonth}-28` } : {}),
+      ...(plan.length ? { plan, planImport: { fileName: 'PAKD lập trên hệ thống', at: now(), by } } : {}),
+      ...(signed
+        ? {
+            contract: {
+              ...(p.contract || { deviationReason: '', files: [], addenda: [] }),
+              number: f.contractNo || p.contract?.number || '',
+              signDate: f.actualSignDate || f.contractDate || p.contract?.signDate || '',
+              value: f.contractValue,
+              from: f.startMonth ? `${f.startMonth}-01` : p.contract?.from || '',
+              to: f.endMonth ? `${f.endMonth}-28` : p.contract?.to || '',
+              updatedAt: now(),
+              updatedBy: by,
+            },
+          }
+        : {}),
+    };
+  };
+  const pakdSummary = (f: PakdFormData) => {
+    const t = pakdTotals(f);
+    return `${f.contractState} · Doanh thu ${Math.round(t.revenue).toLocaleString('en-US')} · Chi phí ${Math.round(t.cost).toLocaleString('en-US')}`;
+  };
+
+  const savePakdForm = (id: string, form: PakdFormData, by: string, submit: boolean) => {
+    const f: PakdFormData = { ...form, savedAt: now(), savedBy: by };
+    if (!submit) return patch(id, () => ({ pakdForm: f }), by, 'Lưu nháp PAKD');
     patch(
       id,
       (p) => ({
+        ...applyPakd(p, f, by),
         pakdForm: f,
         status: 'PAKD chờ duyệt',
-        pakd: [...p.pakd, { version: p.pakd.length + 1, submittedAt: today(), submittedBy: by, state: 'Chờ CFO' }],
-        expectedRevenue: t.revenue,
-        plannedProductionCost: t.sx,
-        plannedBusinessCost: t.kd,
-        contractSigned: signed,
-        expectedSignDate: signed ? f.actualSignDate || f.contractDate || p.expectedSignDate : f.expectedSignMonth ? `${f.expectedSignMonth}-01` : p.expectedSignDate,
-        ...(signed && f.startMonth ? { startDate: `${f.startMonth}-01` } : {}),
-        ...(signed && f.endMonth ? { endDate: `${f.endMonth}-28` } : {}),
-        ...(plan.length ? { plan, planImport: { fileName: 'PAKD lập trên hệ thống', at: now(), by } } : {}),
-        ...(signed
-          ? {
-              contract: {
-                ...(p.contract || { deviationReason: '', files: [], addenda: [] }),
-                number: f.contractNo || p.contract?.number || '',
-                signDate: f.actualSignDate || f.contractDate || p.contract?.signDate || '',
-                value: f.contractValue,
-                from: f.startMonth ? `${f.startMonth}-01` : p.contract?.from || '',
-                to: f.endMonth ? `${f.endMonth}-28` : p.contract?.to || '',
-                updatedAt: now(),
-                updatedBy: by,
-              },
-            }
-          : {}),
+        pakd: [...p.pakd, { version: nextPakdVersion(p), submittedAt: today(), submittedBy: by, state: 'Chờ CFO' }],
       }),
       by,
       'Nộp PAKD',
-      `${signed ? 'Đã ký' : 'Chưa ký'} · Doanh thu ${Math.round(t.revenue).toLocaleString('en-US')} · Chi phí ${Math.round(t.cost).toLocaleString('en-US')} · Chờ Kế toán (CFO) duyệt`,
+      `${pakdSummary(f)} · Chờ Kế toán (CFO) duyệt`,
     );
   };
+
+  const savePakdAdjust = (id: string, form: PakdFormData, by: string, submit: boolean) => {
+    const f: PakdFormData = { ...form, savedAt: now(), savedBy: by };
+    if (!submit) return patch(id, () => ({ pakdDraft: f }), by, 'Lưu nháp điều chỉnh PAKD');
+    patch(
+      id,
+      (p) => ({
+        pakdDraft: f,
+        pakd: [...p.pakd, { version: nextPakdVersion(p), submittedAt: today(), submittedBy: by, state: 'Chờ CFO', adjust: true }],
+      }),
+      by,
+      'Gửi điều chỉnh PAKD',
+      `${pakdSummary(f)} · Chờ Kế toán (CFO) duyệt lại`,
+    );
+  };
+  const cancelPakdAdjust = (id: string, by: string) => patch(id, () => ({ pakdDraft: undefined }), by, 'Huỷ bản điều chỉnh PAKD');
 
   const decidePakd = (id: string, approve: boolean, role: BizRole, by: string, note: string) =>
     patch(
@@ -901,13 +959,18 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
         const next: PakdVersion = !approve
           ? { ...last, state: 'Từ chối', decidedAt: today(), decidedBy: role, note }
           : { ...last, state: 'Đã duyệt', decidedAt: today(), decidedBy: role, note: note || last.note };
+        // Bản điều chỉnh: duyệt → áp số liệu mới; từ chối → giữ bản đang áp dụng, bản điều chỉnh trả về GĐK / SM sửa tiếp.
+        if (last.adjust)
+          return approve && p.pakdDraft
+            ? { ...applyPakd(p, p.pakdDraft, by), pakd: [...p.pakd.slice(0, -1), next], pakdForm: p.pakdDraft, pakdDraft: undefined }
+            : { pakd: [...p.pakd.slice(0, -1), next] };
         return {
           pakd: [...p.pakd.slice(0, -1), next],
           status: !approve ? 'Chưa có PAKD' : 'Đang thực hiện',
         };
       },
       by,
-      `${role} ${approve ? 'duyệt' : 'từ chối'} PAKD`,
+      `${role} ${approve ? 'duyệt' : 'từ chối'} ${projects.find((x) => x.id === id) && latestPakd(projects.find((x) => x.id === id)!)?.adjust ? 'điều chỉnh ' : ''}PAKD`,
       note || undefined,
     );
 
@@ -1030,7 +1093,7 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
   };
 
   return (
-    <BusinessProjectContext.Provider value={{ projects, ledger, importLedger, createProject, updateProject, deleteProject, importMonthly, saveContract, setAttachments, addOutsourceCode, setOutsourcePm, removeOutsourceCode, approveCode, reopenProject, submitPakd, savePakdForm, decidePakd, finishProject, targets, setYearTargets }}>
+    <BusinessProjectContext.Provider value={{ projects, ledger, importLedger, createProject, updateProject, deleteProject, importMonthly, saveContract, setAttachments, addOutsourceCode, setOutsourcePm, removeOutsourceCode, approveCode, reopenProject, submitPakd, savePakdForm, savePakdAdjust, cancelPakdAdjust, decidePakd, finishProject, targets, setYearTargets }}>
       {children}
     </BusinessProjectContext.Provider>
   );

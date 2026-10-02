@@ -39,14 +39,20 @@ export interface PakdMilestone {
   condition: string; // Điều kiện nghiệm thu
   waitDays: number; // Thời gian chờ (ngày)
 }
+/**
+ * Một khoản mục chi phí, lập kế hoạch theo tháng (thời điểm = các tháng thực hiện dự án):
+ * amounts[YYYY-MM] = giá trị chi trong tháng (VNĐ).
+ */
 export interface PakdCost {
   id: string;
   group: CostGroup;
   item: string; // Khoản mục chi phí
-  month: string; // Thời điểm
-  amount: number; // Giá trị (VNĐ)
+  amounts: Record<string, number>; // Kế hoạch chi theo tháng
   output: string; // Kết quả đầu ra
   files: string[]; // File đính kèm (tên file)
+  /** @deprecated dữ liệu cũ (1 thời điểm / 1 giá trị) — tự chuyển sang amounts khi mở form. */
+  month?: string;
+  amount?: number;
 }
 export interface PakdPhase {
   id: string;
@@ -83,7 +89,30 @@ export interface PakdFormData {
 
 export const uid = () => Math.random().toString(36).slice(2, 9);
 export const newMilestone = (name = ''): PakdMilestone => ({ id: uid(), name, month: '', percent: 0, payRate: 100, submitMonth: '', condition: '', waitDays: 30 });
-export const newCost = (group: CostGroup = 'Sản xuất'): PakdCost => ({ id: uid(), group, item: '', month: '', amount: 0, output: '', files: [] });
+export const newCost = (group: CostGroup = 'Sản xuất', item = ''): PakdCost => ({ id: uid(), group, item, amounts: {}, output: '', files: [] });
+/** Chuyển dữ liệu chi phí cũ (month / amount) sang kế hoạch theo tháng. */
+export const normalizeCost = (c: PakdCost): PakdCost =>
+  c.amounts ? c : { ...c, amounts: c.month && c.amount ? { [c.month]: c.amount } : {} };
+/** Tổng kế hoạch của 1 khoản mục. */
+export const costTotal = (c: PakdCost) =>
+  c.amounts ? Object.values(c.amounts).reduce((s, v) => s + (v || 0), 0) : c.amount || 0;
+/** Khoản mục mẫu (theo file Excel): sản xuất trước, kinh doanh sau. */
+export const DEFAULT_COSTS = (): PakdCost[] => [
+  newCost('Sản xuất', 'Chi phí lương'),
+  newCost('Sản xuất', 'Thuê ngoài / mua sắm'),
+  newCost('Dự phòng sản xuất', 'Dự phòng'),
+  newCost('Thưởng sản xuất', 'Thưởng'),
+  newCost('Kinh doanh', 'Chi phí lương'),
+  newCost('Kinh doanh', 'Tiếp khách, công tác'),
+  newCost('Dự phòng kinh doanh', 'Dự phòng'),
+  newCost('Thưởng kinh doanh', 'Thưởng'),
+];
+/** Chia đều tổng cho các tháng (làm tròn tới nghìn đồng, phần dư dồn vào tháng cuối). */
+export const spreadEven = (total: number, months: string[]): Record<string, number> => {
+  if (!months.length) return {};
+  const each = Math.floor(total / months.length / 1000) * 1000;
+  return Object.fromEntries(months.map((m, i) => [m, i === months.length - 1 ? total - each * (months.length - 1) : each]));
+};
 export const newPhase = (): PakdPhase => ({ id: uid(), name: '', from: '', to: '', sx: 0, kd: 0, output: '', files: [] });
 
 /** Form trống (gợi ý sẵn 4 mốc nghiệm thu như mẫu). */
@@ -96,7 +125,7 @@ export const emptyPakd = (signed: boolean, value = 0): PakdFormData => ({
   startMonth: '',
   endMonth: '',
   milestones: ['Tạm ứng khi có hợp đồng', 'Nghiệm thu giai đoạn 1', 'Nghiệm thu giai đoạn 2', 'Quyết toán, bảo hành'].map((n) => newMilestone(n)),
-  costs: [newCost('Sản xuất'), newCost('Kinh doanh')],
+  costs: DEFAULT_COSTS(),
   expectedSignMonth: '',
   expectedValue: signed ? 0 : value,
   probability: 50,
@@ -142,7 +171,7 @@ export const pakdRevenue = (f: PakdFormData) => (f.contractState === 'Đã ký' 
 /** Chi phí theo nhóm (Đã ký) hoặc SX/KD (Chưa ký, từ mốc kế hoạch). */
 export const pakdCostByGroup = (f: PakdFormData): Record<CostGroup, number> => {
   const out = Object.fromEntries(COST_GROUPS.map((g) => [g, 0])) as Record<CostGroup, number>;
-  if (f.contractState === 'Đã ký') f.costs.forEach((c) => (out[c.group] += c.amount || 0));
+  if (f.contractState === 'Đã ký') f.costs.forEach((c) => (out[c.group] += costTotal(c)));
   else
     f.phases.forEach((p) => {
       out['Sản xuất'] += p.sx || 0;
@@ -172,11 +201,13 @@ export const pakdMonthlyPlan = (f: PakdFormData): BizMonthRow[] => {
       const cm = msCashMonth(m);
       if (cm) row(cm).cashIn += msCash(f, m);
     });
-    f.costs.forEach((c) => {
-      if (!c.month || !c.amount) return;
-      if (isSxGroup(c.group)) row(c.month).costSx += c.amount;
-      else row(c.month).costKd += c.amount;
-    });
+    f.costs.forEach((c) =>
+      Object.entries(normalizeCost(c).amounts).forEach(([m, v]) => {
+        if (!v) return;
+        if (isSxGroup(c.group)) row(m).costSx += v;
+        else row(m).costKd += v;
+      }),
+    );
   } else {
     // Chưa ký: chi phí từng giai đoạn chia đều cho các tháng Từ → Đến.
     f.phases.forEach((p) => {
@@ -215,7 +246,8 @@ export const validatePakd = (f: PakdFormData): string[] => {
     else if (f.endMonth < f.startMonth) e.push('Kết thúc phải sau Bắt đầu');
     const pct = f.milestones.reduce((s, m) => s + (m.percent || 0), 0);
     if (Math.abs(pct - 100) > 0.01) e.push(`Tổng % các mốc nghiệm thu phải bằng 100% (hiện ${pct}%)`);
-    if (!f.costs.some((c) => c.amount > 0)) e.push('Nhập ít nhất một khoản chi phí');
+    if (!f.costs.some((c) => costTotal(c) > 0)) e.push('Lập kế hoạch chi phí: nhập giá trị cho ít nhất một khoản mục / tháng');
+    if (f.costs.some((c) => costTotal(c) > 0 && !c.item.trim())) e.push('Nhập tên khoản mục cho các dòng chi phí có giá trị');
   } else {
     if (!f.expectedSignMonth) e.push('Nhập Thời điểm dự kiến ký');
     if (!f.expectedValue) e.push('Nhập Giá trị hợp đồng dự kiến');

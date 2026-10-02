@@ -93,9 +93,9 @@ const buildSteps = (p: BizProject): { steps: Step[]; states: StepState[] } => {
     });
     s3.notes!.push({ text: `Quá hạn mà chưa có PAKD → dự án tự đóng`, tone: 'muted' });
   }
-  if (reopened && p.status !== 'Đóng') s3.notes!.push({ text: `Mở lại ${dmyHm(reopened.at)} bởi ${personOf(reopened.by)}`, tone: 'muted' });
+  if (reopened && p.status !== 'Pending') s3.notes!.push({ text: `Mở lại ${dmyHm(reopened.at)} bởi ${personOf(reopened.by)}`, tone: 'muted' });
 
-  if (p.status === 'Đóng') {
+  if (p.status === 'Pending') {
     if (!p.pakd.length) s3.notes!.push({ text: 'Không cập nhật PAKD trong hạn', tone: 'bad' });
     const s4: Step = {
       key: 'closed',
