@@ -1956,6 +1956,37 @@ const ProjectForm: React.FC<{
       ))}
     </select>
   );
+  /** Sửa dự án: PM hiện tại + nút "Update PM" (bấm mới hiện ô chọn PM khác); tạo mới thì chọn trực tiếp. */
+  const [pmEditing, setPmEditing] = useState<Record<string, boolean>>({});
+  const pmField = (k: 'businessPm' | 'productionPm' | 'outsourcePm', select: React.ReactNode) => {
+    if (!isEdit || pmEditing[k])
+      return isEdit ? (
+        <span className="flex items-center gap-1.5 w-full">
+          <span className="flex-1 min-w-0">{select}</span>
+          <button
+            type="button"
+            onClick={() => {
+              set(k, (initial![k] as string) || '');
+              setPmEditing((x) => ({ ...x, [k]: false }));
+            }}
+            className="shrink-0 p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+            title="Huỷ đổi PM"
+          >
+            <X size={14} />
+          </button>
+        </span>
+      ) : (
+        select
+      );
+    return (
+      <span className="flex items-center justify-between gap-2 w-full">
+        <span className={f[k] ? 'text-slate-800' : 'text-slate-400'}>{(f[k] as string) || '—'}</span>
+        <Btn icon={UserCog} className="h-7 !text-[12px] shrink-0" onClick={() => setPmEditing((x) => ({ ...x, [k]: true }))}>
+          Update PM
+        </Btn>
+      </span>
+    );
+  };
   const td = `${erp.td} bg-[#f3f6fa] text-slate-600 w-[30%] border-l-0`;
   const auto = <span className="text-slate-400 italic font-sans font-normal text-[12.5px]">Tự sinh sau khi GĐK duyệt</span>;
 
@@ -2053,11 +2084,12 @@ const ProjectForm: React.FC<{
                 </>
               ),
             },
-            { label: 'PM kinh doanh', value: personSelect('businessPm', bizPms, '— Chọn PM kinh doanh —') },
-            { label: 'PM sản xuất', value: personSelect('productionPm', prodPms, '— Chọn PM sản xuất —') },
+            { label: 'PM kinh doanh', value: pmField('businessPm', personSelect('businessPm', bizPms, '— Chọn PM kinh doanh —')) },
+            { label: 'PM sản xuất', value: pmField('productionPm', personSelect('productionPm', prodPms, '— Chọn PM sản xuất —')) },
             {
               label: 'PM outsource',
-              value: (
+              value: pmField(
+                'outsourcePm',
                 <select value={f.outsourcePm || ''} onChange={(e) => set('outsourcePm', e.target.value)} className={`${erp.inputFull} h-8`} title="Gán mặc định cho mã outsource khi được tạo">
                   <option value="">— Chọn PM outsource —</option>
                   {[...new Set([...bizPms, ...prodPms, f.outsourcePm || ''].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'vi')).map((n) => (
@@ -2065,7 +2097,7 @@ const ProjectForm: React.FC<{
                       {n}
                     </option>
                   ))}
-                </select>
+                </select>,
               ),
             },
           ]}

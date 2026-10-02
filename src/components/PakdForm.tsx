@@ -551,7 +551,7 @@ export const PakdForm: React.FC<{
   const editable = (p.status === 'Chưa có PAKD' && canLapPakd(role)) || (inAdjust && canAdjust);
   const approvedV = [...p.pakd].reverse().find((v) => v.state === 'Đã duyệt' && v !== last)?.version;
   const state = pendingAdjust
-    ? `Chờ duyệt điều chỉnh (V${last!.version})`
+    ? `Chờ duyệt V${last!.version}`
     : rejectedAdjust
       ? 'Điều chỉnh bị từ chối'
       : inAdjust
