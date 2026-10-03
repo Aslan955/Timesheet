@@ -7,6 +7,8 @@
 - Mục đích: Giám đốc khối (GĐK) đăng ký mục tiêu **giá trị HĐ ký mới** và **lợi nhuận gộp** của năm kế hoạch, chi tiết theo khách hàng / dự án; BOD phê duyệt; bản đã duyệt trở thành **mục tiêu chính thức của khối**.
 - Đầu ra nghiệp vụ: Tổng giá trị mục tiêu đã duyệt được ghi vào **Sổ theo dõi dự án** (đầu màn *Danh sách dự án*) để so sánh với giá trị HĐ đã ký / chưa ký.
 
+cdd
+
 ## 2. Vai trò
 | Vai trò | Việc làm |
 |---|---|
