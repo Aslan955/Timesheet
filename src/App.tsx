@@ -21,6 +21,7 @@ import { RevenuePlanPage } from './components/RevenuePlanPage';
 import { CompanyOverviewPage } from './components/CompanyOverviewPage';
 import { PayrollApprovalPage } from './components/PayrollApprovalPage';
 import { PayrollListPage } from './components/PayrollListPage';
+import { PayrollProvider } from './payroll/PayrollContext';
 import { ProjectLaborCostPage } from './components/ProjectLaborCostPage';
 import { FinancePlanProvider } from './finance/FinancePlanContext';
 import { BusinessProjectPage } from './components/BusinessProjectPage';
@@ -86,7 +87,7 @@ export default function App() {
       case 'Duyệt bảng lương khối':
         return <PayrollApprovalPage />;
       case 'Payroll':
-        return <PayrollListPage />;
+        return <PayrollListPage onNavigate={setActiveItem} />;
       case 'Leaves':
         return <LeavesPage />;
       case 'Timesheet':
@@ -140,9 +141,11 @@ export default function App() {
             <FinancePlanProvider>
               <BusinessProjectProvider>
                 <BizTargetProvider>
-                  <Layout activeItem={activeItem} onSelect={setActiveItem}>
-                    {renderContent()}
-                  </Layout>
+                  <PayrollProvider>
+                    <Layout activeItem={activeItem} onSelect={setActiveItem}>
+                      {renderContent()}
+                    </Layout>
+                  </PayrollProvider>
                 </BizTargetProvider>
               </BusinessProjectProvider>
             </FinancePlanProvider>

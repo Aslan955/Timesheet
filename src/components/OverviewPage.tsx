@@ -1,6 +1,6 @@
 /**
  * OverviewPage — màn "Tổng quan" (module Quản trị dự án & Tài chính),
- * dựng theo mẫu "Gửi Nam - 02.10.26 - Tổng quan.xlsx". ĐVT: triệu đồng.
+ * dựng theo mẫu "Gửi Nam - 02.10.26 - Tổng quan.xlsx". ĐVT: VNĐ.
  *
  *  Hàng 1: Mục tiêu đã xác lập / Kế hoạch năm · Công nợ phải thu · Vấn đề tồn đọng
  *  Hàng 2: Doanh thu, chi phí, lợi nhuận (4 chỉ số + biểu đồ cột, chọn chỉ tiêu, theo tháng / theo khối)
@@ -59,15 +59,15 @@ const AGING = [
   { key: 'b60p' as const, label: 'Quá hạn trên 60 ngày', color: '#a61f1f' },
 ];
 
-/** VNĐ → triệu đồng. */
-const tr = (v: number) => Math.round((v || 0) / 1e6).toLocaleString('en-US');
+/** Số tiền hiển thị theo VNĐ (đầy đủ, ngăn cách hàng nghìn). */
+const tr = (v: number) => Math.round(v || 0).toLocaleString('en-US');
 const pct = (x: number | null, d = 1) => (x === null || !isFinite(x) ? '—' : `${(x * 100).toFixed(d)}%`);
 /** Nhãn trục gọn. */
 const short = (v: number) => {
   const a = Math.abs(v);
   if (a >= 1e12) return `${+(v / 1e12).toFixed(1)} nghìn tỷ`;
   if (a >= 1e9) return `${+(v / 1e9).toFixed(1)} tỷ`;
-  if (a >= 1e6) return `${Math.round(v / 1e6)} tr`;
+  if (a >= 1e6) return `${Math.round(v / 1e6)} triệu`;
   return v ? `${v}` : '0';
 };
 const dmy = (iso: string) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—');
@@ -187,8 +187,8 @@ const ColumnChart: React.FC<{
       y: e.clientY - box.top,
       title: titles?.[i] || categories[i],
       rows: [
-        ...series.map((s) => ({ color: s.color, label: s.name, value: s.values[i] === null ? '—' : `${tr(s.values[i]!)} tr` })),
-        ...(line ? [{ color: line.color, label: line.name, value: line.values[i] === null ? '—' : `${tr(line.values[i]!)} tr`, line: true }] : []),
+        ...series.map((s) => ({ color: s.color, label: s.name, value: s.values[i] === null ? '—' : `${tr(s.values[i]!)} VNĐ` })),
+        ...(line ? [{ color: line.color, label: line.name, value: line.values[i] === null ? '—' : `${tr(line.values[i]!)} VNĐ`, line: true }] : []),
       ],
     });
   };
@@ -267,9 +267,9 @@ const HBarList: React.FC<{ rows: { label: string; sub?: string; rec: Receivable 
               y: e.clientY - box.top,
               title: r.label,
               rows: [
-                { color: C.blue, label: 'Trong hạn', value: `${tr(r.rec.inTerm)} tr` },
-                { color: C.overdue, label: 'Quá hạn', value: `${tr(r.rec.overdue)} tr` },
-                { label: 'Tổng công nợ', value: `${tr(r.rec.total)} tr` },
+                { color: C.blue, label: 'Trong hạn', value: `${tr(r.rec.inTerm)} VNĐ` },
+                { color: C.overdue, label: 'Quá hạn', value: `${tr(r.rec.overdue)} VNĐ` },
+                { label: 'Tổng công nợ', value: `${tr(r.rec.total)} VNĐ` },
               ],
             });
           }}
@@ -284,7 +284,7 @@ const HBarList: React.FC<{ rows: { label: string; sub?: string; rec: Receivable 
               {r.rec.overdue > 0 && <div className="h-full first:rounded-l-[3px] rounded-r-[3px]" style={{ background: C.overdue, flex: r.rec.overdue }} />}
             </div>
           </div>
-          <span className="w-[86px] shrink-0 text-right font-semibold tabular-nums text-slate-800">{tr(r.rec.total)}</span>
+          <span className="w-[132px] shrink-0 text-right font-semibold tabular-nums text-slate-800">{tr(r.rec.total)}</span>
         </div>
       ))}
       <TipBox tip={tip} width={W} />
@@ -295,31 +295,88 @@ const HBarList: React.FC<{ rows: { label: string; sub?: string; rec: Receivable 
 // --------------------------------------------------------------------------
 // Vòng tiến độ (meter tròn) & donut mức độ
 // --------------------------------------------------------------------------
-const Ring: React.FC<{ value: number; total: number; color: string; label: string; sub: string }> = ({ value, total, color, label, sub }) => {
-  const r = 44;
+/**
+ * Vòng tiến độ mục tiêu năm: 1 vòng, 100% = Kế hoạch năm.
+ *   Xanh lá  = Đã ký
+ *   Xanh dương = Đã xác lập nhưng chưa ký (Đã xác lập − Đã ký)
+ *   Xám      = Chưa xác lập (Kế hoạch − Đã xác lập)
+ * Giữa vòng: % đã ký / KH năm. Chú thích bên cạnh ghi số và % từng phần.
+ */
+const C_SIGNED = '#0f8a4c';
+const GoalRing: React.FC<{ plan: number; est: number; signed: number }> = ({ plan, est, signed }) => {
+  const [hover, setHover] = useState<string | null>(null);
+  const r = 46;
+  const sw = 13;
   const len = 2 * Math.PI * r;
-  const k = total > 0 ? value / total : 0;
+  const base = plan > 0 ? plan : Math.max(est, signed, 1);
+  const kSigned = Math.min(1, signed / base);
+  const kEst = Math.min(1 - kSigned, Math.max(0, est - signed) / base);
+  const gap = 2; // khe 2px giữa 2 phần
+  const segs = [
+    { key: 'signed', k: kSigned, color: C_SIGNED, label: 'Đã ký', value: signed },
+    { key: 'est', k: kEst, color: C.blue, label: 'Đã xác lập, chưa ký', value: Math.max(0, est - signed) },
+  ];
+  const visible = segs.filter((x) => x.k > 0);
+  let acc = 0;
+  const rows = [
+    ...segs,
+    { key: 'none', k: 0, color: C.track, label: 'Chưa xác lập', value: Math.max(0, plan - est) },
+  ];
+  const pctOf = (v: number) => (plan > 0 ? `${Math.round((v / plan) * 100)}%` : '—');
   return (
-    <div className="flex flex-col items-center text-center min-w-0">
-      <svg width={100} height={100} viewBox="0 0 112 112" role="img" aria-label={`${label} ${pct(k)}`}>
-        <circle cx={56} cy={56} r={r} fill="none" stroke={C.track} strokeWidth={11} />
-        <circle
-          cx={56}
-          cy={56}
-          r={r}
-          fill="none"
-          stroke={color}
-          strokeWidth={11}
-          strokeLinecap="round"
-          strokeDasharray={`${Math.min(1, k) * len} ${len}`}
-          transform="rotate(-90 56 56)"
-        />
-        <text x={56} y={61} textAnchor="middle" fontSize={17} fontWeight={700} fill="#0f172a">
-          {total > 0 ? `${Math.round(k * 100)}%` : '—'}
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+      <svg width={124} height={124} viewBox="0 0 124 124" role="img" aria-label={`Đã ký ${pctOf(signed)}, đã xác lập ${pctOf(est)} kế hoạch năm`} className="shrink-0">
+        <circle cx={62} cy={62} r={r} fill="none" stroke={C.track} strokeWidth={sw} />
+        {visible.map((x) => {
+          const seg = x.k * len;
+          const draw = Math.max(0, seg - (visible.length > 1 ? gap : 0));
+          const el = (
+            <circle
+              key={x.key}
+              cx={62}
+              cy={62}
+              r={r}
+              fill="none"
+              stroke={x.color}
+              strokeWidth={hover === x.key ? sw + 3 : sw}
+              strokeDasharray={`${draw} ${len}`}
+              strokeDashoffset={-acc}
+              transform="rotate(-90 62 62)"
+              onMouseEnter={() => setHover(x.key)}
+              onMouseLeave={() => setHover(null)}
+              className="cursor-default transition-[stroke-width]"
+            >
+              <title>{`${x.label}: ${tr(x.value)} (${pctOf(x.value)} KH năm)`}</title>
+            </circle>
+          );
+          acc += seg;
+          return el;
+        })}
+        <text x={62} y={62} textAnchor="middle" fontSize={20} fontWeight={700} fill="#0f172a">
+          {pctOf(signed)}
+        </text>
+        <text x={62} y={78} textAnchor="middle" fontSize={10.5} fill="#64748b">
+          đã ký
         </text>
       </svg>
-      <p className="text-[12px] font-semibold text-slate-700 mt-0.5">{label}</p>
-      <p className="text-[11.5px] text-slate-500">{sub}</p>
+      <div className="flex-1 min-w-[260px] max-w-[420px] space-y-1">
+        {rows.map((x) => (
+          <div
+            key={x.key}
+            className={`flex items-start gap-2 text-[12px] rounded-[3px] px-1 -mx-1 ${hover === x.key ? 'bg-slate-100' : ''}`}
+            onMouseEnter={() => x.key !== 'none' && setHover(x.key)}
+            onMouseLeave={() => setHover(null)}
+          >
+            <span className="mt-[3px] w-2.5 h-2.5 rounded-[2px] shrink-0" style={{ background: x.color }} />
+            <span className="flex-1 min-w-0 text-slate-600 leading-tight">{x.label}</span>
+            <span className="font-semibold text-slate-800 tabular-nums">{tr(x.value)}</span>
+            <span className="w-10 text-right text-slate-500 tabular-nums">{pctOf(x.value)}</span>
+          </div>
+        ))}
+        <p className="pt-1 border-t border-slate-200 text-[11.5px] text-slate-500">
+          Đã xác lập: <b className="text-slate-700 tabular-nums">{pctOf(est)}</b> KH năm
+        </p>
+      </div>
     </div>
   );
 };
@@ -365,6 +422,7 @@ const Donut: React.FC<{ parts: { key: string; value: number; color: string }[]; 
 // Bảng xếp hạng
 // --------------------------------------------------------------------------
 const RankTable: React.FC<{ head: { label: string; num?: boolean }[]; rows: React.ReactNode[][]; empty: string }> = ({ head, rows, empty }) => (
+  <div className="overflow-x-auto">
   <table className={erp.table}>
     <thead>
       <tr>
@@ -382,7 +440,7 @@ const RankTable: React.FC<{ head: { label: string; num?: boolean }[]; rows: Reac
           <tr key={i} className={erp.tr}>
             <td className={`${erp.td} text-center text-slate-500 border-l-0`}>{i + 1}</td>
             {cells.map((c, j) => (
-              <td key={j} className={`${erp.td} ${head[j].num ? erp.num : ''} ${j === cells.length - 1 ? 'border-r-0' : ''}`}>
+              <td key={j} className={`${erp.td} ${head[j].num ? `${erp.num} whitespace-nowrap` : ''} ${j === cells.length - 1 ? 'border-r-0' : ''}`}>
                 {c}
               </td>
             ))}
@@ -397,9 +455,10 @@ const RankTable: React.FC<{ head: { label: string; num?: boolean }[]; rows: Reac
       )}
     </tbody>
   </table>
+  </div>
 );
 const ProjCell: React.FC<{ p: BizProject }> = ({ p }) => (
-  <div className="min-w-0 max-w-[260px]">
+  <div className="min-w-0 max-w-[150px]">
     <p className="truncate font-medium text-slate-800" title={p.name}>
       {p.name}
     </p>
@@ -569,7 +628,7 @@ export const OverviewPage: React.FC = () => {
           </label>
         }
         meta={[
-          { label: 'ĐVT', value: 'Triệu đồng' },
+          { label: 'ĐVT', value: 'VNĐ' },
           { label: 'Số liệu thực tế đến', value: to ? my(to) : 'Chưa có số thực tế' },
           { label: 'Công nợ tính tại', value: recAsOf ? dmy(endOfMonth(recAsOf)) : '—' },
         ]}
@@ -586,17 +645,14 @@ export const OverviewPage: React.FC = () => {
             ].map((x) => (
               <div key={x.label} className="min-w-0">
                 <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{x.label}</p>
-                <p className={`text-[21px] font-bold tabular-nums leading-tight mt-0.5 ${x.cls}`}>{tr(x.v)}</p>
+                <p className={`text-[17px] font-bold tabular-nums leading-tight mt-0.5 whitespace-nowrap ${x.cls}`}>{tr(x.v)}</p>
                 <p className="text-[11.5px] text-slate-500 leading-snug">{x.sub}</p>
               </div>
             ))}
           </div>
-          <div className="flex flex-wrap items-start gap-4 mt-3 pt-3 border-t border-slate-200">
-            <div className="flex gap-2">
-              <Ring value={goal.est} total={goal.plan} color={C.blue} label="Đã xác lập / KH năm" sub={`Chưa xác lập ${tr(Math.max(0, goal.plan - goal.est))}`} />
-              <Ring value={goal.signed} total={goal.plan} color="#0f8a4c" label="Đã ký / KH năm" sub={`Còn lại ${tr(Math.max(0, goal.plan - goal.signed))}`} />
-            </div>
-            <div className="flex-1 min-w-[300px] overflow-x-auto">
+          <div className="mt-3 pt-3 border-t border-slate-200 space-y-3">
+            <GoalRing plan={goal.plan} est={goal.est} signed={goal.signed} />
+            <div className="overflow-x-auto">
               <table className={erp.table}>
                 <thead>
                   <tr>
@@ -633,7 +689,7 @@ export const OverviewPage: React.FC = () => {
         <Panel title="Công nợ phải thu" icon={Wallet} className="xl:col-span-3">
           <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Tổng</p>
           <p className="text-[24px] font-bold tabular-nums text-slate-900 leading-tight">{tr(recTotal.total)}</p>
-          <p className="text-[11.5px] text-slate-500">Triệu đồng</p>
+          <p className="text-[11.5px] text-slate-500">VNĐ</p>
           <div className="flex h-3 gap-[2px] mt-3">
             {recTotal.overdue > 0 && <div className="rounded-l-[3px] last:rounded-r-[3px]" style={{ flex: recTotal.overdue, background: C.overdue }} />}
             {recTotal.inTerm > 0 && <div className="first:rounded-l-[3px] rounded-r-[3px]" style={{ flex: recTotal.inTerm, background: C.blue }} />}
@@ -739,7 +795,7 @@ export const OverviewPage: React.FC = () => {
             </label>
           </div>
         }
-        footer={to ? `Thực tế ${my(from)} – ${my(to)} so với kế hoạch cùng kỳ · Triệu đồng` : `Năm ${year} chưa có số thực tế`}
+        footer={to ? `Thực tế ${my(from)} – ${my(to)} so với kế hoạch cùng kỳ · ĐVT: VNĐ` : `Năm ${year} chưa có số thực tế`}
       >
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <KpiBox
@@ -813,7 +869,7 @@ export const OverviewPage: React.FC = () => {
                 ]}
               />
             }
-            footer={x.rows === recByDiv ? 'Triệu đồng' : `Triệu đồng · ${recByCus.length > 8 ? `8/${recByCus.length} khách hàng lớn nhất` : `${recByCus.length} khách hàng`}`}
+            footer={x.rows === recByDiv ? 'ĐVT: VNĐ' : `ĐVT: VNĐ · ${recByCus.length > 8 ? `8/${recByCus.length} khách hàng lớn nhất` : `${recByCus.length} khách hàng`}`}
           >
             <HBarList rows={x.rows} empty="Không có công nợ phải thu" />
           </Panel>
@@ -821,7 +877,7 @@ export const OverviewPage: React.FC = () => {
       </div>
 
       {/* ===== Hàng 4: Dòng tiền theo khối ===== */}
-      <Panel title="Dòng tiền theo khối qua các tháng" icon={Waves} footer="Dòng tiền ròng = tiền thu − tiền chi · Triệu đồng · Bấm một khối trong bảng để xem riêng khối đó">
+      <Panel title="Dòng tiền theo khối qua các tháng" icon={Waves} footer="Dòng tiền ròng = tiền thu − tiền chi · ĐVT: VNĐ · Bấm một khối trong bảng để xem riêng khối đó">
         <div className="flex flex-col xl:flex-row gap-4">
           <div className="flex-[3] min-w-0">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
@@ -888,7 +944,7 @@ export const OverviewPage: React.FC = () => {
 
       {/* ===== Hàng 5: Top 5 ===== */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-        <Panel title="Top 5 dự án hiệu quả" icon={Trophy} noPad footer="Xếp theo lợi nhuận thực tế trong năm · Triệu đồng">
+        <Panel title="Top 5 dự án hiệu quả" icon={Trophy} noPad footer="Xếp theo lợi nhuận thực tế trong năm · ĐVT: VNĐ">
           <RankTable
             head={[{ label: 'Dự án' }, { label: 'Khối' }, { label: 'Doanh thu', num: true }, { label: 'Lợi nhuận', num: true }, { label: 'Biên', num: true }]}
             rows={topGood.map(({ p, f }) => [
@@ -901,7 +957,7 @@ export const OverviewPage: React.FC = () => {
             empty="Chưa có số thực tế"
           />
         </Panel>
-        <Panel title="Top 5 dự án có dòng tiền xấu" icon={TrendingDown} noPad footer="Xếp theo dòng tiền ròng thấp nhất · Triệu đồng">
+        <Panel title="Top 5 dự án có dòng tiền xấu" icon={TrendingDown} noPad footer="Xếp theo dòng tiền ròng thấp nhất · ĐVT: VNĐ">
           <RankTable
             head={[{ label: 'Dự án' }, { label: 'Khối' }, { label: 'Tiền thu', num: true }, { label: 'Tiền chi', num: true }, { label: 'Dòng tiền ròng', num: true }]}
             rows={topBadCash.map(({ p, f }) => [<ProjCell p={p} />, p.division, tr(f.cashIn), tr(f.cost), <b className={netCls(f.net)}>{tr(f.net)}</b>])}
@@ -912,7 +968,7 @@ export const OverviewPage: React.FC = () => {
 
       {/* ===== Hàng 6: Top 10 công nợ ===== */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-        <Panel title="Top 10 dự án có công nợ phải thu cao" icon={Wallet} noPad footer="Đvt: Triệu đồng">
+        <Panel title="Top 10 dự án có công nợ phải thu cao" icon={Wallet} noPad footer="ĐVT: VNĐ">
           <RankTable
             head={[{ label: 'Dự án' }, { label: 'Khối' }, { label: 'Công nợ', num: true }, { label: 'Quá hạn', num: true }, { label: '% QH', num: true }]}
             rows={topRecProj.map(({ p, rec }) => [
@@ -925,11 +981,11 @@ export const OverviewPage: React.FC = () => {
             empty="Không có công nợ phải thu"
           />
         </Panel>
-        <Panel title="Top 10 khách hàng có công nợ phải thu cao" icon={Users} noPad footer="Đvt: Triệu đồng">
+        <Panel title="Top 10 khách hàng có công nợ phải thu cao" icon={Users} noPad footer="ĐVT: VNĐ">
           <RankTable
             head={[{ label: 'Khách hàng' }, { label: 'Công nợ', num: true }, { label: 'Quá hạn', num: true }, { label: '% quá hạn', num: true }]}
             rows={topRecCus.map(({ label, rec }) => [
-              <span className="block max-w-[300px] truncate" title={label}>
+              <span className="block max-w-[210px] truncate" title={label}>
                 {label}
               </span>,
               tr(rec.total),

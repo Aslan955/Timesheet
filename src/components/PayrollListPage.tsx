@@ -1,212 +1,334 @@
 /**
- * PayrollListPage — "Payroll" (danh sách kỳ lương).
+ * PayrollListPage — "Payroll" (HR), bản đơn giản.
  *
- * Bám sát màn Payroll mẫu (Year, Month, Approved By/At, Created By/Date, Status,
- * Actions) và BỔ SUNG 6 cột trạng thái theo 6 khối (G1, G2, G3, G4, BFSI, GPDV):
- *   • Khối đã duyệt   → APPROVED
- *   • Khối từ chối     → REJECT
- *   • Khối chưa duyệt  → IN PROGRESS
- * Trạng thái tổng của kỳ = APPROVED khi cả 6 khối duyệt, ngược lại REQUESTED.
+ * Danh sách kỳ lương → chi tiết kỳ:
+ *   • Import Excel → sinh phiên bản mới (v2, v3…), chọn xem lại phiên bản cũ.
+ *   • Gửi duyệt → email tới giám đốc các khối chưa gửi (mô phỏng).
+ *   • Bảng trạng thái duyệt 7 khối + bảng lương chi tiết. Đủ 7 khối duyệt → Khoá kỳ lương.
  */
 import React, { useMemo, useState } from 'react';
-import {
-  Home,
-  ChevronRight,
-  Plus,
-  Search,
-  Filter,
-  Eye,
-  Trash2,
-  Send,
-  Check,
-  Ban,
-  Lock,
-  ChevronsLeft,
-  ChevronLeft,
-  ChevronsRight,
-} from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import { CalendarPlus, Check, FileUp, Lock, Search, Send, Table2, Users } from 'lucide-react';
+import { BlockStatus, KHOIS, KHOI_DIRECTOR, Khoi, PayPeriod, PeriodStatus, latestVersion, periodLabel, periodStatus, rowsOf, sumRows, usePayroll } from '../payroll/PayrollContext';
+import { PayrollImportModal } from './PayrollImportModal';
+import { Btn, ErpPage, ErpTitleBar, Panel, Tag, erp } from './erp/Erp';
 
-const KHOIS = ['G1', 'G2', 'G3', 'G4', 'BFSI', 'GPDV'] as const;
-type Khoi = (typeof KHOIS)[number];
-type BlockStatus = 'APPROVED' | 'REJECT' | 'INPROGRESS';
-
-interface PayrollPeriod {
-  id: number;
-  year: number;
-  month: number;
-  approvedBy: string;
-  approvedAt: string;
-  createdBy: string;
-  createdDate: string;
-  blocks: Record<Khoi, BlockStatus>;
-}
-
-const mkBlocks = (arr: BlockStatus[]): Record<Khoi, BlockStatus> =>
-  KHOIS.reduce((acc, k, i) => ((acc[k] = arr[i]), acc), {} as Record<Khoi, BlockStatus>);
-
-const A: BlockStatus = 'APPROVED';
-const R: BlockStatus = 'REJECT';
-const P: BlockStatus = 'INPROGRESS';
-
-const PERIODS: PayrollPeriod[] = [
-  { id: 1, year: 2026, month: 8, approvedBy: 'Admin Admin', approvedAt: '10/09/2026', createdBy: 'Admin Admin', createdDate: '27/08/2026 16:12', blocks: mkBlocks([A, A, A, A, A, A]) },
-  { id: 2, year: 2026, month: 7, approvedBy: 'Admin Admin', approvedAt: '07/08/2026', createdBy: 'Admin Admin', createdDate: '08/06/2026 15:27', blocks: mkBlocks([A, A, A, A, A, A]) },
-  { id: 3, year: 2026, month: 6, approvedBy: 'Admin Admin', approvedAt: '08/06/2026', createdBy: 'Admin Admin', createdDate: '08/06/2026 15:27', blocks: mkBlocks([A, A, A, A, A, A]) },
-  { id: 4, year: 2025, month: 6, approvedBy: 'Lý Trịnh Hương', approvedAt: '01/08/2025', createdBy: 'Lý Trịnh Hương', createdDate: '01/08/2025 09:43', blocks: mkBlocks([A, A, A, A, A, A]) },
-  { id: 5, year: 2025, month: 5, approvedBy: 'Đỗ Đặng Thành', approvedAt: '17/06/2025', createdBy: 'Admin Admin', createdDate: '07/05/2025 11:18', blocks: mkBlocks([A, A, R, P, A, P]) },
-  { id: 6, year: 2025, month: 1, approvedBy: 'Đỗ Đặng Thành', approvedAt: '17/06/2025', createdBy: '', createdDate: '01/01/2025 00:00', blocks: mkBlocks([A, P, P, R, P, A]) },
-];
-
-const overallStatus = (p: PayrollPeriod): 'APPROVED' | 'REQUESTED' =>
-  KHOIS.every((k) => p.blocks[k] === 'APPROVED') ? 'APPROVED' : 'REQUESTED';
-
-const BLOCK_BADGE: Record<BlockStatus, { label: string; cls: string }> = {
-  APPROVED: { label: 'Approved', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  REJECT: { label: 'Reject', cls: 'bg-rose-50 text-rose-700 border-rose-200' },
-  INPROGRESS: { label: 'In progress', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+const HR = 'HR - Lý Trịnh Hương';
+const money = (n: number) => Math.round(n || 0).toLocaleString('en-US');
+const dmy = (iso?: string) => {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 };
 
-export const PayrollListPage: React.FC = () => {
-  const [search, setSearch] = useState('');
+export const BLOCK_TAG: Record<BlockStatus, string> = {
+  'Chưa gửi': 'bg-slate-100 text-slate-600 border-slate-300',
+  'Chờ duyệt': 'bg-amber-50 text-amber-700 border-amber-300',
+  'Đã duyệt': 'bg-emerald-50 text-emerald-700 border-emerald-300',
+  'Từ chối': 'bg-rose-50 text-rose-700 border-rose-300',
+};
+const PERIOD_TAG: Record<PeriodStatus, string> = {
+  'Chưa có bảng lương': 'bg-slate-100 text-slate-500 border-slate-300',
+  Nháp: 'bg-slate-100 text-slate-700 border-slate-300',
+  'Đang duyệt': 'bg-amber-50 text-amber-700 border-amber-300',
+  'Có khối từ chối': 'bg-rose-50 text-rose-700 border-rose-300',
+  'Đã duyệt': 'bg-emerald-50 text-emerald-700 border-emerald-300',
+  'Đã khoá': 'bg-blue-50 text-[#1f5fa8] border-blue-300',
+};
 
-  const rows = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return PERIODS;
-    return PERIODS.filter((p) =>
-      `${p.year} ${p.month} ${p.approvedBy} ${p.createdBy}`.toLowerCase().includes(q),
-    );
-  }, [search]);
-
-  const th = 'px-3 py-3 font-bold text-slate-600 border-r border-slate-200 last:border-r-0';
-  const td = 'px-3 py-3 border-r border-slate-100 last:border-r-0';
+export const PayrollListPage: React.FC<{ onNavigate?: (item: string) => void }> = () => {
+  const { periods, createPeriod } = usePayroll();
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const flash = (m: string) => {
+    setToast(m);
+    setTimeout(() => setToast(null), 3200);
+  };
+  const p = periods.find((x) => x.id === openId);
+  const sorted = [...periods].sort((a, b) => b.year - a.year || b.month - a.month);
+  const newPeriod = () => {
+    const last = sorted[0];
+    const y = last.month === 12 ? last.year + 1 : last.year;
+    const m = last.month === 12 ? 1 : last.month + 1;
+    setOpenId(createPeriod(y, m));
+    flash(`Đã tạo kỳ lương ${String(m).padStart(2, '0')}/${y}`);
+  };
 
   return (
-    <div className="p-4 sm:p-6 bg-slate-50/50 min-h-screen font-sans text-slate-800">
-      {/* Breadcrumb */}
-      <div className="flex items-center text-sm text-slate-500 gap-2 font-medium mb-4">
-        <Home size={15} className="text-slate-400" />
-        <span>Home</span>
-        <ChevronRight size={13} className="text-slate-300" />
-        <span>PayRoll</span>
-        <ChevronRight size={13} className="text-slate-300" />
-        <span className="text-slate-900 font-bold">Payroll</span>
-      </div>
-
-      <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-4">
-        {/* Toolbar */}
-        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-          <button className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 cursor-pointer">
-            <Plus size={14} /> Add New
-          </button>
-          <div className="relative w-64">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Enter text to search..."
-              className="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:border-blue-500"
-            />
-          </div>
-        </div>
-
-        <p className="text-xs text-slate-400 mb-2">Drag a column header here to group by that column</p>
-
-        {/* Table */}
-        <div className="overflow-x-auto border border-slate-200 rounded-lg">
-          <table className="w-full text-left border-collapse text-xs min-w-[1400px]">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-slate-600">
-                <th className={`${th} w-10 text-center`}>#</th>
-                <th className={th}>Year</th>
-                <th className={th}>Month</th>
-                <th className={th}>Approved By</th>
-                <th className={th}>Approved At</th>
-                <th className={th}>Created By</th>
-                <th className={th}>Created Date</th>
-                {KHOIS.map((k) => (
-                  <th key={k} className={`${th} text-center min-w-[92px] bg-indigo-50/60 text-indigo-700`}>{k}</th>
-                ))}
-                <th className={`${th} text-center`}>Status</th>
-                <th className={`${th} text-center min-w-[150px]`}>Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {rows.map((p) => {
-                const overall = overallStatus(p);
-                return (
-                  <tr key={p.id} className="hover:bg-slate-50/70">
-                    <td className={`${td} text-center text-slate-400 font-mono`}>{p.id}</td>
-                    <td className={`${td} font-mono`}>{p.year}</td>
-                    <td className={`${td} font-mono`}>{p.month}</td>
-                    <td className={td}>{p.approvedBy || <span className="text-slate-300">—</span>}</td>
-                    <td className={`${td} font-mono text-slate-600`}>{p.approvedAt || <span className="text-slate-300">—</span>}</td>
-                    <td className={td}>{p.createdBy || <span className="text-slate-300">—</span>}</td>
-                    <td className={`${td} font-mono text-slate-600`}>{p.createdDate}</td>
-                    {KHOIS.map((k) => {
-                      const b = BLOCK_BADGE[p.blocks[k]];
-                      return (
-                        <td key={k} className={`${td} text-center`}>
-                          <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border ${b.cls}`}>{b.label}</span>
-                        </td>
-                      );
-                    })}
-                    <td className={`${td} text-center`}>
-                      <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                        overall === 'APPROVED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
-                      }`}>
-                        {overall}
-                      </span>
-                    </td>
-                    <td className={`${td}`}>
-                      <div className="flex items-center justify-center gap-2 text-slate-400">
-                        <button className="hover:text-sky-600 cursor-pointer" title="Xem"><Eye size={16} /></button>
-                        <button className="hover:text-rose-600 cursor-pointer" title="Xoá"><Trash2 size={16} /></button>
-                        <button className="hover:text-blue-600 cursor-pointer" title="Gửi duyệt"><Send size={16} /></button>
-                        {overall === 'REQUESTED' && (
-                          <>
-                            <button className="text-emerald-500 hover:text-emerald-700 cursor-pointer" title="Duyệt"><Check size={16} /></button>
-                            <button className="text-rose-400 hover:text-rose-600 cursor-pointer" title="Từ chối"><Ban size={16} /></button>
-                          </>
-                        )}
-                        <button className="hover:text-slate-700 cursor-pointer" title="Khoá kỳ"><Lock size={16} /></button>
-                      </div>
-                    </td>
+    <ErpPage>
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            className="fixed top-5 right-5 z-[130] bg-[#1e3a5f] text-white px-4 py-2.5 rounded-[4px] shadow-lg flex items-center gap-2 text-[12px] font-semibold max-w-md"
+          >
+            <Check size={14} className="text-emerald-300 shrink-0" /> {toast}
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {p ? (
+        <PeriodDetail period={p} onBack={() => setOpenId(null)} flash={flash} />
+      ) : (
+        <>
+          <ErpTitleBar
+            crumbs={['PayRoll', 'Payroll']}
+            title="Bảng lương"
+            actions={
+              <Btn variant="primary" icon={CalendarPlus} onClick={newPeriod}>
+                Tạo kỳ lương
+              </Btn>
+            }
+          />
+          <Panel title="Danh sách kỳ lương" icon={Table2} noPad footer="Bấm vào 1 dòng để xem chi tiết">
+            <div className="overflow-x-auto">
+              <table className={erp.table}>
+                <thead>
+                  <tr>
+                    {['Kỳ lương', 'Phiên bản', 'Số NS', 'Tổng chi phí (VNĐ)', ...KHOIS, 'Trạng thái'].map((h) => (
+                      <th key={h} className={`${erp.th} text-center border-t-0 first:border-l-0 last:border-r-0`}>
+                        {h}
+                      </th>
+                    ))}
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody>
+                  {sorted.map((x) => {
+                    const v = latestVersion(x);
+                    const t = sumRows(rowsOf(v));
+                    const st = periodStatus(x);
+                    return (
+                      <tr key={x.id} className={`${erp.tr} cursor-pointer`} onClick={() => setOpenId(x.id)}>
+                        <td className={`${erp.td} font-semibold border-l-0`}>{periodLabel(x)}</td>
+                        <td className={`${erp.td} text-center`}>{v ? `v${v.no}` : '—'}</td>
+                        <td className={`${erp.td} ${erp.num}`}>{v ? t.count : '—'}</td>
+                        <td className={`${erp.td} ${erp.num}`}>{v ? money(t.cost) : '—'}</td>
+                        {KHOIS.map((k) => (
+                          <td key={k} className={`${erp.td} text-center`}>
+                            {v ? <Tag cls={BLOCK_TAG[x.blocks[k].status]}>{x.blocks[k].status}</Tag> : <span className="text-slate-300">—</span>}
+                          </td>
+                        ))}
+                        <td className={`${erp.td} text-center border-r-0`}>
+                          <Tag cls={PERIOD_TAG[st]}>{st}</Tag>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+        </>
+      )}
+    </ErpPage>
+  );
+};
 
-        {/* Pagination */}
-        <div className="flex items-center justify-between mt-3 text-xs text-slate-600">
-          <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden divide-x divide-slate-200 bg-white">
-            <button className="p-1.5 text-slate-400 hover:bg-slate-50 cursor-pointer"><ChevronsLeft size={14} /></button>
-            <button className="p-1.5 text-slate-400 hover:bg-slate-50 cursor-pointer"><ChevronLeft size={14} /></button>
-            <button className="px-3 py-1.5 font-bold bg-blue-600 text-white">1</button>
-            <button className="p-1.5 text-slate-400 hover:bg-slate-50 cursor-pointer"><ChevronRight size={14} /></button>
-            <button className="p-1.5 text-slate-400 hover:bg-slate-50 cursor-pointer"><ChevronsRight size={14} /></button>
-          </div>
-          <div className="flex items-center gap-2">
-            <span>Page Size:</span>
-            <select className="border border-slate-200 rounded-lg px-2 py-1 outline-none bg-white cursor-pointer font-bold">
-              <option>30</option>
-              <option>50</option>
-              <option>100</option>
-            </select>
-          </div>
-        </div>
+// ==========================================================================
+// Chi tiết kỳ lương (HR)
+// ==========================================================================
+const PeriodDetail: React.FC<{ period: PayPeriod; onBack: () => void; flash: (m: string) => void }> = ({ period: p, onBack, flash }) => {
+  const { sendForApproval, lockPeriod } = usePayroll();
+  const latest = latestVersion(p);
+  const [viewNo, setViewNo] = useState<number | null>(null);
+  const v = p.versions.find((x) => x.no === viewNo) || latest;
+  const [khoi, setKhoi] = useState<Khoi | ''>('');
+  const [q, setQ] = useState('');
+  const [importing, setImporting] = useState(false);
+  const st = periodStatus(p);
+  const toSend = KHOIS.filter((k) => p.blocks[k].status === 'Chưa gửi');
 
-        {/* Chú thích trạng thái khối */}
-        <div className="mt-3 flex items-center gap-4 text-[11px] text-slate-500 flex-wrap">
-          <span className="font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Filter size={11} /> Trạng thái khối:</span>
-          {(Object.keys(BLOCK_BADGE) as BlockStatus[]).map((s) => (
-            <span key={s} className="inline-flex items-center gap-1.5">
-              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border ${BLOCK_BADGE[s].cls}`}>{BLOCK_BADGE[s].label}</span>
-            </span>
-          ))}
-        </div>
-      </div>
-    </div>
+  const rows = useMemo(() => {
+    const n = q.trim().toLowerCase();
+    return rowsOf(v).filter((r) => (!khoi || r.khoi === khoi) && (!n || `${r.code} ${r.name} ${r.title} ${r.department}`.toLowerCase().includes(n)));
+  }, [v, khoi, q]);
+  const rt = sumRows(rows);
+  const all = sumRows(rowsOf(latest));
+
+  const send = () => {
+    const list = sendForApproval(p.id, HR);
+    flash(`Đã gửi email duyệt tới ${list.length} giám đốc khối: ${list.map((m) => m.khoi).join(', ')}`);
+  };
+
+  return (
+    <>
+      <ErpTitleBar
+        onBack={onBack}
+        actions={
+          <>
+            {p.versions.length > 1 && (
+              <select value={v?.no} onChange={(e) => setViewNo(Number(e.target.value))} className={`${erp.input} w-40`} title="Chọn phiên bản để xem">
+                {[...p.versions].reverse().map((x) => (
+                  <option key={x.no} value={x.no}>
+                    Phiên bản v{x.no}
+                    {x.no === latest?.no ? ' (đang dùng)' : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+            {!p.locked && (
+              <Btn icon={FileUp} onClick={() => setImporting(true)}>
+                Import Excel
+              </Btn>
+            )}
+            {!p.locked && latest && (
+              <Btn variant="primary" icon={Send} onClick={send} disabled={!toSend.length} title={toSend.length ? `Gửi email tới giám đốc ${toSend.join(', ')}` : 'Không có khối nào cần gửi'}>
+                Gửi duyệt{toSend.length ? ` (${toSend.length} khối)` : ''}
+              </Btn>
+            )}
+            {!p.locked && st === 'Đã duyệt' && (
+              <Btn
+                variant="primary"
+                icon={Lock}
+                onClick={() => {
+                  lockPeriod(p.id, HR);
+                  flash(`Đã khoá kỳ lương ${periodLabel(p)}`);
+                }}
+              >
+                Khoá kỳ lương
+              </Btn>
+            )}
+          </>
+        }
+        meta={[
+          { label: 'Kỳ lương', value: periodLabel(p) },
+          { label: 'Phiên bản', value: v ? `v${v.no}${v.no === latest?.no ? ' (đang dùng)' : ' (bản cũ)'}` : 'Chưa có' },
+          { label: 'Số NS', value: latest ? all.count : '—' },
+          { label: 'Tổng chi phí', value: latest ? `${money(all.cost)} VNĐ` : '—' },
+          { label: 'Trạng thái', value: <Tag cls={PERIOD_TAG[st]}>{st}</Tag> },
+        ]}
+      />
+
+      {!latest ? (
+        <Panel title="Bảng lương" icon={Table2}>
+          <p className="py-8 text-center text-[13px] text-slate-500">
+            Kỳ lương chưa có bảng lương. Bấm <b>Import Excel</b> để tạo phiên bản v1.
+          </p>
+        </Panel>
+      ) : (
+        <>
+          <Panel title="Trạng thái duyệt theo khối" icon={Users} noPad>
+            <table className={erp.table}>
+              <thead>
+                <tr>
+                  {['Khối', 'Giám đốc khối', 'Số NS', 'Chi phí (VNĐ)', 'Trạng thái', 'Ghi chú'].map((h) => (
+                    <th key={h} className={`${erp.th} text-left border-t-0 first:border-l-0 last:border-r-0`}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {KHOIS.map((k) => {
+                  const b = p.blocks[k];
+                  const t = sumRows(rowsOf(latest, k));
+                  return (
+                    <tr key={k} className={erp.tr}>
+                      <td className={`${erp.td} font-semibold border-l-0`}>{k}</td>
+                      <td className={erp.td}>{KHOI_DIRECTOR[k].name}</td>
+                      <td className={`${erp.td} ${erp.num}`}>{t.count}</td>
+                      <td className={`${erp.td} ${erp.num}`}>{money(t.cost)}</td>
+                      <td className={erp.td}>
+                        <Tag cls={BLOCK_TAG[b.status]}>{b.status}</Tag>
+                      </td>
+                      <td className={`${erp.td} text-slate-600 border-r-0`}>
+                        {b.status === 'Từ chối' ? (
+                          <span className="text-rose-700">{b.reason}</span>
+                        ) : b.status === 'Đã duyệt' ? (
+                          `${b.decidedBy || ''} · ${dmy(b.decidedAt)}`
+                        ) : b.status === 'Chờ duyệt' ? (
+                          `Gửi ${dmy(b.sentAt)} · hạn ${dmy(b.deadline)}`
+                        ) : (
+                          b.note || 'Chưa gửi'
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </Panel>
+
+          <Panel
+            title="Bảng lương chi tiết"
+            icon={Table2}
+            noPad
+            actions={
+              <>
+                <select value={khoi} onChange={(e) => setKhoi(e.target.value as Khoi | '')} className={`${erp.input} h-7 w-32`}>
+                  <option value="">Tất cả khối</option>
+                  {KHOIS.map((k) => (
+                    <option key={k} value={k}>
+                      {k}
+                    </option>
+                  ))}
+                </select>
+                <div className="relative w-56">
+                  <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm mã, tên…" className={`${erp.inputFull} h-7 pl-7`} />
+                </div>
+              </>
+            }
+            footer={`${rows.length} nhân sự · ĐVT: VNĐ`}
+          >
+            <div className="overflow-x-auto max-h-[520px]">
+              <table className={erp.table}>
+                <thead className="sticky top-0 z-10">
+                  <tr>
+                    {['STT', 'Mã NV', 'Họ tên', 'Chức danh', 'Khối', 'Phòng ban', 'Tổng thu nhập', 'Thực nhận', 'Chi phí công ty'].map((h, i) => (
+                      <th key={h} className={`${erp.th} ${i > 5 ? 'text-right' : 'text-left'} border-t-0 first:border-l-0 last:border-r-0 whitespace-nowrap`}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r, i) => (
+                    <tr key={r.code} className={erp.tr}>
+                      <td className={`${erp.td} text-center text-slate-500 border-l-0`}>{i + 1}</td>
+                      <td className={`${erp.td} ${erp.code}`}>{r.code}</td>
+                      <td className={`${erp.td} whitespace-nowrap`}>{r.name}</td>
+                      <td className={erp.td}>{r.title}</td>
+                      <td className={`${erp.td} text-center`}>{r.khoi}</td>
+                      <td className={erp.td}>{r.department}</td>
+                      <td className={`${erp.td} ${erp.num}`}>{money(r.gross)}</td>
+                      <td className={`${erp.td} ${erp.num}`}>{money(r.net)}</td>
+                      <td className={`${erp.td} ${erp.num} border-r-0`}>{money(r.cost)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className={erp.totalRow}>
+                    <td className={`${erp.td} border-l-0`} colSpan={6}>
+                      Tổng cộng
+                    </td>
+                    <td className={`${erp.td} ${erp.num}`}>{money(rt.gross)}</td>
+                    <td className={`${erp.td} ${erp.num}`}>{money(rt.net)}</td>
+                    <td className={`${erp.td} ${erp.num} border-r-0`}>{money(rt.cost)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </Panel>
+        </>
+      )}
+
+      <AnimatePresence>
+        {importing && (
+          <PayrollImportModal
+            key="imp"
+            period={p}
+            by={HR}
+            onClose={() => setImporting(false)}
+            onDone={(m) => {
+              setImporting(false);
+              setViewNo(null);
+              flash(m);
+            }}
+          />
+        )}
+      </AnimatePresence>
+    </>
   );
 };

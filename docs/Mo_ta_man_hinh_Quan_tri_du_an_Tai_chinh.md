@@ -6,13 +6,41 @@
 - **MH-02** Danh sách dự án, gồm màn tạo, màn chi tiết và các popup
 - **MH-03** Báo cáo hiệu quả dự án
 
-**Phiên bản tài liệu:** 02/10/2026, mô tả theo bản demo đang chạy
+**Phiên bản tài liệu:** 1.1, ngày 03/10/2026, mô tả theo bản demo đang chạy
 **Tài liệu liên quan:** `Luong_nghiep_vu_Muc_tieu_Du_an_Bao_cao.md` (luồng nghiệp vụ tổng thể)
+
+---
+
+## Lịch sử cập nhật
+
+### Phiên bản 1.1 (03/10/2026)
+
+| # | Màn | Nội dung chỉnh sửa | Mục |
+|---|---|---|---|
+| 1 | MH-02c | **Bỏ popup "Sửa dự án"**. Bấm **Sửa** thì sửa trực tiếp trên màn chi tiết. Nút **Update PM** để đổi PM | 2.7 |
+| 2 | MH-02c | **Sửa PAKD** ngay trên khung PAKD (SM / GĐK), không qua popup | 2.6.3, 2.7 |
+| 3 | MH-02 | **AM không xem được PAKD**: khung PAKD thay bằng dòng 🔒. Lập / sửa PAKD chỉ còn **SM / GĐK**. Kế toán vẫn xem để duyệt | 2.6, 2.13 |
+| 4 | MH-02c | **Chỉ xoá dự án khi GĐK chưa duyệt** (trạng thái "Chờ duyệt mã"). Đã duyệt thì nút Xoá mờ | 2.5.2 |
+| 5 | MH-02c | Khối **"Hợp đồng & tài liệu"** chuyển xuống **dưới** "Thông tin chi tiết dự án", chia 2 cột | 2.5.6 |
+| 6 | MH-02c | **Bỏ khối "Thông tin hợp đồng"** (cùng bảng Phụ lục) dưới PAKD. Xem / sửa hợp đồng qua nút **Xem / cập nhật hợp đồng** (P-03) | 2.5.6, 2.8 |
+| 7 | MH-02c | Nút **Duyệt mã dự án** (GĐK) lên **đầu trang**, ngay trước nút Sửa | 2.5.2 |
+| 8 | MH-02c | **Bỏ nút "Lập PAKD"**. Khi lập PAKD, 2 nút **Lưu nháp** và **Gửi Kế toán duyệt** nằm trên **đầu trang**. Khi sửa PAKD: **Huỷ sửa · Lưu nháp · Gửi Kế toán duyệt điều chỉnh** cũng lên đầu trang. Chân khung PAKD không còn nút | 2.5.2, 2.6.11 |
+| 9 | MH-02c | **Dòng thông báo bước hiện tại** chuyển vào **khung đầu trang**, dưới dòng Version / Trạng thái | 2.5.4 |
+| 10 | MH-02c | Đầu trang **bỏ tên dự án, Mã dự án, Khối** (đã có ở khối Mã dự án / Thông tin chi tiết) | 2.5.2 |
+| 11 | MH-02b, MH-02c | **Bỏ breadcrumb và tiêu đề**. Đầu trang chỉ còn **← Quay lại** bên trái, các nút tác vụ bên phải | 2.3.2, 2.5.2 |
+| 12 | MH-02b | Thêm nút **← Quay lại** cho màn tạo dự án | 2.3.2 |
+| 13 | Chung | **Nút Quay lại luôn căn trái, nút tác vụ** (Lưu, Sửa, Xoá, Duyệt…) **luôn căn phải**, kể cả khi màn hẹp làm nút xuống dòng | 0.1, 0.3 |
+| 14 | MH-01 | Tab BOD phê duyệt: **Quay lại danh sách** bên trái chân khung, **Từ chối / Phê duyệt** bên phải | 1.10 |
+
+### Phiên bản 1.0 (02/10/2026)
+
+Bản mô tả đầu tiên của 3 màn.
 
 ---
 
 ## Mục lục
 
+- [Lịch sử cập nhật](#lịch-sử-cập-nhật)
 0. [Quy ước chung](#0-quy-ước-chung)
 1. [MH-01: Mục tiêu kinh doanh](#mh-01-mục-tiêu-kinh-doanh)
 2. [MH-02: Danh sách dự án](#mh-02-danh-sách-dự-án)
@@ -26,10 +54,12 @@
 
 ### 0.1. Bố cục chuẩn của một màn
 
+**Màn danh sách / báo cáo** (không có nút Quay lại):
+
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ Quản trị dự án & Tài chính › <Tên màn>                    (breadcrumb)   │
-│ <TIÊU ĐỀ MÀN>                              [Vai trò ▾] [Nút phụ] [Nút chính] │
+│ <TIÊU ĐỀ MÀN>                          [Vai trò ▾] [Nút phụ] [Nút chính] │
 │ Meta: Nhãn 1: giá trị · Nhãn 2: giá trị · …                               │
 ├──────────────────────────────────────────────────────────────────────────┤
 │ [Tab 1] [Tab 2]                                     (tab dạng thẻ hồ sơ) │
@@ -42,6 +72,18 @@
                                          │ ✔ Thông báo (toast) góc phải  │
                                          └───────────────────────────────┘
 ```
+
+**Màn tạo / chi tiết** (có nút Quay lại): không có breadcrumb và tiêu đề.
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ [← Quay lại]                    [Vai trò ▾] [Nút phụ] [Nút chính] [Xoá]  │
+│ Meta: Version · Trạng thái · …                                            │
+│ ⓘ Dòng thông báo bước hiện tại (nếu có) ……………………… [nút của bước]       │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+> **Quy tắc vị trí nút:** nút **Quay lại luôn căn trái**. Các nút tác vụ (Lưu, Sửa, Xoá, Duyệt, Gửi…) **luôn căn phải**, kể cả khi màn hẹp làm hàng nút xuống dòng dưới.
 
 ### 0.2. Kiểu trường
 
@@ -73,6 +115,9 @@
 | Nguy hiểm (danger) | Nền đỏ | Từ chối, Xoá |
 | Liên kết (link) | Chữ xanh gạch chân | Thao tác trên dòng bảng: Xem, Lập PAKD, Cập nhật |
 | Liên kết cần xử lý | Chữ **đỏ đậm** gạch chân | Việc đang chờ người dùng hiện tại: Duyệt, Duyệt điều chỉnh |
+
+- **Vị trí:** Quay lại / Quay lại danh sách nằm **bên trái**. Mọi nút tác vụ nằm **bên phải**.
+- Nút ở góc khung (Panel) cũng luôn căn phải.
 
 ### 0.4. Đơn vị và định dạng
 
@@ -296,9 +341,9 @@ Các khung: **Mục tiêu kinh doanh** (thông tin hồ sơ) → **Ô số + T�
 | Thành phần | Khi hồ sơ Chờ BOD duyệt | Khi hồ sơ ở trạng thái khác |
 |---|---|---|
 | Ô ý kiến | Textarea 3 dòng, "Nhập ý kiến của BOD…" | Dòng chữ "Hồ sơ đang ở trạng thái <TT> — ý kiến BOD: "…"" |
-| Nút Quay lại danh sách | ✔ | ✔ |
-| Nút Từ chối (đỏ) | ✔. Bắt buộc ý kiến, không nhận chuỗi rỗng / chỉ khoảng trắng | — |
-| Nút Phê duyệt (chính) | ✔. Ý kiến không bắt buộc | — |
+| Nút Quay lại danh sách (**bên trái** chân khung) | ✔ | ✔ |
+| Nút Từ chối (đỏ, **bên phải**) | ✔. Bắt buộc ý kiến, không nhận chuỗi rỗng / chỉ khoảng trắng | — |
+| Nút Phê duyệt (chính, **bên phải**) | ✔. Ý kiến không bắt buộc | — |
 
 Lỗi khi từ chối không có ý kiến: "Từ chối bắt buộc nhập ý kiến (không chấp nhận nội dung trống hoặc chỉ có khoảng trắng)."
 
@@ -482,9 +527,9 @@ Bảng rộng, cuộn ngang. **Bấm vào dòng** để mở MH-02c.
 #### 2.3.1. Bố cục
 
 ```
-┌ … › Danh sách dự án › Yêu cầu mở mã dự án ──────────────────────────────────┐
-│ YÊU CẦU MỞ MÃ DỰ ÁN                       [Vai trò ▾] [× Huỷ] [➤ Gửi GĐK duyệt] │
-│ Mã dự án: Chờ GĐK duyệt · Version: Mới · Trạng thái: Đang soạn · Khối · Người tạo │
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ [← Quay lại]                         [Vai trò ▾] [× Huỷ] [➤ Gửi GĐK duyệt]   │
+│ Version: Mới · Trạng thái: Đang soạn · Người tạo: namnv                      │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │ ⓘ Hướng dẫn quy trình: AM / SM gửi yêu cầu → GĐK duyệt → … → Pending.       │
 ├ # Mã dự án ──────────────────────────────────────────────────────────────────┤
@@ -505,13 +550,15 @@ Bảng rộng, cuộn ngang. **Bấm vào dòng** để mở MH-02c.
 
 #### 2.3.2. Thanh tiêu đề
 
-| Thành phần | Mô tả |
-|---|---|
-| Tiêu đề | Yêu cầu mở mã dự án |
-| Vai trò | Đổi vai trò ngay khi đang tạo. Nút gửi đổi theo vai trò |
-| Huỷ | Về danh sách, không lưu |
-| Nút gửi | AM / SM: **Gửi GĐK duyệt**. GĐK: **Tạo & cấp mã** |
-| Meta | Mã dự án "Chờ GĐK duyệt" · Version "Mới" · Trạng thái "Đang soạn" · Khối (theo ô Khối) · Người tạo |
+| Thành phần | Vị trí | Mô tả |
+|---|---|---|
+| **← Quay lại** | Trái | Về danh sách, không lưu |
+| Vai trò | Phải | Đổi vai trò ngay khi đang tạo. Nút gửi đổi theo vai trò |
+| Huỷ | Phải | Về danh sách, không lưu |
+| Nút gửi | Phải | AM / SM: **Gửi GĐK duyệt**. GĐK: **Tạo & cấp mã** |
+| Meta | Dòng dưới | Version "Mới" · Trạng thái "Đang soạn" · Người tạo |
+
+> Đầu trang **không có breadcrumb và tiêu đề**, chỉ có nút Quay lại bên trái và các nút tác vụ bên phải.
 
 - **Dải hướng dẫn** (xanh nhạt):
   - AM / SM: "AM / SM gửi yêu cầu → Giám đốc khối duyệt → hệ thống cấp Mã dự án / Mã KD / Mã SX → SM / GĐK lập PAKD trong 30 ngày → Kế toán (CFO) duyệt; quá hạn chưa được duyệt → dự án Pending."
@@ -605,16 +652,17 @@ Gửi xong, hệ thống chuyển sang **MH-02c** của dự án vừa tạo. T�
 #### 2.5.1. Bố cục
 
 ```
-┌ … › Danh sách dự án › 022.688 ───────────────────────────────────────────────┐
-│ <TÊN DỰ ÁN> ⭐KEY   [Vai trò ▾] [← Quay lại] [✔ Duyệt mã dự án*] [✎ Sửa] [🗑 Xoá] │
-│ Mã dự án · Version v3 · Trạng thái [Đang thực hiện] · Khối · PAKD V2, đã duyệt · Cập nhật │
-├ # Mã dự án ──────────────────────────────────────── [+ Tạo mã outsource (0/2)] ┤
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ [← Quay lại]      [Vai trò ▾] [nút theo bước*] [✎ Sửa] [🗑 Xoá]              │
+│ Version v3 · Trạng thái [Chưa có PAKD] · PAKD — · Cập nhật …                 │
+│ ⓘ Dự án cần lập PAKD. Hạn lập: 01/11/2026 (còn 29 ngày) — nhập PAKD bên dưới │
+│   rồi bấm Gửi Kế toán duyệt ở góc phải.                 [nút của bước, nếu có] │
+└──────────────────────────────────────────────────────────────────────────────┘
+┌ # Mã dự án ──────────────────────────────────────── [+ Tạo mã outsource (0/2)] ┐
 │ Mã dự án      │ 022.688    │ Tên dự án     │ <tên> ⭐KEY                       │
 │ Mã kinh doanh │ 022.688.1  │ PM kinh doanh │ …                                 │
 │ Mã sản xuất   │ 022.688.2  │ PM sản xuất   │ …                                 │
 │ Mã outsource  │ 022.688.3  │ PM outsource  │ [— Chọn PM — ▾] 🗑                 │
-├──────────────────────────────────────────────────────────────────────────────┤
-│ ⓘ <Thanh thao tác bước hiện tại>                     [Nút theo vai trò]       │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │ [Thông tin dự án] [Lịch sử (n)]                                              │
 ├ Thông tin chi tiết dự án ────────────────────────────────────────────────────┤
@@ -625,28 +673,31 @@ Gửi xong, hệ thống chuyển sang **MH-02c** của dự án vừa tạo. T�
 │ [Chưa ký] Chưa có thông tin ký HĐ     │ [📎 Đính kèm tài liệu]               │
 │ [Cập nhật ký hợp đồng]                │ tệp 1 · tệp 2 …                      │
 ├ Lập phương án kinh doanh (PAKD) ─────────────────────────────────────────────┤
-│ (xem 2.6)                                                                    │
-├ Thông tin hợp đồng (khi đã có HĐ) ─────────────────────────────── [Cập nhật] ┤
+│ (xem 2.6; AM thấy dòng 🔒)                                                    │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-> \* Nút **Duyệt mã dự án** chỉ hiện với GĐK khi dự án đang "Chờ duyệt mã".
+> \* **Nút theo bước** trên đầu trang (xem 2.5.2): **Duyệt mã dự án** (GĐK, Chờ duyệt mã) · **Lưu nháp + Gửi Kế toán duyệt** (SM / GĐK đang lập PAKD) · **Huỷ sửa + Lưu nháp + Gửi Kế toán duyệt điều chỉnh** (SM / GĐK đang sửa PAKD).
 >
-> **Cập nhật 02/10/2026:** khối **"Hợp đồng & tài liệu"** nằm **ngay dưới** khối "Thông tin chi tiết dự án", rộng hết màn và chia 2 cột: Hợp đồng | Tài liệu đính kèm. Bố cục này áp dụng cho cả màn chi tiết, màn tạo dự án và popup Sửa.
+> - Khối **"Hợp đồng & tài liệu"** nằm **ngay dưới** "Thông tin chi tiết dự án", rộng hết màn và chia 2 cột Hợp đồng | Tài liệu đính kèm. Áp dụng cho cả màn chi tiết và màn tạo.
+> - **Không còn** khối "Thông tin hợp đồng" ở cuối màn.
 
 #### 2.5.2. Thanh tiêu đề
 
-| Thành phần | Mô tả |
-|---|---|
-| Breadcrumb | … › Danh sách dự án › Mã dự án, hoặc "Yêu cầu mở mã" nếu chưa có mã |
-| Tiêu đề | Tên dự án + nhãn KEY |
-| Vai trò | Đổi vai trò để thao tác thử |
-| Quay lại | Về MH-02a |
-| **Duyệt mã dự án** | Nút chính, nằm **ngay trước nút Sửa**. **Chỉ hiện với GĐK khi dự án "Chờ duyệt mã"**. Bấm thì cấp Mã dự án / Mã KD / Mã SX, hạn PAKD = hôm nay + 30 ngày |
-| **Sửa** | Nút chính. **Chỉ AM / SM / GĐK**. Chuyển màn chi tiết sang **chế độ sửa trực tiếp** (2.7), không mở popup |
-| Huỷ sửa · Lưu thay đổi | Thay cho Quay lại / Sửa / Xoá khi đang ở chế độ sửa |
-| Xoá | Nút đỏ. **Chỉ xoá được khi Giám đốc khối chưa duyệt (trạng thái "Chờ duyệt mã")**. Hỏi xác nhận "Xoá dự án "<tên>"?" rồi xoá và về danh sách. Đã duyệt / đã cấp mã thì nút mờ, chú thích "Dự án đã được Giám đốc khối duyệt — không xoá được" |
-| Meta | Mã dự án · Version (vN) · Trạng thái (nhãn màu) · Khối · PAKD (Phiên bản PAKD) · Cập nhật (thời gian) |
+Đầu trang **không có breadcrumb, tiêu đề, tên dự án, Mã dự án, Khối** (đã có ở khối Mã dự án và Thông tin chi tiết dự án).
+
+| Thành phần | Vị trí | Mô tả |
+|---|---|---|
+| **← Quay lại** | Trái | Về MH-02a. Ẩn khi đang sửa thông tin dự án (khi đó bên trái hiện chữ "Sửa dự án") |
+| Vai trò | Phải | Đổi vai trò để thao tác thử |
+| **Duyệt mã dự án** | Phải, trước nút Sửa | Nút chính. **Chỉ GĐK khi dự án "Chờ duyệt mã"**. Bấm thì cấp Mã dự án / Mã KD / Mã SX, hạn PAKD = hôm nay + 30 ngày |
+| **Lưu nháp · Gửi Kế toán duyệt** | Phải, trước nút Sửa | **SM / GĐK khi dự án "Chưa có PAKD"** (đang lập / lập lại PAKD). Thay cho nút "Lập PAKD" trước đây. Gửi mà thiếu thông tin thì màn tự cuộn xuống khung PAKD để hiện danh sách lỗi |
+| **Huỷ sửa · Lưu nháp · Gửi Kế toán duyệt điều chỉnh** | Phải, trước nút Sửa | **SM / GĐK khi đang sửa PAKD đã duyệt**. "Huỷ sửa" thành "Huỷ bản điều chỉnh" khi đã có bản điều chỉnh lưu nháp |
+| **Sửa** | Phải | Nút chính. **Chỉ AM / SM / GĐK**. Chuyển màn sang **chế độ sửa trực tiếp** (2.7), không mở popup |
+| Huỷ sửa · Lưu thay đổi | Phải | Thay cho các nút trên khi đang sửa thông tin dự án |
+| Xoá | Phải, cuối cùng | Nút đỏ. **Chỉ xoá được khi Giám đốc khối chưa duyệt (trạng thái "Chờ duyệt mã")**. Hỏi xác nhận "Xoá dự án "<tên>"?" rồi xoá và về danh sách. Đã duyệt / đã cấp mã thì nút mờ, chú thích "Dự án đã được Giám đốc khối duyệt — không xoá được" |
+| Meta | Dòng dưới | Version (vN) · Trạng thái (nhãn màu) · PAKD (phiên bản; ẩn với AM) · Cập nhật (thời gian) |
+| Dòng thông báo bước hiện tại | Cuối khung đầu trang | Xem 2.5.4 |
 
 #### 2.5.3. Khung "Mã dự án"
 
@@ -663,17 +714,17 @@ Gửi xong, hệ thống chuyển sang **MH-02c** của dự án vừa tạo. T�
 - **Mã tổng không gắn PM.**
 - Mọi thao tác tạo / đổi PM / xoá mã outsource đều ghi lịch sử.
 
-#### 2.5.4. Thanh thao tác bước hiện tại
+#### 2.5.4. Dòng thông báo bước hiện tại (trong khung đầu trang)
 
-Thanh luôn nằm dưới khung Mã dự án.
-- **Vai trò có quyền:** dải xanh nhạt gồm nội dung + nút.
+Dòng này nằm **trong khung đầu trang**, ngay dưới dòng Version / Trạng thái. Ẩn khi đang sửa thông tin dự án hoặc khi không có thông báo (ví dụ dự án Kết thúc).
+- **Vai trò có quyền:** dải xanh nhạt gồm nội dung + nút (nếu có).
 - **Vai trò không có quyền:** dải xám "Đang chờ <ai làm gì>. Đổi "Vai trò" ở góc trên nếu bạn là người thực hiện bước này."
 
 | Trạng thái | Vai trò | Nội dung | Nút |
 |---|---|---|---|
-| Chờ duyệt mã | GĐK | "Yêu cầu mở mã dự án đang chờ Giám đốc khối duyệt — bấm **Duyệt mã dự án** ở góc trên…" | — (nút nằm trên thanh tiêu đề, cạnh nút Sửa) |
+| Chờ duyệt mã | GĐK | "Yêu cầu mở mã dự án đang chờ Giám đốc khối duyệt — bấm **Duyệt mã dự án** ở góc phải…" | — (nút nằm bên phải đầu trang, cạnh nút Sửa) |
 | Chờ duyệt mã | Khác | Đang chờ Giám đốc khối duyệt mã dự án | — |
-| Chưa có PAKD | SM / GĐK | "Dự án cần lập PAKD. Hạn lập: dd/mm/yyyy (còn n ngày / quá hạn n ngày)". Nếu bị từ chối: "PAKD Vn bị từ chối (lý do) — cần lập lại." | **Lập PAKD** / **Lập lại PAKD V(n+1)**. Cuộn xuống khung PAKD |
+| Chưa có PAKD | SM / GĐK | "Dự án cần lập phương án kinh doanh (PAKD). Hạn lập: dd/mm/yyyy (còn n ngày / quá hạn n ngày) — nhập PAKD bên dưới rồi bấm **Gửi Kế toán duyệt** ở góc phải." Nếu bị từ chối: "PAKD Vn bị từ chối (lý do) — cần lập lại…" | — (Lưu nháp / Gửi Kế toán duyệt nằm bên phải đầu trang; **không còn nút "Lập PAKD"**) |
 | Chưa có PAKD | AM / CFO | Đang chờ SM / Giám đốc khối lập PAKD (hạn …) | — |
 | PAKD chờ duyệt | CFO | PAKD Vn đang chờ Kế toán (CFO) duyệt | **Duyệt / Từ chối PAKD** (P-04) |
 | Đang thực hiện, có bản điều chỉnh chờ duyệt | CFO | Bản điều chỉnh PAKD Vn đang chờ Kế toán duyệt lại | **Duyệt / Từ chối điều chỉnh** (P-04) |
@@ -703,24 +754,13 @@ Lưới 2 cột kiểu bảng nhãn | giá trị, chỉ xem:
 |---|---|---|
 | **Hợp đồng** | Nhãn | **Đã ký** (xanh lá) / **Chưa ký** (xám) |
 | | Dòng mô tả | Có HĐ: "Số <số HĐ> · ký dd/mm/yyyy" + "Thời hạn … → …". Chưa có: "Chưa có thông tin ký hợp đồng" |
-| | Nút | **Cập nhật ký hợp đồng** (chưa ký) / **Bổ sung thông tin HĐ** (đã ký, chưa nhập chi tiết) / **Xem / cập nhật hợp đồng** (đã có HĐ). Mở P-03 |
+| | Nút | **Cập nhật ký hợp đồng** (chưa ký) / **Bổ sung thông tin HĐ** (đã ký, chưa nhập chi tiết) / **Xem / cập nhật hợp đồng** (đã có HĐ). Mở P-03, nơi xem đầy đủ số HĐ, giá trị, chênh lệch, lý do lệch, tệp và phụ lục |
 | **Tài liệu đính kèm (n)** | Nút "Đính kèm tài liệu" | Chọn nhiều tệp. Lưu ngay, ghi lịch sử "Thêm <tên tệp>" |
 | | Danh sách tệp | Tên, dung lượng, mở xem, nút xoá. Xoá ghi lịch sử "Xoá <tên tệp>" |
 
-#### 2.5.7. Khung "Thông tin hợp đồng" (chỉ hiện khi đã có HĐ)
+> Khối **"Thông tin hợp đồng"** (bảng số HĐ, giá trị, chênh lệch, phụ lục) ở cuối màn **đã bỏ**. Thông tin này xem và sửa trong popup P-03.
 
-| Trái | Phải |
-|---|---|
-| Số hợp đồng | Giá trị hợp đồng (VNĐ), in đậm |
-| Ngày ký | Giá trị đã khai báo (VNĐ) = Doanh thu dự kiến |
-| Thời hạn thực hiện (từ → đến) | Chênh lệch (cam nếu khác 0) |
-| Tệp tài liệu | Lý do lệch |
-
-- **Bảng "Phụ lục điều chỉnh (n)":** STT · Số phụ lục · Ngày ký · Nội dung điều chỉnh · File phụ lục.
-- **Nút "Cập nhật"** mở P-03.
-- **Chân khung:** "Cập nhật bởi … lúc …".
-
-#### 2.5.8. Tab "Lịch sử (n)"
+#### 2.5.7. Tab "Lịch sử (n)"
 
 **Bảng "Lịch sử thay đổi"**, mới nhất lên đầu: STT · Thời gian · Người thực hiện · Thao tác · Ghi chú.
 
@@ -781,7 +821,7 @@ Lưới 2 cột kiểu bảng nhãn | giá trị, chỉ xem:
 |---|---|
 | Chưa có PAKD (lần đầu / làm lại sau từ chối) | SM / GĐK, ngay trên MH-02c |
 | PAKD chờ duyệt / Pending | Không ai, chỉ xem |
-| Đang thực hiện | **SM / GĐK**: bấm **Sửa PAKD** (góc khung PAKD hoặc thanh thao tác) để sửa ngay trên khung. Vai trò khác chỉ xem |
+| Đang thực hiện | **SM / GĐK**: bấm **Sửa PAKD** (góc khung PAKD hoặc dòng thông báo bước hiện tại) để sửa ngay trên khung; nút Lưu nháp / Gửi duyệt điều chỉnh nằm trên đầu trang. Vai trò khác chỉ xem |
 
 #### 2.6.4. Chỉ số, biểu đồ, tóm tắt
 
@@ -912,15 +952,18 @@ Kỳ kế hoạch: 01/2026 – 12/2026 (12 tháng) · ĐVT: VNĐ
 | Chưa ký, có tháng dự kiến ký | "Nhắc cập nhật thông tin hợp đồng từ 01/<tháng trước tháng dự kiến ký>. Cảnh báo nếu quá tháng dự kiến ký" |
 | Chưa ký, chưa có tháng | "PAKD tạm: cập nhật thông tin hợp đồng ngay khi có…" |
 
-#### 2.6.11. Chân khung và nút
+#### 2.6.11. Nút thao tác (trên đầu trang) và chân khung
 
-| Tình huống | Nút |
+Các nút lưu / gửi PAKD **nằm bên phải đầu trang** MH-02c (2.5.2), **không nằm ở chân khung PAKD**.
+
+| Tình huống | Nút trên đầu trang |
 |---|---|
-| Lập lần đầu / làm lại | **Lưu nháp** · **Gửi Kế toán duyệt** |
-| Đang điều chỉnh | **Huỷ sửa** / **Huỷ bản điều chỉnh** · **Lưu nháp** · **Gửi Kế toán duyệt điều chỉnh** |
-| Khác | Không có nút, chỉ có ghi chú |
+| Lập lần đầu / làm lại (SM / GĐK, "Chưa có PAKD") | **Lưu nháp** · **Gửi Kế toán duyệt** |
+| Đang điều chỉnh (SM / GĐK) | **Huỷ sửa** / **Huỷ bản điều chỉnh** · **Lưu nháp** · **Gửi Kế toán duyệt điều chỉnh** |
+| Khác / vai trò không có quyền | Không có nút |
 
-Chân khung có thêm "Lưu lần cuối dd/mm/yyyy bởi …".
+- **Chân khung PAKD** chỉ còn dòng hướng dẫn (ví dụ "SM / GĐK nhập PAKD trong 30 ngày kể từ ngày GĐK duyệt → Gửi Kế toán (CFO) duyệt…") và "Lưu lần cuối dd/mm/yyyy bởi …".
+- Nút **Sửa PAKD** ở góc khung PAKD (SM / GĐK, dự án Đang thực hiện) vẫn giữ để mở chế độ điều chỉnh.
 
 **Dải thông báo khi điều chỉnh:**
 - **Đang sửa** (xanh): "Đang sửa PAKD. Cập nhật Tình trạng dự án → Đã ký khi đã ký hợp đồng, rồi nhập tiếp…"
@@ -953,8 +996,8 @@ Hiện dải đỏ "Chưa gửi được — cần bổ sung:" kèm danh sách:
 **Sửa thông tin cơ bản** (AM / SM / GĐK): bấm **Sửa** trên thanh tiêu đề MH-02c. Màn chi tiết chuyển sang chế độ sửa ngay tại chỗ.
 
 ```
-┌ <TÊN DỰ ÁN>                         [Vai trò ▾] [× Huỷ sửa] [💾 Lưu thay đổi] ┐
-│ Meta …                                                                       │
+┌ Sửa dự án                          [Vai trò ▾] [× Huỷ sửa] [💾 Lưu thay đổi] ┐
+│ Version · Trạng thái · PAKD · Cập nhật                                       │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │ ✎ Đang sửa thông tin dự án. Sửa trực tiếp các ô bên dưới … tạo Version vN+1. │
 ├ # Mã dự án ──────────────────────────────────────────────────────────────────┤
@@ -969,7 +1012,7 @@ Hiện dải đỏ "Chưa gửi được — cần bổ sung:" kèm danh sách:
 ```
 
 - **Các khối chuyển sang ô nhập:** Mã dự án, Thông tin chi tiết dự án, Hợp đồng & tài liệu. Ô nhập và kiểm tra giống MH-02b (2.3).
-- **Khi đang sửa thì ẩn:** thanh thao tác bước hiện tại, tab Lịch sử, khung Thông tin hợp đồng.
+- **Khi đang sửa thì ẩn:** nút Quay lại, dòng thông báo bước hiện tại, tab Lịch sử. Bên trái đầu trang hiện chữ "Sửa dự án".
 - Mã đã cấp chỉ xem. Mã outsource hiện "<mã> — tạo / sửa ở khối Mã dự án sau khi lưu".
 - **Đổi PM:**
   - Dòng PM kinh doanh / PM sản xuất / PM outsource hiện **tên PM hiện tại + nút "Update PM"**.
@@ -982,8 +1025,9 @@ Hiện dải đỏ "Chưa gửi được — cần bổ sung:" kèm danh sách:
 - Đổi vai trò sang CFO trong lúc sửa thì tự thoát chế độ sửa.
 
 **Sửa PAKD** (SM / GĐK, dự án Đang thực hiện):
-- Bấm **Sửa PAKD** ở góc khung PAKD, hoặc trên thanh thao tác.
+- Bấm **Sửa PAKD** ở góc khung PAKD, hoặc trên dòng thông báo bước hiện tại.
 - Khung PAKD (2.6) chuyển sang chế độ điều chỉnh **ngay trên màn**, rồi cuộn tới khung.
+- Các nút **Huỷ sửa · Lưu nháp · Gửi Kế toán duyệt điều chỉnh** hiện bên phải đầu trang.
 - Gửi điều chỉnh thì PAKD hiện **Chờ duyệt V(n+1)**.
 
 ### 2.8. P-03: Popup "Cập nhật ký hợp đồng"

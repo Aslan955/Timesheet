@@ -145,7 +145,7 @@ export const RULES = [
   'Quá thời điểm dự kiến ký mà chưa ký HĐ / dự án lỗ: Trung bình · Biên LN thực tế < 20%: Thấp · Chờ duyệt mã quá 3 ngày: Thấp',
 ];
 
-const tr = (n: number) => `${Math.round(n / 1e6).toLocaleString('en-US')} tr`;
+const tr = (n: number) => `${Math.round(n).toLocaleString('en-US')} VNĐ`;
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
 export const detectIssues = (projects: BizProject[], cutoffMonth: string, today = todayIso()): Issue[] => {
