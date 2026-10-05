@@ -29,7 +29,7 @@ const KIND: Record<FinKind, { name: string; sheet: string; file: string }> = {
   actual: { name: 'thực tế', sheet: 'ThucTe', file: 'ThucTe' },
 };
 
-const norm = (s: unknown) =>
+export const norm = (s: unknown) =>
   String(s ?? '')
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
@@ -54,7 +54,7 @@ const metricOf = (label: unknown): FinMetric | 'cost' | null => {
 };
 
 // Nhận cả số thật lẫn chuỗi kiểu "1.234.000" / "1,5"
-const parseNum = (v: unknown): number | null => {
+export const parseNum = (v: unknown): number | null => {
   if (v === '' || v === null || v === undefined) return 0;
   if (typeof v === 'number') return isFinite(v) ? v : null;
   const s = String(v).replace(/\s/g, '');
@@ -65,7 +65,7 @@ const parseNum = (v: unknown): number | null => {
 };
 
 // Nhận "12/2026", "T12/2026", "Tháng 12/2026", "2026-12", ngày Excel → "2026-12"
-const parseMonth = (v: unknown): string | null => {
+export const parseMonth = (v: unknown): string | null => {
   const ym = (y: number, m: number) => (m >= 1 && m <= 12 && y >= 2000 && y <= 2100 ? `${y}-${String(m).padStart(2, '0')}` : null);
   if (v instanceof Date) return ym(v.getFullYear(), v.getMonth() + 1);
   if (typeof v === 'number') {

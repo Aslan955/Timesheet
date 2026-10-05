@@ -741,6 +741,8 @@ interface Ctx {
   deleteProject: (id: string) => void;
   /** Ghi số liệu theo tháng (kế hoạch hoặc thực tế) bằng dữ liệu import; tăng version. */
   importMonthly: (id: string, kind: FinKind, rows: BizMonthRow[], fileName: string, by: string) => void;
+  /** Ghi đè các tháng kế hoạch có trong `rows` (tháng khác giữ nguyên) — dùng khi Kế toán duyệt "Kế hoạch khối". */
+  savePlanMonths: (id: string, rows: BizMonthRow[], by: string, note: string) => void;
   /** Cập nhật ký hợp đồng → dự án chuyển "Đã ký"; tăng version. */
   saveContract: (id: string, contract: Omit<BizContract, 'updatedAt' | 'updatedBy'>, by: string) => void;
   /** Quy trình: duyệt mã / nộp PAKD / duyệt – từ chối PAKD / kết thúc dự án. */
@@ -1057,6 +1059,25 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
     );
   };
 
+  const savePlanMonths = (id: string, rows: BizMonthRow[], by: string, note: string) => {
+    const at = now();
+    setProjects((prev) =>
+      prev.map((p) => {
+        if (p.id !== id) return p;
+        const map = new Map<string, BizMonthRow>(p.plan.map((r) => [r.month, r]));
+        rows.forEach((r) => map.set(r.month, { ...r }));
+        return {
+          ...p,
+          plan: [...map.values()].sort((a, b) => a.month.localeCompare(b.month)),
+          planImport: { fileName: 'Kế hoạch khối', at, by },
+          version: p.version + 1,
+          updatedAt: at,
+          history: [...p.history, { at, by, action: 'Duyệt kế hoạch khối', note: `${note} · Version ${p.version + 1}` }],
+        };
+      }),
+    );
+  };
+
   const importLedger = (kind: LedgerKind, entries: CashInEntry[] | CostEntry[], months: string[], fileName: string, by: string) => {
     const at = now();
     const inMonths = (e: { month: string }) => months.includes(e.month);
@@ -1102,7 +1123,7 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
   };
 
   return (
-    <BusinessProjectContext.Provider value={{ projects, ledger, importLedger, createProject, updateProject, deleteProject, importMonthly, saveContract, setAttachments, addOutsourceCode, setOutsourcePm, removeOutsourceCode, approveCode, reopenProject, submitPakd, savePakdForm, savePakdAdjust, cancelPakdAdjust, decidePakd, finishProject, targets, setYearTargets }}>
+    <BusinessProjectContext.Provider value={{ projects, ledger, importLedger, createProject, updateProject, deleteProject, importMonthly, savePlanMonths, saveContract, setAttachments, addOutsourceCode, setOutsourcePm, removeOutsourceCode, approveCode, reopenProject, submitPakd, savePakdForm, savePakdAdjust, cancelPakdAdjust, decidePakd, finishProject, targets, setYearTargets }}>
       {children}
     </BusinessProjectContext.Provider>
   );

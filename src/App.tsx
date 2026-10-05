@@ -29,6 +29,8 @@ import { PmPlaceholderPage } from './components/PmPlaceholderPage';
 import { BizTargetPage, BizTargetProvider } from './components/BizTargetPage';
 import { PM_PLACEHOLDER_SCREENS } from './constants';
 import { BizReportPage } from './components/BizReportPage';
+import { BlockPlanPage } from './components/BlockPlanPage';
+import { BlockPlanProvider } from './business/BlockPlanContext';
 import { OverviewPage } from './components/OverviewPage';
 import { BusinessProjectProvider } from './business/BusinessProjectContext';
 import { OnsiteReportPage } from './components/OnsiteReportPage';
@@ -77,7 +79,9 @@ export default function App() {
       case 'Mục tiêu kinh doanh':
         return <BizTargetPage />;
       case 'Báo cáo hiệu quả dự án':
-        return <BizReportPage />;
+        return <BizReportPage onNavigate={setActiveItem} />;
+      case 'Lập kế hoạch khối':
+        return <BlockPlanPage />;
       case 'Thông tin tài chính dự án':
         return <ProjectFinancePage />;
       case 'Kế hoạch thu chi':
@@ -142,9 +146,11 @@ export default function App() {
               <BusinessProjectProvider>
                 <BizTargetProvider>
                   <PayrollProvider>
-                    <Layout activeItem={activeItem} onSelect={setActiveItem}>
-                      {renderContent()}
-                    </Layout>
+                    <BlockPlanProvider>
+                      <Layout activeItem={activeItem} onSelect={setActiveItem}>
+                        {renderContent()}
+                      </Layout>
+                    </BlockPlanProvider>
                   </PayrollProvider>
                 </BizTargetProvider>
               </BusinessProjectProvider>

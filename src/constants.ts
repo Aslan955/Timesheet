@@ -44,6 +44,7 @@ export const PM_VISIBLE_SCREENS = [
   'Mục tiêu kinh doanh',
   'Dự án kinh doanh', // hiển thị: "Danh sách dự án"
   'Báo cáo hiệu quả dự án',
+  'Lập kế hoạch khối',
   'Công nợ phải thu',
   'Dòng tiền',
   'Nhật ký dự án',
@@ -78,6 +79,7 @@ export const NAVIGATION: NavItem[] = [
       { title: 'Projects', icon: Briefcase },
       { title: 'Dự án kinh doanh', label: 'Danh sách dự án', icon: Briefcase },
       { title: 'Báo cáo hiệu quả dự án', icon: BarChart3 },
+      { title: 'Lập kế hoạch khối', icon: ClipboardList },
       { title: 'Kế hoạch thu chi', icon: ClipboardList },
       { title: 'Thông tin tài chính dự án', icon: Wallet },
       { title: 'Toàn cảnh thu chi', label: 'Overview', icon: PieChart },

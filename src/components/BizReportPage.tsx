@@ -21,7 +21,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { FileUp, BarChart3, Building2, CheckCircle2, AlertTriangle, Eye, CircleDashed, FolderKanban, Filter, Table2, BookOpen, Check } from 'lucide-react';
+import { ClipboardList, FileUp, BarChart3, Building2, CheckCircle2, AlertTriangle, Eye, CircleDashed, FolderKanban, Filter, Table2, BookOpen, Check } from 'lucide-react';
 import { LedgerDetailModal, LedgerDrill, drillCls } from './LedgerDetailModal';
 import { LedgerImportModal } from './LedgerImportModal';
 import { BizProject, DIVISIONS, latestActualMonth, useBusinessProjects } from '../business/BusinessProjectContext';
@@ -104,7 +104,7 @@ const FilterField: React.FC<{ label: string; children: React.ReactNode }> = ({ l
 // ==========================================================================
 // Page
 // ==========================================================================
-export const BizReportPage: React.FC = () => {
+export const BizReportPage: React.FC<{ onNavigate?: (item: string) => void }> = ({ onNavigate }) => {
   const { projects } = useBusinessProjects();
   const cutoff = useMemo(() => latestActualMonth(projects), [projects]);
   const [tab, setTab] = useState<'overview' | 'project'>('overview');
@@ -123,9 +123,16 @@ export const BizReportPage: React.FC = () => {
         crumbs={['Quản trị dự án & Tài chính', 'Báo cáo hiệu quả dự án']}
         title="Báo cáo hiệu quả dự án"
         actions={
-          <Btn variant="success" icon={FileUp} onClick={() => setShowLedgerImport(true)}>
-            Import sổ kế toán
-          </Btn>
+          <>
+            {onNavigate && (
+              <Btn icon={ClipboardList} onClick={() => onNavigate('Lập kế hoạch khối')} title="Giám đốc khối lập kế hoạch theo tháng cho các dự án của khối">
+                Lập kế hoạch khối
+              </Btn>
+            )}
+            <Btn variant="success" icon={FileUp} onClick={() => setShowLedgerImport(true)}>
+              Import sổ kế toán
+            </Btn>
+          </>
         }
         meta={[
           { label: 'Chốt số đến', value: cutoff ? fmtMonth(cutoff) : 'chưa có số thực tế' },
