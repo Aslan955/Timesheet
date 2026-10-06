@@ -2,8 +2,10 @@
  * PakdForm — "Lập phương án kinh doanh (PAKD)" trên màn chi tiết dự án.
  * Hiện sau khi GĐK duyệt mã. AM / GĐK nhập trong PAKD_DAYS ngày kể từ ngày cấp mã,
  * lưu nháp hoặc gửi Kế toán (CFO) duyệt. Bố cục theo 2 sheet của file Excel mẫu:
- *   Tình trạng dự án = "Đã ký"  → Thông tin HĐ · Tiến độ & phạm vi · Nghiệm thu & thu tiền · Chi phí
- *   Tình trạng dự án = "Chưa ký" → Thông tin dự kiến · Phạm vi · Rủi ro · Mốc kế hoạch & mục tiêu
+ *   1. Thông tin dự án = 1.1 Thông tin hợp đồng dự kiến (luôn hiện: thời điểm ký, giá trị, xác suất, phạm vi, rủi ro)
+ *                      + 1.2 Thông tin hợp đồng thực tế (tình trạng; số HĐ, ngày ký, giá trị — mở khi "Đã ký")
+ *   Tình trạng = "Đã ký"  → 2. Tiến độ thực hiện · 3. Nghiệm thu & thu tiền · 4. Chi phí theo tháng
+ *   Tình trạng = "Chưa ký" → 3. Mốc kế hoạch & mục tiêu
  * Dữ liệu & công thức: src/business/pakd.ts
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -68,14 +70,16 @@ const CELL = 'w-full h-8 px-2 bg-transparent text-[12.5px] outline-none focus:bg
 const INP = `${erp.inputFull} disabled:bg-slate-50`;
 
 /** Số tiền / số có phân cách hàng nghìn. */
-const NumIn: React.FC<{ value: number; onChange: (n: number) => void; className?: string; placeholder?: string; decimals?: boolean }> = ({
+const NumIn: React.FC<{ value: number; onChange: (n: number) => void; className?: string; placeholder?: string; decimals?: boolean; disabled?: boolean }> = ({
   value,
   onChange,
   className = CELL,
   placeholder = '0',
   decimals,
+  disabled,
 }) => (
   <input
+    disabled={disabled}
     value={value ? (decimals ? String(value) : money(value)) : ''}
     onChange={(e) => onChange(Number(e.target.value.replace(decimals ? /[^\d.]/g : /[^\d]/g, '')) || 0)}
     inputMode="numeric"
@@ -921,60 +925,63 @@ export const PakdForm: React.FC<{
       </div>
 
       <fieldset disabled={!editable} className="min-w-0">
-        {/* 1. Thông tin dự án */}
+        {/* 1. Thông tin dự án: 1.1 hợp đồng dự kiến (luôn hiện) · 1.2 hợp đồng thực tế (nhập khi đã ký) */}
         <Section title="1. Thông tin dự án">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <Field label="Tình trạng dự án" required>
-              <select value={f.contractState} onChange={(e) => changeContractState(e.target.value as PakdFormData['contractState'])} className={INP}>
-                <option>Đã ký</option>
-                <option disabled={inAdjust && p.pakdForm?.contractState === 'Đã ký'}>Chưa ký</option>
-              </select>
-            </Field>
-            {signed ? (
-              <>
-                <Field label="Số hợp đồng">
-                  <input value={f.contractNo} onChange={(e) => set('contractNo', e.target.value)} placeholder="VD: HĐ-022/688/2026" className={INP} />
-                </Field>
-                <Field label="Ngày ký trên hợp đồng">
-                  <input type="date" value={f.contractDate} onChange={(e) => set('contractDate', e.target.value)} className={INP} />
-                </Field>
-                <Field label="Ngày ký thực tế">
-                  <input type="date" value={f.actualSignDate} onChange={(e) => set('actualSignDate', e.target.value)} className={INP} />
-                </Field>
-                <Field label="Giá trị hợp đồng (VNĐ)" required>
-                  <NumIn value={f.contractValue} onChange={(n) => set('contractValue', n)} className={INP} />
-                </Field>
-              </>
-            ) : (
-              <>
-                <Field label="Thời điểm dự kiến ký" required>
-                  <MonthIn value={f.expectedSignMonth} onChange={(v) => set('expectedSignMonth', v)} className={INP} />
-                </Field>
-                <Field label="Giá trị hợp đồng dự kiến (VNĐ)" required>
-                  <NumIn value={f.expectedValue} onChange={(n) => set('expectedValue', n)} className={INP} />
-                </Field>
-                <Field label="Xác suất thành công (%)">
-                  <NumIn value={f.probability} onChange={(n) => set('probability', Math.min(100, n))} className={INP} decimals />
-                </Field>
-              </>
-            )}
-          </div>
-          {!signed && (
+          <div className="border border-slate-200 rounded-[3px] p-3 bg-slate-50/40">
+            <h4 className="text-[12px] font-bold text-[#1e3a5f] mb-2">1.1. Thông tin hợp đồng dự kiến</h4>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <Field label="Thời điểm dự kiến ký" required={!signed}>
+                <MonthIn value={f.expectedSignMonth} onChange={(v) => set('expectedSignMonth', v)} className={INP} />
+              </Field>
+              <Field label="Giá trị hợp đồng dự kiến (VNĐ)" required={!signed}>
+                <NumIn value={f.expectedValue} onChange={(n) => set('expectedValue', n)} className={INP} />
+              </Field>
+              <Field label="Xác suất thành công (%)">
+                <NumIn value={f.probability} onChange={(n) => set('probability', Math.min(100, n))} className={INP} decimals />
+              </Field>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
               <Field label="Phạm vi công việc" required>
                 <textarea value={f.scope} onChange={(e) => set('scope', e.target.value)} rows={3} className={`${INP} h-auto py-1.5`} />
               </Field>
-              <Field label="Đánh giá rủi ro" required>
+              <Field label="Đánh giá rủi ro" required={!signed}>
                 <textarea value={f.risk} onChange={(e) => set('risk', e.target.value)} rows={3} className={`${INP} h-auto py-1.5`} />
               </Field>
             </div>
-          )}
+          </div>
+
+          <div className="border border-slate-200 rounded-[3px] p-3 mt-3 bg-slate-50/40">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <h4 className="text-[12px] font-bold text-[#1e3a5f]">1.2. Thông tin hợp đồng thực tế</h4>
+              {!signed && <span className="text-[11.5px] text-slate-500">Chưa ký hợp đồng — chuyển Tình trạng sang "Đã ký" để nhập số hợp đồng, ngày ký và giá trị thực tế.</span>}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+              <Field label="Tình trạng dự án" required>
+                <select value={f.contractState} onChange={(e) => changeContractState(e.target.value as PakdFormData['contractState'])} className={INP}>
+                  <option>Đã ký</option>
+                  <option disabled={inAdjust && p.pakdForm?.contractState === 'Đã ký'}>Chưa ký</option>
+                </select>
+              </Field>
+              <Field label="Số hợp đồng">
+                <input value={f.contractNo} onChange={(e) => set('contractNo', e.target.value)} placeholder={signed ? 'VD: HĐ-022/688/2026' : '—'} disabled={!signed} className={INP} />
+              </Field>
+              <Field label="Ngày ký trên hợp đồng">
+                <input type="date" value={f.contractDate} onChange={(e) => set('contractDate', e.target.value)} disabled={!signed} className={INP} />
+              </Field>
+              <Field label="Ngày ký thực tế">
+                <input type="date" value={f.actualSignDate} onChange={(e) => set('actualSignDate', e.target.value)} disabled={!signed} className={INP} />
+              </Field>
+              <Field label="Giá trị hợp đồng (VNĐ)" required={signed}>
+                <NumIn value={f.contractValue} onChange={(n) => set('contractValue', n)} className={INP} disabled={!signed} />
+              </Field>
+            </div>
+          </div>
         </Section>
 
         {signed ? (
           <>
             {/* 2. Tiến độ và phạm vi */}
-            <Section title="2. Tiến độ và phạm vi (theo hợp đồng)">
+            <Section title="2. Tiến độ thực hiện (theo hợp đồng)">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <Field label="Bắt đầu thực hiện (tháng)" required>
                   <MonthIn value={f.startMonth} onChange={(v) => set('startMonth', v)} className={INP} />
@@ -986,9 +993,6 @@ export const PakdForm: React.FC<{
                   <p className="h-8 px-2.5 flex items-center rounded-[3px] border border-slate-200 bg-slate-50 text-[13px] font-semibold tabular-nums">{nMonths > 0 ? nMonths : '—'}</p>
                 </Field>
               </div>
-              <Field label="Phạm vi công việc" required className="mt-3">
-                <textarea value={f.scope} onChange={(e) => set('scope', e.target.value)} rows={3} className={`${INP} h-auto py-1.5`} />
-              </Field>
             </Section>
 
             {/* 3. Nghiệm thu, ghi nhận doanh thu và thu tiền */}
