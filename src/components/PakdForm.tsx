@@ -1001,9 +1001,30 @@ export const PakdForm: React.FC<{
                 <table className={`${erp.table} min-w-[1150px]`}>
                   <thead>
                     <tr>
-                      {['STT', 'Mốc', 'Thời điểm', '%', 'Giá trị', 'Tỷ lệ được thanh toán (%)', 'Giá trị thu đợt này', 'Thời gian gửi hồ sơ', 'Điều kiện nghiệm thu', 'Thời gian chờ (ngày)', 'Tháng thu tiền', ''].map((h, i) => (
-                        <th key={i} className={`${erp.th} text-center border-t-0 first:border-l-0 last:border-r-0 whitespace-normal`}>
+                      {(
+                        [
+                          ['STT'],
+                          ['Mốc'],
+                          ['Thời điểm', 'rev'],
+                          ['%'],
+                          ['Giá trị', 'rev'],
+                          ['Tỷ lệ được thanh toán (%)'],
+                          ['Giá trị thu đợt này', 'cash'],
+                          ['Thời gian gửi hồ sơ'],
+                          ['Điều kiện nghiệm thu'],
+                          ['Thời gian chờ (ngày)'],
+                          ['Tháng thu tiền', 'cash'],
+                          [''],
+                        ] as [string, ('rev' | 'cash')?][]
+                      ).map(([h, to], i) => (
+                        <th key={i} className={`${erp.th} text-center border-t-0 first:border-l-0 last:border-r-0 whitespace-normal align-top`}>
                           {h}
+                          {/* Cột được lấy sang kế hoạch theo tháng của Báo cáo hiệu quả dự án */}
+                          {to && (
+                            <span className={`block mt-0.5 text-[10px] font-semibold normal-case ${to === 'rev' ? 'text-emerald-700' : 'text-[#1f5fa8]'}`}>
+                              → {to === 'rev' ? 'Doanh thu KH' : 'Dòng tiền thu KH'}
+                            </span>
+                          )}
                         </th>
                       ))}
                     </tr>
@@ -1064,6 +1085,10 @@ export const PakdForm: React.FC<{
                   </tfoot>
                 </table>
               </div>
+              <p className="mt-1.5 text-[11.5px] text-slate-500">
+                Số liệu đổ sang kế hoạch theo tháng (màn Báo cáo hiệu quả dự án, Tổng quan): <b className="text-emerald-700">Thời điểm + Giá trị → Doanh thu kế hoạch</b> của tháng đó;{' '}
+                <b className="text-[#1f5fa8]">Tháng thu tiền + Giá trị thu đợt này → Dòng tiền thu kế hoạch</b>. Tháng thu tiền = Thời gian gửi hồ sơ (hoặc Thời điểm) + Thời gian chờ quy ra tháng.
+              </p>
             </Section>
 
             {/* 4. Kế hoạch chi phí theo tháng */}

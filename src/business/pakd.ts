@@ -246,6 +246,8 @@ export const validatePakd = (f: PakdFormData): string[] => {
     else if (f.endMonth < f.startMonth) e.push('Kết thúc phải sau Bắt đầu');
     const pct = f.milestones.reduce((s, m) => s + (m.percent || 0), 0);
     if (Math.abs(pct - 100) > 0.01) e.push(`Tổng % các mốc nghiệm thu phải bằng 100% (hiện ${pct}%)`);
+    // Mốc có % mà thiếu Thời điểm thì doanh thu / dòng tiền thu kế hoạch của mốc đó không đổ được sang báo cáo
+    if (f.milestones.some((m) => (m.percent || 0) > 0 && !m.month)) e.push('Nhập Thời điểm cho các mốc nghiệm thu có % giá trị (để tính Doanh thu & Dòng tiền thu kế hoạch theo tháng)');
     if (!f.costs.some((c) => costTotal(c) > 0)) e.push('Lập kế hoạch chi phí: nhập giá trị cho ít nhất một khoản mục / tháng');
     if (f.costs.some((c) => costTotal(c) > 0 && !c.item.trim())) e.push('Nhập tên khoản mục cho các dòng chi phí có giá trị');
   } else {
