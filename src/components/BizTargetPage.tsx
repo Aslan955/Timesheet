@@ -21,6 +21,7 @@ import React, { createContext, useContext, useMemo, useState } from 'react';
 import { AlertCircle, ArrowLeft, CheckCircle2, ClipboardCheck, History, Lock, LockOpen, PenLine, Plus, Save, Send, Target, X, XCircle } from 'lucide-react';
 import { DIVISIONS, useBusinessProjects } from '../business/BusinessProjectContext';
 import { Btn, ErpPage, ErpTitleBar, FolderTabs, KpiBox, Panel, Segmented, Tag, erp } from './erp/Erp';
+import { MonthPickerButton } from './erp/MonthPicker';
 
 const CURRENT_USER = 'namnv';
 const CRUMBS = ['Quản trị dự án & Tài chính', 'Mục tiêu kinh doanh'];
@@ -463,6 +464,7 @@ const MonthInput: React.FC<{ value: string; onChange: (ym: string) => void; clas
     onChange(ym);
   };
   return (
+    <span className="relative block w-full">
     <input
       value={text}
       onChange={(e) => setText(e.target.value)}
@@ -470,9 +472,19 @@ const MonthInput: React.FC<{ value: string; onChange: (ym: string) => void; clas
       onKeyDown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
       placeholder="MM/YYYY"
       inputMode="numeric"
-      title={bad ? 'Nhập đúng dạng MM/YYYY, ví dụ 02/2027' : 'MM/YYYY'}
-      className={`${className} text-center tabular-nums ${bad ? 'bg-rose-50 text-rose-700' : ''}`}
+      title={bad ? 'Nhập đúng dạng MM/YYYY, ví dụ 02/2027' : 'MM/YYYY — gõ hoặc bấm biểu tượng lịch để chọn'}
+      className={`${className} text-center tabular-nums pr-7 ${bad ? 'bg-rose-50 text-rose-700' : ''}`}
     />
+    <MonthPickerButton
+      value={value}
+      onChange={(ym) => {
+        setBad(false);
+        setText(ym ? my(ym) : '');
+        onChange(ym);
+      }}
+      className="absolute right-1 top-1/2 -translate-y-1/2"
+    />
+    </span>
   );
 };
 

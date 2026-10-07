@@ -37,25 +37,20 @@ import {
   validatePakd,
 } from '../business/pakd';
 import { Btn, KpiBox, Panel, Tag, erp } from './erp/Erp';
+import { MonthPickerButton } from './erp/MonthPicker';
 
 const money = (n: number) => Math.round(n || 0).toLocaleString('en-US');
 
-/** Dự án đã có số liệu chi phí kế hoạch (dữ liệu cũ / import) → điền sẵn vào form PAKD để không lệch lợi nhuận. */
+/**
+ * Dự án chưa ký đã có số chi phí kế hoạch (dữ liệu cũ / import) → điền sẵn 1 mốc kế hoạch "Toàn dự án".
+ * Dự án đã ký: KHÔNG điền sẵn kế hoạch chi phí theo tháng — người dùng tự nhập mục 3 và 4.
+ */
 const seedCosts = (p: BizProject): Partial<PakdFormData> => {
   const sx = p.plannedProductionCost || 0;
   const kd = p.plannedBusinessCost || 0;
-  if (!sx && !kd) return {};
+  if ((!sx && !kd) || p.contractSigned) return {};
   const from = (p.contract?.from || p.startDate || '').slice(0, 7);
   const to = (p.contract?.to || p.endDate || '').slice(0, 7);
-  if (p.contractSigned) {
-    const ms = from && to ? monthRange(from, to) : from ? [from] : [];
-    return {
-      costs: [
-        { ...newCost('Sản xuất', 'Chi phí sản xuất kế hoạch'), amounts: spreadEven(sx, ms) },
-        { ...newCost('Kinh doanh', 'Chi phí kinh doanh kế hoạch'), amounts: spreadEven(kd, ms) },
-      ],
-    };
-  }
   return { phases: [{ ...newPhase(), name: 'Toàn dự án', from, to, sx, kd }] };
 };
 const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
@@ -109,6 +104,7 @@ const MonthIn: React.FC<{ value: string; onChange: (ym: string) => void; classNa
     onChange(ym);
   };
   return (
+    <span className="relative block w-full">
     <input
       value={text}
       maxLength={7}
@@ -122,9 +118,19 @@ const MonthIn: React.FC<{ value: string; onChange: (ym: string) => void; classNa
       onBlur={commit}
       onKeyDown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
       placeholder="MM/YYYY"
-      title={bad ? 'Nhập đúng dạng MM/YYYY' : 'MM/YYYY'}
-      className={`${className} text-center tabular-nums ${bad ? 'bg-rose-50 text-rose-700' : ''}`}
+      title={bad ? 'Nhập đúng dạng MM/YYYY' : 'MM/YYYY — gõ hoặc bấm biểu tượng lịch để chọn'}
+      className={`${className} text-center tabular-nums pr-7 ${bad ? 'bg-rose-50 text-rose-700' : ''}`}
     />
+    <MonthPickerButton
+      value={value}
+      onChange={(ym) => {
+        setBad(false);
+        setText(ym ? my(ym) : '');
+        onChange(ym);
+      }}
+      className="absolute right-1 top-1/2 -translate-y-1/2"
+    />
+    </span>
   );
 };
 
@@ -598,31 +604,22 @@ export const PakdForm: React.FC<{
           : state === 'Đang điều chỉnh'
             ? 'bg-[#eaf2fc] text-[#1f5fa8] border-[#bcd3f0]'
             : 'bg-slate-100 text-slate-700 border-slate-300';
-  /** Đổi tình trạng HĐ: Chưa ký → Đã ký thì điền sẵn giá trị HĐ, kỳ thực hiện và chuyển mốc kế hoạch sang kế hoạch chi phí theo tháng. */
+  /**
+   * Đổi tình trạng HĐ: Chưa ký → Đã ký chỉ điền sẵn Giá trị HĐ (= giá trị dự kiến) và kỳ thực hiện (từ mốc kế hoạch).
+   * Mục 3 (Nghiệm thu, thu tiền) và mục 4 (Kế hoạch chi phí theo tháng) để trống cho người dùng tự nhập —
+   * không tự chuyển chi phí từ các mốc kế hoạch sang.
+   */
   const changeContractState = (v: PakdFormData['contractState']) => {
     if (v === 'Đã ký' && f.contractState === 'Chưa ký') {
       const ph = f.phases.filter((x) => x.from);
       const from = f.startMonth || ph.map((x) => x.from).sort()[0] || '';
       const to = f.endMonth || ph.map((x) => x.to || x.from).sort().slice(-1)[0] || '';
-      const noCost = !f.costs.some((c) => costTotal(c) > 0);
-      const costs = noCost
-        ? [
-            ...ph.flatMap((x) => {
-              const ms = monthRange(x.from, x.to || x.from);
-              return [
-                ...(x.sx ? [{ ...newCost('Sản xuất', x.name || 'Sản xuất'), amounts: spreadEven(x.sx, ms) }] : []),
-                ...(x.kd ? [{ ...newCost('Kinh doanh', x.name || 'Kinh doanh'), amounts: spreadEven(x.kd, ms) }] : []),
-              ];
-            }),
-          ]
-        : f.costs;
       setF((prev) => ({
         ...prev,
         contractState: 'Đã ký',
         contractValue: prev.contractValue || prev.expectedValue,
         startMonth: from,
         endMonth: to,
-        costs: costs.length ? costs : prev.costs,
       }));
       setErrors([]);
       return;
