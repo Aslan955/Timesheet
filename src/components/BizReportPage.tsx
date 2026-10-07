@@ -54,7 +54,7 @@ const pct = (r: number | null, digits = 0) => (r === null ? '—' : `${(r * 100)
 const unitOf = (k: ReportMetric) => (isMoney(k) ? 'VNĐ' : 'SP');
 
 /** Chỉ tiêu có sổ chi tiết kế toán để xem khi bấm vào số thực tế. */
-const ledgerKindOf = (k: ReportMetric): LedgerDrill['kind'] | null => (k === 'cashIn' ? 'cashIn' : k === 'cost' ? 'cost' : null);
+const ledgerKindOf = (k: ReportMetric): LedgerDrill['kind'] | null => (k === 'revenue' ? 'revenue' : k === 'cashIn' ? 'cashIn' : k === 'cost' ? 'cost' : null);
 type OnDrill = (d: LedgerDrill) => void;
 
 /** Con số thực tế: bấm được khi chỉ tiêu có sổ chi tiết. */
@@ -439,7 +439,7 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
             />
           </>
         }
-        footer="Bấm vào 1 dòng để xem Tổng quan dự án · Bấm vào con số thực tế của Chi phí / Dòng tiền thu để xem chi tiết sổ kế toán · ĐVT: VNĐ (KLCV: SP)"
+        footer="Bấm vào 1 dòng để xem Tổng quan dự án · Bấm vào con số thực tế của Doanh thu / Chi phí / Dòng tiền thu để xem chi tiết sổ kế toán · ĐVT: VNĐ (KLCV: SP)"
       >
         <div className="overflow-x-auto">
           <table className={erp.table}>

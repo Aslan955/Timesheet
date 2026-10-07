@@ -171,7 +171,9 @@ export interface CostEntry {
   costKd: number; // Chi kinh doanh (đ)
   note: string; // Ghi chú
 }
-export type LedgerKind = 'cashIn' | 'cost';
+/** 3 sổ chi tiết kế toán import: Doanh thu thực tế · Dòng tiền thu · Chi thực tế. */
+export type LedgerKind = 'revenue' | 'cashIn' | 'cost';
+export const LEDGER_LABEL: Record<LedgerKind, string> = { revenue: 'Doanh thu thực tế', cashIn: 'Dòng tiền thu', cost: 'Chi thực tế' };
 export interface LedgerImportLog {
   kind: LedgerKind;
   fileName: string;
@@ -181,6 +183,8 @@ export interface LedgerImportLog {
   by: string;
 }
 export interface Ledger {
+  /** "Báo cáo doanh thu phát sinh trong kỳ" (sổ chi tiết tài khoản) — cùng cột với dòng tiền thu, không có Mã / Tên đơn vị. */
+  revenue: CashInEntry[];
   cashIn: CashInEntry[];
   cost: CostEntry[];
   imports: LedgerImportLog[];
@@ -688,12 +692,26 @@ const splitAmount = (total: number, weights: number[]) => {
 const COST_SX_NOTES = ['Lương nhân sự sản xuất', 'BHXH, BHYT, KPCĐ', 'Thuê ngoài gia công phần mềm', 'Mua bản quyền / thiết bị', 'Công tác phí triển khai'];
 const COST_KD_NOTES = ['Chi phí tiếp khách, hội nghị', 'Hoa hồng / chi phí bán hàng'];
 const seedLedger = (projects: BizProject[]): Ledger => {
+  const revenue: CashInEntry[] = [];
   const cashIn: CashInEntry[] = [];
   const cost: CostEntry[] = [];
   projects.forEach((p) =>
     p.actual.forEach((r, i) => {
       const [y, m] = r.month.split('-');
       const prevM = +m === 1 ? `12.${+y - 1}` : `${+m - 1}.${y}`;
+      if (r.revenue)
+        revenue.push({
+          id: `RV-${p.id}-${r.month}`,
+          date: `${r.month}-${String(3 + (i % 9)).padStart(2, '0')}`,
+          month: r.month,
+          description: `Doanh thu ${p.name} tháng ${prevM}`,
+          amount: r.revenue,
+          partner: p.customerName.toUpperCase(),
+          projectCode: p.productionCode,
+          projectName: p.name,
+          unitCode: '',
+          unitName: '',
+        });
       splitAmount(r.cashIn, [0.7, 0.3]).forEach((amount, j) =>
         cashIn.push({
           id: `CI-${p.id}-${r.month}-${j}`,
@@ -719,9 +737,11 @@ const seedLedger = (projects: BizProject[]): Ledger => {
   const at = '2026-09-05T09:00:00.000Z';
   const months = [...new Set(cashIn.map((e) => e.month))].sort();
   return {
+    revenue,
     cashIn,
     cost,
     imports: [
+      { kind: 'revenue', fileName: 'Doanh_thu_T01-T08.2026.xlsx', months, lines: revenue.length, at, by: 'ketoan' },
       { kind: 'cashIn', fileName: 'Mau_dong_tien_thu_T01-T08.2026.xlsx', months, lines: cashIn.length, at, by: 'ketoan' },
       { kind: 'cost', fileName: 'Chi_thuc_te_T01-T08.2026.xlsx', months, lines: cost.length, at, by: 'ketoan' },
     ],
@@ -1081,7 +1101,7 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
   const importLedger = (kind: LedgerKind, entries: CashInEntry[] | CostEntry[], months: string[], fileName: string, by: string) => {
     const at = now();
     const inMonths = (e: { month: string }) => months.includes(e.month);
-    const old: (CashInEntry | CostEntry)[] = kind === 'cashIn' ? ledger.cashIn : ledger.cost;
+    const old: (CashInEntry | CostEntry)[] = kind === 'cost' ? ledger.cost : ledger[kind];
     const next = [...old.filter((e) => !inMonths(e)), ...entries];
     setLedger((prev) => ({
       ...prev,
@@ -1104,14 +1124,15 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
         months.forEach((m) => {
           const lines = mine.filter((e) => e.month === m);
           const row = rows.get(m) || { month: m, revenue: 0, cashIn: 0, costSx: 0, costKd: 0, workload: 0 };
-          if (kind === 'cashIn') row.cashIn = total(lines, 'amount');
+          if (kind === 'revenue') row.revenue = total(lines, 'amount');
+          else if (kind === 'cashIn') row.cashIn = total(lines, 'amount');
           else {
             row.costSx = total(lines, 'costSx');
             row.costKd = total(lines, 'costKd');
           }
           if (lines.length || rows.has(m)) rows.set(m, row);
         });
-        const label = kind === 'cashIn' ? 'Dòng tiền thu' : 'Chi thực tế';
+        const label = LEDGER_LABEL[kind];
         return {
           ...p,
           actual: [...rows.values()].sort((a, b) => a.month.localeCompare(b.month)),

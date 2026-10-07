@@ -845,7 +845,7 @@ type FinRow = {
   drill?: Pick<LedgerDrill, 'kind' | 'part'>;
 };
 const FIN_ROWS: FinRow[] = [
-  { label: { plan: 'Doanh thu dự kiến', actual: 'Doanh thu thực tế' }, get: (r) => r.revenue, labelCls: 'text-emerald-800' },
+  { label: { plan: 'Doanh thu dự kiến', actual: 'Doanh thu thực tế' }, get: (r) => r.revenue, labelCls: 'text-emerald-800', drill: { kind: 'revenue' } },
   { label: { plan: 'Thu dự kiến', actual: 'Thu thực tế' }, get: (r) => r.cashIn, labelCls: 'text-emerald-800', drill: { kind: 'cashIn' } },
   { label: { plan: 'Chi dự kiến', actual: 'Chi thực tế' }, get: (r) => r.costSx + r.costKd, labelCls: 'text-rose-800', drill: { kind: 'cost' } },
   { label: { plan: 'Chi cho dự án sản xuất (SX)', actual: 'Chi cho dự án sản xuất (SX)' }, get: (r) => r.costSx, labelCls: 'text-rose-700', sub: true, drill: { kind: 'cost', part: 'sx' } },
@@ -924,7 +924,7 @@ const FinanceSection: React.FC<{
               · Import từ <strong className="text-slate-600">{info.fileName}</strong> bởi {info.by} lúc {dt(info.at)}
             </>
           )}
-          {kind === 'actual' && data.length > 0 && <> · Bấm vào con số Thu / Chi thực tế để xem chi tiết sổ kế toán</>}
+          {kind === 'actual' && data.length > 0 && <> · Bấm vào con số Doanh thu / Thu / Chi thực tế để xem chi tiết sổ kế toán</>}
         </>
       }
     >

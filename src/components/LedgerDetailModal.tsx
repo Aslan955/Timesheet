@@ -1,16 +1,16 @@
 /**
- * LedgerDetailModal — màn chi tiết khi bấm vào con số Thu thực tế / Chi thực tế.
+ * LedgerDetailModal — màn chi tiết khi bấm vào con số Doanh thu / Thu / Chi thực tế.
  *
  * Liệt kê các dòng sổ kế toán tạo nên con số đó, đúng các cột của file kế toán:
- *  • Dòng tiền thu (sổ tiền gửi ngân hàng): Ngày hạch toán · Diễn giải · Số tiền · Tên đối tượng ·
- *    Mã công trình · Tên công trình · Mã đơn vị · Tên đơn vị
- *  • Chi thực tế: Mã dự án · Tháng · Chi sản xuất (đ) · Chi kinh doanh (đ) · Ghi chú
+ *  • Doanh thu thực tế (sổ chi tiết các tài khoản): Ngày hạch toán · Diễn giải · Số tiền · Tên đối tượng · Mã công trình · Tên công trình
+ *  • Dòng tiền thu (sổ tiền gửi ngân hàng): như trên + Mã đơn vị · Tên đơn vị
+ *  • Chi thực tế: Mã công trình · Tháng · Chi sản xuất (đ) · Chi kinh doanh (đ) · Diễn giải
  * Lọc theo các mã của dự án (Mã tổng / Mã PAKD / Mã SX) và kỳ [from, to]. Xuất lại được ra Excel.
  */
 import React, { useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { motion } from 'motion/react';
-import { X, Search, FileSpreadsheet, AlertTriangle, Landmark, Receipt } from 'lucide-react';
+import { X, Search, FileSpreadsheet, AlertTriangle, Landmark, Receipt, TrendingUp } from 'lucide-react';
 import { BizProject, LedgerKind, projectCodes, useBusinessProjects } from '../business/BusinessProjectContext';
 import { erp } from './erp/Erp';
 
@@ -38,13 +38,15 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
   const inScope = (e: { projectCode: string; month: string }) => codes.has(e.projectCode.trim().toLowerCase()) && e.month >= from && e.month <= to;
   const needle = q.trim().toLowerCase();
 
+  const isLines = kind !== 'cost'; // doanh thu & dòng tiền thu: cùng dạng dòng chứng từ
+  const source = kind === 'revenue' ? ledger.revenue : ledger.cashIn;
   const cash = useMemo(
     () =>
-      ledger.cashIn
+      source
         .filter(inScope)
         .filter((e) => !needle || [e.description, e.partner, e.projectCode, e.projectName].some((v) => v.toLowerCase().includes(needle)))
         .sort((a, b) => a.date.localeCompare(b.date)),
-    [ledger.cashIn, codes, from, to, needle],
+    [source, codes, from, to, needle],
   );
   const cost = useMemo(
     () =>
@@ -60,30 +62,45 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
   const totalCash = cash.reduce((s, e) => s + e.amount, 0);
   const totalSx = cost.reduce((s, e) => s + e.costSx, 0);
   const totalKd = cost.reduce((s, e) => s + e.costKd, 0);
-  const shownTotal = kind === 'cashIn' ? totalCash : part === 'sx' ? totalSx : part === 'kd' ? totalKd : totalSx + totalKd;
+  const shownTotal = isLines ? totalCash : part === 'sx' ? totalSx : part === 'kd' ? totalKd : totalSx + totalKd;
   const mismatch = !needle && expected !== undefined && Math.round(expected) !== Math.round(shownTotal);
 
-  const heading = kind === 'cashIn' ? 'BÁO CÁO DÒNG TIỀN THU TRONG KỲ' : `CHI THỰC TẾ${part === 'sx' ? ' — CHI SẢN XUẤT' : part === 'kd' ? ' — CHI KINH DOANH' : ''}`;
-  const Icon = kind === 'cashIn' ? Landmark : Receipt;
+  const heading =
+    kind === 'revenue'
+      ? 'BÁO CÁO DOANH THU PHÁT SINH TRONG KỲ'
+      : kind === 'cashIn'
+        ? 'BÁO CÁO DÒNG TIỀN THU TRONG KỲ'
+        : `CHI THỰC TẾ${part === 'sx' ? ' — CHI SẢN XUẤT' : part === 'kd' ? ' — CHI KINH DOANH' : ''}`;
+  const Icon = kind === 'revenue' ? TrendingUp : kind === 'cashIn' ? Landmark : Receipt;
+  const iconCls = kind === 'cost' ? 'text-rose-600' : 'text-emerald-600';
 
   const exportXlsx = () => {
     const rows: (string | number)[][] =
-      kind === 'cashIn'
+      kind === 'revenue'
         ? [
             [heading],
             [periodText(from, to)],
-            ['Ngày hạch toán', 'Diễn giải', 'Số tiền', 'Tên đối tượng', 'Mã công trình', 'Tên công trình', 'Mã đơn vị', 'Tên đơn vị'],
-            ...cash.map((e) => [dmy(e.date), e.description, e.amount, e.partner, e.projectCode, e.projectName, e.unitCode, e.unitName]),
+            ['Ngày hạch toán', 'Diễn giải', 'Số tiền', 'Tên đối tượng', 'Mã công trình', 'Tên công trình'],
+            ...cash.map((e) => [dmy(e.date), e.description, e.amount, e.partner, e.projectCode, e.projectName]),
           ]
-        : [
-            ['Mã dự án (Mã tổng/Mã SX/Mã PAKD) *', 'Tháng (MM/yyyy) *', 'Chi sản xuất (đ) *', 'Chi kinh doanh (đ) *', 'Ghi chú'],
-            ...cost.map((e) => [e.projectCode, fmtMonth(e.month), e.costSx, e.costKd, e.note]),
-          ];
+        : kind === 'cashIn'
+          ? [
+              [heading],
+              [periodText(from, to)],
+              ['Ngày hạch toán', 'Diễn giải', 'Số tiền', 'Tên đối tượng', 'Mã công trình', 'Tên công trình', 'Mã đơn vị', 'Tên đơn vị'],
+              ...cash.map((e) => [dmy(e.date), e.description, e.amount, e.partner, e.projectCode, e.projectName, e.unitCode, e.unitName]),
+            ]
+          : [
+              [heading],
+              [periodText(from, to)],
+              ['Mã công trình', 'Tháng', 'Sản xuất', 'CP bán hàng', 'Diễn giải'],
+              ...cost.map((e) => [e.projectCode, fmtMonth(e.month), e.costSx, e.costKd, e.note]),
+            ];
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = kind === 'cashIn' ? [12, 60, 16, 40, 14, 36, 10, 16].map((wch) => ({ wch })) : [34, 16, 18, 18, 40].map((wch) => ({ wch }));
+    ws['!cols'] = (kind === 'revenue' ? [12, 60, 16, 40, 14, 36] : kind === 'cashIn' ? [12, 60, 16, 40, 14, 36, 10, 16] : [16, 12, 18, 18, 60]).map((wch) => ({ wch }));
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, kind === 'cashIn' ? 'SỔ TIỀN GỬI NGÂN HÀNG' : 'Chi thuc te');
-    XLSX.writeFile(wb, `${kind === 'cashIn' ? 'DongTienThu' : 'ChiThucTe'}_${projects.length === 1 ? projects[0].masterCode : 'nhieu-du-an'}_${from}_${to}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, kind === 'revenue' ? 'SỔ CHI TIẾT CÁC TÀI KHOẢN' : kind === 'cashIn' ? 'SỔ TIỀN GỬI NGÂN HÀNG' : 'BÁO CÁO CHI TIẾT LÃI LỖ');
+    XLSX.writeFile(wb, `${kind === 'revenue' ? 'DoanhThu' : kind === 'cashIn' ? 'DongTienThu' : 'ChiThucTe'}_${projects.length === 1 ? projects[0].masterCode : 'nhieu-du-an'}_${from}_${to}.xlsx`);
   };
 
   const th = erp.th;
@@ -101,7 +118,7 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
         <div className="p-4 border-b border-slate-100 flex items-start justify-between gap-3">
           <div>
             <h3 className="text-sm font-black text-slate-800 flex items-center gap-2">
-              <Icon size={16} className={kind === 'cashIn' ? 'text-emerald-600' : 'text-rose-600'} /> {heading}
+              <Icon size={16} className={iconCls} /> {heading}
             </h3>
             <p className="text-[12px] text-slate-600 font-semibold mt-0.5">{title}</p>
             <p className="text-[11px] text-slate-500">
@@ -119,7 +136,7 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder={kind === 'cashIn' ? 'Tìm diễn giải, đối tượng, mã công trình...' : 'Tìm mã dự án, ghi chú...'}
+              placeholder={isLines ? 'Tìm diễn giải, đối tượng, mã công trình...' : 'Tìm mã công trình, diễn giải...'}
               className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-blue-500"
             />
           </div>
@@ -129,7 +146,7 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
             </label>
           )}
           <span className="text-xs text-slate-500">
-            <strong className="text-slate-800">{kind === 'cashIn' ? cash.length : cost.length}</strong> dòng · Tổng{' '}
+            <strong className="text-slate-800">{isLines ? cash.length : cost.length}</strong> dòng · Tổng{' '}
             <strong className="text-slate-800 font-mono">{fmt(shownTotal)}</strong>
           </span>
           <button onClick={exportXlsx} className="ml-auto flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer">
@@ -146,7 +163,7 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
 
         <div className="p-4 overflow-auto">
           <div className="border border-slate-300 overflow-auto">
-            {kind === 'cashIn' ? (
+            {isLines ? (
               <table className={erp.table}>
                 <thead className="sticky top-0 z-10">
                   <tr>
@@ -156,8 +173,8 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
                     <th className={`${th} text-left min-w-[200px]`}>Tên đối tượng</th>
                     <th className={`${th} text-left`}>Mã công trình</th>
                     <th className={`${th} text-left min-w-[160px]`}>Tên công trình</th>
-                    <th className={`${th} text-left`}>Mã đơn vị</th>
-                    <th className={`${th} text-left`}>Tên đơn vị</th>
+                    {kind === 'cashIn' && <th className={`${th} text-left`}>Mã đơn vị</th>}
+                    {kind === 'cashIn' && <th className={`${th} text-left`}>Tên đơn vị</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -169,11 +186,11 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
                       <td className={`${td} text-slate-600`}>{e.partner}</td>
                       <td className={`${td} font-mono text-blue-600 whitespace-nowrap`}>{e.projectCode}</td>
                       <td className={`${td} text-slate-600`}>{e.projectName}</td>
-                      <td className={`${td} whitespace-nowrap`}>{e.unitCode}</td>
-                      <td className={`${td} whitespace-nowrap`}>{e.unitName}</td>
+                      {kind === 'cashIn' && <td className={`${td} whitespace-nowrap`}>{e.unitCode}</td>}
+                      {kind === 'cashIn' && <td className={`${td} whitespace-nowrap`}>{e.unitName}</td>}
                     </tr>
                   ))}
-                  {!cash.length && <EmptyRow cols={8} />}
+                  {!cash.length && <EmptyRow cols={kind === 'cashIn' ? 8 : 6} />}
                 </tbody>
                 {cash.length > 0 && (
                   <tfoot>
@@ -182,7 +199,7 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
                         Tổng cộng
                       </td>
                       <td className={`${td} text-right font-mono`}>{fmt(totalCash)}</td>
-                      <td colSpan={5} />
+                      <td colSpan={kind === 'cashIn' ? 5 : 3} />
                     </tr>
                   </tfoot>
                 )}
@@ -191,11 +208,11 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
               <table className={erp.table}>
                 <thead className="sticky top-0 z-10">
                   <tr>
-                    <th className={`${th} text-left`}>Mã dự án (Mã tổng/Mã SX/Mã PAKD)</th>
-                    <th className={`${th} text-left`}>Tháng (MM/yyyy)</th>
-                    <th className={`${th} text-right ${part === 'kd' ? 'opacity-40' : ''}`}>Chi sản xuất (đ)</th>
-                    <th className={`${th} text-right ${part === 'sx' ? 'opacity-40' : ''}`}>Chi kinh doanh (đ)</th>
-                    <th className={`${th} text-left min-w-[240px]`}>Ghi chú</th>
+                    <th className={`${th} text-left`}>Mã công trình</th>
+                    <th className={`${th} text-left`}>Tháng</th>
+                    <th className={`${th} text-right ${part === 'kd' ? 'opacity-40' : ''}`}>Sản xuất (Chi SX)</th>
+                    <th className={`${th} text-right ${part === 'sx' ? 'opacity-40' : ''}`}>CP bán hàng (Chi KD)</th>
+                    <th className={`${th} text-left min-w-[240px]`}>Diễn giải</th>
                   </tr>
                 </thead>
                 <tbody>
