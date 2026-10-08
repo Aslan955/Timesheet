@@ -362,11 +362,13 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
   const [from, setFrom] = useState(() => (cutoff ? `${cutoff.slice(0, 4)}-01` : '2026-01'));
   const [to, setTo] = useState(() => cutoff || '2026-12');
   const [scope, setScope] = useState(ALL);
+  const [projectId, setProjectId] = useState(ALL); // lọc 1 dự án trong phạm vi (ALL = tất cả)
   const [metric, setMetric] = useState<ReportMetric>('revenue');
   const [axis, setAxis] = useState<'month' | 'project'>('month');
   const [health, setHealth] = useState<Health | 'all'>('all');
 
-  const scoped = useMemo(() => projects.filter((p) => scope === ALL || p.division === scope), [projects, scope]);
+  const inScope = useMemo(() => projects.filter((p) => scope === ALL || p.division === scope), [projects, scope]);
+  const scoped = useMemo(() => (projectId === ALL ? inScope : inScope.filter((p) => p.id === projectId)), [inScope, projectId]);
   const perfs = useMemo(() => scoped.map((p) => projectPerf(p, from, to, cutoff)), [scoped, from, to, cutoff]);
   const planT = perfs.reduce((t, x) => addTotals(t, x.plan), { revenue: 0, cost: 0, cashIn: 0, workload: 0 });
   const actualT = perfs.reduce((t, x) => addTotals(t, x.actual), { revenue: 0, cost: 0, cashIn: 0, workload: 0 });
@@ -375,7 +377,7 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
   const compareEnd = cutoff && cutoff < to ? cutoff : to;
   const drillFor = (k: ReportMetric, list: BizProject[], expected: number, title: string) =>
     onDrill({ kind: ledgerKindOf(k)!, projects: list, from, to: compareEnd, expected, title });
-  const scopeTitle = scope === ALL ? 'Toàn công ty' : `Khối ${scope}`;
+  const scopeTitle = projectId !== ALL && scoped[0] ? `${scoped[0].masterCode} — ${scoped[0].name}` : scope === ALL ? 'Toàn công ty' : `Khối ${scope}`;
 
   const groups: ChartGroup[] =
     axis === 'month'
@@ -401,10 +403,27 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
             <input type="month" value={to} min={from} onChange={(e) => e.target.value && setTo(e.target.value)} className={`${erp.input} w-40`} />
           </FilterField>
           <FilterField label="Phạm vi xem">
-            <select value={scope} onChange={(e) => setScope(e.target.value)} className={`${erp.input} w-44`}>
+            <select
+              value={scope}
+              onChange={(e) => {
+                setScope(e.target.value);
+                setProjectId(ALL);
+              }}
+              className={`${erp.input} w-44`}
+            >
               {[ALL, ...DIVISIONS].map((d) => (
                 <option key={d} value={d}>
                   {d === ALL ? d : `Khối ${d}`}
+                </option>
+              ))}
+            </select>
+          </FilterField>
+          <FilterField label="Dự án">
+            <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className={`${erp.input} w-[320px]`}>
+              <option value={ALL}>Tất cả dự án ({inScope.length})</option>
+              {inScope.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.masterCode} — {x.name}
                 </option>
               ))}
             </select>
@@ -603,9 +622,14 @@ const ProjectTab: React.FC<{ projects: BizProject[]; cutoff: string; projectId: 
 }) => {
   const [metric, setMetric] = useState<ReportMetric>('revenue');
   const p = projects.find((x) => x.id === projectId) || projects[0];
+  const [pFirst, pLast] = p ? projectMonthRange(p) : ['', ''];
+  // Kỳ xem (tháng/năm) — mặc định cả thời gian dự án; đổi dự án thì đặt lại
+  const [range, setRange] = useState<{ id: string; from: string; to: string }>({ id: p?.id || '', from: pFirst, to: pLast });
+  if (p && range.id !== p.id) setRange({ id: p.id, from: pFirst, to: pLast });
   if (!p) return <p className="text-[13px] text-slate-500">Chưa có dự án.</p>;
 
-  const [first, last] = projectMonthRange(p);
+  const first = range.from || pFirst;
+  const last = range.to || pLast;
   const series: MonthPoint[] = monthlySeries([p], metric, first, last, cutoff);
   const totalPlan = series.reduce((s, m) => s + m.plan, 0);
   const cumPlan = series.filter((m) => m.actual !== null).reduce((s, m) => s + m.plan, 0);
@@ -646,6 +670,17 @@ const ProjectTab: React.FC<{ projects: BizProject[]; cutoff: string; projectId: 
           <FilterField label="Chỉ tiêu">
             <Segmented options={METRIC_OPTIONS} value={metric} onChange={setMetric} />
           </FilterField>
+          <FilterField label="Từ tháng">
+            <input type="month" value={first} min={pFirst} max={last} onChange={(e) => e.target.value && setRange((r) => ({ ...r, from: e.target.value }))} className={`${erp.input} w-40`} />
+          </FilterField>
+          <FilterField label="Đến tháng">
+            <input type="month" value={last} min={first} max={pLast} onChange={(e) => e.target.value && setRange((r) => ({ ...r, to: e.target.value }))} className={`${erp.input} w-40`} />
+          </FilterField>
+          {(first !== pFirst || last !== pLast) && (
+            <Btn className="h-7" onClick={() => setRange({ id: p.id, from: pFirst, to: pLast })}>
+              Cả thời gian dự án
+            </Btn>
+          )}
         </div>
       </Panel>
 
@@ -658,12 +693,12 @@ const ProjectTab: React.FC<{ projects: BizProject[]; cutoff: string; projectId: 
                 [
                   ['Khối', p.division],
                   ['Tên dự án', p.name],
-                  ['Start', dmy(p.startDate)],
+                  ['Thời gian dự án', `${dmy(p.startDate)} → ${dmy(p.endDate)}`],
                 ],
                 [
                   ['Mã dự án', <span className={`${erp.code} font-semibold`}>{p.masterCode}</span>],
                   ['Chỉ tiêu', `${label} (${unitOf(metric)})`],
-                  ['End', dmy(p.endDate)],
+                  ['Kỳ đang xem', `${fmtMonth(first)} → ${fmtMonth(last)} (${series.length} tháng)`],
                 ],
               ].map((row, i) => (
                 <tr key={i}>
@@ -683,7 +718,7 @@ const ProjectTab: React.FC<{ projects: BizProject[]; cutoff: string; projectId: 
       </Panel>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
-        <KpiBox label="Tổng KH cả vòng đời dự án" value={val(metric, totalPlan)} valueText={val(metric, totalPlan)} sub={`${fmtMonth(first)} → ${fmtMonth(last)}`} />
+        <KpiBox label={first === pFirst && last === pLast ? 'Tổng KH cả vòng đời dự án' : 'Tổng KH trong kỳ'} value={val(metric, totalPlan)} valueText={val(metric, totalPlan)} sub={`${fmtMonth(first)} → ${fmtMonth(last)}`} />
         <KpiBox label="Luỹ kế KH đến kỳ chốt" value={val(metric, cumPlan)} valueText={val(metric, cumPlan)} sub={`Đến ${fmtMonth(cutoff)}`} />
         <KpiBox
           label="Luỹ kế TT đến kỳ chốt"
