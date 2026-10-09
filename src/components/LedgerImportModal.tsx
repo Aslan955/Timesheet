@@ -15,8 +15,8 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Landmark, Receipt, RotateCcw, TrendingUp, UploadCloud, X } from 'lucide-react';
-import { BizProject, CashInEntry, CostEntry, LEDGER_LABEL, LedgerKind, matchProject, useBusinessProjects } from '../business/BusinessProjectContext';
+import { AlertTriangle, CheckCircle2, Download, Eraser, FileSpreadsheet, Landmark, ListOrdered, Receipt, RotateCcw, Search, Trash2, TrendingUp, UploadCloud, X } from 'lucide-react';
+import { BizProject, CashInEntry, CostEntry, LEDGER_LABEL, LedgerKind, matchProject, projectCodes, useBusinessProjects } from '../business/BusinessProjectContext';
 import { Btn, FolderTabs, Tag, erp } from './erp/Erp';
 
 const norm = (s: unknown) =>
@@ -193,6 +193,7 @@ const parseWorkbook = (wb: XLSX.WorkBook, fileName: string, projects: BizProject
       track(code);
       entries.push({
         id: `${prefix}-${stamp}-${i}`,
+        ver: 0,
         date,
         month: date.slice(0, 7),
         description: s(c.desc),
@@ -233,7 +234,7 @@ const parseWorkbook = (wb: XLSX.WorkBook, fileName: string, projects: BizProject
         if (sx || kd) issues.push({ row, level: 'warn', msg: `Dòng không có mã công trình (${fmt((sx || 0) + (kd || 0))}) — lưu vào sổ, không tính vào dự án.` });
         noCode++;
       } else track(code);
-      entries.push({ id: `${prefix}-${stamp}-${i}`, projectCode: code, month, costSx: sx, costKd: kd, note: c.note >= 0 ? String(r[c.note] ?? '').trim() : '' });
+      entries.push({ id: `${prefix}-${stamp}-${i}`, ver: 0, projectCode: code, month, costSx: sx, costKd: kd, note: c.note >= 0 ? String(r[c.note] ?? '').trim() : '' });
     });
   }
 
@@ -263,9 +264,11 @@ const downloadTemplate = (kind: LedgerKind) => {
 // Modal
 // ==========================================================================
 export const LedgerImportModal: React.FC<{ onClose: () => void; onDone: (summary: string) => void; by: string; initialKind?: LedgerKind }> = ({ onClose, onDone, by, initialKind = 'revenue' }) => {
-  const { projects, ledger, importLedger } = useBusinessProjects();
+  const { projects, ledger, importLedger, nextLedgerVer } = useBusinessProjects();
   const inputRef = useRef<HTMLInputElement>(null);
   const [kind, setKind] = useState<LedgerKind>(initialKind);
+  const [view, setView] = useState<'import' | 'list'>('import');
+  const nLines = (kind === 'cost' ? ledger.cost : ledger[kind]).length;
   const [file, setFile] = useState<File | null>(null);
   const [parsed, setParsed] = useState<Parsed | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -321,7 +324,7 @@ export const LedgerImportModal: React.FC<{ onClose: () => void; onDone: (summary
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
       <div onClick={onClose} className="absolute inset-0 bg-black/40" />
-      <div className="relative bg-[#eef1f5] w-full max-w-4xl rounded-[4px] border border-slate-400 shadow-2xl z-10 flex flex-col max-h-[92vh]">
+      <div className="relative bg-[#eef1f5] w-full max-w-6xl rounded-[4px] border border-slate-400 shadow-2xl z-10 flex flex-col max-h-[92vh]">
         <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-[#1e3a5f] text-white rounded-t-[3px]">
           <div className="min-w-0">
             <h3 className="text-[14px] font-bold flex items-center gap-2">
@@ -334,10 +337,26 @@ export const LedgerImportModal: React.FC<{ onClose: () => void; onDone: (summary
           </button>
         </div>
 
-        <div className="pt-2 px-3 bg-[#eef1f5]">
-          <FolderTabs tabs={KINDS.map((x) => ({ key: x.key, label: x.label, icon: x.icon }))} value={kind} onChange={setKind} />
+        <div className="pt-2 px-3 bg-[#eef1f5] flex items-end gap-2">
+          <div className="flex-1 min-w-0">
+            <FolderTabs tabs={KINDS.map((x) => ({ key: x.key, label: x.label, icon: x.icon }))} value={kind} onChange={setKind} />
+          </div>
+          <div className="pb-1.5 shrink-0">
+            {view === 'import' ? (
+              <Btn icon={ListOrdered} className="h-7" onClick={() => setView('list')}>
+                Dữ liệu đã import ({nLines} dòng)
+              </Btn>
+            ) : (
+              <Btn variant="primary" icon={UploadCloud} className="h-7" onClick={() => setView('import')}>
+                Import file mới (v{nextLedgerVer()})
+              </Btn>
+            )}
+          </div>
         </div>
 
+        {view === 'list' ? (
+          <LedgerList key={kind} kind={kind} projects={projects} by={by} />
+        ) : (
         <div className="p-3 space-y-3 overflow-y-auto">
           {/* Bước 1 */}
           <section className="bg-white border border-slate-300 rounded-[4px] p-3">
@@ -482,7 +501,9 @@ export const LedgerImportModal: React.FC<{ onClose: () => void; onDone: (summary
             )}
           </section>
         </div>
+        )}
 
+        {view === 'import' && (
         <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-slate-300 bg-slate-50 rounded-b-[3px]">
           {parsed ? (
             <Btn icon={RotateCcw} onClick={reset}>
@@ -496,9 +517,301 @@ export const LedgerImportModal: React.FC<{ onClose: () => void; onDone: (summary
               Huỷ
             </Btn>
             <Btn variant="primary" icon={CheckCircle2} onClick={apply} disabled={!canApply}>
-              Import {k.label.toLowerCase()}
+              Import {k.label.toLowerCase()} (v{nextLedgerVer()})
             </Btn>
           </span>
+        </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ==========================================================================
+// Danh sách dữ liệu đã import (theo sổ đang chọn) — lọc theo phiên bản / tháng / tìm kiếm, xoá từng dòng
+// ==========================================================================
+const LedgerList: React.FC<{ kind: LedgerKind; projects: BizProject[]; by: string }> = ({ kind, projects, by }) => {
+  const { ledger, removeLedgerEntry, removeLedgerVersion } = useBusinessProjects();
+  const [ver, setVer] = useState('all');
+  const [delOpen, setDelOpen] = useState(false);
+  const [month, setMonth] = useState('all');
+  const [q, setQ] = useState('');
+  const [confirm, setConfirm] = useState<string | null>(null);
+  const all = (kind === 'cost' ? ledger.cost : ledger[kind]) as (CashInEntry | CostEntry)[];
+  const vers = [...new Set(all.map((e) => e.ver))].sort((a, b) => b - a);
+  const months = [...new Set(all.map((e) => e.month))].sort().reverse();
+  const needle = q.trim().toLowerCase();
+  const rows = all
+    .filter((e) => (ver === 'all' || e.ver === +ver) && (month === 'all' || e.month === month))
+    .map((e) => ({ e, p: matchProject(projects, e.projectCode) }))
+    .filter(({ e, p }) => !needle || [e.projectCode, p?.masterCode, p?.name, 'description' in e ? e.description : e.note, 'partner' in e ? e.partner : ''].some((v) => (v || '').toLowerCase().includes(needle)))
+    .sort((a, b) => b.e.ver - a.e.ver || b.e.month.localeCompare(a.e.month) || a.e.projectCode.localeCompare(b.e.projectCode));
+  const total = rows.reduce((s, { e }) => s + ('amount' in e ? e.amount : e.costSx + e.costKd), 0);
+  const logs = ledger.imports.filter((i) => i.kind === kind);
+  // Cột đúng theo file import của từng sổ + Tháng + Ver
+  const cols: { h: string; num?: boolean; center?: boolean }[] =
+    kind === 'cost'
+      ? [{ h: 'Mã công trình' }, { h: 'Diễn giải' }, { h: 'Sản xuất', num: true }, { h: 'CP bán hàng', num: true }]
+      : [
+          { h: 'Ngày hạch toán', center: true },
+          { h: 'Diễn giải' },
+          { h: 'Số tiền', num: true },
+          { h: 'Tên đối tượng' },
+          { h: 'Mã công trình' },
+          { h: 'Tên công trình' },
+          ...(kind === 'cashIn' ? [{ h: 'Mã đơn vị' }, { h: 'Tên đơn vị' }] : []),
+        ];
+  const dmy = (d: string) => d.split('-').reverse().join('/');
+  const codeCell = (e: CashInEntry | CostEntry, p?: BizProject) => (
+    <span className="font-mono whitespace-nowrap" title={p ? `Khớp dự án ${p.masterCode} — ${p.name}` : 'Chưa khớp dự án nào trên hệ thống'}>
+      {e.projectCode ? <span className={p ? 'text-[#1f5fa8]' : 'text-amber-700'}>{e.projectCode}</span> : <span className="text-slate-300">—</span>}
+    </span>
+  );
+
+  return (
+    <div className="p-3 space-y-2 overflow-y-auto">
+      <div className="flex flex-wrap items-center gap-2 text-[12px]">
+        <label className="flex items-center gap-1.5 text-slate-600">
+          Phiên bản
+          <select value={ver} onChange={(e) => setVer(e.target.value)} className={`${erp.input} h-7 w-28`}>
+            <option value="all">Tất cả</option>
+            {vers.map((v) => (
+              <option key={v} value={v}>
+                v{v}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center gap-1.5 text-slate-600">
+          Tháng
+          <select value={month} onChange={(e) => setMonth(e.target.value)} className={`${erp.input} h-7 w-28`}>
+            <option value="all">Tất cả</option>
+            {months.map((m) => (
+              <option key={m} value={m}>
+                {fmtMonth(m)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span className="relative">
+          <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm mã, tên dự án, diễn giải…" className={`${erp.input} h-7 pl-7 w-64`} />
+        </span>
+        <span className="ml-auto text-slate-600">
+          <b className="text-slate-800">{rows.length}</b> dòng · Tổng <b className="text-slate-800 tabular-nums">{fmt(total)}</b>
+        </span>
+        <Btn variant="danger" icon={Eraser} className="h-7" disabled={!logs.length} onClick={() => setDelOpen(true)}>
+          Xoá theo lần import
+        </Btn>
+      </div>
+      {delOpen && (
+        <DeleteVersionDialog
+          kind={kind}
+          entries={all}
+          logs={logs}
+          projects={projects}
+          initialVer={ver === 'all' ? undefined : +ver}
+          onClose={() => setDelOpen(false)}
+          onDelete={(v, pid) => {
+            removeLedgerVersion(kind, v, by, pid);
+            setDelOpen(false);
+            if (ver !== 'all' && +ver === v && !pid) setVer('all');
+          }}
+        />
+      )}
+      {logs.length > 0 && (
+        <p className="text-[11.5px] text-slate-500">
+          Các lần import {LEDGER_LABEL[kind].toLowerCase()}:{' '}
+          {logs.map((l) => (
+            <span key={l.ver} className="mr-2">
+              <Tag cls="bg-slate-100 text-slate-700 border-slate-300">v{l.ver}</Tag> {l.fileName} · {l.lines} dòng · {new Date(l.at).toLocaleDateString('vi-VN')}
+            </span>
+          ))}
+        </p>
+      )}
+      <div className="max-h-[58vh] overflow-auto border border-slate-300 rounded-[3px] bg-white">
+        <table className={erp.table}>
+          <thead className="sticky top-0 z-10">
+            <tr>
+              <th className={`${erp.th} border-t-0 border-l-0 text-center w-10`}>#</th>
+              {cols.map((c) => (
+                <th key={c.h} className={`${erp.th} border-t-0 ${c.num ? 'text-right' : c.center ? 'text-center' : 'text-left'}`}>
+                  {c.h}
+                </th>
+              ))}
+              <th className={`${erp.th} border-t-0 text-center`}>Tháng</th>
+              <th className={`${erp.th} border-t-0 text-center`}>Ver</th>
+              <th className={`${erp.th} border-t-0 border-r-0 text-center`}>Thao tác</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ e, p }, i) => (
+              <tr key={e.id} className={erp.tr}>
+                <td className={`${erp.td} text-center text-slate-500 border-l-0`}>{i + 1}</td>
+                {'amount' in e ? (
+                  <>
+                    <td className={`${erp.td} text-center tabular-nums whitespace-nowrap`}>{dmy(e.date)}</td>
+                    <td className={`${erp.td} max-w-[300px] truncate`} title={e.description}>
+                      {e.description}
+                    </td>
+                    <td className={`${erp.td} ${erp.num} font-semibold text-emerald-700`}>{fmt(e.amount)}</td>
+                    <td className={`${erp.td} max-w-[200px] truncate`} title={e.partner}>
+                      {e.partner}
+                    </td>
+                    <td className={erp.td}>{codeCell(e, p)}</td>
+                    <td className={`${erp.td} max-w-[200px] truncate`} title={e.projectName || p?.name}>
+                      {e.projectName || p?.name || <span className="text-slate-300">—</span>}
+                    </td>
+                    {kind === 'cashIn' && <td className={`${erp.td} whitespace-nowrap`}>{e.unitCode || <span className="text-slate-300">—</span>}</td>}
+                    {kind === 'cashIn' && <td className={`${erp.td} whitespace-nowrap`}>{e.unitName || <span className="text-slate-300">—</span>}</td>}
+                  </>
+                ) : (
+                  <>
+                    <td className={erp.td}>{codeCell(e, p)}</td>
+                    <td className={`${erp.td} max-w-[420px] truncate`} title={e.note}>
+                      {e.note || <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className={`${erp.td} ${erp.num} ${e.costSx ? 'font-semibold text-rose-700' : 'text-slate-400'}`}>{fmt(e.costSx)}</td>
+                    <td className={`${erp.td} ${erp.num} ${e.costKd ? 'font-semibold text-rose-700' : 'text-slate-400'}`}>{fmt(e.costKd)}</td>
+                  </>
+                )}
+                <td className={`${erp.td} text-center tabular-nums whitespace-nowrap`}>{fmtMonth(e.month)}</td>
+                <td className={`${erp.td} text-center`}>
+                  <Tag cls="bg-slate-100 text-slate-700 border-slate-300">v{e.ver}</Tag>
+                </td>
+                <td className={`${erp.td} text-center border-r-0 whitespace-nowrap`}>
+                  {confirm === e.id ? (
+                    <span className="inline-flex gap-1">
+                      <Btn variant="danger" className="h-6 px-2 text-[11px]" onClick={() => (removeLedgerEntry(kind, e.id, by), setConfirm(null))}>
+                        Xoá
+                      </Btn>
+                      <Btn className="h-6 px-2 text-[11px]" onClick={() => setConfirm(null)}>
+                        Không
+                      </Btn>
+                    </span>
+                  ) : (
+                    <button type="button" title="Xoá dòng này (số thực tế của dự án được tính lại)" onClick={() => setConfirm(e.id)} className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer">
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {!rows.length && (
+              <tr>
+                <td colSpan={4 + cols.length} className="px-3 py-8 text-center text-slate-400 italic">
+                  Chưa có dòng nào.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[11.5px] text-slate-500">Cột đúng theo file import, thêm Tháng và Ver. Mã công trình màu xanh = đã khớp dự án, màu cam = chưa khớp. Mỗi lần import 1 file là 1 phiên bản (v1, v2…); import lại tháng nào thì dòng cũ của tháng đó được thay bằng file mới.</p>
+    </div>
+  );
+};
+
+// ==========================================================================
+// Hộp thoại xoá dữ liệu theo lần import (phiên bản)
+// ==========================================================================
+const DeleteVersionDialog: React.FC<{
+  kind: LedgerKind;
+  entries: (CashInEntry | CostEntry)[];
+  logs: { ver: number; fileName: string; at: string; lines: number }[];
+  projects: BizProject[];
+  initialVer?: number;
+  onClose: () => void;
+  onDelete: (ver: number, projectId?: string) => void;
+}> = ({ kind, entries, logs, projects, initialVer, onClose, onDelete }) => {
+  const vers = [...new Set(entries.map((e) => e.ver))].sort((a: number, b: number) => b - a) as number[];
+  const [ver, setVer] = useState<number>(initialVer && vers.includes(initialVer) ? initialVer : vers[0]);
+  const [mode, setMode] = useState<'all' | 'project'>('all');
+  const [pid, setPid] = useState('');
+  const inVer = entries.filter((e) => e.ver === ver);
+  const projIn = projects.filter((p) => {
+    const codes = projectCodes(p);
+    return inVer.some((e) => codes.includes(e.projectCode.trim().toLowerCase()));
+  });
+  const nProj = (v: number) => new Set(entries.filter((e) => e.ver === v).map((e) => matchProject(projects, e.projectCode)?.id).filter(Boolean)).size;
+  const log = logs.find((l) => l.ver === ver);
+  const when = (iso?: string) => (iso ? new Date(iso).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
+  const selP = projects.find((p) => p.id === pid);
+  const nDel = mode === 'all' ? inVer.length : selP ? inVer.filter((e) => projectCodes(selP).includes(e.projectCode.trim().toLowerCase())).length : 0;
+  const canDelete = !!ver && (mode === 'all' || !!selP) && nDel > 0;
+
+  return (
+    <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white w-full max-w-lg rounded-[4px] border border-slate-400 shadow-2xl">
+        <div className="px-4 py-2.5 border-b border-slate-300 bg-gradient-to-b from-[#f7f9fc] to-[#edf1f6] flex items-center justify-between">
+          <h3 className="text-[13px] font-bold text-[#1e3a5f] flex items-center gap-1.5">
+            <Eraser size={14} className="text-rose-600" /> Xoá dữ liệu theo lần import — {LEDGER_LABEL[kind]}
+          </h3>
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="p-4 space-y-3 text-[12.5px]">
+          <label className="block">
+            <span className="block text-[12px] text-slate-600 mb-1">
+              Chọn phiên bản <span className="text-rose-600">*</span>
+            </span>
+            <select value={ver} onChange={(e) => (setVer(+e.target.value), setPid(''))} className={erp.inputFull}>
+              {vers.map((v) => {
+                const l = logs.find((x) => x.ver === v);
+                return (
+                  <option key={v} value={v}>
+                    v{v} · {entries.filter((e) => e.ver === v).length} dòng · Dự án: {nProj(v)} · {when(l?.at)}
+                    {l ? ` · ${l.fileName}` : ''}
+                  </option>
+                );
+              })}
+            </select>
+          </label>
+          <p className="text-slate-600">
+            <b className="text-slate-800">{inVer.length}</b> dòng · <b className="text-slate-800">{projIn.length}</b> dự án khớp mã · import lúc {when(log?.at)}
+            {log && (
+              <>
+                {' '}· file <b className="text-slate-800">{log.fileName}</b>
+              </>
+            )}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setMode('all')} className={`h-8 px-3 rounded-full border text-[12px] font-semibold cursor-pointer ${mode === 'all' ? 'bg-[#eaf2fc] border-[#1f5fa8] text-[#1f5fa8]' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
+              Xoá toàn bộ phiên bản này
+            </button>
+            <button type="button" onClick={() => setMode('project')} className={`h-8 px-3 rounded-full border text-[12px] font-semibold cursor-pointer ${mode === 'project' ? 'bg-[#eaf2fc] border-[#1f5fa8] text-[#1f5fa8]' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
+              Chỉ xoá một dự án trong phiên bản này
+            </button>
+          </div>
+          {mode === 'project' && (
+            <label className="block">
+              <span className="block text-[12px] text-slate-600 mb-1">
+                Dự án <span className="text-rose-600">*</span>
+              </span>
+              <select value={pid} onChange={(e) => setPid(e.target.value)} className={erp.inputFull}>
+                <option value="">— Chọn dự án —</option>
+                {projIn.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.masterCode} — {p.name} ({inVer.filter((e) => projectCodes(p).includes(e.projectCode.trim().toLowerCase())).length} dòng)
+                  </option>
+                ))}
+              </select>
+              {!projIn.length && <span className="block mt-1 text-[11.5px] text-amber-700">Phiên bản này không có dòng nào khớp dự án trên hệ thống.</span>}
+            </label>
+          )}
+          <p className="text-[11.5px] text-amber-800 bg-amber-50 border border-amber-200 rounded-[3px] px-3 py-2">
+            Sẽ xoá <b>{nDel}</b> dòng. Số {LEDGER_LABEL[kind].toLowerCase()} của các dự án liên quan được tính lại ngay; thao tác không hoàn tác được.
+          </p>
+        </div>
+        <div className="px-4 py-2.5 border-t border-slate-200 bg-slate-50 flex justify-end gap-1.5">
+          <Btn icon={X} onClick={onClose}>
+            Huỷ
+          </Btn>
+          <Btn variant="danger" icon={Trash2} disabled={!canDelete} onClick={() => onDelete(ver, mode === 'project' ? pid : undefined)} className="!bg-rose-600 !border-rose-700 !text-white hover:!bg-rose-700">
+            Xoá
+          </Btn>
         </div>
       </div>
     </div>

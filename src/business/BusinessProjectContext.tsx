@@ -152,6 +152,8 @@ export interface BizPlanImport {
 /** 1 dòng "Báo cáo dòng tiền thu trong kỳ" (sổ tiền gửi ngân hàng). */
 export interface CashInEntry {
   id: string;
+  /** Phiên bản import: mỗi lần import 1 file = 1 phiên bản (v1, v2…), các dòng trong file mang cùng số. */
+  ver: number;
   date: string; // Ngày hạch toán YYYY-MM-DD
   month: string; // YYYY-MM (lấy theo ngày hạch toán)
   description: string; // Diễn giải
@@ -165,6 +167,7 @@ export interface CashInEntry {
 /** 1 dòng "Chi thực tế" theo mã dự án. */
 export interface CostEntry {
   id: string;
+  ver: number;
   projectCode: string; // Mã dự án (Mã tổng / Mã SX / Mã PAKD)
   month: string; // YYYY-MM
   costSx: number; // Chi sản xuất (đ)
@@ -176,6 +179,7 @@ export type LedgerKind = 'revenue' | 'cashIn' | 'cost';
 export const LEDGER_LABEL: Record<LedgerKind, string> = { revenue: 'Doanh thu thực tế', cashIn: 'Dòng tiền thu', cost: 'Chi thực tế' };
 export interface LedgerImportLog {
   kind: LedgerKind;
+  ver: number;
   fileName: string;
   months: string[];
   lines: number;
@@ -702,6 +706,7 @@ const seedLedger = (projects: BizProject[]): Ledger => {
       if (r.revenue)
         revenue.push({
           id: `RV-${p.id}-${r.month}`,
+          ver: 1,
           date: `${r.month}-${String(3 + (i % 9)).padStart(2, '0')}`,
           month: r.month,
           description: `Doanh thu ${p.name} tháng ${prevM}`,
@@ -715,6 +720,7 @@ const seedLedger = (projects: BizProject[]): Ledger => {
       splitAmount(r.cashIn, [0.7, 0.3]).forEach((amount, j) =>
         cashIn.push({
           id: `CI-${p.id}-${r.month}-${j}`,
+          ver: 2,
           date: `${r.month}-${String(8 + j * 9 + (i % 5)).padStart(2, '0')}`,
           month: r.month,
           description: j === 0 ? `Thu tiền doanh thu ${p.name} tháng ${prevM}` : `Thu tiền nghiệm thu đợt ${i + 1} - Hợp đồng ${p.masterCode}/2026/HĐ`,
@@ -727,10 +733,10 @@ const seedLedger = (projects: BizProject[]): Ledger => {
         }),
       );
       splitAmount(r.costSx, [0.55, 0.2, 0.12, 0.08, 0.05]).forEach((v, j) =>
-        cost.push({ id: `CO-${p.id}-${r.month}-sx${j}`, projectCode: p.productionCode, month: r.month, costSx: v, costKd: 0, note: COST_SX_NOTES[j] }),
+        cost.push({ id: `CO-${p.id}-${r.month}-sx${j}`, ver: 3, projectCode: p.productionCode, month: r.month, costSx: v, costKd: 0, note: COST_SX_NOTES[j] }),
       );
       splitAmount(r.costKd, [0.65, 0.35]).forEach((v, j) =>
-        cost.push({ id: `CO-${p.id}-${r.month}-kd${j}`, projectCode: p.productionCode, month: r.month, costSx: 0, costKd: v, note: COST_KD_NOTES[j] }),
+        cost.push({ id: `CO-${p.id}-${r.month}-kd${j}`, ver: 3, projectCode: p.productionCode, month: r.month, costSx: 0, costKd: v, note: COST_KD_NOTES[j] }),
       );
     }),
   );
@@ -741,9 +747,9 @@ const seedLedger = (projects: BizProject[]): Ledger => {
     cashIn,
     cost,
     imports: [
-      { kind: 'revenue', fileName: 'Doanh_thu_T01-T08.2026.xlsx', months, lines: revenue.length, at, by: 'ketoan' },
-      { kind: 'cashIn', fileName: 'Mau_dong_tien_thu_T01-T08.2026.xlsx', months, lines: cashIn.length, at, by: 'ketoan' },
-      { kind: 'cost', fileName: 'Chi_thuc_te_T01-T08.2026.xlsx', months, lines: cost.length, at, by: 'ketoan' },
+      { kind: 'cost', ver: 3, fileName: 'Chi_thuc_te_T01-T08.2026.xlsx', months, lines: cost.length, at, by: 'ketoan' },
+      { kind: 'cashIn', ver: 2, fileName: 'Mau_dong_tien_thu_T01-T08.2026.xlsx', months, lines: cashIn.length, at, by: 'ketoan' },
+      { kind: 'revenue', ver: 1, fileName: 'Doanh_thu_T01-T08.2026.xlsx', months, lines: revenue.length, at, by: 'ketoan' },
     ],
   };
 };
@@ -756,6 +762,12 @@ interface Ctx {
    * của loại sổ đó; Thu / Chi thực tế của dự án liên quan được tính lại = tổng các dòng.
    */
   importLedger: (kind: LedgerKind, entries: CashInEntry[] | CostEntry[], months: string[], fileName: string, by: string) => void;
+  /** Xoá 1 dòng sổ kế toán đã import; số thực tế của dự án liên quan được tính lại. */
+  removeLedgerEntry: (kind: LedgerKind, id: string, by: string) => void;
+  /** Xoá cả một lần import (phiên bản); `projectId` → chỉ xoá các dòng của dự án đó trong phiên bản. */
+  removeLedgerVersion: (kind: LedgerKind, ver: number, by: string, projectId?: string) => void;
+  /** Số phiên bản của lần import kế tiếp (chung cho cả 3 sổ). */
+  nextLedgerVer: () => number;
   createProject: (data: BizProjectInput, by: string) => BizProject;
   updateProject: (id: string, data: BizProjectInput, by: string, note?: string) => void;
   deleteProject: (id: string) => void;
@@ -1098,21 +1110,10 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
     );
   };
 
-  const importLedger = (kind: LedgerKind, entries: CashInEntry[] | CostEntry[], months: string[], fileName: string, by: string) => {
+  /** Tính lại Doanh thu / Thu / Chi thực tế của các dự án liên quan trong `months` từ bộ dòng sổ `next`. */
+  const recomputeProjects = (kind: LedgerKind, next: (CashInEntry | CostEntry)[], months: string[], touched: Set<string>, by: string, note: string) => {
     const at = now();
     const inMonths = (e: { month: string }) => months.includes(e.month);
-    const old: (CashInEntry | CostEntry)[] = kind === 'cost' ? ledger.cost : ledger[kind];
-    const next = [...old.filter((e) => !inMonths(e)), ...entries];
-    setLedger((prev) => ({
-      ...prev,
-      [kind]: next,
-      imports: [{ kind, fileName, months, lines: entries.length, at, by }, ...prev.imports],
-    }));
-
-    // Dự án bị ảnh hưởng: có dòng trong file mới, hoặc từng có dòng ở các tháng này (import lại để sửa)
-    const touched = new Set(
-      [...old.filter(inMonths), ...entries].map((e) => matchProject(projects, e.projectCode)?.id).filter((id): id is string => !!id),
-    );
     const total = (lines: (CashInEntry | CostEntry)[], k: 'amount' | 'costSx' | 'costKd') =>
       lines.reduce((a, e) => a + ('amount' in e ? (k === 'amount' ? e.amount : 0) : k === 'amount' ? 0 : e[k]), 0);
     setProjects((prev) =>
@@ -1132,19 +1133,63 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
           }
           if (lines.length || rows.has(m)) rows.set(m, row);
         });
-        const label = LEDGER_LABEL[kind];
         return {
           ...p,
           actual: [...rows.values()].sort((a, b) => a.month.localeCompare(b.month)),
           updatedAt: at,
-          history: [...p.history, { at, by, action: `Cập nhật ${label} từ sổ kế toán`, note: `${fileName} · ${mine.length} dòng` }],
+          history: [...p.history, { at, by, action: `Cập nhật ${LEDGER_LABEL[kind]} từ sổ kế toán`, note: `${note} · ${mine.length} dòng` }],
         };
       }),
     );
   };
+  const ledgerOf = (kind: LedgerKind): (CashInEntry | CostEntry)[] => (kind === 'cost' ? ledger.cost : ledger[kind]);
+  const nextLedgerVer = () => ledger.imports.reduce((m, i) => Math.max(m, i.ver), 0) + 1;
+
+  const importLedger = (kind: LedgerKind, entries: CashInEntry[] | CostEntry[], months: string[], fileName: string, by: string) => {
+    const at = now();
+    const ver = nextLedgerVer();
+    const inMonths = (e: { month: string }) => months.includes(e.month);
+    const old = ledgerOf(kind);
+    const stamped = entries.map((e) => ({ ...e, ver })) as (CashInEntry | CostEntry)[];
+    const next = [...old.filter((e) => !inMonths(e)), ...stamped];
+    setLedger((prev) => ({
+      ...prev,
+      [kind]: next,
+      imports: [{ kind, ver, fileName, months, lines: entries.length, at, by }, ...prev.imports],
+    }));
+    // Dự án bị ảnh hưởng: có dòng trong file mới, hoặc từng có dòng ở các tháng này (import lại để sửa)
+    const touched = new Set(
+      [...old.filter(inMonths), ...stamped].map((e) => matchProject(projects, e.projectCode)?.id).filter((id): id is string => !!id),
+    );
+    recomputeProjects(kind, next, months, touched, by, `${fileName} (v${ver})`);
+  };
+
+  const removeLedgerEntry = (kind: LedgerKind, id: string, by: string) => {
+    const old = ledgerOf(kind);
+    const gone = old.find((e) => e.id === id);
+    if (!gone) return;
+    const next = old.filter((e) => e.id !== id);
+    setLedger((prev) => ({ ...prev, [kind]: next }));
+    const pid = matchProject(projects, gone.projectCode)?.id;
+    if (pid) recomputeProjects(kind, next, [gone.month], new Set([pid]), by, `Xoá dòng sổ v${gone.ver}`);
+  };
+
+  const removeLedgerVersion = (kind: LedgerKind, ver: number, by: string, projectId?: string) => {
+    const old = ledgerOf(kind);
+    const codes = projectId ? projectCodes(projects.find((p) => p.id === projectId)!) : null;
+    const hit = (e: CashInEntry | CostEntry) => e.ver === ver && (!codes || codes.includes(e.projectCode.trim().toLowerCase()));
+    const gone = old.filter(hit);
+    if (!gone.length) return;
+    const next = old.filter((e) => !hit(e));
+    const whole = !next.some((e) => e.ver === ver);
+    setLedger((prev) => ({ ...prev, [kind]: next, imports: whole ? prev.imports.filter((i) => !(i.kind === kind && i.ver === ver)) : prev.imports }));
+    const months = [...new Set(gone.map((e) => e.month))];
+    const touched = new Set(gone.map((e) => matchProject(projects, e.projectCode)?.id).filter((id): id is string => !!id));
+    recomputeProjects(kind, next, months, touched, by, projectId ? `Xoá dòng của dự án trong lần import v${ver}` : `Xoá lần import v${ver}`);
+  };
 
   return (
-    <BusinessProjectContext.Provider value={{ projects, ledger, importLedger, createProject, updateProject, deleteProject, importMonthly, savePlanMonths, saveContract, setAttachments, addOutsourceCode, setOutsourcePm, removeOutsourceCode, approveCode, reopenProject, submitPakd, savePakdForm, savePakdAdjust, cancelPakdAdjust, decidePakd, finishProject, targets, setYearTargets }}>
+    <BusinessProjectContext.Provider value={{ projects, ledger, importLedger, removeLedgerEntry, removeLedgerVersion, nextLedgerVer, createProject, updateProject, deleteProject, importMonthly, savePlanMonths, saveContract, setAttachments, addOutsourceCode, setOutsourcePm, removeOutsourceCode, approveCode, reopenProject, submitPakd, savePakdForm, savePakdAdjust, cancelPakdAdjust, decidePakd, finishProject, targets, setYearTargets }}>
       {children}
     </BusinessProjectContext.Provider>
   );

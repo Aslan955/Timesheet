@@ -12,7 +12,6 @@ interface SidebarProps {
 const THEME = {
   sidebarBg: 'bg-[#0f172a] text-slate-300 border-r border-[#1e293b]',
   headerBorder: 'border-b border-slate-800/60',
-  footerBg: 'bg-[#0b0f19] border-t border-slate-800/60',
   brandText: 'text-white',
   brandBadge: 'bg-[#0fa57c]/20 text-[#0fa57c] border-[#0fa57c]/30',
   activeItem: 'bg-[#0fa57c] text-white font-extrabold shadow-md shadow-emerald-950/20 rounded-xl',
@@ -166,29 +165,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeItem, onSelect }) => {
         ))}
       </nav>
 
-      {/* Bottom Profile Area */}
-      <div className={`p-4 transition-colors flex items-center justify-between gap-3 ${THEME.footerBg}`}>
-        <div className="flex items-center space-x-2.5 min-w-0">
-          <div className="relative">
-            <img 
-              src="https://ui-avatars.com/api/?name=Nguyen+Van+An&background=0fa57c&color=fff&bold=true" 
-              className="w-8 h-8 rounded-lg object-cover border border-slate-700" 
-              alt="Avatar"
-              referrerPolicy="no-referrer"
-            />
-            <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-500 border-2 border-[#0b0f19] animate-pulse"></span>
-          </div>
-          <div className="flex flex-col min-w-0">
-            <span className={`text-xs font-black truncate text-slate-100`}>Nguyễn Văn An</span>
-            <span className="text-[9px] text-slate-400 truncate font-semibold">an.nv@fwork.vn</span>
-          </div>
-        </div>
-        <div className="flex items-center space-x-1 shrink-0">
-          <div className="px-1.5 py-0.5 rounded text-[8px] font-black text-[#0fa57c] bg-[#0fa57c]/10 border border-[#0fa57c]/20 uppercase tracking-wider">
-            Nhân sự
-          </div>
-        </div>
-      </div>
     </div>
   );
 };
