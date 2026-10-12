@@ -25,6 +25,23 @@ import { PayrollProvider } from './payroll/PayrollContext';
 import { ProjectLaborCostPage } from './components/ProjectLaborCostPage';
 import { FinancePlanProvider } from './finance/FinancePlanContext';
 import { BusinessProjectPage } from './components/BusinessProjectPage';
+import { PmoProvider } from './pmo/PmoContext';
+import { PmoCockpitPage } from './components/pmo/PmoCockpitPage';
+import { PmoPortfolioPage } from './components/pmo/PmoPortfolioPage';
+import { PmoInboxPage } from './components/pmo/PmoInboxPage';
+import { PmoProjectPage } from './components/pmo/PmoProjectPage';
+import { PmoPnlPage } from './components/pmo/PmoPnlPage';
+import { PmoReportPage } from './components/pmo/PmoReportPage';
+import { PmoAlertPage } from './components/pmo/PmoAlertPage';
+import { PmoAllocationPage } from './components/pmo/PmoAllocationPage';
+import { PmoResourceRequestPage } from './components/pmo/PmoResourceRequestPage';
+import { PmoCapacityPage } from './components/pmo/PmoCapacityPage';
+import { PmoTimesheetPage } from './components/pmo/PmoTimesheetPage';
+import { PmoUserRolePage } from './components/pmo/PmoUserRolePage';
+import { PmoIntegrationPage } from './components/pmo/PmoIntegrationPage';
+import { PmoRateCardPage } from './components/pmo/PmoRateCardPage';
+import { PmoKhoiConfigPage } from './components/pmo/PmoKhoiConfigPage';
+import { PmoAuditPage } from './components/pmo/PmoAuditPage';
 import { PmPlaceholderPage } from './components/PmPlaceholderPage';
 import { BizTargetPage, BizTargetProvider } from './components/BizTargetPage';
 import { PM_PLACEHOLDER_SCREENS } from './constants';
@@ -68,6 +85,40 @@ export default function App() {
     if (PM_PLACEHOLDER_SCREENS[activeItem]) return <PmPlaceholderPage key={activeItem} title={PM_PLACEHOLDER_SCREENS[activeItem]} />;
 
     switch (activeItem) {
+      case 'Project Cockpit':
+        return <PmoCockpitPage onNavigate={setActiveItem} />;
+      case 'Portfolio khối':
+        return <PmoPortfolioPage key="khoi" scope="khoi" onNavigate={setActiveItem} />;
+      case 'Portfolio TCT':
+        return <PmoPortfolioPage key="tct" scope="tct" onNavigate={setActiveItem} />;
+      case 'Inbox phê duyệt':
+        return <PmoInboxPage onNavigate={setActiveItem} />;
+      case 'Khối P&L':
+        return <PmoPnlPage onNavigate={setActiveItem} />;
+      case 'Dự án PMO':
+        return <PmoProjectPage onNavigate={setActiveItem} />;
+      case 'Heatmap allocation':
+        return <PmoAllocationPage onNavigate={setActiveItem} />;
+      case 'Yêu cầu & điều chuyển':
+        return <PmoResourceRequestPage onNavigate={setActiveItem} />;
+      case 'Dự báo capacity':
+        return <PmoCapacityPage onNavigate={setActiveItem} />;
+      case 'Báo cáo dự án':
+        return <PmoReportPage onNavigate={setActiveItem} />;
+      case 'Trung tâm cảnh báo':
+        return <PmoAlertPage onNavigate={setActiveItem} />;
+      case 'Timesheet theo WP':
+        return <PmoTimesheetPage onNavigate={setActiveItem} />;
+      case 'Người dùng & role':
+        return <PmoUserRolePage onNavigate={setActiveItem} />;
+      case 'Trung tâm tích hợp':
+        return <PmoIntegrationPage onNavigate={setActiveItem} />;
+      case 'Rate card & overhead':
+        return <PmoRateCardPage onNavigate={setActiveItem} />;
+      case 'Cấu hình khối':
+        return <PmoKhoiConfigPage onNavigate={setActiveItem} />;
+      case 'Audit log':
+        return <PmoAuditPage onNavigate={setActiveItem} />;
       case 'Overview':
         return <DashboardPage onNavigate={setActiveItem} />;
       case 'Projects':
@@ -147,9 +198,11 @@ export default function App() {
                 <BizTargetProvider>
                   <PayrollProvider>
                     <BlockPlanProvider>
-                      <Layout activeItem={activeItem} onSelect={setActiveItem}>
-                        {renderContent()}
-                      </Layout>
+                      <PmoProvider>
+                        <Layout activeItem={activeItem} onSelect={setActiveItem}>
+                          {renderContent()}
+                        </Layout>
+                      </PmoProvider>
                     </BlockPlanProvider>
                   </PayrollProvider>
                 </BizTargetProvider>

@@ -8,6 +8,7 @@
  *       (số to = thực tế, dưới = kế hoạch & % hoàn thành; dưới KH đỏ, trên KH xanh —
  *       riêng Chi phí đảo chiều vì vượt KH là xấu).
  *     – Biểu đồ cột Kế hoạch vs Thực tế của chỉ tiêu đang chọn (theo tháng / theo dự án).
+ *       Chỉ tiêu đầu tiên "Tổng quan": Doanh thu, Chi phí (cột) + Lợi nhuận = DT − CP (đường), chọn Thực tế / Kế hoạch.
  *     – Bảng dự án: KH / TT / Chênh lệch từng chỉ tiêu + Sức khoẻ, lọc theo mức sức khoẻ.
  *  2. Tổng quan dự án
  *     – Chọn dự án + chỉ tiêu; 5 ô: Tổng KH cả vòng đời, Luỹ kế KH / TT đến kỳ chốt,
@@ -45,6 +46,8 @@ import { Btn, ErpPage, ErpTitleBar, FolderTabs, KpiBox, Panel, Segmented, Tag, T
 
 // Categorical slot 1 / 2 (đã chạy validate_palette: PASS)
 const SERIES = { plan: '#2a78d6', actual: '#eb6834' };
+// Chỉ tiêu "Tổng quan": DT = slot 1, CP = slot 2, LN = slot 3 (3 slot đầu validate all-pairs)
+const PNL = { revenue: '#2a78d6', cost: '#eb6834', profit: '#1baf7a' };
 
 const fmtMonth = (m: string) => (m ? `${m.slice(5, 7)}/${m.slice(0, 4)}` : '—');
 const dmy = (iso: string) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—');
@@ -99,6 +102,24 @@ const FilterField: React.FC<{ label: string; children: React.ReactNode }> = ({ l
     <span className="text-[12px] text-slate-600 whitespace-nowrap">{label}</span>
     {children}
   </label>
+);
+/** Ô lọc dạng nhãn trên – ô nhập dưới, dùng trong dải lọc (FilterBar). */
+const FilterCell: React.FC<{ label: string; children: React.ReactNode; className?: string }> = ({ label, children, className = '' }) => (
+  // Nhãn nằm cùng hàng bên trái ô nhập — gọn, tốn ít chiều cao
+  <label className={`flex items-center gap-1.5 min-w-0 ${className}`}>
+    <span className="text-[12px] text-slate-600 whitespace-nowrap">{label}</span>
+    {children}
+  </label>
+);
+/** Dải lọc một hàng, nền xám nhạt, gọn (cao ~40px). Ô lọc dùng cỡ nhỏ (h-7). */
+const FilterBar: React.FC<{ children: React.ReactNode; right?: React.ReactNode }> = ({ children, right }) => (
+  <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-3 py-1.5 bg-[#f3f6fa] border border-slate-200 rounded-[4px] [&_input]:h-7 [&_select]:h-7 [&_input]:text-[12px] [&_select]:text-[12px]">
+    <span className="flex items-center gap-1.5 text-[12px] font-bold text-[#1e3a5f] pr-3 border-r border-slate-300 whitespace-nowrap">
+      <Filter size={13} className="text-[#1f5fa8]" /> Lọc
+    </span>
+    {children}
+    {right && <span className="ml-auto flex items-center gap-2">{right}</span>}
+  </div>
 );
 
 // ==========================================================================
@@ -349,6 +370,179 @@ const PlanActualChart: React.FC<{ groups: ChartGroup[]; metric: ReportMetric; he
 };
 
 // ==========================================================================
+// Biểu đồ "Tổng quan" (lựa chọn đầu trong hàng chỉ tiêu): Doanh thu & Chi phí (cột) + Lợi nhuận (đường)
+// ==========================================================================
+interface PnlGroup {
+  key: string;
+  label: string;
+  revenue: number | null; // null = chưa chốt số (sau kỳ chốt)
+  cost: number | null;
+}
+const profitOf = (g: PnlGroup) => (g.revenue === null || g.cost === null ? null : g.revenue - g.cost);
+const fmtN = (n: number) => Math.round(n).toLocaleString('en-US');
+
+const PnlLegend: React.FC = () => (
+  <span className="flex items-center gap-3 text-[11px] text-slate-600">
+    <span className="flex items-center gap-1.5">
+      <span className="w-3 h-3 rounded-[2px]" style={{ background: PNL.revenue }} /> Doanh thu
+    </span>
+    <span className="flex items-center gap-1.5">
+      <span className="w-3 h-3 rounded-[2px]" style={{ background: PNL.cost }} /> Chi phí
+    </span>
+    <span className="flex items-center gap-1.5">
+      <svg width="22" height="10" className="shrink-0">
+        <line x1="1" y1="5" x2="21" y2="5" stroke={PNL.profit} strokeWidth="2" />
+        <circle cx="11" cy="5" r="3.5" fill={PNL.profit} stroke="#fff" strokeWidth="1.5" />
+      </svg>
+      Lợi nhuận (DT − CP)
+    </span>
+    <span className="text-slate-400">ĐVT: VNĐ</span>
+  </span>
+);
+
+/** Biểu đồ kết hợp một trục: cột DT, CP từ đường 0; đường LN (có thể âm). */
+const PnlChart: React.FC<{ groups: PnlGroup[]; height?: number }> = ({ groups, height = 240 }) => {
+  const [hover, setHover] = useState<number | null>(null);
+  if (!groups.length) return <p className="text-[12px] text-slate-400 py-10 text-center">Không có số liệu trong kỳ.</p>;
+
+  const vals = groups.flatMap((g) => [g.revenue, g.cost, profitOf(g)]).filter((v): v is number => v !== null);
+  const vMin = Math.min(0, ...vals);
+  const vMax = Math.max(1, ...vals);
+  const step = niceCeil((vMax - vMin) / 4);
+  const lo = Math.floor(vMin / step) * step;
+  const hi = Math.ceil(vMax / step) * step;
+  const ticks: number[] = [];
+  for (let t = lo; t <= hi + step / 2; t += step) ticks.push(t);
+  const y = (v: number) => ((v - lo) / (hi - lo)) * 100; // % tính từ đáy
+  const n = groups.length;
+  const x = (i: number) => ((i + 0.5) / n) * 100;
+
+  // Đường lợi nhuận: ngắt đoạn ở tháng chưa chốt số
+  const segments: { i: number; v: number }[][] = [];
+  groups.forEach((g, i) => {
+    const p = profitOf(g);
+    if (p === null) return segments.push([]);
+    if (!segments.length || !segments[segments.length - 1]) segments.push([]);
+    segments[segments.length - 1].push({ i, v: p });
+  });
+
+  const bar = (v: number | null, color: string) =>
+    v === null ? (
+      <div className="w-[min(24px,35%)]" />
+    ) : (
+      <div className="relative w-[min(24px,35%)] h-full">
+        <div
+          className={`absolute inset-x-0 ${v >= 0 ? 'rounded-t-[4px]' : 'rounded-b-[4px]'}`}
+          style={{ bottom: `${y(Math.min(0, v))}%`, height: `${Math.abs(y(v) - y(0))}%`, background: color }}
+        />
+      </div>
+    );
+
+  const g = hover !== null ? groups[hover] : null;
+  const gp = g ? profitOf(g) : null;
+
+  return (
+    <div className="flex pt-2">
+      {/* Trục Y */}
+      <div className="relative w-28 shrink-0" style={{ height }}>
+        {ticks.map((t) => (
+          <span key={t} className="absolute right-2 text-[10px] text-slate-500 tabular-nums -translate-y-1/2" style={{ bottom: `${y(t)}%` }}>
+            {fmtN(t)}
+          </span>
+        ))}
+      </div>
+      <div className="flex-1 overflow-x-auto">
+        <div style={{ minWidth: n * 56 }}>
+          <div className="relative border-l border-slate-300" style={{ height }}>
+            {ticks.map((t) => (
+              <div key={t} className={`absolute inset-x-0 border-t ${t === 0 ? 'border-slate-500' : 'border-dashed border-slate-200'}`} style={{ bottom: `${y(t)}%` }} />
+            ))}
+            {/* Cột DT / CP + vùng hover */}
+            <div className="absolute inset-0 flex">
+              {groups.map((gr, i) => (
+                <div
+                  key={gr.key}
+                  className={`flex-1 flex justify-center gap-[2px] ${hover === i ? 'bg-[#eaf2fc]' : ''}`}
+                  onMouseEnter={() => setHover(i)}
+                  onMouseLeave={() => setHover(null)}
+                >
+                  {bar(gr.revenue, PNL.revenue)}
+                  {bar(gr.cost, PNL.cost)}
+                </div>
+              ))}
+            </div>
+            {/* Đường lợi nhuận */}
+            <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">
+              {segments
+                .filter((sg) => sg.length > 1)
+                .map((sg, k) => (
+                  <polyline
+                    key={k}
+                    points={sg.map((pt) => `${x(pt.i)},${100 - y(pt.v)}`).join(' ')}
+                    fill="none"
+                    stroke={PNL.profit}
+                    strokeWidth="2"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ))}
+            </svg>
+            {groups.map((gr, i) => {
+              const p = profitOf(gr);
+              return p === null ? null : (
+                <span
+                  key={gr.key}
+                  className="absolute pointer-events-none rounded-full border-2 border-white"
+                  style={{ left: `${x(i)}%`, bottom: `${y(p)}%`, width: hover === i ? 11 : 9, height: hover === i ? 11 : 9, background: PNL.profit, transform: 'translate(-50%, 50%)' }}
+                />
+              );
+            })}
+            {g && (
+              <div
+                className="absolute top-0 z-10 pointer-events-none bg-white border border-slate-300 rounded-[3px] shadow-md text-[11px] whitespace-nowrap"
+                style={{ left: `${x(hover!)}%`, transform: `translateX(${hover! > n / 2 ? '-105%' : '5%'})` }}
+              >
+                <p className="font-bold px-2.5 py-1 bg-[#e8edf4] border-b border-slate-300 text-[#1e3a5f]">{g.label}</p>
+                <table className="tabular-nums">
+                  <tbody>
+                    {([
+                      ['Doanh thu', g.revenue, PNL.revenue, false],
+                      ['Chi phí', g.cost, PNL.cost, false],
+                      ['Lợi nhuận', gp, PNL.profit, true],
+                    ] as const).map(([lb, v, c, line]) => (
+                      <tr key={lb}>
+                        <td className="px-2.5 py-0.5 flex items-center gap-1.5">
+                          <span className={line ? 'w-2 h-2 rounded-full' : 'w-2 h-2 rounded-sm'} style={{ background: c }} /> {lb}
+                        </td>
+                        <td className={`px-2.5 py-0.5 text-right font-semibold ${line && v !== null && v < 0 ? 'text-rose-700' : ''}`}>{v === null ? 'chưa chốt số' : fmtN(v)}</td>
+                      </tr>
+                    ))}
+                    {gp !== null && g.revenue ? (
+                      <tr className="border-t border-slate-200">
+                        <td className="px-2.5 py-0.5 text-slate-500">Biên lợi nhuận</td>
+                        <td className="px-2.5 py-0.5 text-right font-semibold">{((gp / g.revenue) * 100).toFixed(1)}%</td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+          <div className="flex mt-1.5">
+            {groups.map((gr) => (
+              <span key={gr.key} className="flex-1 text-center text-[10px] text-slate-500 tabular-nums truncate px-0.5" title={gr.label}>
+                {gr.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ==========================================================================
 // Tab 1 — Tổng quan cả khối / công ty
 // ==========================================================================
 const ALL = 'Toàn công ty';
@@ -359,11 +553,14 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
   onOpenProject,
   onDrill,
 }) => {
-  const [from, setFrom] = useState(() => (cutoff ? `${cutoff.slice(0, 4)}-01` : '2026-01'));
-  const [to, setTo] = useState(() => cutoff || '2026-12');
+  const defFrom = cutoff ? `${cutoff.slice(0, 4)}-01` : '2026-01';
+  const defTo = cutoff || '2026-12';
+  const [from, setFrom] = useState(defFrom);
+  const [to, setTo] = useState(defTo);
   const [scope, setScope] = useState(ALL);
   const [projectId, setProjectId] = useState(ALL); // lọc 1 dự án trong phạm vi (ALL = tất cả)
-  const [metric, setMetric] = useState<ReportMetric>('revenue');
+  const [metric, setMetric] = useState<ReportMetric | 'overview'>('overview');
+  const [kind, setKind] = useState<'actual' | 'plan'>('actual'); // dùng cho chỉ tiêu "Tổng quan"
   const [axis, setAxis] = useState<'month' | 'project'>('month');
   const [health, setHealth] = useState<Health | 'all'>('all');
 
@@ -380,11 +577,26 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
   const scopeTitle = projectId !== ALL && scoped[0] ? `${scoped[0].masterCode} — ${scoped[0].name}` : scope === ALL ? 'Toàn công ty' : `Khối ${scope}`;
 
   const groups: ChartGroup[] =
-    axis === 'month'
+    metric === 'overview'
+      ? []
+      : axis === 'month'
       ? monthlySeries(scoped, metric, from, to, cutoff).map((m) => ({ key: m.month, label: fmtMonth(m.month), plan: m.plan, actual: m.actual }))
       : perfs
           .filter((x) => x.plan[metric] || x.actual[metric])
           .map((x) => ({ key: x.project.id, label: x.project.masterCode, plan: x.plan[metric], actual: x.actual[metric] }));
+
+  const pnlGroups: PnlGroup[] =
+    metric !== 'overview'
+      ? []
+      : axis === 'month'
+        ? (() => {
+            const rev = monthlySeries(scoped, 'revenue', from, to, cutoff);
+            const cost = monthlySeries(scoped, 'cost', from, to, cutoff);
+            return rev.map((m, i) => ({ key: m.month, label: fmtMonth(m.month), revenue: kind === 'plan' ? m.plan : m.actual, cost: kind === 'plan' ? cost[i].plan : cost[i].actual }));
+          })()
+        : perfs
+            .filter((x) => x[kind].revenue || x[kind].cost)
+            .map((x) => ({ key: x.project.id, label: x.project.masterCode, revenue: x[kind].revenue, cost: x[kind].cost }));
 
   return (
     <>
@@ -392,46 +604,71 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
 
       {/* Điều kiện lọc + điều khiển biểu đồ gộp chung một khung */}
       <Panel title="Biểu đồ kế hoạch – thực tế" icon={BarChart3}>
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pb-3 mb-3 border-b border-slate-200">
-          <span className="flex items-center gap-1.5 text-[12px] font-semibold text-[#1e3a5f]">
-            <Filter size={13} /> Điều kiện lọc
-          </span>
-          <FilterField label="Từ tháng">
-            <input type="month" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} className={`${erp.input} w-40`} />
-          </FilterField>
-          <FilterField label="Đến tháng">
-            <input type="month" value={to} min={from} onChange={(e) => e.target.value && setTo(e.target.value)} className={`${erp.input} w-40`} />
-          </FilterField>
-          <FilterField label="Phạm vi xem">
-            <select
-              value={scope}
-              onChange={(e) => {
-                setScope(e.target.value);
-                setProjectId(ALL);
-              }}
-              className={`${erp.input} w-44`}
-            >
-              {[ALL, ...DIVISIONS].map((d) => (
-                <option key={d} value={d}>
-                  {d === ALL ? d : `Khối ${d}`}
-                </option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="Dự án">
-            <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className={`${erp.input} w-[320px]`}>
-              <option value={ALL}>Tất cả dự án ({inScope.length})</option>
-              {inScope.map((x) => (
-                <option key={x.id} value={x.id}>
-                  {x.masterCode} — {x.name}
-                </option>
-              ))}
-            </select>
-          </FilterField>
+        <div className="mb-3">
+          <FilterBar
+            right={
+              (from !== defFrom || to !== defTo || scope !== ALL || projectId !== ALL) && (
+                <Btn
+                  className="h-7"
+                  onClick={() => {
+                    setFrom(defFrom);
+                    setTo(defTo);
+                    setScope(ALL);
+                    setProjectId(ALL);
+                  }}
+                >
+                  Mặc định
+                </Btn>
+              )
+            }
+          >
+            <FilterCell label="Từ">
+              <input type="month" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} className={`${erp.input} w-36`} />
+            </FilterCell>
+            <FilterCell label="Đến">
+              <input type="month" value={to} min={from} onChange={(e) => e.target.value && setTo(e.target.value)} className={`${erp.input} w-36`} />
+            </FilterCell>
+            <FilterCell label="Phạm vi xem">
+              <select
+                value={scope}
+                onChange={(e) => {
+                  setScope(e.target.value);
+                  setProjectId(ALL);
+                }}
+                className={`${erp.input} w-36`}
+              >
+                {[ALL, ...DIVISIONS].map((d) => (
+                  <option key={d} value={d}>
+                    {d === ALL ? d : `Khối ${d}`}
+                  </option>
+                ))}
+              </select>
+            </FilterCell>
+            <FilterCell label="Dự án" className="flex-1 min-w-[220px] max-w-[380px]">
+              <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className={`${erp.input} w-full min-w-0`}>
+                <option value={ALL}>Tất cả dự án ({inScope.length})</option>
+                {inScope.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.masterCode} — {x.name}
+                  </option>
+                ))}
+              </select>
+            </FilterCell>
+          </FilterBar>
         </div>
         <div className="flex flex-wrap items-center gap-3 mb-3">
-          <ChartLegend metric={metric} />
-          <Segmented options={METRIC_OPTIONS} value={metric} onChange={setMetric} />
+          {metric === 'overview' ? <PnlLegend /> : <ChartLegend metric={metric} />}
+          <Segmented options={[{ key: 'overview' as const, label: 'Tổng quan' }, ...METRIC_OPTIONS]} value={metric} onChange={setMetric} />
+          {metric === 'overview' && (
+            <Segmented
+              options={[
+                { key: 'actual', label: 'Thực tế' },
+                { key: 'plan', label: 'Kế hoạch' },
+              ]}
+              value={kind}
+              onChange={setKind}
+            />
+          )}
           <Segmented
             options={[
               { key: 'month', label: 'Theo tháng' },
@@ -441,7 +678,7 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
             onChange={setAxis}
           />
         </div>
-        <PlanActualChart groups={groups} metric={metric} />
+        {metric === 'overview' ? <PnlChart groups={pnlGroups} /> : <PlanActualChart groups={groups} metric={metric} />}
       </Panel>
 
       <Panel
@@ -652,39 +889,43 @@ const ProjectTab: React.FC<{ projects: BizProject[]; cutoff: string; projectId: 
 
   return (
     <>
-      <Panel title="Điều kiện lọc" icon={Filter}>
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-          <FilterField label="Dự án">
-            <select value={p.id} onChange={(e) => onProjectChange(e.target.value)} className={`${erp.input} w-[380px]`}>
-              {byDivision.map(([d, list]) => (
-                <optgroup key={d} label={`Khối ${d}`}>
-                  {list.map((x) => (
-                    <option key={x.id} value={x.id}>
-                      {x.masterCode} — {x.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="Chỉ tiêu">
-            <Segmented options={METRIC_OPTIONS} value={metric} onChange={setMetric} />
-          </FilterField>
-          <FilterField label="Từ tháng">
-            <input type="month" value={first} min={pFirst} max={last} onChange={(e) => e.target.value && setRange((r) => ({ ...r, from: e.target.value }))} className={`${erp.input} w-40`} />
-          </FilterField>
-          <FilterField label="Đến tháng">
-            <input type="month" value={last} min={first} max={pLast} onChange={(e) => e.target.value && setRange((r) => ({ ...r, to: e.target.value }))} className={`${erp.input} w-40`} />
-          </FilterField>
-          {(first !== pFirst || last !== pLast) && (
-            <Btn className="h-7" onClick={() => setRange({ id: p.id, from: pFirst, to: pLast })}>
-              Cả thời gian dự án
-            </Btn>
-          )}
-        </div>
-      </Panel>
+      <FilterBar>
+        <FilterCell label="Dự án" className="flex-1 min-w-[260px] max-w-[460px]">
+          <select value={p.id} onChange={(e) => onProjectChange(e.target.value)} className={`${erp.input} w-full min-w-0`}>
+            {byDivision.map(([d, list]) => (
+              <optgroup key={d} label={`Khối ${d}`}>
+                {list.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.masterCode} — {x.name}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </FilterCell>
+        <FilterCell label="Từ">
+          <input type="month" value={first} min={pFirst} max={last} onChange={(e) => e.target.value && setRange((r) => ({ ...r, from: e.target.value }))} className={`${erp.input} w-36`} />
+        </FilterCell>
+        <FilterCell label="Đến">
+          <input type="month" value={last} min={first} max={pLast} onChange={(e) => e.target.value && setRange((r) => ({ ...r, to: e.target.value }))} className={`${erp.input} w-36`} />
+        </FilterCell>
+        {(first !== pFirst || last !== pLast) && (
+          <Btn className="h-7" onClick={() => setRange({ id: p.id, from: pFirst, to: pLast })} title="Xem cả thời gian dự án">
+            Cả dự án
+          </Btn>
+        )}
+      </FilterBar>
 
-      <Panel title="Thông tin dự án" icon={FolderKanban} noPad>
+      <Panel
+        title="Thông tin dự án"
+        icon={FolderKanban}
+        noPad
+        actions={
+          <span className="flex items-center gap-2 text-[12px] text-slate-600">
+            Chỉ tiêu <Segmented options={METRIC_OPTIONS} value={metric} onChange={setMetric} />
+          </span>
+        }
+      >
         {/* 1 bảng chung 6 cột (nhãn | giá trị × 3) để các hàng luôn thẳng nhau */}
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-[13px] table-fixed min-w-[720px]">

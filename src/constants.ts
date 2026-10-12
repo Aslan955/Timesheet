@@ -27,7 +27,10 @@ import {
   UserPlus,
   IdCard,
   ListChecks,
-  Mail
+  Mail,
+  Gauge,
+  LayoutGrid,
+  Building2
 } from 'lucide-react';
 
 export interface NavItem {
@@ -65,6 +68,45 @@ export const visibleNav = (items: NavItem[]): NavItem[] =>
   );
 
 export const NAVIGATION: NavItem[] = [
+  {
+    // Module PMO — quản trị dự án sản xuất (theo PRD PMO System v1.0, MVP). Đang dựng dần theo thứ tự prototype.
+    title: 'PMO',
+    label: 'PMO · Quản trị dự án',
+    icon: Gauge,
+    children: [
+      { title: 'Project Cockpit', icon: Gauge },
+      { title: 'Portfolio khối', icon: LayoutGrid },
+      { title: 'Khối P&L', icon: PieChart },
+      { title: 'Portfolio TCT', icon: Building2 },
+      { title: 'Dự án PMO', label: 'Danh sách dự án', icon: Briefcase },
+      { title: 'Inbox phê duyệt', icon: Inbox },
+      {
+        title: 'Nguồn lực PMO',
+        label: 'Nguồn lực',
+        icon: Users,
+        children: [
+          { title: 'Heatmap allocation', icon: LayoutGrid },
+          { title: 'Yêu cầu & điều chuyển', icon: UserPlus },
+          { title: 'Dự báo capacity', icon: BarChart3 },
+        ],
+      },
+      { title: 'Báo cáo dự án', icon: FileText },
+      { title: 'Trung tâm cảnh báo', icon: BellRing },
+      { title: 'Timesheet theo WP', icon: Clock },
+      {
+        title: 'Quản trị PMO',
+        label: 'Quản trị',
+        icon: Settings,
+        children: [
+          { title: 'Người dùng & role', icon: IdCard },
+          { title: 'Trung tâm tích hợp', icon: Network },
+          { title: 'Rate card & overhead', icon: Wallet },
+          { title: 'Cấu hình khối', icon: ListChecks },
+          { title: 'Audit log', icon: Database },
+        ],
+      },
+    ],
+  },
   {
     title: 'Project Management',
     label: 'Quản trị dự án & Tài chính',

@@ -98,6 +98,9 @@ import { ProjectTracker } from './ProjectTracker';
 import { PakdForm, PakdHeaderActions } from './PakdForm';
 import { pakdTotals, type PakdFormData } from '../business/pakd';
 import { Btn, ErpPage, ErpTitleBar, FieldTable, FolderTabs, FormRow, Panel, Segmented, Tag, erp } from './erp/Erp';
+import { ActualCostTab } from './ActualCostTab';
+import { ConfigurationTab } from './ConfigurationTab';
+import { ResourcesTab } from './ResourcesTab';
 
 const CURRENT_USER = 'namnv';
 const CRUMBS = ['Quản trị dự án & Tài chính', 'Danh sách dự án'];
@@ -340,6 +343,14 @@ const rowAction = (p: BizProject, role: BizRole): RowAction => {
       return null;
   }
 };
+
+/** Các tab bổ sung trên màn chi tiết dự án (khung trống, làm nội dung sau). */
+const EXTRA_TABS = [
+  { key: 'resources', label: 'Resources' },
+  { key: 'actualCost', label: 'Actual Cost' },
+  { key: 'configuration', label: 'Configuration' },
+] as const;
+type DetailTab = 'overview' | 'history' | (typeof EXTRA_TABS)[number]['key'];
 
 const RoleSelect: React.FC<{ role: BizRole; onChange: (r: BizRole) => void }> = ({ role, onChange }) => (
   <label className="flex items-center gap-1.5 text-[12px] text-slate-600 border border-slate-300 rounded-[3px] bg-slate-50 pl-2">
@@ -1335,7 +1346,7 @@ const ProjectDetail: React.FC<{
   const files = p.attachments || [];
   const { projects } = useBusinessProjects();
   const [deciding, setDeciding] = useState(false);
-  const [tab, setTab] = useState<'overview' | 'history'>('overview');
+  const [tab, setTab] = useState<DetailTab>('overview');
   const [showContract, setShowContract] = useState(false);
   /** "Sửa": sửa trực tiếp thông tin cơ bản trên màn chi tiết (AM / SM / GĐK). */
   const [editingRaw, setEditing] = useState(false);
@@ -1468,6 +1479,7 @@ const ProjectDetail: React.FC<{
           <FolderTabs
             tabs={[
               { key: 'overview', label: 'Thông tin dự án', icon: LayoutList },
+              ...EXTRA_TABS.map((t) => ({ key: t.key, label: t.label })),
               { key: 'history', label: `Lịch sử (${p.history.length})`, icon: History },
             ]}
             value={tab}
@@ -1616,6 +1628,18 @@ const ProjectDetail: React.FC<{
           />
         )}
       </AnimatePresence>
+
+      {!editing && tab === 'actualCost' && <ActualCostTab project={p} />}
+      {!editing && tab === 'configuration' && <ConfigurationTab key={p.id} project={p} />}
+      {!editing && tab === 'resources' && <ResourcesTab key={p.id} project={p} />}
+
+      {!editing && !['actualCost', 'configuration', 'resources'].includes(tab) && EXTRA_TABS.some((t) => t.key === tab) && (
+        <Panel title={EXTRA_TABS.find((t) => t.key === tab)!.label} icon={LayoutList}>
+          <div className="py-10 text-center text-[12.5px] text-slate-500 border border-dashed border-slate-300 rounded-[4px] bg-slate-50">
+            Màn <b>{EXTRA_TABS.find((t) => t.key === tab)!.label}</b> của dự án {p.masterCode} — nội dung sẽ được xây dựng sau.
+          </div>
+        </Panel>
+      )}
 
       {!editing && tab === 'history' && (
         <Panel title="Lịch sử thay đổi" icon={History} noPad>
