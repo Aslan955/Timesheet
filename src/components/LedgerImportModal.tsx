@@ -1,13 +1,18 @@
 /**
- * LedgerImportModal — Kế toán import sổ chi tiết toàn công ty, 3 tab tương ứng 3 sổ (file xuất từ phần mềm kế toán):
+ * LedgerImportModal — Kế toán import sổ chi tiết toàn công ty, 5 tab tương ứng 5 sổ (file xuất từ phần mềm kế toán):
  *
  *  • Doanh thu thực tế — "BÁO CÁO DOANH THU PHÁT SINH TRONG KỲ" (sổ chi tiết các tài khoản)
  *      Ngày hạch toán | Diễn giải | Số tiền | Tên đối tượng | Mã công trình | Tên công trình
  *  • Dòng tiền thu — "BÁO CÁO DÒNG TIỀN THU TRONG KỲ" (sổ tiền gửi ngân hàng)
  *      Ngày hạch toán | Diễn giải | Số tiền | Tên đối tượng | Mã công trình | Tên công trình | Mã đơn vị | Tên đơn vị
  *  • Chi thực tế — "BÁO CÁO CHI TIẾT LÃI LỖ THEO CÔNG TRÌNH" (tháng lấy ở dòng "Tháng M năm YYYY" đầu file)
- *      Mã công trình | Diễn giải | Sản xuất | CP bán hàng
+ *      Mã công trình | Diễn giải | Sản xuất | CP bán hàng | Chi phí chung
+ *      Chi thực tế của dự án = Sản xuất + CP bán hàng + Chi phí chung (file cũ không có cột Chi phí chung → coi = 0)
  *      (vẫn nhận mẫu cũ: Mã dự án | Tháng (MM/yyyy) | Chi sản xuất | Chi kinh doanh | Ghi chú)
+ *  • Chi phí vận hành — "BẢNG PHÂN BỔ CHI PHÍ VẬN HÀNH THEO CÔNG TRÌNH" (Kế toán phân bổ ngoài rồi import; tháng ở dòng "Tháng M năm YYYY")
+ *      Mã công trình | Diễn giải | Số tiền
+ *  • Chi phí quản lý — "BẢNG PHÂN BỔ CHI PHÍ QUẢN LÝ THEO CÔNG TRÌNH" — cùng cấu trúc
+ *      Mã công trình | Diễn giải | Số tiền
  *
  * Mỗi dòng ghép vào dự án theo mã (Mã công trình khớp Mã tổng, Mã PAKD hoặc Mã SX). Dữ liệu các tháng có trong file
  * thay thế dữ liệu cũ cùng loại sổ; Doanh thu / Thu / Chi thực tế của dự án được tính lại = tổng các dòng.
@@ -15,8 +20,8 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { AlertTriangle, CheckCircle2, Download, Eraser, FileSpreadsheet, Landmark, ListOrdered, Receipt, RotateCcw, Search, Trash2, TrendingUp, UploadCloud, X } from 'lucide-react';
-import { BizProject, CashInEntry, CostEntry, LEDGER_LABEL, LedgerKind, matchProject, projectCodes, useBusinessProjects } from '../business/BusinessProjectContext';
+import { AlertTriangle, Briefcase, CheckCircle2, Download, Eraser, FileSpreadsheet, Landmark, ListOrdered, PieChart, Receipt, RotateCcw, Search, Trash2, TrendingUp, UploadCloud, X } from 'lucide-react';
+import { BizProject, LEDGER_LABEL, LedgerEntry, LedgerKind, entryAmounts, entryTotal, isCostLike, matchProject, projectCodes, useBusinessProjects } from '../business/BusinessProjectContext';
 import { Btn, FolderTabs, Tag, erp } from './erp/Erp';
 
 const norm = (s: unknown) =>
@@ -81,14 +86,15 @@ interface Issue {
 interface Parsed {
   kind: LedgerKind;
   fileName: string;
-  entries: (CashInEntry | CostEntry)[];
+  entries: LedgerEntry[];
   months: string[];
   issues: Issue[];
   /** Loại sổ nhận ra từ file (nếu khác tab đang chọn). */
   detected?: LedgerKind;
 }
 
-const KINDS: { key: LedgerKind; label: string; icon: React.ElementType; title: string; sheet: string; file: string; head: string[]; sample: (string | number)[]; cols: number[] }[] = [
+/** Cấu hình sổ. amounts: tên các cột tiền (sổ Chi thực tế); single: tên cột tiền duy nhất (các sổ còn lại). */
+const KINDS: { key: LedgerKind; label: string; icon: React.ElementType; title: string; sheet: string; file: string; head: string[]; sample: (string | number)[]; cols: number[]; amounts?: string[]; single: string }[] = [
   {
     key: 'revenue',
     label: 'Doanh thu thực tế',
@@ -99,6 +105,7 @@ const KINDS: { key: LedgerKind; label: string; icon: React.ElementType; title: s
     head: ['Ngày hạch toán', 'Diễn giải', 'Số tiền', 'Tên đối tượng', 'Mã công trình', 'Tên công trình'],
     sample: ['10/09/2026', 'Doanh thu Hợp đồng nâng cấp hệ thống tháng 8.2026', 790000000, 'CÔNG TY CỔ PHẦN ABC', '022.061.2', 'Nền tảng chuyển đổi số quốc gia'],
     cols: [14, 70, 16, 40, 14, 36],
+    single: 'Doanh thu',
   },
   {
     key: 'cashIn',
@@ -110,6 +117,7 @@ const KINDS: { key: LedgerKind; label: string; icon: React.ElementType; title: s
     head: ['Ngày hạch toán', 'Diễn giải', 'Số tiền', 'Tên đối tượng', 'Mã công trình', 'Tên công trình', 'Mã đơn vị', 'Tên đơn vị'],
     sample: ['07/09/2026', 'Thu tiền doanh thu tháng 8.2026', 360741788, 'CÔNG TY CỔ PHẦN ABC', '022.061.2', 'Nền tảng chuyển đổi số quốc gia', 'G1', 'G1'],
     cols: [14, 60, 16, 40, 14, 36, 10, 16],
+    single: 'Số tiền thu',
   },
   {
     key: 'cost',
@@ -118,9 +126,35 @@ const KINDS: { key: LedgerKind; label: string; icon: React.ElementType; title: s
     title: 'BÁO CÁO CHI TIẾT LÃI LỖ THEO CÔNG TRÌNH',
     sheet: 'BÁO CÁO CHI TIẾT LÃI LỖ',
     file: 'Mau_chi_thuc_te.xlsx',
-    head: ['Mã công trình', 'Diễn giải', 'Sản xuất', 'CP bán hàng'],
-    sample: ['022.061.2', 'Chi phí thuê nhân sự tháng 8.2026', 27000000, 0],
-    cols: [16, 80, 18, 18],
+    head: ['Mã công trình', 'Diễn giải', 'Sản xuất', 'CP bán hàng', 'Chi phí chung'],
+    sample: ['022.061.2', 'Chi phí thuê nhân sự tháng 8.2026', 27000000, 0, 1500000],
+    cols: [16, 80, 18, 18, 18],
+    amounts: ['Chi sản xuất', 'Chi kinh doanh', 'Chi phí chung'],
+    single: 'Chi phí',
+  },
+  {
+    key: 'opex',
+    label: 'Chi phí vận hành',
+    icon: PieChart,
+    title: 'BẢNG PHÂN BỔ CHI PHÍ VẬN HÀNH THEO CÔNG TRÌNH',
+    sheet: 'CHI PHÍ VẬN HÀNH',
+    file: 'Mau_chi_phi_van_hanh.xlsx',
+    head: ['Mã công trình', 'Diễn giải', 'Số tiền'],
+    sample: ['022.061.2', 'Phân bổ chi phí vận hành khối G1 tháng 9.2026', 6200000],
+    cols: [16, 70, 18],
+    single: 'Chi phí vận hành',
+  },
+  {
+    key: 'mgmt',
+    label: 'Chi phí quản lý',
+    icon: Briefcase,
+    title: 'BẢNG PHÂN BỔ CHI PHÍ QUẢN LÝ THEO CÔNG TRÌNH',
+    sheet: 'CHI PHÍ QUẢN LÝ',
+    file: 'Mau_chi_phi_quan_ly.xlsx',
+    head: ['Mã công trình', 'Diễn giải', 'Số tiền'],
+    sample: ['022.061.2', 'Phân bổ chi phí quản lý tháng 9.2026', 4100000],
+    cols: [16, 70, 18],
+    single: 'Chi phí quản lý',
   },
 ];
 const kindOf = (k: LedgerKind) => KINDS.find((x) => x.key === k)!;
@@ -129,10 +163,22 @@ const kindOf = (k: LedgerKind) => KINDS.find((x) => x.key === k)!;
 // Đọc file
 // ==========================================================================
 /** Nhận loại sổ từ dòng tiêu đề báo cáo / cột tiêu đề. */
+const hasCode = (r: unknown[]) => r.some((c) => /^(ma du an|ma cong trinh)/.test(norm(c)));
+const isCostHead = (r: unknown[]) => hasCode(r) && r.some((c) => /^(chi )?san xuat/.test(norm(c)));
+/** Sổ phân bổ (vận hành / quản lý): có Mã công trình + Số tiền, không có Ngày hạch toán. */
+const isAllocHead = (r: unknown[]) => hasCode(r) && r.some((c) => /^so tien/.test(norm(c))) && !r.some((c) => norm(c) === 'ngay hach toan');
 const detectKind = (aoa: unknown[][], fallback: LedgerKind): LedgerKind | null => {
-  const headCost = aoa.findIndex((r) => r.some((c) => /^(ma du an|ma cong trinh)/.test(norm(c))) && r.some((c) => /^(chi )?san xuat/.test(norm(c))));
+  const headAlloc = aoa.findIndex(isAllocHead);
+  const headCost = aoa.findIndex(isCostHead);
   const headCash = aoa.findIndex((r) => r.some((c) => norm(c) === 'ngay hach toan'));
   if (headCost >= 0) return 'cost';
+  if (headAlloc >= 0) {
+    // Phân biệt vận hành / quản lý theo dòng tiêu đề báo cáo; không có thì theo tab đang chọn
+    const titles = aoa.slice(0, headAlloc).map((r) => r.map(norm).join(' ')).join(' ');
+    if (titles.includes('quan ly')) return 'mgmt';
+    if (titles.includes('van hanh')) return 'opex';
+    return fallback === 'opex' || fallback === 'mgmt' ? fallback : 'opex';
+  }
   if (headCash < 0) return null;
   // Chỉ xét các dòng tiêu đề báo cáo phía trên dòng cột (dòng dữ liệu cũng hay chứa chữ "doanh thu")
   const titles = aoa.slice(0, headCash).map((r) => r.map(norm).join(' ')).join(' ');
@@ -156,14 +202,14 @@ const parseWorkbook = (wb: XLSX.WorkBook, fileName: string, projects: BizProject
 
   const detected = detectKind(aoa, kind);
   if (!detected)
-    return fail('Không nhận ra cấu trúc file. Cần dòng tiêu đề "Ngày hạch toán | Diễn giải | Số tiền | …" (doanh thu / dòng tiền thu) hoặc "Mã công trình | Diễn giải | Sản xuất | CP bán hàng" (chi thực tế). Hãy dùng file mẫu.');
+    return fail('Không nhận ra cấu trúc file. Cần dòng tiêu đề "Ngày hạch toán | Diễn giải | Số tiền | …" (doanh thu / dòng tiền thu), "Mã công trình | Diễn giải | Sản xuất | CP bán hàng" (chi thực tế) hoặc "Mã công trình | Diễn giải | Số tiền" (chi phí vận hành / quản lý). Hãy dùng file mẫu.');
   if (detected !== kind) return fail(`File này là sổ "${LEDGER_LABEL[detected]}", không phải "${LEDGER_LABEL[kind]}". Chuyển sang tab "${LEDGER_LABEL[detected]}" để import.`, detected);
 
-  const entries: (CashInEntry | CostEntry)[] = [];
+  const entries: LedgerEntry[] = [];
   const stamp = Date.now();
-  const prefix = kind === 'revenue' ? 'RV' : kind === 'cashIn' ? 'CI' : 'CO';
+  const prefix = kind === 'revenue' ? 'RV' : kind === 'cashIn' ? 'CI' : kind === 'opex' ? 'OP' : kind === 'mgmt' ? 'MG' : 'CO';
 
-  if (kind !== 'cost') {
+  if (!isCostLike(kind)) {
     const hi = aoa.findIndex((r) => r.some((c) => norm(c) === 'ngay hach toan'));
     const head = aoa[hi].map(norm);
     const col = (name: string) => head.findIndex((h) => h.startsWith(name));
@@ -206,20 +252,25 @@ const parseWorkbook = (wb: XLSX.WorkBook, fileName: string, projects: BizProject
       });
     });
   } else {
-    const hi = aoa.findIndex((r) => r.some((c) => /^(ma du an|ma cong trinh)/.test(norm(c))) && r.some((c) => /^(chi )?san xuat/.test(norm(c))));
+    const alloc = kind !== 'cost'; // vận hành / quản lý: 1 cột Số tiền
+    const hi = aoa.findIndex(alloc ? isAllocHead : isCostHead);
     const head = aoa[hi].map(norm);
-    const col = (...names: string[]) => head.findIndex((h) => names.some((n) => h.startsWith(n)));
+    const col = (...names: string[]) => head.findIndex((h) => names.some((n) => h.includes(n)));
     const c = {
       code: col('ma du an', 'ma cong trinh'),
-      month: col('thang'),
-      sx: col('chi san xuat', 'san xuat'),
-      kd: col('chi kinh doanh', 'cp ban hang', 'kinh doanh', 'ban hang'),
+      month: head.findIndex((h) => h.startsWith('thang')),
+      sx: alloc ? col('so tien') : col('chi san xuat', 'san xuat'),
+      kd: alloc ? -1 : col('chi kinh doanh', 'cp ban hang', 'kinh doanh', 'ban hang'),
+      chung: alloc ? -1 : col('chi phi chung', 'cp chung', 'chung'),
       note: col('ghi chu', 'dien giai'),
     };
+    const [aName, bName, cName] = kindOf(kind).amounts || ['Số tiền', '', ''];
     // Không có cột Tháng → lấy kỳ ở dòng "Tháng M năm YYYY" phía trên tiêu đề
     const period = aoa.slice(0, hi).map(parsePeriodLine).find((m): m is string => !!m) || null;
     if (c.month < 0 && !period) return fail('Không xác định được tháng: file cần dòng "Tháng M năm YYYY" ở đầu (như báo cáo kế toán) hoặc cột "Tháng (MM/yyyy)".');
-    if (c.kd < 0) issues.push({ row: hi + 1, level: 'warn', msg: 'Không có cột "CP bán hàng" / "Chi kinh doanh" — coi Chi kinh doanh = 0.' });
+    if (c.sx < 0) return fail(`Thiếu cột "${aName}".`);
+    if (!alloc && c.kd < 0) issues.push({ row: hi + 1, level: 'warn', msg: `Không có cột "${bName}" — coi ${bName} = 0.` });
+    if (!alloc && c.chung < 0) issues.push({ row: hi + 1, level: 'warn', msg: `Không có cột "${cName}" — coi ${cName} = 0.` });
     aoa.slice(hi + 1).forEach((r, i) => {
       const row = hi + 2 + i;
       if (r.every((x) => String(x).trim() === '')) return;
@@ -228,17 +279,20 @@ const parseWorkbook = (wb: XLSX.WorkBook, fileName: string, projects: BizProject
       const month = c.month >= 0 ? parseMonth(r[c.month]) || period : period;
       const sx = parseNum(r[c.sx]);
       const kd = c.kd >= 0 ? parseNum(r[c.kd]) : 0;
+      const chung = c.chung >= 0 ? parseNum(r[c.chung]) : 0;
       if (!month) return void issues.push({ row, level: 'error', msg: `Tháng "${r[c.month]}" không hợp lệ (dùng MM/yyyy).` });
-      if (sx === null || kd === null) return void issues.push({ row, level: 'error', msg: `Sản xuất / CP bán hàng không phải số.` });
+      if (sx === null || kd === null || chung === null) return void issues.push({ row, level: 'error', msg: `${alloc ? aName : `${aName} / ${bName} / ${cName}`} không phải số.` });
       if (!code) {
-        if (sx || kd) issues.push({ row, level: 'warn', msg: `Dòng không có mã công trình (${fmt((sx || 0) + (kd || 0))}) — lưu vào sổ, không tính vào dự án.` });
+        if (sx || kd || chung) issues.push({ row, level: 'warn', msg: `Dòng không có mã công trình (${fmt(sx + kd + chung)}) — lưu vào sổ, không tính vào dự án.` });
         noCode++;
       } else track(code);
-      entries.push({ id: `${prefix}-${stamp}-${i}`, ver: 0, projectCode: code, month, costSx: sx, costKd: kd, note: c.note >= 0 ? String(r[c.note] ?? '').trim() : '' });
+      const note = c.note >= 0 ? String(r[c.note] ?? '').trim() : '';
+      if (alloc) entries.push({ id: `${prefix}-${stamp}-${i}`, ver: 0, projectCode: code, month, value: sx, note });
+      else entries.push({ id: `${prefix}-${stamp}-${i}`, ver: 0, projectCode: code, month, costSx: sx, costKd: kd, costChung: chung, note });
     });
   }
 
-  if (noCode && kind !== 'cost') issues.push({ row: 0, level: 'warn', msg: `${noCode} dòng không có mã công trình — lưu vào sổ nhưng không tính vào dự án nào (vd hoàn ứng, thu khác).` });
+  if (noCode && !isCostLike(kind)) issues.push({ row: 0, level: 'warn', msg: `${noCode} dòng không có mã công trình — lưu vào sổ nhưng không tính vào dự án nào (vd hoàn ứng, thu khác).` });
   if (unmatched.size)
     issues.push({
       row: 0,
@@ -268,7 +322,7 @@ export const LedgerImportModal: React.FC<{ onClose: () => void; onDone: (summary
   const inputRef = useRef<HTMLInputElement>(null);
   const [kind, setKind] = useState<LedgerKind>(initialKind);
   const [view, setView] = useState<'import' | 'list'>('import');
-  const nLines = (kind === 'cost' ? ledger.cost : ledger[kind]).length;
+  const nLines = ledger[kind].length;
   const [file, setFile] = useState<File | null>(null);
   const [parsed, setParsed] = useState<Parsed | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -298,21 +352,21 @@ export const LedgerImportModal: React.FC<{ onClose: () => void; onDone: (summary
   const canApply = !!parsed && parsed.entries.length > 0 && errors.length === 0;
 
   // Tổng hợp theo dự án khớp mã
-  const byProject = new Map<string, { p: BizProject; lines: number; a: number; b: number }>();
-  let unassigned = { lines: 0, a: 0, b: 0 };
+  const byProject = new Map<string, { p: BizProject; lines: number; a: number; b: number; c: number }>();
+  let unassigned = { lines: 0, a: 0, b: 0, c: 0 };
   parsed?.entries.forEach((e) => {
     const p = matchProject(projects, e.projectCode);
-    const [a, b] = 'amount' in e ? [e.amount, 0] : [e.costSx, e.costKd];
-    if (!p) return void (unassigned = { lines: unassigned.lines + 1, a: unassigned.a + a, b: unassigned.b + b });
-    const cur = byProject.get(p.id) || { p, lines: 0, a: 0, b: 0 };
-    byProject.set(p.id, { p, lines: cur.lines + 1, a: cur.a + a, b: cur.b + b });
+    const [a, b, c] = entryAmounts(e);
+    if (!p) return void (unassigned = { lines: unassigned.lines + 1, a: unassigned.a + a, b: unassigned.b + b, c: unassigned.c + c });
+    const cur = byProject.get(p.id) || { p, lines: 0, a: 0, b: 0, c: 0 };
+    byProject.set(p.id, { p, lines: cur.lines + 1, a: cur.a + a, b: cur.b + b, c: cur.c + c });
   });
-  const oldLines = parsed ? (kind === 'cost' ? ledger.cost : ledger[kind]).filter((e) => parsed.months.includes(e.month)).length : 0;
+  const oldLines = parsed ? (ledger[kind] as LedgerEntry[]).filter((e) => parsed.months.includes(e.month)).length : 0;
   const lastImport = ledger.imports.find((i) => i.kind === kind);
 
   const apply = () => {
     if (!parsed || !canApply) return;
-    importLedger(kind, parsed.entries as CashInEntry[] | CostEntry[], parsed.months, parsed.fileName, by);
+    importLedger(kind, parsed.entries, parsed.months, parsed.fileName, by);
     onDone(`Đã import ${LEDGER_LABEL[kind]}: ${parsed.entries.length} dòng, tháng ${parsed.months.map(fmtMonth).join(', ')} — cập nhật ${byProject.size} dự án`);
   };
 
@@ -373,7 +427,12 @@ export const LedgerImportModal: React.FC<{ onClose: () => void; onDone: (summary
             </div>
             <p className="mt-2 text-[11.5px] text-slate-500">
               <b>{k.title}</b> · cột: {k.head.join(' · ')}.{' '}
-              {kind === 'cost' ? 'Tháng lấy ở dòng "Tháng M năm YYYY" đầu file; Sản xuất → Chi SX, CP bán hàng → Chi KD.' : 'Tháng lấy theo Ngày hạch toán.'} Mã công trình khớp Mã tổng / Mã PAKD (.1) / Mã SX (.2) của dự án.
+              {kind === 'cost'
+                ? 'Tháng lấy ở dòng "Tháng M năm YYYY" đầu file; Sản xuất → Chi SX, CP bán hàng → Chi KD, Chi phí chung → Chi phí chung; Chi thực tế = tổng 3 cột.'
+                : kind === 'opex' || kind === 'mgmt'
+                  ? `Kế toán phân bổ ${k.label.toLowerCase()} về từng dự án bên ngoài rồi import; tháng lấy ở dòng "Tháng M năm YYYY" đầu file. Chi phí thực tế của dự án = Chi thực tế (SX + KD) + Chi phí vận hành + Chi phí quản lý.`
+                  : 'Tháng lấy theo Ngày hạch toán.'}{' '}
+              Mã công trình khớp Mã tổng / Mã PAKD (.1) / Mã SX (.2) của dự án.
             </p>
           </section>
 
@@ -450,33 +509,47 @@ export const LedgerImportModal: React.FC<{ onClose: () => void; onDone: (summary
                         <tr>
                           <th className={`${erp.th} text-left border-t-0 border-l-0`}>Dự án</th>
                           <th className={`${erp.th} text-right border-t-0`}>Số dòng</th>
-                          {kind === 'cost' ? (
+                          {k.amounts ? (
                             <>
-                              <th className={`${erp.th} text-right border-t-0`}>Chi sản xuất</th>
-                              <th className={`${erp.th} text-right border-t-0 border-r-0`}>Chi kinh doanh</th>
+                              {k.amounts.map((h) => (
+                                <th key={h} className={`${erp.th} text-right border-t-0`}>{h}</th>
+                              ))}
+                              <th className={`${erp.th} text-right border-t-0 border-r-0`}>Tổng chi</th>
                             </>
                           ) : (
-                            <th className={`${erp.th} text-right border-t-0 border-r-0`}>{kind === 'revenue' ? 'Doanh thu' : 'Số tiền thu'}</th>
+                            <th className={`${erp.th} text-right border-t-0 border-r-0`}>{k.single}</th>
                           )}
                         </tr>
                       </thead>
                       <tbody>
-                        {[...byProject.values()].map(({ p, lines, a, b }) => (
+                        {[...byProject.values()].map(({ p, lines, a, b, c }) => (
                           <tr key={p.id} className={erp.tr}>
                             <td className={`${erp.td} border-l-0`}>
                               <span className={`${erp.code} font-semibold`}>{p.masterCode}</span> <span className="text-slate-700">{p.name}</span>
                             </td>
                             <td className={`${erp.td} ${erp.num}`}>{lines}</td>
-                            <td className={`${erp.td} ${erp.num} ${kind === 'cost' ? '' : 'border-r-0'}`}>{fmt(a)}</td>
-                            {kind === 'cost' && <td className={`${erp.td} ${erp.num} border-r-0`}>{fmt(b)}</td>}
+                            <td className={`${erp.td} ${erp.num} ${k.amounts ? '' : 'border-r-0'}`}>{fmt(a)}</td>
+                            {k.amounts && (
+                              <>
+                                <td className={`${erp.td} ${erp.num}`}>{fmt(b)}</td>
+                                <td className={`${erp.td} ${erp.num}`}>{fmt(c)}</td>
+                                <td className={`${erp.td} ${erp.num} border-r-0 font-semibold`}>{fmt(a + b + c)}</td>
+                              </>
+                            )}
                           </tr>
                         ))}
                         {unassigned.lines > 0 && (
                           <tr className="text-slate-500 italic">
                             <td className={`${erp.td} border-l-0`}>Không gắn / chưa khớp dự án</td>
                             <td className={`${erp.td} ${erp.num}`}>{unassigned.lines}</td>
-                            <td className={`${erp.td} ${erp.num} ${kind === 'cost' ? '' : 'border-r-0'}`}>{fmt(unassigned.a)}</td>
-                            {kind === 'cost' && <td className={`${erp.td} ${erp.num} border-r-0`}>{fmt(unassigned.b)}</td>}
+                            <td className={`${erp.td} ${erp.num} ${k.amounts ? '' : 'border-r-0'}`}>{fmt(unassigned.a)}</td>
+                            {k.amounts && (
+                              <>
+                                <td className={`${erp.td} ${erp.num}`}>{fmt(unassigned.b)}</td>
+                                <td className={`${erp.td} ${erp.num}`}>{fmt(unassigned.c)}</td>
+                                <td className={`${erp.td} ${erp.num} border-r-0`}>{fmt(unassigned.a + unassigned.b + unassigned.c)}</td>
+                              </>
+                            )}
                           </tr>
                         )}
                       </tbody>
@@ -484,8 +557,14 @@ export const LedgerImportModal: React.FC<{ onClose: () => void; onDone: (summary
                         <tr className={erp.totalRow}>
                           <td className={`${erp.td} border-l-0`}>TỔNG</td>
                           <td className={`${erp.td} ${erp.num}`}>{parsed.entries.length}</td>
-                          <td className={`${erp.td} ${erp.num} ${kind === 'cost' ? '' : 'border-r-0'}`}>{fmt([...byProject.values()].reduce((s, x) => s + x.a, unassigned.a))}</td>
-                          {kind === 'cost' && <td className={`${erp.td} ${erp.num} border-r-0`}>{fmt([...byProject.values()].reduce((s, x) => s + x.b, unassigned.b))}</td>}
+                          <td className={`${erp.td} ${erp.num} ${k.amounts ? '' : 'border-r-0'}`}>{fmt([...byProject.values()].reduce((s, x) => s + x.a, unassigned.a))}</td>
+                          {k.amounts && (
+                            <>
+                              <td className={`${erp.td} ${erp.num}`}>{fmt([...byProject.values()].reduce((s, x) => s + x.b, unassigned.b))}</td>
+                              <td className={`${erp.td} ${erp.num}`}>{fmt([...byProject.values()].reduce((s, x) => s + x.c, unassigned.c))}</td>
+                              <td className={`${erp.td} ${erp.num} border-r-0`}>{fmt([...byProject.values()].reduce((s, x) => s + x.a + x.b + x.c, unassigned.a + unassigned.b + unassigned.c))}</td>
+                            </>
+                          )}
                         </tr>
                       </tfoot>
                     </table>
@@ -537,7 +616,7 @@ const LedgerList: React.FC<{ kind: LedgerKind; projects: BizProject[]; by: strin
   const [month, setMonth] = useState('all');
   const [q, setQ] = useState('');
   const [confirm, setConfirm] = useState<string | null>(null);
-  const all = (kind === 'cost' ? ledger.cost : ledger[kind]) as (CashInEntry | CostEntry)[];
+  const all = ledger[kind] as LedgerEntry[];
   const vers = [...new Set(all.map((e) => e.ver))].sort((a, b) => b - a);
   const months = [...new Set(all.map((e) => e.month))].sort().reverse();
   const needle = q.trim().toLowerCase();
@@ -546,12 +625,14 @@ const LedgerList: React.FC<{ kind: LedgerKind; projects: BizProject[]; by: strin
     .map((e) => ({ e, p: matchProject(projects, e.projectCode) }))
     .filter(({ e, p }) => !needle || [e.projectCode, p?.masterCode, p?.name, 'description' in e ? e.description : e.note, 'partner' in e ? e.partner : ''].some((v) => (v || '').toLowerCase().includes(needle)))
     .sort((a, b) => b.e.ver - a.e.ver || b.e.month.localeCompare(a.e.month) || a.e.projectCode.localeCompare(b.e.projectCode));
-  const total = rows.reduce((s, { e }) => s + ('amount' in e ? e.amount : e.costSx + e.costKd), 0);
+  const total = rows.reduce((s, { e }) => s + entryTotal(e), 0);
   const logs = ledger.imports.filter((i) => i.kind === kind);
   // Cột đúng theo file import của từng sổ + Tháng + Ver
   const cols: { h: string; num?: boolean; center?: boolean }[] =
     kind === 'cost'
-      ? [{ h: 'Mã công trình' }, { h: 'Diễn giải' }, { h: 'Sản xuất', num: true }, { h: 'CP bán hàng', num: true }]
+      ? [{ h: 'Mã công trình' }, { h: 'Diễn giải' }, { h: 'Sản xuất', num: true }, { h: 'CP bán hàng', num: true }, { h: 'Chi phí chung', num: true }]
+      : kind === 'opex' || kind === 'mgmt'
+      ? [{ h: 'Mã công trình' }, { h: 'Diễn giải' }, { h: 'Số tiền', num: true }]
       : [
           { h: 'Ngày hạch toán', center: true },
           { h: 'Diễn giải' },
@@ -562,7 +643,7 @@ const LedgerList: React.FC<{ kind: LedgerKind; projects: BizProject[]; by: strin
           ...(kind === 'cashIn' ? [{ h: 'Mã đơn vị' }, { h: 'Tên đơn vị' }] : []),
         ];
   const dmy = (d: string) => d.split('-').reverse().join('/');
-  const codeCell = (e: CashInEntry | CostEntry, p?: BizProject) => (
+  const codeCell = (e: LedgerEntry, p?: BizProject) => (
     <span className="font-mono whitespace-nowrap" title={p ? `Khớp dự án ${p.masterCode} — ${p.name}` : 'Chưa khớp dự án nào trên hệ thống'}>
       {e.projectCode ? <span className={p ? 'text-[#1f5fa8]' : 'text-amber-700'}>{e.projectCode}</span> : <span className="text-slate-300">—</span>}
     </span>
@@ -671,8 +752,9 @@ const LedgerList: React.FC<{ kind: LedgerKind; projects: BizProject[]; by: strin
                     <td className={`${erp.td} max-w-[420px] truncate`} title={e.note}>
                       {e.note || <span className="text-slate-300">—</span>}
                     </td>
-                    <td className={`${erp.td} ${erp.num} ${e.costSx ? 'font-semibold text-rose-700' : 'text-slate-400'}`}>{fmt(e.costSx)}</td>
-                    <td className={`${erp.td} ${erp.num} ${e.costKd ? 'font-semibold text-rose-700' : 'text-slate-400'}`}>{fmt(e.costKd)}</td>
+                    {entryAmounts(e).slice(0, 'value' in e ? 1 : 3).map((v, j) => (
+                      <td key={j} className={`${erp.td} ${erp.num} ${v ? 'font-semibold text-rose-700' : 'text-slate-400'}`}>{fmt(v)}</td>
+                    ))}
                   </>
                 )}
                 <td className={`${erp.td} text-center tabular-nums whitespace-nowrap`}>{fmtMonth(e.month)}</td>
@@ -717,7 +799,7 @@ const LedgerList: React.FC<{ kind: LedgerKind; projects: BizProject[]; by: strin
 // ==========================================================================
 const DeleteVersionDialog: React.FC<{
   kind: LedgerKind;
-  entries: (CashInEntry | CostEntry)[];
+  entries: LedgerEntry[];
   logs: { ver: number; fileName: string; at: string; lines: number }[];
   projects: BizProject[];
   initialVer?: number;

@@ -8,7 +8,9 @@
  *   3. Kế toán import SỐ THỰC TẾ THEO THÁNG (`actual`) — cùng cấu trúc với kế hoạch.
  *   4. Kế toán import SỔ CHI TIẾT toàn công ty (`ledger`): Dòng tiền thu (sổ tiền gửi ngân hàng) và
  *      Chi thực tế (theo mã dự án). Mỗi dòng ghép vào dự án theo mã → cộng dồn thành Thu thực tế /
- *      Chi thực tế SX, KD của dự án trong tháng; bấm vào con số để xem các dòng chi tiết.
+ *      Chi thực tế SX, KD, Chi phí chung của dự án trong tháng; bấm vào con số để xem các dòng chi tiết.
+ *      Chi phí thực tế của dự án = Sản xuất + CP bán hàng + Chi phí chung (sổ Chi thực tế)
+ *                                 + Chi phí quản lý (sổ Chi phí quản lý) + Chi phí phân bổ (sổ Chi phí vận hành).
  *   → Màn "Báo cáo hiệu quả dự án" so sánh kế hoạch vs thực tế (BizReportPage).
  *
  * Mã dự án: Master = <mã KH>.<số thứ tự 3 chữ số>, Mã KD = Master.1, Mã SX = Master.2.
@@ -138,7 +140,21 @@ export const FIN_METRICS: Record<FinKind, { key: FinMetric; label: string }[]> =
     { key: 'workload', label: 'Khối lượng công việc thực tế (SP)' },
   ],
 };
-export type BizMonthRow = { month: string } & Record<FinMetric, number>; // month: YYYY-MM
+/**
+ * 1 dòng số liệu tháng. Riêng số thực tế có thêm 2 khoản chi phí do Kế toán tính ngoài và import
+ * theo dự án: costAlloc = chi phí vận hành (khối) phân bổ — sổ "Chi phí vận hành"; costMgmt = chi phí quản lý — sổ "Chi phí quản lý".
+ * Chi phí thực tế của dự án = costSx + costKd + costChung (sổ Chi thực tế) + costAlloc + costMgmt — xem totalCost().
+ */
+export type BizMonthRow = {
+  month: string; // YYYY-MM
+  /** Chi phí chung thực tế (cột "Chi phí chung" của sổ Chi thực tế). Kế hoạch không có. */
+  costChung?: number;
+  costAlloc?: number;
+  costMgmt?: number;
+} & Record<FinMetric, number>;
+/** Tổng chi phí 1 tháng = Chi SX + Chi KD + Chi phí chung + Chi phí quản lý + Chi phí phân bổ (kế hoạch chỉ có SX + KD). */
+export const totalCost = (r: Pick<BizMonthRow, 'costSx' | 'costKd' | 'costChung' | 'costAlloc' | 'costMgmt'>) =>
+  (r.costSx || 0) + (r.costKd || 0) + (r.costChung || 0) + (r.costMgmt || 0) + (r.costAlloc || 0);
 
 export interface BizPlanImport {
   fileName: string;
@@ -172,11 +188,28 @@ export interface CostEntry {
   month: string; // YYYY-MM
   costSx: number; // Chi sản xuất (đ)
   costKd: number; // Chi kinh doanh (đ)
+  costChung: number; // Chi phí chung (đ)
   note: string; // Ghi chú
 }
-/** 3 sổ chi tiết kế toán import: Doanh thu thực tế · Dòng tiền thu · Chi thực tế. */
-export type LedgerKind = 'revenue' | 'cashIn' | 'cost';
-export const LEDGER_LABEL: Record<LedgerKind, string> = { revenue: 'Doanh thu thực tế', cashIn: 'Dòng tiền thu', cost: 'Chi thực tế' };
+/** 1 dòng sổ "Chi phí vận hành" / "Chi phí quản lý" theo mã dự án (Kế toán phân bổ bên ngoài rồi import): 1 số tiền. */
+export interface AllocEntry {
+  id: string;
+  ver: number;
+  projectCode: string;
+  month: string; // YYYY-MM
+  value: number; // Số tiền phân bổ cho dự án trong tháng (đ)
+  note: string;
+}
+export type LedgerEntry = CashInEntry | CostEntry | AllocEntry;
+/** 5 sổ chi tiết kế toán import: Doanh thu thực tế · Dòng tiền thu · Chi thực tế · Chi phí vận hành · Chi phí quản lý. */
+export type LedgerKind = 'revenue' | 'cashIn' | 'cost' | 'opex' | 'mgmt';
+export const LEDGER_LABEL: Record<LedgerKind, string> = { revenue: 'Doanh thu thực tế', cashIn: 'Dòng tiền thu', cost: 'Chi thực tế', opex: 'Chi phí vận hành', mgmt: 'Chi phí quản lý' };
+/** Sổ dạng "theo mã dự án + tháng" (không có ngày hạch toán): Chi thực tế (2 cột tiền), Chi phí vận hành / quản lý (1 cột tiền). */
+export const isCostLike = (k: LedgerKind) => k === 'cost' || k === 'opex' || k === 'mgmt';
+/** Các cột tiền của 1 dòng sổ: [Số tiền, 0, 0] (doanh thu / thu / vận hành / quản lý) · [Chi SX, Chi KD, Chi phí chung]. */
+export const entryAmounts = (e: LedgerEntry): [number, number, number] =>
+  'amount' in e ? [e.amount, 0, 0] : 'value' in e ? [e.value, 0, 0] : [e.costSx, e.costKd, e.costChung || 0];
+export const entryTotal = (e: LedgerEntry) => entryAmounts(e).reduce((a, b) => a + b, 0);
 export interface LedgerImportLog {
   kind: LedgerKind;
   ver: number;
@@ -191,6 +224,8 @@ export interface Ledger {
   revenue: CashInEntry[];
   cashIn: CashInEntry[];
   cost: CostEntry[];
+  opex: AllocEntry[];
+  mgmt: AllocEntry[];
   imports: LedgerImportLog[];
 }
 
@@ -397,6 +432,10 @@ const seedActual = (plan: BizMonthRow[], k: Ratios): BizMonthRow[] =>
         cashIn: wave(r.cashIn * k.cashIn),
         costSx: wave(r.costSx * k.cost),
         costKd: wave(r.costKd * k.cost),
+        costChung: wave(r.costSx * k.cost * 0.04), // chi phí chung ≈ 4% chi SX (điện nước, thuê VP, văn phòng phẩm)
+        // Kế toán tính ngoài và import theo dự án: CP vận hành khối phân bổ ≈ 3%, CP quản lý ≈ 2% chi trực tiếp
+        costAlloc: Math.round((wave(r.costSx * k.cost) + wave(r.costKd * k.cost)) * 0.03 / 1000) * 1000,
+        costMgmt: Math.round((wave(r.costSx * k.cost) + wave(r.costKd * k.cost)) * 0.02 / 1000) * 1000,
         workload: Math.round((r.workload * k.workload) / 10_000) * 10_000,
       };
     });
@@ -695,12 +734,19 @@ const splitAmount = (total: number, weights: number[]) => {
 };
 const COST_SX_NOTES = ['Lương nhân sự sản xuất', 'BHXH, BHYT, KPCĐ', 'Thuê ngoài gia công phần mềm', 'Mua bản quyền / thiết bị', 'Công tác phí triển khai'];
 const COST_KD_NOTES = ['Chi phí tiếp khách, hội nghị', 'Hoa hồng / chi phí bán hàng'];
+const COST_CHUNG_NOTES = ['Chi phí thuê văn phòng, điện nước', 'Văn phòng phẩm, dịch vụ chung'];
+const m0 = (ym: string) => ym.slice(5, 7);
 const seedLedger = (projects: BizProject[]): Ledger => {
   const revenue: CashInEntry[] = [];
   const cashIn: CashInEntry[] = [];
   const cost: CostEntry[] = [];
+  const opex: AllocEntry[] = [];
+  const mgmt: AllocEntry[] = [];
   projects.forEach((p) =>
     p.actual.forEach((r, i) => {
+      const mm = `${+m0(r.month)}/${r.month.slice(0, 4)}`;
+      if (r.costAlloc) opex.push({ id: `OP-${p.id}-${r.month}`, ver: 4, projectCode: p.productionCode, month: r.month, value: r.costAlloc, note: `Phân bổ chi phí vận hành khối ${p.division} tháng ${mm}` });
+      if (r.costMgmt) mgmt.push({ id: `MG-${p.id}-${r.month}`, ver: 5, projectCode: p.productionCode, month: r.month, value: r.costMgmt, note: `Phân bổ chi phí quản lý tháng ${mm}` });
       const [y, m] = r.month.split('-');
       const prevM = +m === 1 ? `12.${+y - 1}` : `${+m - 1}.${y}`;
       if (r.revenue)
@@ -733,10 +779,13 @@ const seedLedger = (projects: BizProject[]): Ledger => {
         }),
       );
       splitAmount(r.costSx, [0.55, 0.2, 0.12, 0.08, 0.05]).forEach((v, j) =>
-        cost.push({ id: `CO-${p.id}-${r.month}-sx${j}`, ver: 3, projectCode: p.productionCode, month: r.month, costSx: v, costKd: 0, note: COST_SX_NOTES[j] }),
+        cost.push({ id: `CO-${p.id}-${r.month}-sx${j}`, ver: 3, projectCode: p.productionCode, month: r.month, costSx: v, costKd: 0, costChung: 0, note: COST_SX_NOTES[j] }),
       );
       splitAmount(r.costKd, [0.65, 0.35]).forEach((v, j) =>
-        cost.push({ id: `CO-${p.id}-${r.month}-kd${j}`, ver: 3, projectCode: p.productionCode, month: r.month, costSx: 0, costKd: v, note: COST_KD_NOTES[j] }),
+        cost.push({ id: `CO-${p.id}-${r.month}-kd${j}`, ver: 3, projectCode: p.productionCode, month: r.month, costSx: 0, costKd: v, costChung: 0, note: COST_KD_NOTES[j] }),
+      );
+      splitAmount(r.costChung || 0, [0.7, 0.3]).forEach((v, j) =>
+        cost.push({ id: `CO-${p.id}-${r.month}-cc${j}`, ver: 3, projectCode: p.productionCode, month: r.month, costSx: 0, costKd: 0, costChung: v, note: COST_CHUNG_NOTES[j] }),
       );
     }),
   );
@@ -746,7 +795,11 @@ const seedLedger = (projects: BizProject[]): Ledger => {
     revenue,
     cashIn,
     cost,
+    opex,
+    mgmt,
     imports: [
+      { kind: 'mgmt', ver: 5, fileName: 'Chi_phi_quan_ly_T01-T08.2026.xlsx', months, lines: mgmt.length, at, by: 'ketoan' },
+      { kind: 'opex', ver: 4, fileName: 'Chi_phi_van_hanh_T01-T08.2026.xlsx', months, lines: opex.length, at, by: 'ketoan' },
       { kind: 'cost', ver: 3, fileName: 'Chi_thuc_te_T01-T08.2026.xlsx', months, lines: cost.length, at, by: 'ketoan' },
       { kind: 'cashIn', ver: 2, fileName: 'Mau_dong_tien_thu_T01-T08.2026.xlsx', months, lines: cashIn.length, at, by: 'ketoan' },
       { kind: 'revenue', ver: 1, fileName: 'Doanh_thu_T01-T08.2026.xlsx', months, lines: revenue.length, at, by: 'ketoan' },
@@ -761,12 +814,12 @@ interface Ctx {
    * Import sổ chi tiết kế toán (toàn công ty). Dữ liệu các tháng có trong file thay thế dữ liệu cũ
    * của loại sổ đó; Thu / Chi thực tế của dự án liên quan được tính lại = tổng các dòng.
    */
-  importLedger: (kind: LedgerKind, entries: CashInEntry[] | CostEntry[], months: string[], fileName: string, by: string) => void;
+  importLedger: (kind: LedgerKind, entries: LedgerEntry[], months: string[], fileName: string, by: string) => void;
   /** Xoá 1 dòng sổ kế toán đã import; số thực tế của dự án liên quan được tính lại. */
   removeLedgerEntry: (kind: LedgerKind, id: string, by: string) => void;
   /** Xoá cả một lần import (phiên bản); `projectId` → chỉ xoá các dòng của dự án đó trong phiên bản. */
   removeLedgerVersion: (kind: LedgerKind, ver: number, by: string, projectId?: string) => void;
-  /** Số phiên bản của lần import kế tiếp (chung cho cả 3 sổ). */
+  /** Số phiên bản của lần import kế tiếp (chung cho cả 5 sổ). */
   nextLedgerVer: () => number;
   createProject: (data: BizProjectInput, by: string) => BizProject;
   updateProject: (id: string, data: BizProjectInput, by: string, note?: string) => void;
@@ -1111,11 +1164,10 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
   };
 
   /** Tính lại Doanh thu / Thu / Chi thực tế của các dự án liên quan trong `months` từ bộ dòng sổ `next`. */
-  const recomputeProjects = (kind: LedgerKind, next: (CashInEntry | CostEntry)[], months: string[], touched: Set<string>, by: string, note: string) => {
+  const recomputeProjects = (kind: LedgerKind, next: LedgerEntry[], months: string[], touched: Set<string>, by: string, note: string) => {
     const at = now();
     const inMonths = (e: { month: string }) => months.includes(e.month);
-    const total = (lines: (CashInEntry | CostEntry)[], k: 'amount' | 'costSx' | 'costKd') =>
-      lines.reduce((a, e) => a + ('amount' in e ? (k === 'amount' ? e.amount : 0) : k === 'amount' ? 0 : e[k]), 0);
+    const total = (lines: LedgerEntry[], which: 0 | 1 | 2) => lines.reduce((a, e) => a + entryAmounts(e)[which], 0);
     setProjects((prev) =>
       prev.map((p) => {
         if (!touched.has(p.id)) return p;
@@ -1125,11 +1177,14 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
         months.forEach((m) => {
           const lines = mine.filter((e) => e.month === m);
           const row = rows.get(m) || { month: m, revenue: 0, cashIn: 0, costSx: 0, costKd: 0, workload: 0 };
-          if (kind === 'revenue') row.revenue = total(lines, 'amount');
-          else if (kind === 'cashIn') row.cashIn = total(lines, 'amount');
+          if (kind === 'revenue') row.revenue = total(lines, 0);
+          else if (kind === 'cashIn') row.cashIn = total(lines, 0);
+          else if (kind === 'opex') row.costAlloc = total(lines, 0);
+          else if (kind === 'mgmt') row.costMgmt = total(lines, 0);
           else {
-            row.costSx = total(lines, 'costSx');
-            row.costKd = total(lines, 'costKd');
+            row.costSx = total(lines, 0);
+            row.costKd = total(lines, 1);
+            row.costChung = total(lines, 2);
           }
           if (lines.length || rows.has(m)) rows.set(m, row);
         });
@@ -1142,15 +1197,15 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
       }),
     );
   };
-  const ledgerOf = (kind: LedgerKind): (CashInEntry | CostEntry)[] => (kind === 'cost' ? ledger.cost : ledger[kind]);
+  const ledgerOf = (kind: LedgerKind): LedgerEntry[] => ledger[kind];
   const nextLedgerVer = () => ledger.imports.reduce((m, i) => Math.max(m, i.ver), 0) + 1;
 
-  const importLedger = (kind: LedgerKind, entries: CashInEntry[] | CostEntry[], months: string[], fileName: string, by: string) => {
+  const importLedger = (kind: LedgerKind, entries: LedgerEntry[], months: string[], fileName: string, by: string) => {
     const at = now();
     const ver = nextLedgerVer();
     const inMonths = (e: { month: string }) => months.includes(e.month);
     const old = ledgerOf(kind);
-    const stamped = entries.map((e) => ({ ...e, ver })) as (CashInEntry | CostEntry)[];
+    const stamped = entries.map((e) => ({ ...e, ver })) as LedgerEntry[];
     const next = [...old.filter((e) => !inMonths(e)), ...stamped];
     setLedger((prev) => ({
       ...prev,
@@ -1177,7 +1232,7 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
   const removeLedgerVersion = (kind: LedgerKind, ver: number, by: string, projectId?: string) => {
     const old = ledgerOf(kind);
     const codes = projectId ? projectCodes(projects.find((p) => p.id === projectId)!) : null;
-    const hit = (e: CashInEntry | CostEntry) => e.ver === ver && (!codes || codes.includes(e.projectCode.trim().toLowerCase()));
+    const hit = (e: LedgerEntry) => e.ver === ver && (!codes || codes.includes(e.projectCode.trim().toLowerCase()));
     const gone = old.filter(hit);
     if (!gone.length) return;
     const next = old.filter((e) => !hit(e));

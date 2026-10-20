@@ -1,0 +1,269 @@
+﻿1
+00:00:04,664 --> 00:00:09,340
+[Bước 1 · Màn hình Danh sách dự án]
+Tại menu bên trái, chọn Quản trị dự án & Tài chính → Danh sách dự án.
+
+2
+00:00:09,340 --> 00:00:16,885
+[Bước 1 · Màn hình Danh sách dự án]
+Màn hình Sổ theo dõi dự án: theo dõi toàn bộ dự án, so sánh giá trị hợp đồng với mục tiêu năm của từng khối, lọc – tìm kiếm – xuất Excel.
+
+3
+00:00:16,885 --> 00:00:26,840
+[Bước 1 · Màn hình Danh sách dự án]
+Ô Vai trò ở góc trên bên phải: chọn đúng vai trò của bạn (AM, GĐK, Giám đốc kinh doanh, Kế toán). Nút và cột Thao tác thay đổi theo vai trò.
+
+4
+00:00:26,840 --> 00:00:33,280
+[Bước 1 · Màn hình Danh sách dự án]
+Giá trị hợp đồng dự kiến ký trong năm so với Mục tiêu năm, kèm số Còn thiếu và % Đạt.
+
+5
+00:00:33,280 --> 00:00:42,716
+[Bước 1 · Màn hình Danh sách dự án]
+Theo khối so với mục tiêu: mỗi khối một dòng gồm Giá trị mục tiêu, Đã ký, Chưa ký, Còn thiếu và % đạt. Nút Đặt mục tiêu để cập nhật mục tiêu năm.
+
+6
+00:00:42,716 --> 00:00:58,103
+[Bước 1 · Màn hình Danh sách dự án]
+Bộ lọc: Năm ký hợp đồng, Khối, ô tìm kiếm (mã, tên dự án, khách hàng, PM) và Trạng thái — số trong ngoặc là số dự án của trạng thái đó.
+
+7
+00:00:58,103 --> 00:01:03,416
+[Bước 1 · Màn hình Danh sách dự án]
+Xuất Excel: tải danh sách đang lọc ra file Excel, gồm cả thông tin hợp đồng.
+
+8
+00:01:03,416 --> 00:01:13,061
+[Bước 2 · Các cột trạng thái, PAKD và hợp đồng]
+Bảng danh sách rộng, kéo thanh cuộn ngang sang phải để xem các cột trạng thái và nhóm cột Thông tin hợp đồng đã ký.
+
+9
+00:01:13,061 --> 00:01:22,217
+[Bước 2 · Các cột trạng thái, PAKD và hợp đồng]
+Trạng thái: Chờ duyệt mã → Chưa có PAKD → PAKD chờ duyệt → Đang thực hiện → Kết thúc (hoặc Pending khi quá 30 ngày chưa có PAKD được duyệt).
+
+10
+00:01:22,217 --> 00:01:31,827
+[Bước 2 · Các cột trạng thái, PAKD và hợp đồng]
+Hạn lập PAKD: Còn N ngày, Quá hạn N ngày, Làm lại V2, Nộp / Duyệt kèm ngày. Phiên bản PAKD: phiên bản gần nhất và tình trạng (chờ CFO, đã duyệt, từ chối).
+
+11
+00:01:31,827 --> 00:01:39,980
+[Bước 2 · Các cột trạng thái, PAKD và hợp đồng]
+Thao tác: liên kết nhanh theo vai trò — Duyệt mã (GĐK), Lập PAKD (SM / GĐK), Duyệt (Kế toán), Cập nhật, Mở lại hoặc Xem.
+
+12
+00:01:39,980 --> 00:01:52,939
+[Bước 2 · Các cột trạng thái, PAKD và hợp đồng]
+Thông tin hợp đồng đã ký: giá trị, số hợp đồng, ngày ký, ngày hết hạn, tệp đính kèm. Cột cuối Chưa ký / Đã ký bấm để mở cửa sổ Cập nhật ký hợp đồng.
+
+13
+00:01:52,939 --> 00:02:01,776
+[Bước 3 · Gửi yêu cầu cấp mã dự án mới]
+Với vai trò AM (hoặc SM, GĐK), bấm Cấp mã dự án để khai báo dự án mới.
+
+14
+00:02:01,776 --> 00:02:10,335
+[Bước 3 · Gửi yêu cầu cấp mã dự án mới]
+Màn hình khai báo dự án mới. Các ô có dấu sao đỏ (*) là bắt buộc. Phần đầu nhắc lại quy trình: GĐK duyệt → cấp mã → lập PAKD trong 30 ngày → Kế toán duyệt.
+
+15
+00:02:10,335 --> 00:02:17,880
+[Bước 3 · Gửi yêu cầu cấp mã dự án mới]
+Nhập Tên dự án. Nút KEY bên cạnh để đánh dấu dự án trọng điểm.
+
+16
+00:02:17,880 --> 00:02:24,298
+[Bước 3 · Gửi yêu cầu cấp mã dự án mới]
+Chọn PM kinh doanh, PM sản xuất (và PM outsource nếu có).
+
+17
+00:02:24,298 --> 00:02:32,586
+[Bước 3 · Gửi yêu cầu cấp mã dự án mới]
+Chọn Khối và Loại dự án (Fixed Cost, Time & Material, ODC, Cho thuê lao động, Nội bộ).
+
+18
+00:02:32,586 --> 00:02:37,309
+[Bước 3 · Gửi yêu cầu cấp mã dự án mới]
+Chọn Tên khách hàng; Mã khách hàng tự điền và dùng để sinh mã dự án. Khách hàng chưa có trong danh sách: bấm + Mới.
+
+19
+00:02:37,309 --> 00:02:49,592
+[Bước 3 · Gửi yêu cầu cấp mã dự án mới]
+Cửa sổ Thêm khách hàng: Tên khách hàng, Mã KH đúng 3 ký tự không trùng, Địa chỉ, Email, Số điện thoại, Mô tả. Bấm Lưu để thêm và tự chọn cho dự án.
+
+20
+00:02:49,592 --> 00:02:57,975
+[Bước 3 · Gửi yêu cầu cấp mã dự án mới]
+Nhập Thời gian dự án (ngày bắt đầu → ngày kết thúc), chọn Giám đốc kinh doanh, Giám đốc khối và một hoặc nhiều AM.
+
+21
+00:02:57,975 --> 00:03:13,259
+[Bước 3 · Gửi yêu cầu cấp mã dự án mới]
+Đính kèm tài liệu (báo giá, biên bản…) nếu có, rồi bấm Gửi GĐK duyệt. Dự án chuyển sang trạng thái Chờ duyệt mã. Nếu là GĐK, nút đổi thành Tạo & cấp mã.
+
+22
+00:03:13,259 --> 00:03:22,679
+[Bước 4 · Màn hình Chi tiết dự án]
+Hệ thống mở màn hình Chi tiết dự án. Đầu trang: nút Quay lại, ô Vai trò, nút Sửa và Xoá (chỉ xoá được khi đang Chờ duyệt mã).
+
+23
+00:03:22,679 --> 00:03:32,998
+[Bước 4 · Màn hình Chi tiết dự án]
+Dòng thông tin: Version, Trạng thái, thời điểm cập nhật. Thanh thông báo cho biết dự án đang chờ ai làm gì; nếu bạn là người thực hiện, thanh hiện nút thao tác.
+
+24
+00:03:32,998 --> 00:03:46,765
+[Bước 4 · Màn hình Chi tiết dự án]
+Khung Mã dự án (mã tự sinh sau khi GĐK duyệt), các tab Thông tin dự án · Resources · Actual Cost · Configuration · Lịch sử, và Thông tin chi tiết dự án.
+
+25
+00:03:46,765 --> 00:03:55,819
+[Bước 4 · Màn hình Chi tiết dự án]
+Hợp đồng & tài liệu: tình trạng ký hợp đồng (nút Cập nhật ký hợp đồng) và danh sách tài liệu đính kèm (nút Đính kèm tài liệu).
+
+26
+00:03:55,819 --> 00:04:04,604
+[Bước 5 · Giám đốc khối duyệt mã dự án]
+Giám đốc khối chọn vai trò GĐK, mở dự án đang Chờ duyệt mã (hoặc bấm Duyệt mã ở cột Thao tác trên danh sách).
+
+27
+00:04:04,604 --> 00:04:16,762
+[Bước 5 · Giám đốc khối duyệt mã dự án]
+Bấm Duyệt mã dự án: hệ thống sinh Mã dự án / Mã KD / Mã SX, chuyển dự án sang Chưa có PAKD và đặt Hạn lập PAKD = ngày duyệt + 30 ngày.
+
+28
+00:04:16,762 --> 00:04:24,030
+[Bước 5 · Giám đốc khối duyệt mã dự án]
+Mã dự án dạng {Mã khách hàng}.{số thứ tự}; Mã kinh doanh = mã dự án + ".1"; Mã sản xuất = mã dự án + ".2".
+
+29
+00:04:24,030 --> 00:04:32,043
+[Bước 5 · Giám đốc khối duyệt mã dự án]
+Tạo mã outsource: mở thêm mã ".3", ".4" (tối đa 2 mã) và chọn PM outsource cho từng mã.
+
+30
+00:04:32,043 --> 00:04:39,619
+[Bước 6 · Lập Phương án kinh doanh (PAKD)]
+Người lập PAKD là Giám đốc kinh doanh hoặc Giám đốc khối. Khung Lập phương án kinh doanh nằm ở cuối tab Thông tin dự án.
+
+31
+00:04:39,619 --> 00:04:49,322
+[Bước 6 · Lập Phương án kinh doanh (PAKD)]
+Thông tin chung: Người lập, Hạn lập PAKD, Thời gian còn lại, Trạng thái. Chỉ số tự tính: Doanh thu kế hoạch, Lợi nhuận và Biên lợi nhuận (Đạt khi ≥ 20%).
+
+32
+00:04:49,322 --> 00:05:17,709
+[Bước 6 · Lập Phương án kinh doanh (PAKD)]
+1.1. Thông tin hợp đồng dự kiến: Thời điểm dự kiến ký, Giá trị hợp đồng dự kiến, Xác suất thành công, Phạm vi công việc, Đánh giá rủi ro.
+
+33
+00:05:17,709 --> 00:05:28,529
+[Bước 6 · Lập Phương án kinh doanh (PAKD)]
+Tình trạng dự án: Chưa ký → nhập 1.1 và 3. Mốc kế hoạch; Đã ký → nhập thêm 1.2 Hợp đồng thực tế, Tiến độ, Nghiệm thu – thu tiền và Kế hoạch chi phí theo tháng.
+
+34
+00:05:28,529 --> 00:06:02,009
+[Bước 6 · Lập Phương án kinh doanh (PAKD)]
+3. Mốc kế hoạch và mục tiêu: mỗi dòng một giai đoạn gồm Tên, Từ – Đến, Tổng mức đầu tư Sản xuất / Kinh doanh (tự cộng), Kết quả đầu ra, File đính kèm. Thêm dòng để thêm giai đoạn.
+
+35
+00:06:02,009 --> 00:06:10,764
+[Bước 6 · Lập Phương án kinh doanh (PAKD)]
+Sau khi nhập, các chỉ số Doanh thu kế hoạch, Lợi nhuận, Biên lợi nhuận và biểu đồ Dòng tiền chi theo tháng tự cập nhật.
+
+36
+00:06:10,764 --> 00:06:25,516
+[Bước 6 · Lập Phương án kinh doanh (PAKD)]
+Trên đầu màn hình: Lưu nháp để bổ sung sau, hoặc Gửi Kế toán duyệt — dự án chuyển PAKD chờ duyệt. PAKD phải được duyệt trong 30 ngày kể từ ngày cấp mã.
+
+37
+00:06:25,516 --> 00:06:42,280
+[Bước 7 · Kế toán duyệt PAKD]
+Kế toán chọn vai trò Kế toán (CFO). Có 2 cách: bấm Duyệt ở cột Thao tác trên danh sách, hoặc mở màn chi tiết và bấm Duyệt / Từ chối PAKD trên thanh thông báo.
+
+38
+00:06:42,280 --> 00:06:59,928
+[Bước 7 · Kế toán duyệt PAKD]
+Hộp thoại duyệt: thông tin PAKD (người nộp, doanh thu, chi phí, lợi nhuận gộp, số tháng). Ô Ý kiến: không bắt buộc khi duyệt, bắt buộc khi từ chối.
+
+39
+00:06:59,928 --> 00:07:11,912
+[Bước 7 · Kế toán duyệt PAKD]
+Từ chối: trả PAKD về cho SM / GĐK lập phiên bản mới (danh sách hiện Làm lại V2). Duyệt: dự án chuyển Đang thực hiện.
+
+40
+00:07:11,912 --> 00:07:23,821
+[Bước 8 · Dự án đang thực hiện]
+Dự án Đang thực hiện: SM / GĐK có nút Sửa PAKD (gửi Kế toán duyệt điều chỉnh; trong lúc chờ vẫn áp dụng bản cũ) và Kết thúc dự án khi hoàn thành.
+
+41
+00:07:23,821 --> 00:07:35,734
+[Bước 9 · Cập nhật ký hợp đồng]
+Khi có hợp đồng, bấm Cập nhật ký hợp đồng trong khung Hợp đồng & tài liệu (hoặc bấm Chưa ký / Đã ký ở cột cuối danh sách).
+
+42
+00:07:35,734 --> 00:07:47,740
+[Bước 9 · Cập nhật ký hợp đồng]
+Nhập Số hợp đồng, Ngày ký, Giá trị hợp đồng — hệ thống đối chiếu với giá trị đã khai báo và hiện Khớp hoặc Lệch; nếu lệch phải nhập Lý do lệch.
+
+43
+00:07:47,740 --> 00:08:01,855
+[Bước 9 · Cập nhật ký hợp đồng]
+Thời hạn thực hiện, Tệp tài liệu (bản scan hợp đồng), Thêm phụ lục điều chỉnh. Bấm Lưu & xác nhận đã ký — dự án chuyển Đã ký.
+
+44
+00:08:01,855 --> 00:08:15,231
+[Bước 10 · Sửa thông tin dự án]
+Bấm Sửa trên đầu màn chi tiết: các khung Mã dự án, Thông tin chi tiết, Hợp đồng & tài liệu chuyển sang ô nhập ngay trên màn hình. Update PM để đổi PM.
+
+45
+00:08:15,231 --> 00:08:24,216
+[Bước 10 · Sửa thông tin dự án]
+Lưu thay đổi tạo Version mới (v1 → v2) và ghi vào tab Lịch sử; Huỷ sửa để thoát không lưu.
+
+46
+00:08:24,216 --> 00:08:33,772
+[Bước 11 · Tab Resources — nhân sự dự án]
+Các tab còn lại xem trên một dự án đang thực hiện có dữ liệu. Quay lại danh sách và mở dự án 038.360.
+
+47
+00:08:33,772 --> 00:08:45,952
+[Bước 11 · Tab Resources — nhân sự dự án]
+Tab Resources: danh sách thành viên tham gia dự án (Member, Type, Department, Role, Level, Tech Stack, Jira Status).
+
+48
+00:08:45,952 --> 00:09:00,132
+[Bước 11 · Tab Resources — nhân sự dự án]
+Allocation Resource: thêm một dòng nhân sự ngay trên bảng (✓ lưu, × huỷ). SyncDevops: đồng bộ trạng thái tài khoản Jira. Cột Actions: bút để sửa, thùng rác để xoá.
+
+49
+00:09:00,132 --> 00:09:13,285
+[Bước 12 · Tab Actual Cost — chi phí lương thực tế]
+Tab Actual Cost: chọn Tháng (hoặc Tất cả tháng). Các ô số: Chi phí lương tính vào dự án, Số thành viên log task, Tổng giờ log, Chi sản xuất thực tế.
+
+50
+00:09:13,285 --> 00:09:23,084
+[Bước 12 · Tab Actual Cost — chi phí lương thực tế]
+Bảng thành viên: Mã NV, Họ tên, Vị trí, Khối, Số task, Giờ log, Chi phí tính vào dự án. Công thức: Chi phí công ty của nhân sự × Giờ log / 176 giờ chuẩn.
+
+51
+00:09:23,084 --> 00:09:33,052
+[Bước 12 · Tab Actual Cost — chi phí lương thực tế]
+Chi phí lương theo các tháng: tổng hợp từng tháng so với chi sản xuất kế hoạch. Bấm vào một tháng để xem chi tiết thành viên ở bảng trên.
+
+52
+00:09:33,052 --> 00:09:45,119
+[Bước 13 · Tab Configuration — cấu hình dự án]
+Tab Configuration: mặc định 6 mục Jira, Share point, Configuration, Process & template, Git/Bitbucket, Risk. Link bấm được để mở trang tương ứng.
+
+53
+00:09:45,119 --> 00:10:04,394
+[Bước 13 · Tab Configuration — cấu hình dự án]
+Biểu tượng bút để sửa trực tiếp Item, Link, Version, Note trên dòng; ✓ để lưu, × để huỷ. Thêm mục để thêm dòng mới; biểu tượng phễu để lọc.
+
+54
+00:10:04,394 --> 00:10:17,616
+[Bước 14 · Tab Lịch sử]
+Tab Lịch sử: mọi thao tác trên dự án (tạo, duyệt mã, sửa thông tin, nộp / duyệt PAKD, cập nhật hợp đồng…) gồm Thời gian, Người thực hiện, Thao tác và Ghi chú.

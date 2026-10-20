@@ -31,6 +31,7 @@ import {
   Send
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { BirthdayBox } from '../marcom/BirthdayBox';
 import { 
   MOCK_LEAVES, 
   MOCK_TIMESHEETS, 
@@ -285,6 +286,9 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Box sinh nhật hôm nay (MarCom) — hiển thị cho toàn thể CBNV */}
+      <BirthdayBox />
 
       {/* Top Header & Dashboard Navigation Tabs */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-end gap-4 pb-2 border-b border-slate-200/60">

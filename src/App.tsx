@@ -8,6 +8,8 @@ import { Layout } from './components/Layout';
 import { LeavesPage } from './components/LeavesPage';
 import { TimesheetPage } from './components/TimesheetPage';
 import { TimesheetApprovalPage } from './components/TimesheetApprovalPage';
+import { TimesheetV2Page } from './components/TimesheetV2Page';
+import { ProjectTimesheetPage } from './components/ProjectTimesheetPage';
 import { LeaveBalancesPage } from './components/LeaveBalancesPage';
 import { SystemConfigurationPage } from './components/SystemConfigurationPage';
 import { DashboardPage } from './components/DashboardPage';
@@ -15,6 +17,7 @@ import { RequestManagementPage } from './components/RequestManagementPage';
 import { AttendancePage } from './components/AttendancePage';
 import { AttendanceSummaryPage } from './components/AttendanceSummaryPage';
 import { DependentPage } from './components/DependentPage';
+import { EmployeePage } from './components/EmployeePage';
 import { ProjectsPage } from './components/ProjectsPage';
 import { ProjectFinancePage } from './components/ProjectFinancePage';
 import { RevenuePlanPage } from './components/RevenuePlanPage';
@@ -61,6 +64,11 @@ import { RecruitmentProvider } from './recruitment/RecruitmentContext';
 import { CandidateProvider } from './candidates/CandidateContext';
 import { EmailProvider } from './email/EmailContext';
 import { EmailTemplatePage } from './components/EmailTemplatePage';
+import { PeriodicEvaluationPage } from './components/PeriodicEvaluationPage';
+import { MarcomProvider } from './marcom/MarcomContext';
+import { BirthdayListPage } from './components/marcom/BirthdayListPage';
+import { WelcomeOnboardPage } from './components/marcom/WelcomeOnboardPage';
+import { MarcomEmailPage } from './components/marcom/MarcomEmailPage';
 
 export default function App() {
   const [activeItem, setActiveItem] = useState('Mục tiêu kinh doanh'); // màn mở mặc định khi vào hệ thống
@@ -147,6 +155,11 @@ export default function App() {
         return <LeavesPage />;
       case 'Timesheet':
         return <TimesheetPage />;
+      case 'Timesheet V2':
+        return <TimesheetV2Page />;
+      case 'Bảng công dự án':
+      case 'Timesheet Dự Án':
+        return <ProjectTimesheetPage />;
       case 'Duyệt Timesheet':
         return <TimesheetApprovalPage />;
       case 'Chấm công':
@@ -165,6 +178,18 @@ export default function App() {
         return <RequestManagementPage />;
       case 'System Configuration':
         return <SystemConfigurationPage />;
+      case 'Sinh nhật nhân sự':
+        return <BirthdayListPage />;
+      case 'Welcome Onboard':
+        return <WelcomeOnboardPage />;
+      case 'Email tự động MarCom':
+        return <MarcomEmailPage />;
+      case 'Đánh giá định kỳ':
+      case 'Cảnh báo đánh giá định kỳ':
+      case 'Danh sách đánh giá':
+        return <PeriodicEvaluationPage />;
+      case 'Employees':
+        return <EmployeePage />;
       case 'Thông tin người phụ thuộc':
         return <DependentPage />;
       case 'Yêu cầu tuyển dụng':
@@ -199,9 +224,11 @@ export default function App() {
                   <PayrollProvider>
                     <BlockPlanProvider>
                       <PmoProvider>
-                        <Layout activeItem={activeItem} onSelect={setActiveItem}>
-                          {renderContent()}
-                        </Layout>
+                        <MarcomProvider>
+                          <Layout activeItem={activeItem} onSelect={setActiveItem}>
+                            {renderContent()}
+                          </Layout>
+                        </MarcomProvider>
                       </PmoProvider>
                     </BlockPlanProvider>
                   </PayrollProvider>

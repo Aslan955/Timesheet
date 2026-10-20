@@ -14,7 +14,7 @@
  *  • Dòng tiền ròng = tiền thu − tiền chi (thực tế).
  *  • Vấn đề tồn đọng: hệ thống tự phát hiện theo quy tắc (RULES) — mức độ Cao / Trung bình / Thấp.
  */
-import { BizMonthRow, BizProject, latestActualMonth, latestPakd } from './BusinessProjectContext';
+import { BizMonthRow, BizProject, latestActualMonth, latestPakd, totalCost } from './BusinessProjectContext';
 
 export const PAYMENT_TERM_DAYS = 30;
 export const MIN_MARGIN = 0.2;
@@ -47,7 +47,7 @@ export const finOf = (rows: BizMonthRow[], from: string, to: string): Fin => {
   rows.forEach((r) => {
     if (r.month < from || r.month > to) return;
     f.revenue += r.revenue;
-    f.cost += r.costSx + r.costKd;
+    f.cost += totalCost(r);
     f.cashIn += r.cashIn;
   });
   f.profit = f.revenue - f.cost;

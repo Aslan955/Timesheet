@@ -4,7 +4,8 @@
  * Liệt kê các dòng sổ kế toán tạo nên con số đó, đúng các cột của file kế toán:
  *  • Doanh thu thực tế (sổ chi tiết các tài khoản): Ngày hạch toán · Diễn giải · Số tiền · Tên đối tượng · Mã công trình · Tên công trình
  *  • Dòng tiền thu (sổ tiền gửi ngân hàng): như trên + Mã đơn vị · Tên đơn vị
- *  • Chi thực tế: Mã công trình · Tháng · Chi sản xuất (đ) · Chi kinh doanh (đ) · Diễn giải
+ *  • Chi thực tế: Mã công trình · Tháng · Chi sản xuất · Chi kinh doanh · Chi phí chung · Chi phí quản lý · Chi phí phân bổ · Diễn giải
+ *    (gộp 3 sổ "Chi thực tế", "Chi phí quản lý", "Chi phí vận hành" — Chi phí thực tế của dự án = tổng 4 cột)
  * Lọc theo các mã của dự án (Mã tổng / Mã PAKD / Mã SX) và kỳ [from, to]. Xuất lại được ra Excel.
  */
 import React, { useMemo, useState } from 'react';
@@ -16,7 +17,7 @@ import { erp } from './erp/Erp';
 
 export interface LedgerDrill {
   kind: LedgerKind;
-  part?: 'sx' | 'kd'; // chỉ Chi: xem riêng Chi sản xuất / Chi kinh doanh
+  part?: 'sx' | 'kd' | 'chung' | 'alloc' | 'mgmt'; // chỉ Chi: xem riêng Chi SX / Chi KD / Chi phí chung / Chi phí phân bổ (vận hành) / Chi phí quản lý
   projects: BizProject[];
   from: string; // YYYY-MM
   to: string;
@@ -48,21 +49,30 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
         .sort((a, b) => a.date.localeCompare(b.date)),
     [source, codes, from, to, needle],
   );
-  const cost = useMemo(
+  type CostRow = { id: string; projectCode: string; month: string; sx: number; kd: number; chung: number; alloc: number; mgmt: number; note: string };
+  const cost = useMemo<CostRow[]>(
     () =>
-      ledger.cost
+      [
+        ...ledger.cost.map((e) => ({ id: e.id, projectCode: e.projectCode, month: e.month, sx: e.costSx, kd: e.costKd, chung: e.costChung || 0, alloc: 0, mgmt: 0, note: e.note })),
+        ...ledger.mgmt.map((e) => ({ id: e.id, projectCode: e.projectCode, month: e.month, sx: 0, kd: 0, chung: 0, alloc: 0, mgmt: e.value, note: e.note })),
+        ...ledger.opex.map((e) => ({ id: e.id, projectCode: e.projectCode, month: e.month, sx: 0, kd: 0, chung: 0, alloc: e.value, mgmt: 0, note: e.note })),
+      ]
         .filter(inScope)
-        .filter((e) => (part === 'sx' ? e.costSx : part === 'kd' ? e.costKd : 1) !== 0)
-        .filter((e) => !hideZero || e.costSx || e.costKd)
+        .filter((e) => (part ? e[part] : 1) !== 0)
+        .filter((e) => !hideZero || e.sx || e.kd || e.chung || e.alloc || e.mgmt)
         .filter((e) => !needle || [e.projectCode, e.note].some((v) => v.toLowerCase().includes(needle)))
         .sort((a, b) => a.month.localeCompare(b.month) || a.projectCode.localeCompare(b.projectCode)),
-    [ledger.cost, codes, from, to, needle, hideZero, part],
+    [ledger.cost, ledger.opex, ledger.mgmt, codes, from, to, needle, hideZero, part],
   );
 
   const totalCash = cash.reduce((s, e) => s + e.amount, 0);
-  const totalSx = cost.reduce((s, e) => s + e.costSx, 0);
-  const totalKd = cost.reduce((s, e) => s + e.costKd, 0);
-  const shownTotal = isLines ? totalCash : part === 'sx' ? totalSx : part === 'kd' ? totalKd : totalSx + totalKd;
+  const totalSx = cost.reduce((s, e) => s + e.sx, 0);
+  const totalKd = cost.reduce((s, e) => s + e.kd, 0);
+  const totalChung = cost.reduce((s, e) => s + e.chung, 0);
+  const totalAlloc = cost.reduce((s, e) => s + e.alloc, 0);
+  const totalMgmt = cost.reduce((s, e) => s + e.mgmt, 0);
+  const totalCost = totalSx + totalKd + totalChung + totalMgmt + totalAlloc;
+  const shownTotal = isLines ? totalCash : part === 'sx' ? totalSx : part === 'kd' ? totalKd : part === 'chung' ? totalChung : part === 'alloc' ? totalAlloc : part === 'mgmt' ? totalMgmt : totalCost;
   const mismatch = !needle && expected !== undefined && Math.round(expected) !== Math.round(shownTotal);
 
   const heading =
@@ -70,7 +80,7 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
       ? 'BÁO CÁO DOANH THU PHÁT SINH TRONG KỲ'
       : kind === 'cashIn'
         ? 'BÁO CÁO DÒNG TIỀN THU TRONG KỲ'
-        : `CHI THỰC TẾ${part === 'sx' ? ' — CHI SẢN XUẤT' : part === 'kd' ? ' — CHI KINH DOANH' : ''}`;
+        : `CHI PHÍ THỰC TẾ${part === 'sx' ? ' — CHI SẢN XUẤT' : part === 'kd' ? ' — CHI KINH DOANH' : part === 'chung' ? ' — CHI PHÍ CHUNG' : part === 'alloc' ? ' — CHI PHÍ PHÂN BỔ (VẬN HÀNH)' : part === 'mgmt' ? ' — CHI PHÍ QUẢN LÝ' : ''}`;
   const Icon = kind === 'revenue' ? TrendingUp : kind === 'cashIn' ? Landmark : Receipt;
   const iconCls = kind === 'cost' ? 'text-rose-600' : 'text-emerald-600';
 
@@ -93,11 +103,11 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
           : [
               [heading],
               [periodText(from, to)],
-              ['Mã công trình', 'Tháng', 'Sản xuất', 'CP bán hàng', 'Diễn giải'],
-              ...cost.map((e) => [e.projectCode, fmtMonth(e.month), e.costSx, e.costKd, e.note]),
+              ['Mã công trình', 'Tháng', 'Chi sản xuất', 'Chi kinh doanh', 'Chi phí chung', 'Chi phí quản lý', 'Chi phí phân bổ', 'Diễn giải'],
+              ...cost.map((e) => [e.projectCode, fmtMonth(e.month), e.sx, e.kd, e.chung, e.mgmt, e.alloc, e.note]),
             ];
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = (kind === 'revenue' ? [12, 60, 16, 40, 14, 36] : kind === 'cashIn' ? [12, 60, 16, 40, 14, 36, 10, 16] : [16, 12, 18, 18, 60]).map((wch) => ({ wch }));
+    ws['!cols'] = (kind === 'revenue' ? [12, 60, 16, 40, 14, 36] : kind === 'cashIn' ? [12, 60, 16, 40, 14, 36, 10, 16] : [16, 12, 18, 18, 18, 18, 18, 60]).map((wch) => ({ wch }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, kind === 'revenue' ? 'SỔ CHI TIẾT CÁC TÀI KHOẢN' : kind === 'cashIn' ? 'SỔ TIỀN GỬI NGÂN HÀNG' : 'BÁO CÁO CHI TIẾT LÃI LỖ');
     XLSX.writeFile(wb, `${kind === 'revenue' ? 'DoanhThu' : kind === 'cashIn' ? 'DongTienThu' : 'ChiThucTe'}_${projects.length === 1 ? projects[0].masterCode : 'nhieu-du-an'}_${from}_${to}.xlsx`);
@@ -122,7 +132,7 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
             </h3>
             <p className="text-[12px] text-slate-600 font-semibold mt-0.5">{title}</p>
             <p className="text-[11px] text-slate-500">
-              {periodText(from, to)} · ĐVT: VNĐ · Nguồn: sổ kế toán import
+              {periodText(from, to)} · ĐVT: VNĐ · Nguồn: sổ kế toán import{kind === 'cost' ? ' (Chi thực tế + Chi phí quản lý + Chi phí vận hành)' : ''}
             </p>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-700 cursor-pointer">
@@ -210,8 +220,11 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
                   <tr>
                     <th className={`${th} text-left`}>Mã công trình</th>
                     <th className={`${th} text-left`}>Tháng</th>
-                    <th className={`${th} text-right ${part === 'kd' ? 'opacity-40' : ''}`}>Sản xuất (Chi SX)</th>
-                    <th className={`${th} text-right ${part === 'sx' ? 'opacity-40' : ''}`}>CP bán hàng (Chi KD)</th>
+                    <th className={`${th} text-right ${part && part !== 'sx' ? 'opacity-40' : ''}`}>Chi sản xuất</th>
+                    <th className={`${th} text-right ${part && part !== 'kd' ? 'opacity-40' : ''}`}>Chi kinh doanh</th>
+                    <th className={`${th} text-right ${part && part !== 'chung' ? 'opacity-40' : ''}`} title="Cột Chi phí chung của sổ Chi thực tế">Chi phí chung</th>
+                    <th className={`${th} text-right ${part && part !== 'mgmt' ? 'opacity-40' : ''}`} title="Sổ Chi phí quản lý (Kế toán phân bổ theo dự án)">Chi phí quản lý</th>
+                    <th className={`${th} text-right ${part && part !== 'alloc' ? 'opacity-40' : ''}`} title="Sổ Chi phí vận hành (Kế toán phân bổ theo dự án)">Chi phí phân bổ</th>
                     <th className={`${th} text-left min-w-[240px]`}>Diễn giải</th>
                   </tr>
                 </thead>
@@ -220,12 +233,13 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
                     <tr key={e.id} className={erp.tr}>
                       <td className={`${td} font-mono text-blue-600`}>{e.projectCode}</td>
                       <td className={`${td} font-mono`}>{fmtMonth(e.month)}</td>
-                      <td className={`${td} text-right font-mono ${e.costSx ? 'font-bold text-rose-700' : 'text-slate-400'}`}>{fmt(e.costSx)}</td>
-                      <td className={`${td} text-right font-mono ${e.costKd ? 'font-bold text-rose-700' : 'text-slate-400'}`}>{fmt(e.costKd)}</td>
+                      {[e.sx, e.kd, e.chung, e.mgmt, e.alloc].map((v, j) => (
+                        <td key={j} className={`${td} text-right font-mono ${v ? 'font-bold text-rose-700' : 'text-slate-400'}`}>{fmt(v)}</td>
+                      ))}
                       <td className={`${td} text-slate-600`}>{e.note || <span className="text-slate-300">—</span>}</td>
                     </tr>
                   ))}
-                  {!cost.length && <EmptyRow cols={5} />}
+                  {!cost.length && <EmptyRow cols={8} />}
                 </tbody>
                 {cost.length > 0 && (
                   <tfoot>
@@ -235,7 +249,10 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
                       </td>
                       <td className={`${td} text-right font-mono`}>{fmt(totalSx)}</td>
                       <td className={`${td} text-right font-mono`}>{fmt(totalKd)}</td>
-                      <td className={`${td} text-slate-500 font-semibold`}>Tổng chi: {fmt(totalSx + totalKd)}</td>
+                      <td className={`${td} text-right font-mono`}>{fmt(totalChung)}</td>
+                      <td className={`${td} text-right font-mono`}>{fmt(totalMgmt)}</td>
+                      <td className={`${td} text-right font-mono`}>{fmt(totalAlloc)}</td>
+                      <td className={`${td} text-slate-500 font-semibold`}>Tổng chi phí: {fmt(totalCost)}</td>
                     </tr>
                   </tfoot>
                 )}

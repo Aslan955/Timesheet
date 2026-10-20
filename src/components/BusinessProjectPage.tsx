@@ -90,6 +90,7 @@ import {
   FinKind,
   latestActualMonth,
   sumRows,
+  totalCost,
 } from '../business/BusinessProjectContext';
 import { BizMonthlyImportModal, fmtMonth } from './BizMonthlyImportModal';
 import { LedgerDetailModal, LedgerDrill, drillCls } from './LedgerDetailModal';
@@ -325,6 +326,13 @@ const pakdVersionText = (p: BizProject) => {
 /** Năm của dự án dùng cho bộ lọc Năm: năm ký HĐ (đã ký) → năm dự kiến ký HĐ → năm tạo yêu cầu. */
 const projectYear = (p: BizProject) => (signedDate(p) || p.expectedSignDate || p.createdAt || '').slice(0, 4);
 
+/** Dự án đang chờ đúng vai trò này phê duyệt: GĐK duyệt mã · CFO duyệt PAKD hoặc bản điều chỉnh PAKD. */
+const approvalNeededBy = (p: BizProject, role: BizRole) => {
+  if (role === 'GĐK') return p.status === 'Chờ duyệt mã';
+  if (role === 'CFO') return pendingRole(latestPakd(p)) === 'CFO' && (p.status === 'PAKD chờ duyệt' || p.status === 'Đang thực hiện' || p.status === 'Pending');
+  return false;
+};
+
 type RowAction = { label: string; kind: 'view' | 'decide' } | null;
 /** Nút thao tác theo trạng thái + vai trò đang xem. */
 const rowAction = (p: BizProject, role: BizRole): RowAction => {
@@ -534,6 +542,10 @@ const ProjectList: React.FC<{
 
   const th = `${erp.th} text-center whitespace-normal leading-tight align-middle`;
 
+  // Dự án đang chờ chính vai trò này phê duyệt (tính trên toàn bộ danh sách, không theo bộ lọc).
+  const needApproval = useMemo(() => projects.filter((p) => approvalNeededBy(p, role)), [projects, role]);
+  const approvalStatus: BizStatus | '' = role === 'GĐK' ? 'Chờ duyệt mã' : role === 'CFO' ? 'PAKD chờ duyệt' : '';
+
   return (
     <>
       <ErpTitleBar
@@ -596,6 +608,29 @@ const ProjectList: React.FC<{
         }
         footer={`${rows.length} / ${projects.length} dự án · Đang xem với vai trò ${role} · Bấm vào dòng để xem chi tiết, bấm "Đã ký / Chưa ký" để cập nhật hợp đồng`}
       >
+        {needApproval.length > 0 && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 bg-rose-50 border-b border-rose-200 text-[12px] text-rose-700">
+            <AlertCircle size={14} className="shrink-0" />
+            <span>
+              Bạn có <b>{needApproval.length}</b> dự án cần phê duyệt
+              {role === 'GĐK' ? ' (duyệt mã dự án)' : role === 'CFO' ? ' (duyệt PAKD / bản điều chỉnh)' : ''}:
+            </span>
+            {needApproval.map((p) => (
+              <button key={p.id} type="button" onClick={() => onView(p)} className="font-semibold underline decoration-dotted underline-offset-2 hover:text-rose-900" title={p.name}>
+                {p.masterCode || p.name}
+              </button>
+            ))}
+            {approvalStatus && status !== approvalStatus && (
+              <button
+                type="button"
+                onClick={() => { setStatus(approvalStatus); setYear(''); setDivision(''); setQ(''); }}
+                className="ml-auto h-6 px-2 rounded border border-rose-300 bg-white font-semibold hover:bg-rose-100"
+              >
+                Lọc danh sách
+              </button>
+            )}
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className={`${erp.table} min-w-[1920px]`}>
             <thead>
@@ -847,20 +882,25 @@ const PhaseStepper: React.FC<{ phases: BizPhase[]; current: string }> = ({ phase
 // ==========================================================================
 // Số liệu dự án theo tháng — Kế hoạch / Thực tế (import Excel) — ĐVT VNĐ
 // ==========================================================================
-// Dòng hiển thị: "Chi" = SX + KD, kèm 2 dòng con. `drill`: ở tab Thực tế, bấm con số → xem dòng sổ kế toán.
+// Dòng hiển thị: "Chi" = SX + KD (+ Chi phí chung ở tab Thực tế), kèm các dòng con. `drill`: ở tab Thực tế, bấm con số → xem dòng sổ kế toán.
 type FinRow = {
   label: Record<FinKind, string>;
   get: (r: BizMonthRow) => number;
   labelCls: string;
   sub?: boolean;
   drill?: Pick<LedgerDrill, 'kind' | 'part'>;
+  /** Chỉ hiện ở 1 tab (vd Chi phí chung chỉ có ở Thực tế). */
+  only?: FinKind;
 };
 const FIN_ROWS: FinRow[] = [
   { label: { plan: 'Doanh thu dự kiến', actual: 'Doanh thu thực tế' }, get: (r) => r.revenue, labelCls: 'text-emerald-800', drill: { kind: 'revenue' } },
   { label: { plan: 'Thu dự kiến', actual: 'Thu thực tế' }, get: (r) => r.cashIn, labelCls: 'text-emerald-800', drill: { kind: 'cashIn' } },
-  { label: { plan: 'Chi dự kiến', actual: 'Chi thực tế' }, get: (r) => r.costSx + r.costKd, labelCls: 'text-rose-800', drill: { kind: 'cost' } },
+  { label: { plan: 'Chi dự kiến', actual: 'Chi thực tế' }, get: (r) => totalCost(r), labelCls: 'text-rose-800', drill: { kind: 'cost' } },
   { label: { plan: 'Chi cho dự án sản xuất (SX)', actual: 'Chi cho dự án sản xuất (SX)' }, get: (r) => r.costSx, labelCls: 'text-rose-700', sub: true, drill: { kind: 'cost', part: 'sx' } },
   { label: { plan: 'Chi cho dự án kinh doanh (KD)', actual: 'Chi cho dự án kinh doanh (KD)' }, get: (r) => r.costKd, labelCls: 'text-rose-700', sub: true, drill: { kind: 'cost', part: 'kd' } },
+  { label: { plan: 'Chi phí chung', actual: 'Chi phí chung' }, get: (r) => r.costChung || 0, labelCls: 'text-rose-700', sub: true, drill: { kind: 'cost', part: 'chung' }, only: 'actual' },
+  { label: { plan: 'Chi phí quản lý', actual: 'Chi phí quản lý' }, get: (r) => r.costMgmt || 0, labelCls: 'text-rose-700', sub: true, drill: { kind: 'cost', part: 'mgmt' }, only: 'actual' },
+  { label: { plan: 'Chi phí phân bổ', actual: 'Chi phí phân bổ' }, get: (r) => r.costAlloc || 0, labelCls: 'text-rose-700', sub: true, drill: { kind: 'cost', part: 'alloc' }, only: 'actual' },
   { label: { plan: 'Khối lượng công việc (SP)', actual: 'Khối lượng công việc (SP)' }, get: (r) => r.workload, labelCls: 'text-indigo-800' },
 ];
 
@@ -1020,7 +1060,7 @@ const FinanceSection: React.FC<{
                 </tr>
               </thead>
               <tbody>
-                {FIN_ROWS.map((fr) => (
+                {FIN_ROWS.filter((fr) => !fr.only || fr.only === kind).map((fr) => (
                   <tr key={fr.label.plan} className={erp.tr}>
                     <td className={`${erp.td} sticky left-0 z-10 bg-white border-l-0 ${fr.sub ? 'pl-7 text-[12px]' : 'font-semibold'} ${fr.labelCls}`}>
                       {fr.sub && <span className="text-slate-300 mr-1.5">└</span>}

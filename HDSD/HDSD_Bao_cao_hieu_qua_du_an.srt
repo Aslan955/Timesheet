@@ -1,0 +1,179 @@
+﻿1
+00:00:04,693 --> 00:00:09,564
+[Bước 1 · Truy cập màn hình và đọc các ô số tổng hợp]
+Tại menu bên trái, chọn Quản trị dự án & Tài chính → Báo cáo hiệu quả dự án.
+
+2
+00:00:09,564 --> 00:00:17,485
+[Bước 1 · Truy cập màn hình và đọc các ô số tổng hợp]
+Màn hình so sánh kế hoạch với thực tế của các dự án theo từng tháng, trên 4 chỉ tiêu: Doanh thu, Chi phí, Dòng tiền thu và Khối lượng công việc.
+
+3
+00:00:17,485 --> 00:00:25,112
+[Bước 1 · Truy cập màn hình và đọc các ô số tổng hợp]
+Chốt số đến: tháng mới nhất đã có số thực tế. Kế hoạch chỉ được cộng đến tháng này để so sánh cùng kỳ với thực tế.
+
+4
+00:00:25,112 --> 00:00:33,256
+[Bước 1 · Truy cập màn hình và đọc các ô số tổng hợp]
+5 ô số tổng hợp: số to là thực tế, dòng dưới là kế hoạch, nhãn góc phải là % hoàn thành. Viền xanh = đạt, viền đỏ = chưa đạt.
+
+5
+00:00:33,256 --> 00:00:41,637
+[Bước 1 · Truy cập màn hình và đọc các ô số tổng hợp]
+Riêng Chi phí đảo chiều màu: chi thấp hơn kế hoạch là tốt (viền xanh). Biên lợi nhuận gộp = (Doanh thu − Chi phí) / Doanh thu.
+
+6
+00:00:41,637 --> 00:00:50,428
+[Bước 1 · Truy cập màn hình và đọc các ô số tổng hợp]
+Góc trên bên phải: Lập kế hoạch khối dành cho Giám đốc khối lập kế hoạch tháng; Import sổ kế toán dành cho Kế toán cập nhật số thực tế.
+
+7
+00:00:50,428 --> 00:00:56,783
+[Bước 2 · Biểu đồ Tổng quan — Doanh thu, Chi phí, Lợi nhuận]
+Bộ lọc Từ – Đến, Phạm vi xem và Dự án áp dụng cho cả ô số, biểu đồ và bảng chi tiết bên dưới.
+
+8
+00:00:56,783 --> 00:01:01,560
+[Bước 2 · Biểu đồ Tổng quan — Doanh thu, Chi phí, Lợi nhuận]
+Chọn một khối ở Phạm vi xem để chỉ xem các dự án của khối đó.
+
+9
+00:01:01,560 --> 00:01:10,098
+[Bước 2 · Biểu đồ Tổng quan — Doanh thu, Chi phí, Lợi nhuận]
+Khi đã đổi bộ lọc, nút Mặc định hiện ra để trả về kỳ và phạm vi ban đầu.
+
+10
+00:01:10,098 --> 00:01:18,348
+[Bước 2 · Biểu đồ Tổng quan — Doanh thu, Chi phí, Lợi nhuận]
+Chỉ tiêu Tổng quan mở sẵn: cột xanh = Doanh thu, cột cam = Chi phí, đường xanh lá = Lợi nhuận (Doanh thu − Chi phí).
+
+11
+00:01:18,348 --> 00:01:25,638
+[Bước 2 · Biểu đồ Tổng quan — Doanh thu, Chi phí, Lợi nhuận]
+Rê chuột vào một tháng để xem doanh thu, chi phí, lợi nhuận và biên lợi nhuận của tháng đó.
+
+12
+00:01:25,638 --> 00:01:34,805
+[Bước 2 · Biểu đồ Tổng quan — Doanh thu, Chi phí, Lợi nhuận]
+Nút Thực tế / Kế hoạch: chuyển biểu đồ sang số kế hoạch (chỉ có ở chỉ tiêu Tổng quan).
+
+13
+00:01:34,805 --> 00:01:44,786
+[Bước 2 · Biểu đồ Tổng quan — Doanh thu, Chi phí, Lợi nhuận]
+Theo dự án: trục ngang là từng dự án thay vì các tháng, tiện so sánh giữa các dự án trong cùng kỳ.
+
+14
+00:01:44,786 --> 00:01:53,357
+[Bước 3 · Biểu đồ Kế hoạch – Thực tế theo từng chỉ tiêu]
+Chọn từng chỉ tiêu Doanh thu, Chi phí, Dòng tiền thu hoặc Khối lượng công việc: cột xanh = Kế hoạch, cột cam = Thực tế.
+
+15
+00:01:53,357 --> 00:01:58,289
+[Bước 3 · Biểu đồ Kế hoạch – Thực tế theo từng chỉ tiêu]
+Ô thông tin hiện kế hoạch, thực tế và % hoàn thành của tháng đang trỏ. Tháng sau kỳ chốt số chưa có cột thực tế.
+
+16
+00:01:58,289 --> 00:02:09,394
+[Bước 3 · Biểu đồ Kế hoạch – Thực tế theo từng chỉ tiêu]
+Tương tự với Chi phí và các chỉ tiêu còn lại. Bấm Tổng quan để quay lại biểu đồ 3 chỉ tiêu.
+
+17
+00:02:09,394 --> 00:02:22,841
+[Bước 4 · Bảng Chi tiết theo dự án]
+Bảng Chi tiết theo dự án: mỗi dự án có Kế hoạch · Thực tế · Chênh lệch (%) của 4 chỉ tiêu. Kéo thanh cuộn ngang để xem các chỉ tiêu bên phải.
+
+18
+00:02:22,841 --> 00:02:32,079
+[Bước 4 · Bảng Chi tiết theo dự án]
+Bộ lọc Sức khoẻ: lọc nhanh các dự án theo mức; số trong ngoặc là số dự án ở mỗi mức.
+
+19
+00:02:32,079 --> 00:02:39,504
+[Bước 4 · Bảng Chi tiết theo dự án]
+Chênh lệch xanh = tốt, đỏ = xấu (Chi phí đảo chiều). Rê chuột vào ô chênh lệch để xem số tiền chênh lệch.
+
+20
+00:02:39,504 --> 00:02:52,104
+[Bước 4 · Bảng Chi tiết theo dự án]
+Bấm vào dòng dự án để chuyển sang tab Tổng quan dự án của dự án đó. Dòng Tổng cộng ở cuối là tổng của các dự án đang hiển thị.
+
+21
+00:02:52,104 --> 00:03:00,284
+[Bước 5 · Mức sức khoẻ dự án]
+Mức sức khoẻ được xếp tự động từ % hoàn thành so với kế hoạch cùng kỳ. Bảng định nghĩa nằm ở cuối tab.
+
+22
+00:03:00,284 --> 00:03:07,991
+[Bước 5 · Mức sức khoẻ dự án]
+Tốt: Doanh thu ≥ 95%, Chi phí ≤ 100%, Dòng tiền thu ≥ 95% kế hoạch. Cần chú ý: Doanh thu ≤ 85% hoặc Chi phí ≥ 130% hoặc Dòng tiền thu ≤ 65%.
+
+23
+00:03:07,991 --> 00:03:12,722
+[Bước 5 · Mức sức khoẻ dự án]
+Theo dõi: các trường hợp còn lại. Chưa phát sinh: chưa có số thực tế trong kỳ báo cáo.
+
+24
+00:03:12,722 --> 00:03:25,205
+[Bước 6 · Xem sổ chi tiết kế toán của một con số]
+Số thực tế có gạch chân (ô số, bảng chi tiết, tab Tổng quan dự án) bấm được để xem các dòng sổ kế toán tạo nên con số đó.
+
+25
+00:03:25,205 --> 00:03:35,664
+[Bước 6 · Xem sổ chi tiết kế toán của một con số]
+Tiêu đề cho biết sổ (Doanh thu / Dòng tiền thu / Chi thực tế), dự án và kỳ đang xem. Ô tìm kiếm lọc theo diễn giải, tên đối tượng, mã công trình.
+
+26
+00:03:35,664 --> 00:03:43,989
+[Bước 6 · Xem sổ chi tiết kế toán của một con số]
+Các cột đúng như sổ của Kế toán. Export XLSX tải các dòng đang hiển thị ra Excel; dòng Tổng cộng ở cuối bảng.
+
+27
+00:03:43,989 --> 00:03:53,973
+[Bước 6 · Xem sổ chi tiết kế toán của một con số]
+Nếu tổng sổ chi tiết khác con số trên báo cáo, hệ thống ghi chú phần chênh lệch được nhập dạng số tổng, không kèm chứng từ. Đóng cửa sổ để tiếp tục.
+
+28
+00:03:53,973 --> 00:04:02,151
+[Bước 7 · Tab Tổng quan dự án]
+Tab Tổng quan dự án theo dõi kế hoạch – thực tế của một dự án theo từng tháng trong suốt vòng đời dự án.
+
+29
+00:04:02,151 --> 00:04:09,336
+[Bước 7 · Tab Tổng quan dự án]
+Chọn dự án trong danh sách (nhóm theo khối). Từ – Đến mặc định là toàn bộ thời gian dự án.
+
+30
+00:04:09,336 --> 00:04:15,705
+[Bước 7 · Tab Tổng quan dự án]
+Thông tin dự án: Khối, Mã, Tên, Chỉ tiêu đang xem, Thời gian dự án và Kỳ đang xem (số tháng).
+
+31
+00:04:15,705 --> 00:04:26,577
+[Bước 7 · Tab Tổng quan dự án]
+5 ô số: Tổng kế hoạch · Luỹ kế KH đến kỳ chốt · Luỹ kế TT đến kỳ chốt (bấm để xem sổ) · Còn lại theo kế hoạch · Mức thực hiện luỹ kế (Đạt / Chưa đạt).
+
+32
+00:04:26,577 --> 00:04:37,468
+[Bước 7 · Tab Tổng quan dự án]
+Đổi chỉ tiêu ở Thông tin dự án: với Chi phí, ô Mức thực hiện hiện nhãn Vượt KH khi chi vượt kế hoạch.
+
+33
+00:04:37,468 --> 00:04:43,285
+[Bước 7 · Tab Tổng quan dự án]
+Biểu đồ theo tháng: cột xanh là kế hoạch, cột cam là thực tế; rê chuột để xem % hoàn thành từng tháng.
+
+34
+00:04:43,285 --> 00:04:52,887
+[Bước 7 · Tab Tổng quan dự án]
+Bảng Số liệu từng tháng: Kế hoạch, Thực tế, Chênh lệch, +/- %, Luỹ kế kế hoạch, Luỹ kế thực tế, % luỹ kế; dòng Tổng cộng ở cuối.
+
+35
+00:04:52,887 --> 00:05:03,512
+[Bước 7 · Tab Tổng quan dự án]
+Nhãn Chốt số đánh dấu tháng chốt số thực tế; các dòng nền xám là tháng sau kỳ chốt. Số thực tế từng tháng bấm được để xem sổ chi tiết của đúng tháng đó.
+
+36
+00:05:03,512 --> 00:05:17,062
+[Bước 7 · Tab Tổng quan dự án]
+Đổi Từ – Đến để xem một giai đoạn; nút Cả dự án hiện ra để trở về toàn bộ thời gian dự án.

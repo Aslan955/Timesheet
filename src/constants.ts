@@ -30,7 +30,11 @@ import {
   Mail,
   Gauge,
   LayoutGrid,
-  Building2
+  Building2,
+  Megaphone,
+  Cake,
+  Hand,
+  MailCheck,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -135,6 +139,17 @@ export const NAVIGATION: NavItem[] = [
     children: [
       { title: 'Overview', icon: BarChart3 },
       { title: 'Employees', icon: Users },
+      { title: 'Đánh giá định kỳ', icon: Award },
+      {
+        // MarCom: chúc mừng sinh nhật + Welcome Onboard (yêu cầu MarCom)
+        title: 'MarCom',
+        icon: Megaphone,
+        children: [
+          { title: 'Sinh nhật nhân sự', icon: Cake },
+          { title: 'Welcome Onboard', icon: Hand },
+          { title: 'Email tự động MarCom', icon: MailCheck },
+        ],
+      },
       { title: 'Báo cáo nghỉ phép nhân sự', icon: PieChart },
       { title: 'Contracts', icon: FileText },
       { title: 'Salary History', icon: Wallet },
@@ -201,6 +216,8 @@ export const NAVIGATION: NavItem[] = [
       { title: 'Overview', icon: BarChart3 },
       { title: 'Quản lý Đơn từ', icon: Inbox },
       { title: 'Timesheet', icon: Calendar },
+      { title: 'Timesheet V2', icon: Calendar },
+      { title: 'Bảng công dự án', icon: Briefcase },
       { title: 'Duyệt Timesheet', icon: UserCheck },
       { title: 'Chấm công', icon: Clock },
       { title: 'Tổng hợp công', icon: FileText },
@@ -351,7 +368,7 @@ export interface TimesheetEntry {
   explanationStatus: 'NOT_NEEDED' | 'EXPLAINED_APPROVED' | 'PENDING_EXPLANATION' | 'NEEDS_EXPLANATION';
   explanationNote?: string;
   hasEvidenceDoc?: boolean;
-  status: 'REVIEW' | 'APPROVED' | 'REJECTED';
+  status: 'REVIEW' | 'APPROVED' | 'REJECTED' | 'BLOCK';
   lastSyncTime: string;
   dailyDetails?: {
     date: string;

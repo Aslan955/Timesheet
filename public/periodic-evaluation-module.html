@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Module Đánh Giá Định Kỳ Nhân Sự - VTX IMIS Portal</title>
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 9999px; }
+  </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col">
+
+  <!-- Notice Banner -->
+  <div class="bg-gradient-to-r from-purple-700 via-indigo-700 to-purple-800 text-white px-4 py-2 text-xs flex items-center justify-between shrink-0 shadow-sm">
+    <div class="flex items-center space-x-2">
+      <span class="px-2 py-0.5 rounded-full bg-purple-500/30 border border-purple-400/40 text-[10px] font-bold uppercase tracking-wider">
+        Standalone Offline File
+      </span>
+      <span>Đây là tệp HTML độc lập — có thể lưu về máy tính và mở bằng bất kỳ trình duyệt nào mà không cần server.</span>
+    </div>
+    <div class="flex items-center space-x-2">
+      <button onclick="downloadSelf()" class="px-2.5 py-1 bg-white text-purple-900 hover:bg-purple-50 font-bold rounded-lg text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs">
+        <i class="fa-solid fa-download"></i>
+        <span>Lưu Tệp Này (.html)</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Top Navigation Bar -->
+  <header class="bg-slate-900 text-white border-b border-slate-800 px-6 py-3.5 flex items-center justify-between sticky top-0 z-40">
+    <div class="flex items-center space-x-3">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center font-black text-white text-sm shadow-md">
+        VTX
+      </div>
+      <div>
+        <div class="text-sm font-black flex items-center gap-1.5">
+          <span>VTX Group IMIS</span>
+          <span class="text-[9px] bg-purple-500/20 text-purple-400 border border-purple-500/30 px-1.5 py-0.2 rounded-full uppercase font-bold">Đánh Giá Định Kỳ</span>
+        </div>
+        <div class="text-[10px] text-slate-400">Quy trình đánh giá nhân sự 5 bước chuẩn doanh nghiệp</div>
+      </div>
+    </div>
+
+    <!-- Center Role Switcher -->
+    <div class="flex items-center bg-slate-800 p-1 rounded-xl gap-1 text-xs font-bold">
+      <button onclick="switchRole('admin')" id="role-btn-admin" class="px-3 py-1.5 rounded-lg bg-blue-600 text-white flex items-center gap-1.5 cursor-pointer">
+        <i class="fa-solid fa-shield-halved text-xs"></i>
+        <span>Admin / HR</span>
+      </button>
+      <button onclick="switchRole('manager')" id="role-btn-manager" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-white flex items-center gap-1.5 cursor-pointer">
+        <i class="fa-solid fa-user-tie text-xs"></i>
+        <span>Quản lý (Manager)</span>
+      </button>
+      <button onclick="switchRole('employee')" id="role-btn-employee" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-white flex items-center gap-1.5 cursor-pointer">
+        <i class="fa-solid fa-user text-xs"></i>
+        <span>Nhân viên (Employee)</span>
+      </button>
+    </div>
+
+    <!-- Language Selector & User Info -->
+    <div class="flex items-center space-x-3 text-xs">
+      <div class="flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700">
+        <button onclick="switchLang('vi')" id="lang-btn-vi" class="px-2 py-1 rounded bg-emerald-600 text-white font-bold cursor-pointer">VI</button>
+        <button onclick="switchLang('en')" id="lang-btn-en" class="px-2 py-1 rounded text-slate-400 hover:text-white font-bold cursor-pointer">EN</button>
+      </div>
+      <span class="text-slate-300 font-medium">Bùi Thị Hà (HR Lead)</span>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-[1920px] mx-auto p-4 sm:p-6 space-y-5 flex-1 w-full">
+    
+    <!-- 4 KPI Summary Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Tổng nhân sự kỳ này</span>
+          <div class="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+            <i class="fa-solid fa-users-viewfinder"></i>
+          </div>
+        </div>
+        <div class="mt-2 flex items-baseline gap-2">
+          <span class="text-2xl font-black text-slate-900 font-mono">14</span>
+          <span class="text-xs text-slate-400 font-bold">nhân sự</span>
+        </div>
+        <div class="mt-1 text-[11px] text-slate-500">
+          Toàn bộ các phòng ban IT, HR, Sales, PMO
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Đang tự chấm (B2)</span>
+          <div class="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+            <i class="fa-solid fa-spinner"></i>
+          </div>
+        </div>
+        <div class="mt-2 flex items-baseline gap-2">
+          <span class="text-2xl font-black text-amber-600 font-mono">5</span>
+          <span class="text-xs text-slate-400 font-bold">đang làm</span>
+        </div>
+        <div class="mt-1 text-[11px] text-amber-600 font-bold">
+          Hạn hoàn thành: 30/09/2026
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Chờ quản lý chấm (B3)</span>
+          <div class="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+            <i class="fa-solid fa-user-pen"></i>
+          </div>
+        </div>
+        <div class="mt-2 flex items-baseline gap-2">
+          <span class="text-2xl font-black text-purple-700 font-mono">4</span>
+          <span class="text-xs text-slate-400 font-bold">hồ sơ</span>
+        </div>
+        <div class="mt-1 text-[11px] text-purple-600 font-bold">
+          Phỏng vấn 1-1 trực tiếp
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Đã hoàn tất duyệt (B5)</span>
+          <div class="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+            <i class="fa-solid fa-circle-check"></i>
+          </div>
+        </div>
+        <div class="mt-2 flex items-baseline gap-2">
+          <span class="text-2xl font-black text-emerald-700 font-mono">5</span>
+          <span class="text-xs text-slate-400 font-bold">đã đóng</span>
+        </div>
+        <div class="mt-1 text-[11px] text-emerald-600 font-bold">
+          Đạt tỷ lệ hoàn thành 35.7%
+        </div>
+      </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
+      <div class="flex flex-wrap items-center gap-3 text-xs">
+        <div class="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
+          <i class="fa-solid fa-calendar text-slate-400"></i>
+          <span class="font-bold text-slate-700">Đợt đánh giá:</span>
+          <select class="bg-transparent font-bold text-slate-800 outline-none cursor-pointer">
+            <option>Đợt 2 - Quý 3/2026 (Tháng 09/2026)</option>
+            <option>Đợt 1 - 6 tháng đầu năm 2026</option>
+            <option>Đánh giá thử việc tháng 09/2026</option>
+          </select>
+        </div>
+
+        <div class="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
+          <span class="font-bold text-slate-700">Trạng thái:</span>
+          <select id="status-filter" onchange="filterEvalTable()" class="bg-transparent font-bold text-slate-800 outline-none cursor-pointer">
+            <option value="all">Tất cả trạng thái</option>
+            <option value="b2">Bước 2: Tự đánh giá</option>
+            <option value="b3">Bước 3: Quản lý đánh giá</option>
+            <option value="b5">Bước 5: Đã hoàn tất</option>
+          </select>
+        </div>
+
+        <div class="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
+          <i class="fa-solid fa-magnifying-glass text-slate-400"></i>
+          <input 
+            type="text" 
+            id="eval-search" 
+            onkeyup="filterEvalTable()" 
+            placeholder="Tìm theo tên hoặc mã NV..." 
+            class="bg-transparent outline-none text-slate-800 text-xs w-44 font-medium"
+          />
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-2">
+        <button onclick="showToast('Đang tải danh sách kết quả đánh giá định kỳ...')" class="px-3.5 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs">
+          <i class="fa-solid fa-file-excel text-emerald-600"></i>
+          <span>Xuất Báo Cáo Excel</span>
+        </button>
+        <button onclick="showToast('Đã gửi email nhắc nhở toàn bộ nhân sự chưa hoàn thành bước tự đánh giá!')" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm">
+          <i class="fa-solid fa-bell"></i>
+          <span>Gửi Nhắc Nhở Kỳ</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Evaluation List Table -->
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+        <div class="font-black text-slate-800 text-sm flex items-center gap-2">
+          <i class="fa-solid fa-users text-purple-600"></i>
+          <span>Danh Sách Nhân Sự Tham Gia Đợt Đánh Giá Định Kỳ Q3/2026</span>
+        </div>
+        <div class="text-xs text-slate-500 font-mono">
+          Tổng cộng 14 hồ sơ
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs border-collapse" id="eval-table">
+          <thead>
+            <tr class="bg-slate-100 text-slate-600 text-[11px] font-extrabold uppercase border-b border-slate-200">
+              <th class="p-3 w-10 text-center">#</th>
+              <th class="p-3 min-w-[220px]">Nhân sự</th>
+              <th class="p-3 min-w-[140px]">Phòng ban</th>
+              <th class="p-3 min-w-[150px]">Quản lý trực tiếp</th>
+              <th class="p-3 min-w-[170px]">Tiến độ 5 bước</th>
+              <th class="p-3 text-center min-w-[100px]">Điểm tự chấm</th>
+              <th class="p-3 text-center min-w-[100px]">Điểm quản lý</th>
+              <th class="p-3 text-center min-w-[120px]">Thao tác</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            <!-- Row 1 -->
+            <tr class="hover:bg-slate-50 transition-colors" data-status="b2" data-search="hồ tú anh v00623 it">
+              <td class="p-3 text-center text-slate-400 font-mono font-bold">1</td>
+              <td class="p-3">
+                <div class="font-bold text-slate-900">HỒ TÚ ANH</div>
+                <div class="text-[11px] text-slate-400 font-mono">V00623 · Project Manager</div>
+              </td>
+              <td class="p-3">
+                <span class="font-semibold text-slate-700">Phòng IT Core</span>
+              </td>
+              <td class="p-3">
+                <div class="font-medium text-slate-800">Trần Tuấn Khôi</div>
+                <div class="text-[10px] text-slate-400">Head of Technology</div>
+              </td>
+              <td class="p-3">
+                <div class="space-y-1">
+                  <div class="flex items-center justify-between text-[11px]">
+                    <span class="font-bold text-amber-700">Bước 2: Tự đánh giá</span>
+                    <span class="font-mono text-[10px] text-slate-500">40%</span>
+                  </div>
+                  <div class="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                    <div class="bg-amber-500 h-full rounded-full" style="width: 40%"></div>
+                  </div>
+                </div>
+              </td>
+              <td class="p-3 text-center font-mono font-bold text-slate-700 text-sm">88.5</td>
+              <td class="p-3 text-center font-mono text-slate-400">—</td>
+              <td class="p-3 text-center">
+                <button onclick="openDetailModal('HỒ TÚ ANH', 'V00623', 'Project Manager', 'Bước 2: Nhân viên tự đánh giá', 88.5, '—')" class="px-2.5 py-1 bg-purple-50 text-purple-700 hover:bg-purple-100 font-bold rounded-lg border border-purple-200 text-[11px] cursor-pointer">
+                  Xem chi tiết
+                </button>
+              </td>
+            </tr>
+
+            <!-- Row 2 -->
+            <tr class="hover:bg-slate-50 transition-colors" data-status="b3" data-search="nguyễn văn an v00914 it">
+              <td class="p-3 text-center text-slate-400 font-mono font-bold">2</td>
+              <td class="p-3">
+                <div class="font-bold text-slate-900">NGUYỄN VĂN AN</div>
+                <div class="text-[11px] text-slate-400 font-mono">V00914 · Senior Frontend Lead</div>
+              </td>
+              <td class="p-3">
+                <span class="font-semibold text-slate-700">Phòng IT Frontend</span>
+              </td>
+              <td class="p-3">
+                <div class="font-medium text-slate-800">Hồ Tú Anh</div>
+                <div class="text-[10px] text-slate-400">Project Manager</div>
+              </td>
+              <td class="p-3">
+                <div class="space-y-1">
+                  <div class="flex items-center justify-between text-[11px]">
+                    <span class="font-bold text-purple-700">Bước 3: Quản lý đánh giá</span>
+                    <span class="font-mono text-[10px] text-slate-500">60%</span>
+                  </div>
+                  <div class="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                    <div class="bg-purple-600 h-full rounded-full" style="width: 60%"></div>
+                  </div>
+                </div>
+              </td>
+              <td class="p-3 text-center font-mono font-bold text-slate-700 text-sm">92.0</td>
+              <td class="p-3 text-center font-mono font-bold text-purple-700 text-sm">94.5</td>
+              <td class="p-3 text-center">
+                <button onclick="openDetailModal('NGUYỄN VĂN AN', 'V00914', 'Senior Frontend Lead', 'Bước 3: Quản lý đánh giá 1-1', 92.0, 94.5)" class="px-2.5 py-1 bg-purple-50 text-purple-700 hover:bg-purple-100 font-bold rounded-lg border border-purple-200 text-[11px] cursor-pointer">
+                  Xem chi tiết
+                </button>
+              </td>
+            </tr>
+
+            <!-- Row 3 -->
+            <tr class="hover:bg-slate-50 transition-colors" data-status="b5" data-search="bùi thị hà v00437 qa">
+              <td class="p-3 text-center text-slate-400 font-mono font-bold">3</td>
+              <td class="p-3">
+                <div class="font-bold text-slate-900">BÙI THỊ HÀ</div>
+                <div class="text-[11px] text-slate-400 font-mono">V00437 · QA Lead</div>
+              </td>
+              <td class="p-3">
+                <span class="font-semibold text-slate-700">Khối Đảm Bảo Chất Lượng</span>
+              </td>
+              <td class="p-3">
+                <div class="font-medium text-slate-800">Vũ Minh Hiếu</div>
+                <div class="text-[10px] text-slate-400">QA Director</div>
+              </td>
+              <td class="p-3">
+                <div class="space-y-1">
+                  <div class="flex items-center justify-between text-[11px]">
+                    <span class="font-bold text-emerald-700">Bước 5: Đã hoàn tất</span>
+                    <span class="font-mono text-[10px] text-emerald-600 font-bold">100%</span>
+                  </div>
+                  <div class="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                    <div class="bg-emerald-600 h-full rounded-full" style="width: 100%"></div>
+                  </div>
+                </div>
+              </td>
+              <td class="p-3 text-center font-mono font-bold text-slate-700 text-sm">95.0</td>
+              <td class="p-3 text-center font-mono font-bold text-emerald-700 text-sm">96.0</td>
+              <td class="p-3 text-center">
+                <button onclick="openDetailModal('BÙI THỊ HÀ', 'V00437', 'QA Lead', 'Bước 5: Hoàn tất & Đóng kỳ', 95.0, 96.0)" class="px-2.5 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold rounded-lg border border-emerald-200 text-[11px] cursor-pointer">
+                  Xem chi tiết
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <!-- 5-Step Process Detail Modal -->
+  <div id="detail-modal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-2xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <!-- Header -->
+      <div class="p-5 bg-slate-900 text-white flex items-center justify-between shrink-0">
+        <div>
+          <h3 class="font-black text-sm" id="modal-name">HỒ TÚ ANH</h3>
+          <p class="text-xs text-slate-400" id="modal-sub">V00623 · Project Manager</p>
+        </div>
+        <button onclick="closeModal()" class="text-slate-400 hover:text-white p-1 rounded-lg">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div class="p-5 space-y-4 overflow-y-auto">
+        <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+          <div>
+            <div class="text-[11px] text-slate-500 font-bold uppercase">Trạng Thái Hiện Tại</div>
+            <div class="text-sm font-bold text-purple-700 mt-0.5" id="modal-step">Bước 2: Tự đánh giá</div>
+          </div>
+          <div class="flex items-center space-x-4">
+            <div class="text-right">
+              <div class="text-[10px] text-slate-400 uppercase font-bold">Điểm Tự Chấm</div>
+              <div class="text-base font-black text-slate-900 font-mono" id="modal-self-score">88.5</div>
+            </div>
+            <div class="text-right">
+              <div class="text-[10px] text-slate-400 uppercase font-bold">Điểm Quản Lý</div>
+              <div class="text-base font-black text-purple-700 font-mono" id="modal-mgr-score">—</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5 Steps Flow -->
+        <div class="space-y-3">
+          <div class="font-bold text-xs text-slate-700 uppercase">Quy trình 5 bước đánh giá:</div>
+
+          <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs">
+            <span class="font-bold text-emerald-900">Bước 1: Ban Giám Đốc Khởi Tạo & Giao Mục Tiêu Kỳ</span>
+            <span class="px-2 py-0.5 rounded font-bold text-[10px] bg-emerald-100 text-emerald-800">Hoàn thành</span>
+          </div>
+
+          <div class="p-3 bg-amber-50 border border-amber-300 rounded-xl space-y-2 text-xs">
+            <div class="flex items-center justify-between font-bold text-amber-900">
+              <span>Bước 2: Nhân Viên Tự Đánh Giá & Gửi Minh Chứng</span>
+              <span class="px-2 py-0.5 rounded font-bold text-[10px] bg-amber-100 text-amber-800">Đang thực hiện</span>
+            </div>
+            <div class="flex items-center space-x-2 pt-1">
+              <button onclick="showToast('Đang tải mẫu tự đánh giá KPI định kỳ...')" class="px-2.5 py-1 bg-emerald-600 text-white font-bold rounded-lg text-[11px] flex items-center gap-1">
+                <i class="fa-solid fa-download"></i> Tải mẫu tự chấm
+              </button>
+              <button onclick="showToast('Chọn file kết quả tự chấm để tải lên!')" class="px-2.5 py-1 bg-purple-600 text-white font-bold rounded-lg text-[11px] flex items-center gap-1">
+                <i class="fa-solid fa-upload"></i> Tải lên minh chứng
+              </button>
+            </div>
+          </div>
+
+          <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs text-slate-500">
+            <span>Bước 3: Quản Lý Trực Tiếp Phỏng Vấn 1-1 & Chấm Điểm</span>
+            <span class="text-[10px] font-bold">Chờ bước 2</span>
+          </div>
+
+          <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs text-slate-500">
+            <span>Bước 4: HR Tổng Hợp & Hội Đồng Thẩm Định</span>
+            <span class="text-[10px] font-bold">Chưa bắt đầu</span>
+          </div>
+
+          <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs text-slate-500">
+            <span>Bước 5: Ban Lãnh Đạo Phê Duyệt & Công Bố Kết Quả</span>
+            <span class="text-[10px] font-bold">Chưa bắt đầu</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="p-4 bg-slate-100 border-t border-slate-200 flex justify-end shrink-0">
+        <button onclick="closeModal()" class="px-4 py-1.5 text-xs font-bold text-white bg-slate-900 rounded-lg hover:bg-slate-800 cursor-pointer">
+          Đóng
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-5 right-5 bg-slate-900 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-xl transition-all duration-300 opacity-0 pointer-events-none z-50 flex items-center gap-2">
+    <i class="fa-solid fa-circle-check text-emerald-400"></i>
+    <span id="toast-text">Thông báo</span>
+  </div>
+
+  <script>
+    function switchRole(role) {
+      const roles = ['admin', 'manager', 'employee'];
+      roles.forEach(r => {
+        const btn = document.getElementById('role-btn-' + r);
+        if (btn) btn.className = "px-3 py-1.5 rounded-lg text-slate-400 hover:text-white flex items-center gap-1.5 cursor-pointer";
+      });
+      const active = document.getElementById('role-btn-' + role);
+      if (active) active.className = "px-3 py-1.5 rounded-lg bg-blue-600 text-white flex items-center gap-1.5 cursor-pointer";
+      showToast('Đã chuyển đổi sang vai trò: ' + role.toUpperCase());
+    }
+
+    function switchLang(l) {
+      document.getElementById('lang-btn-vi').className = l === 'vi' ? 'px-2 py-1 rounded bg-emerald-600 text-white font-bold cursor-pointer' : 'px-2 py-1 rounded text-slate-400 hover:text-white font-bold cursor-pointer';
+      document.getElementById('lang-btn-en').className = l === 'en' ? 'px-2 py-1 rounded bg-emerald-600 text-white font-bold cursor-pointer' : 'px-2 py-1 rounded text-slate-400 hover:text-white font-bold cursor-pointer';
+      showToast(l === 'vi' ? 'Đã đổi ngôn ngữ sang Tiếng Việt' : 'Language switched to English');
+    }
+
+    function filterEvalTable() {
+      const sVal = document.getElementById('status-filter').value;
+      const q = document.getElementById('eval-search').value.toLowerCase().trim();
+      const rows = document.querySelectorAll('#eval-table tbody tr');
+      rows.forEach(r => {
+        const status = r.getAttribute('data-status');
+        const search = r.getAttribute('data-search');
+        const matchStatus = sVal === 'all' || status === sVal;
+        const matchQ = !q || search.includes(q);
+        if (matchStatus && matchQ) {
+          r.style.display = '';
+        } else {
+          r.style.display = 'none';
+        }
+      });
+    }
+
+    function openDetailModal(name, code, role, step, selfScore, mgrScore) {
+      document.getElementById('modal-name').innerText = name;
+      document.getElementById('modal-sub').innerText = code + ' · ' + role;
+      document.getElementById('modal-step').innerText = step;
+      document.getElementById('modal-self-score').innerText = selfScore;
+      document.getElementById('modal-mgr-score').innerText = mgrScore;
+      document.getElementById('detail-modal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+      document.getElementById('detail-modal').classList.add('hidden');
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      const text = document.getElementById('toast-text');
+      text.innerText = msg;
+      t.classList.remove('opacity-0', 'pointer-events-none');
+      setTimeout(() => {
+        t.classList.add('opacity-0', 'pointer-events-none');
+      }, 3000);
+    }
+
+    function downloadSelf() {
+      const blob = new Blob([document.documentElement.outerHTML], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'periodic-evaluation-module.html';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Đang tải file periodic-evaluation-module.html về máy tính!');
+    }
+  </script>
+</body>
+</html>

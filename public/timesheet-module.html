@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Module Timesheet & Bảng Công Dự Án - VTX IMIS Portal</title>
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 9999px; }
+  </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col">
+
+  <!-- Notice Banner -->
+  <div class="bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-800 text-white px-4 py-2 text-xs flex items-center justify-between shrink-0 shadow-sm">
+    <div class="flex items-center space-x-2">
+      <span class="px-2 py-0.5 rounded-full bg-blue-500/30 border border-blue-400/40 text-[10px] font-bold uppercase tracking-wider">
+        Standalone Offline File
+      </span>
+      <span>Đây là tệp HTML độc lập — có thể lưu về máy tính và mở bằng bất kỳ trình duyệt nào mà không cần server.</span>
+    </div>
+    <div class="flex items-center space-x-2">
+      <button onclick="downloadSelf()" class="px-2.5 py-1 bg-white text-blue-900 hover:bg-blue-50 font-bold rounded-lg text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs">
+        <i class="fa-solid fa-download"></i>
+        <span>Lưu Tệp Này (.html)</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Top Navigation Bar -->
+  <header class="bg-slate-900 text-white border-b border-slate-800 px-6 py-3.5 flex items-center justify-between sticky top-0 z-40">
+    <div class="flex items-center space-x-3">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center font-black text-white text-sm shadow-md">
+        VTX
+      </div>
+      <div>
+        <div class="text-sm font-black flex items-center gap-1.5">
+          <span>VTX Group IMIS</span>
+          <span class="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.2 rounded-full uppercase font-bold">Timesheet</span>
+        </div>
+        <div class="text-[10px] text-slate-400">Hệ thống quản trị chấm công & phê duyệt giờ dự án</div>
+      </div>
+    </div>
+
+    <!-- Quick Mode Tabs -->
+    <div class="flex items-center bg-slate-800 p-1 rounded-xl gap-1 text-xs font-bold">
+      <button onclick="switchTab('project')" id="tab-btn-project" class="px-3.5 py-1.5 rounded-lg bg-blue-600 text-white flex items-center gap-1.5 transition-all">
+        <i class="fa-solid fa-briefcase text-xs"></i>
+        <span>Bảng công dự án</span>
+      </button>
+      <button onclick="switchTab('calendar')" id="tab-btn-calendar" class="px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-white flex items-center gap-1.5 transition-all">
+        <i class="fa-solid fa-calendar-days text-xs"></i>
+        <span>Lịch cá nhân</span>
+      </button>
+      <button onclick="switchTab('approval')" id="tab-btn-approval" class="px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-white flex items-center gap-1.5 transition-all">
+        <i class="fa-solid fa-user-check text-xs"></i>
+        <span>Quản lý duyệt công</span>
+      </button>
+      <button onclick="switchTab('hr')" id="tab-btn-hr" class="px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-white flex items-center gap-1.5 transition-all">
+        <i class="fa-solid fa-shield-halved text-xs"></i>
+        <span>HR Admin Center</span>
+      </button>
+    </div>
+
+    <!-- User badge -->
+    <div class="flex items-center space-x-3 text-xs">
+      <span class="text-slate-300 font-medium">Bùi Thị Hà (Project Lead)</span>
+      <div class="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 flex items-center justify-center font-bold">
+        BH
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-[1920px] mx-auto p-4 sm:p-6 space-y-5 flex-1 w-full">
+    
+    <!-- 4 KPI Summary Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Tổng giờ log tuần này</span>
+          <div class="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+            <i class="fa-solid fa-clock"></i>
+          </div>
+        </div>
+        <div class="mt-2 flex items-baseline gap-2">
+          <span class="text-2xl font-black text-slate-900 font-mono">168.0</span>
+          <span class="text-xs text-slate-400 font-bold">giờ làm</span>
+        </div>
+        <div class="mt-1 text-[11px] text-emerald-600 font-bold flex items-center gap-1">
+          <i class="fa-solid fa-arrow-trend-up"></i>
+          <span>100% đạt chỉ tiêu kế hoạch tuần</span>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Dự án tham gia</span>
+          <div class="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+            <i class="fa-solid fa-diagram-project"></i>
+          </div>
+        </div>
+        <div class="mt-2 flex items-baseline gap-2">
+          <span class="text-2xl font-black text-emerald-700 font-mono">4</span>
+          <span class="text-xs text-slate-400 font-bold">dự án active</span>
+        </div>
+        <div class="mt-1 text-[11px] text-slate-500">
+          IMIS-CORE, 022.060.2, ICU.565, X.25.NB...
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Giờ OT ngoài giờ</span>
+          <div class="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+            <i class="fa-solid fa-business-time"></i>
+          </div>
+        </div>
+        <div class="mt-2 flex items-baseline gap-2">
+          <span class="text-2xl font-black text-amber-600 font-mono">14.5</span>
+          <span class="text-xs text-slate-400 font-bold">giờ OT</span>
+        </div>
+        <div class="mt-1 text-[11px] text-amber-600 font-bold">
+          Đã được phê duyệt hợp lệ
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Trạng thái phê duyệt</span>
+          <div class="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+            <i class="fa-solid fa-stamp"></i>
+          </div>
+        </div>
+        <div class="mt-2 flex items-baseline gap-2">
+          <span class="text-2xl font-black text-purple-700 font-mono">96%</span>
+          <span class="text-xs text-slate-400 font-bold">hoàn tất</span>
+        </div>
+        <div class="mt-1 text-[11px] text-purple-600 font-bold">
+          Chốt hạn SLA: Trước 17:00 Thứ 6
+        </div>
+      </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
+      <div class="flex flex-wrap items-center gap-3 text-xs">
+        <div class="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
+          <i class="fa-solid fa-calendar text-slate-400"></i>
+          <span class="font-bold text-slate-700">Kỳ công:</span>
+          <select class="bg-transparent font-bold text-slate-800 outline-none cursor-pointer">
+            <option>Tháng 09/2026 (01/09 - 30/09)</option>
+            <option>Tháng 08/2026 (01/08 - 31/08)</option>
+            <option>Tháng 07/2026 (01/07 - 31/07)</option>
+          </select>
+        </div>
+
+        <div class="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
+          <span class="font-bold text-slate-700">Tuần xem:</span>
+          <select class="bg-transparent font-bold text-slate-800 outline-none cursor-pointer">
+            <option>Tuần 3 (14/09 - 20/09/2026)</option>
+            <option>Tuần 1 (01/09 - 06/09/2026)</option>
+            <option>Tuần 2 (07/09 - 13/09/2026)</option>
+            <option>Tuần 4 (21/09 - 27/09/2026)</option>
+            <option>Cả tháng</option>
+          </select>
+        </div>
+
+        <div class="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
+          <span class="font-bold text-slate-700">Dự án:</span>
+          <select id="project-filter" onchange="filterTable()" class="bg-transparent font-bold text-slate-800 outline-none cursor-pointer">
+            <option value="all">Tất cả dự án</option>
+            <option value="IMIS-CORE">IMIS-CORE (IMIS Enterprise)</option>
+            <option value="022.060.2">022.060.2 (Dự án GSDT)</option>
+            <option value="ICU.565">ICU.565 (IoT Platform)</option>
+          </select>
+        </div>
+
+        <div class="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
+          <i class="fa-solid fa-magnifying-glass text-slate-400"></i>
+          <input 
+            type="text" 
+            id="search-input" 
+            onkeyup="filterTable()" 
+            placeholder="Tìm tên nhân sự..." 
+            class="bg-transparent outline-none text-slate-800 text-xs w-36 font-medium"
+          />
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-2">
+        <button onclick="showToast('Đang kết xuất báo cáo Excel cho toàn bộ dự án...')" class="px-3.5 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs">
+          <i class="fa-solid fa-file-excel text-emerald-600"></i>
+          <span>Xuất Báo Cáo Excel</span>
+        </button>
+        <button onclick="showToast('Đã gửi thông báo nhắc duyệt công tuần 3 đến các Project Manager!')" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm">
+          <i class="fa-solid fa-paper-plane"></i>
+          <span>Nộp Bảng Công Tuần</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- TAB 1: Timesheet Table View -->
+    <div id="view-project" class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden block">
+      <div class="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+        <div class="font-black text-slate-800 text-sm flex items-center gap-2">
+          <i class="fa-solid fa-table-list text-blue-600"></i>
+          <span>Bảng Công Dự Án Chi Tiết Theo Nhân Sự & Ngày Trong Tuần</span>
+        </div>
+        <div class="text-xs text-slate-500 font-mono">
+          Tuần 3 · 14/09/2026 - 20/09/2026
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs border-collapse" id="timesheet-table">
+          <thead>
+            <tr class="bg-slate-100 text-slate-600 text-[11px] font-extrabold uppercase border-b border-slate-200">
+              <th class="p-3 w-10 text-center">#</th>
+              <th class="p-3 min-w-[200px]">Nhân sự & Vai trò</th>
+              <th class="p-3 min-w-[150px]">Dự án</th>
+              <th class="p-3 text-center min-w-[65px]">T2 (14)</th>
+              <th class="p-3 text-center min-w-[65px]">T3 (15)</th>
+              <th class="p-3 text-center min-w-[65px]">T4 (16)</th>
+              <th class="p-3 text-center min-w-[65px]">T5 (17)</th>
+              <th class="p-3 text-center min-w-[65px]">T6 (18)</th>
+              <th class="p-3 text-center min-w-[65px] bg-slate-200/50">T7 (19)</th>
+              <th class="p-3 text-center min-w-[65px] bg-slate-200/50">CN (20)</th>
+              <th class="p-3 text-center font-bold min-w-[90px] bg-blue-50/50">Tổng log</th>
+              <th class="p-3 text-center font-bold min-w-[80px]">Giờ máy</th>
+              <th class="p-3 text-center min-w-[110px]">Trạng thái</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            <!-- Row 1 -->
+            <tr class="hover:bg-slate-50 transition-colors" data-project="IMIS-CORE" data-name="hồ tú anh">
+              <td class="p-3 text-center text-slate-400 font-mono font-bold">1</td>
+              <td class="p-3">
+                <div class="font-bold text-slate-900">HỒ TÚ ANH</div>
+                <div class="text-[11px] text-slate-400 font-mono">V00623 · Project Manager</div>
+              </td>
+              <td class="p-3">
+                <span class="px-2 py-0.5 rounded font-mono font-bold text-[10px] bg-blue-50 text-blue-700 border border-blue-200">IMIS-CORE</span>
+                <div class="text-[11px] text-slate-500 mt-0.5">Software Dev</div>
+              </td>
+              <td class="p-3 text-center font-mono font-semibold text-slate-800">8.0</td>
+              <td class="p-3 text-center font-mono font-semibold text-slate-800">10.0 <span class="text-[9px] text-amber-600 block">(+2h)</span></td>
+              <td class="p-3 text-center font-mono font-semibold text-slate-800">8.0</td>
+              <td class="p-3 text-center font-mono font-semibold text-slate-800">10.0 <span class="text-[9px] text-amber-600 block">(+2h)</span></td>
+              <td class="p-3 text-center font-mono font-semibold text-slate-800">8.0</td>
+              <td class="p-3 text-center font-mono text-slate-400 bg-slate-50/70">—</td>
+              <td class="p-3 text-center font-mono text-slate-400 bg-slate-50/70">—</td>
+              <td class="p-3 text-center font-mono font-bold text-blue-700 bg-blue-50/30 text-sm">44.0</td>
+              <td class="p-3 text-center font-mono font-bold text-slate-700 text-sm">40.0</td>
+              <td class="p-3 text-center">
+                <span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">ĐÃ DUYỆT</span>
+              </td>
+            </tr>
+
+            <!-- Row 2 -->
+            <tr class="hover:bg-slate-50 transition-colors" data-project="IMIS-CORE" data-name="nguyễn văn an">
+              <td class="p-3 text-center text-slate-400 font-mono font-bold">2</td>
+              <td class="p-3">
+                <div class="font-bold text-slate-900">NGUYỄN VĂN AN</div>
+                <div class="text-[11px] text-slate-400 font-mono">V00914 · Senior Frontend Lead</div>
+              </td>
+              <td class="p-3">
+                <span class="px-2 py-0.5 rounded font-mono font-bold text-[10px] bg-blue-50 text-blue-700 border border-blue-200">IMIS-CORE</span>
+                <div class="text-[11px] text-slate-500 mt-0.5">Software Dev</div>
+              </td>
+              <td class="p-3 text-center font-mono font-semibold text-slate-800">8.0</td>
+              <td class="p-3 text-center font-mono font-semibold text-slate-800">10.0 <span class="text-[9px] text-amber-600 block">(+2h)</span></td>
+              <td class="p-3 text-center font-mono font-semibold text-slate-800">10.0 <span class="text-[9px] text-amber-600 block">(+2h)</span></td>
+              <td class="p-3 text-center font-mono font-semibold text-slate-800">10.0 <span class="text-[9px] text-amber-600 block">(+2h)</span></td>
+              <td class="p-3 text-center font-mono font-semibold text-slate-800">8.0</td>
+              <td class="p-3 text-center font-mono text-slate-400 bg-slate-50/70">—</td>
+              <td class="p-3 text-center font-mono text-slate-400 bg-slate-50/70">—</td>
+              <td class="p-3 text-center font-mono font-bold text-blue-700 bg-blue-50/30 text-sm">46.0</td>
+              <td class="p-3 text-center font-mono font-bold text-slate-700 text-sm">40.0</td>
+              <td class="p-3 text-center">
+                <span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">ĐÃ DUYỆT</span>
+              </td>
+            </tr>
+
+            <!-- Row 3 -->
+            <tr class="hover:bg-slate-50 transition-colors" data-project="022.060.2" data-name="bùi thị hà">
+              <td class="p-3 text-center text-slate-400 font-mono font-bold">3</td>
+              <td class="p-3">
+                <div class="font-bold text-slate-900">BÙI THỊ HÀ</div>
+                <div class="text-[11px] text-slate-400 font-mono">V00437 · QA Lead</div>
+              </td>
+              <td class="p-3">
+                <span class="px-2 py-0.5 rounded font-mono font-bold text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200">022.060.2</span>
+                <div class="text-[11px] text-slate-500 mt-0.5">QA & Testing</div>
+              </td>
+              <td class="p-3 text-center font-mono font-semibold text-slate-800">8.0</td>
+              <td class="p-3 text-center font-mono font-semibold text-slate-800">8.0</td>
+              <td class="p-3 text-center font-mono font-semibold text-slate-800">8.0</td>
+              <td class="p-3 text-center font-mono font-semibold text-slate-800">8.0</td>
+              <td class="p-3 text-center font-mono font-semibold text-slate-800">8.0</td>
+              <td class="p-3 text-center font-mono text-slate-400 bg-slate-50/70">—</td>
+              <td class="p-3 text-center font-mono text-slate-400 bg-slate-50/70">—</td>
+              <td class="p-3 text-center font-mono font-bold text-blue-700 bg-blue-50/30 text-sm">40.0</td>
+              <td class="p-3 text-center font-mono font-bold text-slate-700 text-sm">40.0</td>
+              <td class="p-3 text-center">
+                <span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">CHỜ DUYỆT</span>
+              </td>
+            </tr>
+
+            <!-- Row 4 -->
+            <tr class="hover:bg-slate-50 transition-colors" data-project="ICU.565" data-name="trần hoàng dũng">
+              <td class="p-3 text-center text-slate-400 font-mono font-bold">4</td>
+              <td class="p-3">
+                <div class="font-bold text-slate-900">TRẦN HOÀNG DŨNG</div>
+                <div class="text-[11px] text-slate-400 font-mono">V00812 · IoT Hardware Engineer</div>
+              </td>
+              <td class="p-3">
+                <span class="px-2 py-0.5 rounded font-mono font-bold text-[10px] bg-purple-50 text-purple-700 border border-purple-200">ICU.565</span>
+                <div class="text-[11px] text-slate-500 mt-0.5">Firmware Embedded</div>
+              </td>
+              <td class="p-3 text-center font-mono font-semibold text-slate-800">8.0</td>
+              <td class="p-3 text-center font-mono font-semibold text-slate-800">8.0</td>
+              <td class="p-3 text-center font-mono font-semibold text-slate-800">9.5 <span class="text-[9px] text-amber-600 block">(+1.5h)</span></td>
+              <td class="p-3 text-center font-mono font-semibold text-slate-800">8.0</td>
+              <td class="p-3 text-center font-mono font-semibold text-slate-800">8.0</td>
+              <td class="p-3 text-center font-mono text-slate-400 bg-slate-50/70">—</td>
+              <td class="p-3 text-center font-mono text-slate-400 bg-slate-50/70">—</td>
+              <td class="p-3 text-center font-mono font-bold text-blue-700 bg-blue-50/30 text-sm">41.5</td>
+              <td class="p-3 text-center font-mono font-bold text-slate-700 text-sm">40.0</td>
+              <td class="p-3 text-center">
+                <span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">ĐÃ DUYỆT</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB 2: Calendar Matrix View -->
+    <div id="view-calendar" class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 hidden">
+      <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-200">
+        <div class="font-black text-slate-800 text-sm flex items-center gap-2">
+          <i class="fa-solid fa-calendar-days text-indigo-600"></i>
+          <span>Lịch Công Cá Nhân Tháng 09/2026 (Ma Trận Chấm Công Hàng Ngày)</span>
+        </div>
+        <div class="flex items-center space-x-2 text-xs">
+          <span class="px-2 py-1 rounded bg-emerald-100 text-emerald-800 font-bold">Đủ 8h</span>
+          <span class="px-2 py-1 rounded bg-amber-100 text-amber-800 font-bold">OT Ngoài Giờ</span>
+          <span class="px-2 py-1 rounded bg-blue-100 text-blue-800 font-bold">Nghỉ Phép</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-7 gap-2 text-center text-xs">
+        <div class="font-bold text-slate-500 py-2">Thứ 2</div>
+        <div class="font-bold text-slate-500 py-2">Thứ 3</div>
+        <div class="font-bold text-slate-500 py-2">Thứ 4</div>
+        <div class="font-bold text-slate-500 py-2">Thứ 5</div>
+        <div class="font-bold text-slate-500 py-2">Thứ 6</div>
+        <div class="font-bold text-rose-500 py-2">Thứ 7</div>
+        <div class="font-bold text-rose-500 py-2">Chủ Nhật</div>
+
+        <!-- Sample Day Cells -->
+        <div class="border border-slate-200 rounded-xl p-2.5 bg-slate-50/50 min-h-[75px] text-left">
+          <div class="font-bold text-slate-800 text-xs">01/09</div>
+          <div class="mt-1 text-[11px] font-mono font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">8.0h (IMIS)</div>
+        </div>
+        <div class="border border-slate-200 rounded-xl p-2.5 bg-slate-50/50 min-h-[75px] text-left">
+          <div class="font-bold text-slate-800 text-xs">02/09</div>
+          <div class="mt-1 text-[11px] font-mono font-bold text-red-700 bg-red-50 px-1.5 py-0.5 rounded">Lễ Quốc Khánh</div>
+        </div>
+        <div class="border border-slate-200 rounded-xl p-2.5 bg-slate-50/50 min-h-[75px] text-left">
+          <div class="font-bold text-slate-800 text-xs">03/09</div>
+          <div class="mt-1 text-[11px] font-mono font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">8.0h (IMIS)</div>
+        </div>
+        <div class="border border-slate-200 rounded-xl p-2.5 bg-slate-50/50 min-h-[75px] text-left">
+          <div class="font-bold text-slate-800 text-xs">04/09</div>
+          <div class="mt-1 text-[11px] font-mono font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">10.0h (+2h OT)</div>
+        </div>
+        <div class="border border-slate-200 rounded-xl p-2.5 bg-slate-50/50 min-h-[75px] text-left">
+          <div class="font-bold text-slate-800 text-xs">05/09</div>
+          <div class="mt-1 text-[11px] font-mono font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">8.0h (IMIS)</div>
+        </div>
+        <div class="border border-slate-200 rounded-xl p-2.5 bg-slate-100/60 min-h-[75px] text-left">
+          <div class="font-bold text-rose-500 text-xs">06/09</div>
+          <div class="mt-1 text-[10px] text-slate-400">Cuối tuần</div>
+        </div>
+        <div class="border border-slate-200 rounded-xl p-2.5 bg-slate-100/60 min-h-[75px] text-left">
+          <div class="font-bold text-rose-500 text-xs">07/09</div>
+          <div class="mt-1 text-[10px] text-slate-400">Cuối tuần</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: Approval Queue View -->
+    <div id="view-approval" class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 hidden space-y-4">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+        <div class="font-black text-slate-800 text-sm flex items-center gap-2">
+          <i class="fa-solid fa-stamp text-amber-600"></i>
+          <span>Danh Sách Chờ Phê Duyệt Timesheet Tuần 3 (Cần Duyệt: 3 Đơn)</span>
+        </div>
+        <button onclick="showToast('Đã phê duyệt toàn bộ 3 đơn công!')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors">
+          Duyệt Tất Cả (3)
+        </button>
+      </div>
+
+      <div class="space-y-3">
+        <div class="p-4 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
+          <div class="space-y-1">
+            <div class="font-bold text-sm text-slate-900">BÙI THỊ HÀ · V00437 (QA Lead)</div>
+            <div class="text-xs text-slate-500">Dự án: <span class="font-bold text-blue-700">022.060.2</span> · Tổng 40.0 giờ làm · Tuần 3 (14/09 - 20/09)</div>
+          </div>
+          <div class="flex items-center space-x-2">
+            <button onclick="showToast('Đã từ chối đơn của Bùi Thị Hà.')" class="px-3 py-1.5 border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-lg text-xs font-bold">
+              Từ chối
+            </button>
+            <button onclick="showToast('Đã duyệt đơn công của Bùi Thị Hà!')" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold">
+              Phê Duyệt
+            </button>
+          </div>
+        </div>
+
+        <div class="p-4 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
+          <div class="space-y-1">
+            <div class="font-bold text-sm text-slate-900">HOÀNG VĂN KHÁNH · V01124 (Dev)</div>
+            <div class="text-xs text-slate-500">Dự án: <span class="font-bold text-blue-700">ICU.565</span> · Tổng 44.0 giờ (bao gồm 4h OT tối thứ 5)</div>
+          </div>
+          <div class="flex items-center space-x-2">
+            <button onclick="showToast('Đã từ chối đơn của Hoàng Văn Khánh.')" class="px-3 py-1.5 border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-lg text-xs font-bold">
+              Từ chối
+            </button>
+            <button onclick="showToast('Đã duyệt đơn công của Hoàng Văn Khánh!')" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold">
+              Phê Duyệt
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: HR Admin Center -->
+    <div id="view-hr" class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 hidden space-y-4">
+      <div class="font-black text-slate-800 text-sm flex items-center gap-2 pb-3 border-b border-slate-200">
+        <i class="fa-solid fa-shield-halved text-purple-600"></i>
+        <span>Báo Cáo Tổng Hợp & Phân Bổ Nguồn Lực Phòng Ban (HR Admin)</span>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="p-4 rounded-xl bg-blue-50/50 border border-blue-200 space-y-2">
+          <div class="text-xs font-bold text-blue-900 uppercase">Khối Sản Xuất Phần Mềm</div>
+          <div class="text-2xl font-black text-blue-800 font-mono">1.240h</div>
+          <div class="text-xs text-slate-600">Tỷ trọng: 68% tổng thời lượng toàn khối</div>
+        </div>
+        <div class="p-4 rounded-xl bg-emerald-50/50 border border-emerald-200 space-y-2">
+          <div class="text-xs font-bold text-emerald-900 uppercase">Khối Kinh Doanh & Triển Khai</div>
+          <div class="text-2xl font-black text-emerald-800 font-mono">420h</div>
+          <div class="text-xs text-slate-600">Tỷ trọng: 23% tổng thời lượng toàn khối</div>
+        </div>
+        <div class="p-4 rounded-xl bg-purple-50/50 border border-purple-200 space-y-2">
+          <div class="text-xs font-bold text-purple-900 uppercase">Khối Vận Hành & Khác</div>
+          <div class="text-2xl font-black text-purple-800 font-mono">160h</div>
+          <div class="text-xs text-slate-600">Tỷ trọng: 9% tổng thời lượng toàn khối</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-5 right-5 bg-slate-900 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-xl transition-all duration-300 opacity-0 pointer-events-none z-50 flex items-center gap-2">
+    <i class="fa-solid fa-circle-check text-emerald-400"></i>
+    <span id="toast-text">Thông báo</span>
+  </div>
+
+  <script>
+    function switchTab(tab) {
+      const views = ['project', 'calendar', 'approval', 'hr'];
+      views.forEach(v => {
+        const el = document.getElementById('view-' + v);
+        const btn = document.getElementById('tab-btn-' + v);
+        if (el) el.classList.add('hidden');
+        if (btn) {
+          btn.className = "px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-white flex items-center gap-1.5 transition-all cursor-pointer";
+        }
+      });
+      const activeEl = document.getElementById('view-' + tab);
+      const activeBtn = document.getElementById('tab-btn-' + tab);
+      if (activeEl) activeEl.classList.remove('hidden');
+      if (activeBtn) {
+        activeBtn.className = "px-3.5 py-1.5 rounded-lg bg-blue-600 text-white flex items-center gap-1.5 transition-all cursor-pointer";
+      }
+    }
+
+    function filterTable() {
+      const pVal = document.getElementById('project-filter').value;
+      const sVal = document.getElementById('search-input').value.toLowerCase().trim();
+      const rows = document.querySelectorAll('#timesheet-table tbody tr');
+      rows.forEach(r => {
+        const p = r.getAttribute('data-project');
+        const n = r.getAttribute('data-name');
+        const matchP = pVal === 'all' || p === pVal;
+        const matchS = !sVal || n.includes(sVal);
+        if (matchP && matchS) {
+          r.style.display = '';
+        } else {
+          r.style.display = 'none';
+        }
+      });
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      const text = document.getElementById('toast-text');
+      text.innerText = msg;
+      t.classList.remove('opacity-0', 'pointer-events-none');
+      setTimeout(() => {
+        t.classList.add('opacity-0', 'pointer-events-none');
+      }, 3000);
+    }
+
+    function downloadSelf() {
+      const blob = new Blob([document.documentElement.outerHTML], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'timesheet-module.html';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Đang tải file timesheet-module.html về máy tính!');
+    }
+  </script>
+</body>
+</html>

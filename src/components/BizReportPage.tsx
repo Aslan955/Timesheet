@@ -27,6 +27,8 @@ import { LedgerDetailModal, LedgerDrill, drillCls } from './LedgerDetailModal';
 import { LedgerImportModal } from './LedgerImportModal';
 import { BizProject, DIVISIONS, latestActualMonth, useBusinessProjects } from '../business/BusinessProjectContext';
 import {
+  CostParts,
+  costParts,
   HEALTHS,
   HEALTH_RULES,
   Health,
@@ -53,6 +55,9 @@ const fmtMonth = (m: string) => (m ? `${m.slice(5, 7)}/${m.slice(0, 4)}` : '—'
 const dmy = (iso: string) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—');
 const isMoney = (k: ReportMetric) => REPORT_METRICS.find((m) => m.key === k)!.money;
 const val = (_k: ReportMetric, n: number) => Math.round(n).toLocaleString('en-US');
+/** Tooltip tách Chi phí thực tế = Chi thực tế import (SX + KD + Chi phí chung) + CP phân bổ khối + CP quản lý (Kế toán import theo dự án). */
+const costTipOf = (c: CostParts) =>
+  `Chi thực tế import (SX + KD + Chi phí chung): ${val('cost', c.direct)}\n+ CP quản lý: ${val('cost', c.mgmt)}\n+ CP phân bổ (vận hành): ${val('cost', c.alloc)}\n= Chi phí thực tế: ${val('cost', c.direct + c.alloc + c.mgmt)}`;
 const pct = (r: number | null, digits = 0) => (r === null ? '—' : `${(r * 100).toFixed(digits)}%`);
 const unitOf = (k: ReportMetric) => (isMoney(k) ? 'VNĐ' : 'SP');
 
@@ -572,8 +577,9 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
   const counts = HEALTHS.reduce((m, h) => ({ ...m, [h]: perfs.filter((x) => x.health === h).length }), {} as Record<Health, number>);
   const shown = health === 'all' ? perfs : perfs.filter((x) => x.health === health);
   const compareEnd = cutoff && cutoff < to ? cutoff : to;
-  const drillFor = (k: ReportMetric, list: BizProject[], expected: number, title: string) =>
-    onDrill({ kind: ledgerKindOf(k)!, projects: list, from, to: compareEnd, expected, title });
+  const drillFor = (k: ReportMetric, list: BizProject[], expected: number, title: string, part?: LedgerDrill['part']) =>
+    onDrill({ kind: ledgerKindOf(k)!, part, projects: list, from, to: compareEnd, expected, title });
+  const costTip = costTipOf;
   const scopeTitle = projectId !== ALL && scoped[0] ? `${scoped[0].masterCode} — ${scoped[0].name}` : scope === ALL ? 'Toàn công ty' : `Khối ${scope}`;
 
   const groups: ChartGroup[] =
@@ -714,7 +720,7 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
                   Sức khoẻ
                 </th>
                 {REPORT_METRICS.map((m) => (
-                  <th key={m.key} colSpan={3} className={`${erp.th} text-center border-t-0 last:border-r-0`}>
+                  <th key={m.key} colSpan={m.key === 'cost' ? 5 : 3} className={`${erp.th} text-center border-t-0 last:border-r-0`}>
                     {m.label}
                   </th>
                 ))}
@@ -723,7 +729,19 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
                 {REPORT_METRICS.map((m) => (
                   <React.Fragment key={m.key}>
                     <th className={`${erp.th} text-center font-medium`}>Kế hoạch</th>
-                    <th className={`${erp.th} text-center font-medium`}>Thực tế</th>
+                    {m.key === 'cost' && (
+                      <>
+                        <th className={`${erp.th} text-center font-medium`} title="Chi phí quản lý phân bổ cho dự án — Kế toán import (sổ Chi phí quản lý)">
+                          CP quản lý
+                        </th>
+                        <th className={`${erp.th} text-center font-medium`} title="Chi phí vận hành khối phân bổ cho dự án — Kế toán import (sổ Chi phí vận hành)">
+                          CP phân bổ
+                        </th>
+                      </>
+                    )}
+                    <th className={`${erp.th} text-center font-medium`} title={m.key === 'cost' ? 'Chi phí thực tế = Chi thực tế import (SX + KD + Chi phí chung) + CP quản lý + CP phân bổ (vận hành)' : undefined}>
+                      Thực tế
+                    </th>
                     <th className={`${erp.th} text-center font-medium`}>Chênh lệch (%)</th>
                   </React.Fragment>
                 ))}
@@ -749,15 +767,22 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
                     const d = act - pl;
                     const noData = x.health === 'Chưa phát sinh';
                     const diffPct = pl ? (d / pl) * 100 : null;
+                    const title = `${x.project.masterCode} — ${x.project.name}`;
                     return (
                       <React.Fragment key={key}>
                         <td className={`${erp.td} ${erp.num} text-slate-600`}>{val(key, pl)}</td>
-                        <td className={`${erp.td} ${erp.num} font-semibold`}>
-                          {noData ? (
-                            '–'
-                          ) : (
-                            <DrillVal k={key} value={act} onClick={() => drillFor(key, [x.project], act, `${x.project.masterCode} — ${x.project.name}`)} />
-                          )}
+                        {key === 'cost' && (
+                          <>
+                            <td className={`${erp.td} ${erp.num} text-slate-700`}>
+                              {noData ? '–' : <DrillVal k={key} value={x.cost.mgmt} onClick={() => drillFor(key, [x.project], x.cost.mgmt, title, 'mgmt')} />}
+                            </td>
+                            <td className={`${erp.td} ${erp.num} text-slate-700`}>
+                              {noData ? '–' : <DrillVal k={key} value={x.cost.alloc} onClick={() => drillFor(key, [x.project], x.cost.alloc, title, 'alloc')} />}
+                            </td>
+                          </>
+                        )}
+                        <td className={`${erp.td} ${erp.num} font-semibold`} title={key === 'cost' && !noData ? costTip(x.cost) : undefined}>
+                          {noData ? '–' : <DrillVal k={key} value={act} onClick={() => drillFor(key, [x.project], act, title)} />}
                         </td>
                         <td
                           title={noData ? undefined : `Chênh lệch: ${d > 0 ? '+' : ''}${val(key, d)} ${unitOf(key)}`}
@@ -778,7 +803,7 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
               ))}
               {!shown.length && (
                 <tr>
-                  <td colSpan={16} className={`${erp.td} text-center text-slate-400 py-6`}>
+                  <td colSpan={18} className={`${erp.td} text-center text-slate-400 py-6`}>
                     Không có dự án nào ở mức này.
                   </td>
                 </tr>
@@ -795,11 +820,24 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
                     const a = shown.reduce((s, x) => s + x.actual[key], 0);
                     const d = a - p;
                     const diffPct = p ? (d / p) * 100 : null;
+                    const list = shown.map((x) => x.project);
+                    const title = `${scopeTitle} · ${shown.length} dự án`;
+                    const parts: CostParts = shown.reduce((t, x) => ({ direct: t.direct + x.cost.direct, alloc: t.alloc + x.cost.alloc, mgmt: t.mgmt + x.cost.mgmt }), { direct: 0, alloc: 0, mgmt: 0 });
                     return (
                       <React.Fragment key={key}>
                         <td className={`${erp.td} ${erp.num}`}>{val(key, p)}</td>
-                        <td className={`${erp.td} ${erp.num}`}>
-                          <DrillVal k={key} value={a} onClick={() => drillFor(key, shown.map((x) => x.project), a, `${scopeTitle} · ${shown.length} dự án`)} />
+                        {key === 'cost' && (
+                          <>
+                            <td className={`${erp.td} ${erp.num}`}>
+                              <DrillVal k={key} value={parts.mgmt} onClick={() => drillFor(key, list, parts.mgmt, title, 'mgmt')} />
+                            </td>
+                            <td className={`${erp.td} ${erp.num}`}>
+                              <DrillVal k={key} value={parts.alloc} onClick={() => drillFor(key, list, parts.alloc, title, 'alloc')} />
+                            </td>
+                          </>
+                        )}
+                        <td className={`${erp.td} ${erp.num}`} title={key === 'cost' ? costTip(parts) : undefined}>
+                          <DrillVal k={key} value={a} onClick={() => drillFor(key, list, a, title)} />
                         </td>
                         <td
                           title={`Chênh lệch: ${d > 0 ? '+' : ''}${val(key, d)} ${unitOf(key)}`}
@@ -881,8 +919,13 @@ const ProjectTab: React.FC<{ projects: BizProject[]; cutoff: string; projectId: 
   const rows = series.map((m) => {
     runPlan += m.plan;
     if (m.actual !== null) runActual += m.actual;
-    return { ...m, cumPlan: runPlan, cumActual: m.actual === null ? null : runActual };
+    const cp = costParts(p.actual, m.month, m.month); // chỉ dùng khi chỉ tiêu Chi phí
+    return { ...m, cumPlan: runPlan, cumActual: m.actual === null ? null : runActual, cp };
   });
+  const isCost = metric === 'cost';
+  const drillPart = (from: string, to: string, expected: number, part: LedgerDrill['part']) =>
+    onDrill({ kind: 'cost', part, projects: [p], from, to, expected, title: `${p.masterCode} — ${p.name}` });
+  const cpTotal = costParts(p.actual, first, cutoff < last ? cutoff : last);
 
   const byDivision = DIVISIONS.map((d) => [d, projects.filter((x) => x.division === d)] as const).filter(([, list]) => list.length);
   const cumText = val(metric, cumActual);
@@ -991,8 +1034,12 @@ const ProjectTab: React.FC<{ projects: BizProject[]; cutoff: string; projectId: 
           <table className={erp.table}>
             <thead>
               <tr>
-                {['Tháng', 'Kế hoạch', 'Thực tế', 'Chênh lệch', '+/- %', 'Luỹ kế kế hoạch', 'Luỹ kế thực tế', '% luỹ kế'].map((h, i) => (
-                  <th key={h} className={`${erp.th} ${i ? 'text-right' : 'text-left'} border-t-0 first:border-l-0 last:border-r-0`}>
+                {['Tháng', 'Kế hoạch', ...(isCost ? ['CP quản lý', 'CP phân bổ'] : []), 'Thực tế', 'Chênh lệch', '+/- %', 'Luỹ kế kế hoạch', 'Luỹ kế thực tế', '% luỹ kế'].map((h, i) => (
+                  <th
+                    key={h}
+                    title={isCost && h === 'Thực tế' ? 'Chi phí thực tế = Chi thực tế import (SX + KD + Chi phí chung) + CP quản lý + CP phân bổ (vận hành)' : undefined}
+                    className={`${erp.th} ${i ? 'text-right' : 'text-left'} border-t-0 first:border-l-0 last:border-r-0`}
+                  >
                     {h}
                   </th>
                 ))}
@@ -1012,7 +1059,13 @@ const ProjectTab: React.FC<{ projects: BizProject[]; cutoff: string; projectId: 
                       {r.month === cutoff && <Tag cls="ml-1.5 bg-blue-50 text-[#1f5fa8] border-blue-300">Chốt số</Tag>}
                     </td>
                     <td className={`${erp.td} ${erp.num}`}>{val(metric, r.plan)}</td>
-                    <td className={`${erp.td} ${erp.num} font-semibold`}>
+                    {isCost && (
+                      <>
+                        <td className={`${erp.td} ${erp.num}`}>{done ? <DrillVal k={metric} value={r.cp.mgmt} onClick={() => drillPart(r.month, r.month, r.cp.mgmt, 'mgmt')} /> : '–'}</td>
+                        <td className={`${erp.td} ${erp.num}`}>{done ? <DrillVal k={metric} value={r.cp.alloc} onClick={() => drillPart(r.month, r.month, r.cp.alloc, 'alloc')} /> : '–'}</td>
+                      </>
+                    )}
+                    <td className={`${erp.td} ${erp.num} font-semibold`} title={isCost && done ? costTipOf(r.cp) : undefined}>
                       {done ? <DrillVal k={metric} value={r.actual!} onClick={() => drill(r.month, r.month, r.actual!)} /> : '–'}
                     </td>
                     <td className={`${erp.td} ${erp.num} ${done && Math.round(d) ? tone(r.actual!, r.plan) : ''}`}>{done ? `${d > 0 ? '+' : ''}${val(metric, d)}` : '–'}</td>
@@ -1032,7 +1085,17 @@ const ProjectTab: React.FC<{ projects: BizProject[]; cutoff: string; projectId: 
               <tr className={erp.totalRow}>
                 <td className={`${erp.td} border-l-0`}>Tổng cộng</td>
                 <td className={`${erp.td} ${erp.num}`}>{val(metric, totalPlan)}</td>
-                <td className={`${erp.td} ${erp.num}`}>
+                {isCost && (
+                  <>
+                    <td className={`${erp.td} ${erp.num}`}>
+                      <DrillVal k={metric} value={cpTotal.mgmt} onClick={() => drillPart(first, cutoff, cpTotal.mgmt, 'mgmt')} />
+                    </td>
+                    <td className={`${erp.td} ${erp.num}`}>
+                      <DrillVal k={metric} value={cpTotal.alloc} onClick={() => drillPart(first, cutoff, cpTotal.alloc, 'alloc')} />
+                    </td>
+                  </>
+                )}
+                <td className={`${erp.td} ${erp.num}`} title={isCost ? costTipOf(cpTotal) : undefined}>
                   <DrillVal k={metric} value={cumActual} onClick={() => drill(first, cutoff, cumActual)} />
                 </td>
                 <td className={`${erp.td} ${erp.num}`} colSpan={2}>

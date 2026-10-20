@@ -6,12 +6,12 @@
  *   • Thực tế : project.actual (bộ phận kế toán import hằng tháng)
  *
  * 4 chỉ tiêu so sánh:
- *   Doanh thu = revenue · Chi phí = costSx + costKd · Dòng tiền thu = cashIn · KLCV = workload
+ *   Doanh thu = revenue · Chi phí = costSx + costKd + costChung + costMgmt + costAlloc · Dòng tiền thu = cashIn · KLCV = workload
  *
  * Kỳ so sánh: [Từ tháng, min(Đến tháng, Chốt số đến)] — kế hoạch chỉ tính tới tháng chốt số
  * để so cùng kỳ với thực tế. "Chốt số đến" = tháng mới nhất có số thực tế.
  */
-import { BizMonthRow, BizProject, monthsBetween } from './BusinessProjectContext';
+import { BizMonthRow, BizProject, monthsBetween, totalCost } from './BusinessProjectContext';
 
 export type ReportMetric = 'revenue' | 'cost' | 'cashIn' | 'workload';
 export const REPORT_METRICS: { key: ReportMetric; label: string; money: boolean }[] = [
@@ -23,7 +23,26 @@ export const REPORT_METRICS: { key: ReportMetric; label: string; money: boolean 
 /** Chi phí: vượt kế hoạch là xấu → đảo chiều màu tốt / xấu. */
 export const lowerIsBetter = (k: ReportMetric) => k === 'cost';
 
-export const metricOf = (r: BizMonthRow, k: ReportMetric) => (k === 'cost' ? r.costSx + r.costKd : r[k]);
+/** Chi phí = Chi SX + Chi KD + Chi phí chung (sổ Chi thực tế) + CP quản lý + CP phân bổ (2 sổ phân bổ; chỉ có ở số thực tế). */
+export const costOf = (r: BizMonthRow) => totalCost(r);
+export const metricOf = (r: BizMonthRow, k: ReportMetric) => (k === 'cost' ? costOf(r) : r[k]);
+
+/** Tách Chi phí thực tế trong kỳ thành 3 phần: sổ Chi thực tế (SX + KD + Chi phí chung) · phân bổ (vận hành) · quản lý. */
+export interface CostParts {
+  direct: number;
+  alloc: number;
+  mgmt: number;
+}
+export const costParts = (rows: BizMonthRow[], from: string, to: string): CostParts => {
+  const t: CostParts = { direct: 0, alloc: 0, mgmt: 0 };
+  rows.forEach((r) => {
+    if (r.month < from || r.month > to) return;
+    t.direct += r.costSx + r.costKd + (r.costChung || 0);
+    t.alloc += r.costAlloc || 0;
+    t.mgmt += r.costMgmt || 0;
+  });
+  return t;
+};
 
 export type Totals = Record<ReportMetric, number>;
 const zero = (): Totals => ({ revenue: 0, cost: 0, cashIn: 0, workload: 0 });
@@ -74,6 +93,8 @@ export interface ProjectPerf {
   project: BizProject;
   plan: Totals;
   actual: Totals;
+  /** Chi phí thực tế tách phần: import · phân bổ khối · quản lý. */
+  cost: CostParts;
   health: Health;
 }
 
@@ -83,7 +104,7 @@ export const projectPerf = (p: BizProject, from: string, to: string, cutoff: str
   const plan = sumRange(p.plan, from, end);
   const actual = sumRange(p.actual, from, end);
   const hasActual = p.actual.some((r) => r.month >= from && r.month <= end);
-  return { project: p, plan, actual, health: healthOf(plan, actual, hasActual) };
+  return { project: p, plan, actual, cost: costParts(p.actual, from, end), health: healthOf(plan, actual, hasActual) };
 };
 
 // ==========================================================================

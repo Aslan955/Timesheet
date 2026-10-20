@@ -18,7 +18,7 @@
  * ĐVT: triệu VNĐ.
  */
 import React, { createContext, useContext, useMemo, useState } from 'react';
-import { AlertCircle, ArrowLeft, CheckCircle2, ClipboardCheck, History, Lock, LockOpen, PenLine, Plus, Save, Send, Target, X, XCircle } from 'lucide-react';
+import { AlertCircle, ArrowLeft, CheckCircle2, ClipboardCheck, Eye, History, Lock, LockOpen, PenLine, Plus, Save, Send, Target, X, XCircle } from 'lucide-react';
 import { DIVISIONS, useBusinessProjects } from '../business/BusinessProjectContext';
 import { Btn, ErpPage, ErpTitleBar, FolderTabs, KpiBox, Panel, Segmented, Tag, erp } from './erp/Erp';
 import { MonthPickerButton } from './erp/MonthPicker';
@@ -114,6 +114,113 @@ const SEED: TargetPlan[] = [
   },
 ];
 SEED[1].lastSubmitted = SEED[1].rows.map((x) => ({ ...x }));
+
+// --------------------------------------------------------------------------
+// Năm 2026 — hồ sơ đã được BOD duyệt (lập 12/2025). Tổng mỗi khối = mục tiêu ký HĐ 2026
+// trong Sổ theo dõi dự án (SEED_TARGETS); các dòng gắn với dự án đang có trên hệ thống.
+// --------------------------------------------------------------------------
+const log = (at: string, by: string, action: string, version: number, extra: Partial<TargetLog> = {}): TargetLog => ({ at, by, action, version, ...extra });
+const APPROVE = 'BOD phê duyệt — ghi nhận kế hoạch chính thức';
+const approved2026 = (division: string, version: number, rows: TargetRow[], history: TargetLog[], bodNote?: string): TargetPlan => ({
+  id: `TP-${division}-2026`,
+  division,
+  year: 2026,
+  author: `GĐK ${division}`,
+  version,
+  status: 'Đã duyệt',
+  rows,
+  lastSubmitted: rows.map((x) => ({ ...x })),
+  bodNote,
+  history,
+});
+const firstRound = (d: string, created: string, sent: string, ok: string, note?: string) => [
+  log(`${created}T02:00:00.000Z`, `GĐK ${d}`, 'Tạo hồ sơ', 1),
+  log(`${sent}T09:00:00.000Z`, `GĐK ${d}`, 'Gửi BOD duyệt', 1),
+  ...(ok ? [log(`${ok}T08:30:00.000Z`, 'BOD', APPROVE, 1, note ? { note } : {})] : []),
+];
+
+SEED.push(
+  approved2026(
+    'G1',
+    2,
+    [
+      r('Bộ 022', 'Nền tảng chuyển đổi số quốc gia', '2025-11', '2026-01', 1_000_000, 380_000, 'Đã trúng thầu 11/2025, chờ ký HĐ'),
+      r('Tập đoàn 022', 'ERP Tập đoàn 022', '2025-12', '2026-01', 250_000, 70_000, 'Khách hàng hiện hữu, đã có chủ trương đầu tư'),
+      r('Bộ 022', 'Hệ thống dữ liệu dân cư mở rộng', '2026-05', '2026-07', 60_000, 15_000, 'Mở rộng từ Nền tảng chuyển đổi số quốc gia'),
+      r('Tập đoàn 022', 'Mở rộng ERP phân hệ kho', '2026-06', '2026-09', 30_000, 7_500),
+      r('Sở Tài chính 022', 'Cổng thanh toán điện tử tỉnh', '2026-08', '2026-10', 15_000, 3_750, 'Đã khảo sát, khách hàng gửi đề xuất kỹ thuật'),
+      r('Bộ 022', '022.NSG', '2026-09', '2026-11', 145_000, 43_500, 'Dự án trọng điểm, PAKD đang trình duyệt'),
+    ],
+    [
+      ...firstRound('G1', '2025-12-03', '2025-12-15', '2025-12-22'),
+      log('2026-06-10T03:00:00.000Z', 'GĐK G1', 'Lưu nháp', 2, { changes: ['Sửa 022.NSG: ra thầu 06/2026 → 09/2026; ký HĐ 08/2026 → 11/2026', 'Sửa Mở rộng ERP phân hệ kho: ký HĐ 07/2026 → 09/2026'] }),
+      log('2026-06-12T09:00:00.000Z', 'GĐK G1', 'Gửi BOD duyệt', 2),
+      log('2026-06-20T08:30:00.000Z', 'BOD', APPROVE, 2, { note: 'Đồng ý điều chỉnh tiến độ quý 2, giữ nguyên tổng mục tiêu.' }),
+    ],
+    'Đồng ý điều chỉnh tiến độ quý 2, giữ nguyên tổng mục tiêu.',
+  ),
+  approved2026(
+    'G2',
+    1,
+    [
+      r('Bán lẻ 045', 'Data Lake phân tích khách hàng', '2025-12', '2026-01', 6_500, 1_600, 'Đã chốt phạm vi với khách hàng'),
+      r('Bán lẻ 045', 'Hệ thống bán lẻ đa kênh', '2025-12', '2026-02', 48_000, 14_400, 'Khách hàng hiện hữu'),
+      r('Kho bạc 045', 'Chuyển đổi số kho bạc', '2026-09', '2026-12', 15_500, 3_900, 'Giai đoạn 1, khả năng mở rộng GĐ2 năm 2027'),
+    ],
+    firstRound('G2', '2025-12-05', '2025-12-16', '2025-12-23'),
+  ),
+  approved2026(
+    'G3',
+    1,
+    [
+      r('Tổng công ty 038', 'Hệ thống giám sát dữ liệu tập trung', '2025-12', '2026-02', 12_500, 3_750, 'Đã trình chủ trương, dự kiến ký Q1'),
+      r('Tổng công ty 038', 'Nâng cấp hạ tầng giám sát GĐ2', '2026-07', '2026-10', 7_500, 1_900, 'Nối tiếp hệ thống giám sát GĐ1'),
+    ],
+    firstRound('G3', '2025-12-08', '2025-12-17', '2025-12-23'),
+  ),
+  approved2026(
+    'G4',
+    2,
+    [
+      r('Sản xuất 061', 'Nền tảng IoT nhà máy', '2025-11', '2026-01', 120_000, 30_000, 'Đã trúng thầu'),
+      r('Sản xuất 061', 'Triển khai ERP giai đoạn 2', '2026-04', '2026-07', 22_000, 5_500, 'Nối tiếp ERP GĐ1 (061.015) kết thúc 06/2026'),
+      r('Sản xuất 061', 'Bảo trì hệ thống MES', '2026-09', '2026-11', 8_000, 2_400),
+    ],
+    [
+      ...firstRound('G4', '2025-12-04', '2025-12-15', '2025-12-22'),
+      log('2026-09-08T02:00:00.000Z', 'GĐK G4', 'Lưu nháp', 2, { changes: ['Sửa Bảo trì hệ thống MES: ký HĐ 09/2026 → 11/2026; HĐ ký mới 10,000 → 8,000; LN gộp 3,000 → 2,400', 'Sửa Triển khai ERP giai đoạn 2: HĐ ký mới 20,000 → 22,000; LN gộp 5,000 → 5,500'] }),
+      log('2026-09-10T09:00:00.000Z', 'GĐK G4', 'Gửi BOD duyệt', 2),
+      log('2026-09-18T08:30:00.000Z', 'BOD', APPROVE, 2),
+    ],
+  ),
+  approved2026(
+    'BFSI',
+    2,
+    [
+      r('Ngân hàng 010', 'Hệ thống chấm điểm tín dụng', '2025-11', '2026-01', 450_000, 112_500, 'Đã trúng thầu, đàm phán giá trị cuối'),
+      r('CÔNG TY CỔ PHẦN GALAXY TECHNOLOGY SERVICES', 'HDBank Staffing', '2025-12', '2026-01', 4_800, 720, 'Gia hạn HĐ cho thuê nhân sự'),
+      r('CÔNG TY CỔ PHẦN ATOMI DIGITAL', 'LPB Staffing', '2025-12', '2026-01', 1_200, 180, 'Gia hạn HĐ cho thuê nhân sự'),
+      r('Ngân hàng 010', 'Cho thuê nhân sự kiểm thử', '2026-05', '2026-06', 6_000, -600, 'Chấp nhận lỗ để giữ khách hàng, bù bằng Core Banking Mobile Upgrade'),
+      r('Ngân hàng 010', 'Core Banking Mobile Upgrade', '2026-08', '2026-10', 38_000, 9_500, 'Khách hàng đã gửi RFP sơ bộ, tham chiếu dự án chấm điểm tín dụng'),
+    ],
+    [
+      ...firstRound('BFSI', '2025-12-02', '2025-12-12', ''),
+      log('2025-12-18T08:30:00.000Z', 'BOD', 'BOD từ chối', 1, { note: 'Bổ sung thuyết minh cho Core Banking Mobile Upgrade; LN gộp chấm điểm tín dụng cần đạt tối thiểu 25%.' }),
+      log('2025-12-22T03:00:00.000Z', 'GĐK BFSI', 'Gửi BOD duyệt', 2, { changes: ['Sửa Hệ thống chấm điểm tín dụng: LN gộp 99,000 → 112,500', 'Sửa Core Banking Mobile Upgrade: thuyết minh'] }),
+      log('2025-12-26T08:30:00.000Z', 'BOD', APPROVE, 2),
+    ],
+  ),
+  approved2026(
+    'GPDV',
+    1,
+    [
+      r('CÔNG TY CỔ PHẦN CÔNG NGHỆ TÀI CHÍNH DIGILEND', 'Digilend', '2025-12', '2026-01', 600, 150, 'Gia hạn HĐ dịch vụ'),
+      r('Tổng công ty 077', 'Dịch vụ vận hành hạ tầng', '2025-12', '2026-01', 500, 125, 'Gia hạn HĐ vận hành'),
+      r('Tổng công ty 077', 'Giám sát an ninh mạng SOC', '2026-06', '2026-08', 900, -150, 'Năm đầu đầu tư hạ tầng SOC, lỗ; có lãi từ năm 2027'),
+    ],
+    firstRound('GPDV', '2025-12-09', '2025-12-18', '2025-12-24'),
+  ),
+);
 
 interface Ctx {
   plans: TargetPlan[];
@@ -257,12 +364,39 @@ const statusText = (p: TargetPlan) => `${p.status} — Phiên bản ${String(p.v
 const C_VALUE = '#1f5fa8';
 const C_GP = '#e0883a';
 
+const C_LOSS = '#c0392b';
+
+/**
+ * Trục giá trị: phần dương chia 4–5 vạch "đẹp"; có số âm thì thêm vùng âm phía dưới 0
+ * (tối thiểu ~12% chiều cao để cột lỗ nhỏ vẫn nhìn thấy), làm tròn theo nửa bước chia.
+ */
+const niceAxis = (lo: number, hi: number) => {
+  const raw = Math.max(1, hi) / 4;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map((k) => k * mag).find((x) => x >= raw) || 10 * mag;
+  const top = Math.max(step, Math.ceil(hi / step) * step);
+  const ticks: number[] = [];
+  for (let t = 0; t <= top + step / 2; t += step) ticks.push(Math.round(t));
+  let bottom = 0;
+  if (lo < 0) {
+    const half = step / 2;
+    bottom = -Math.ceil(Math.max(-lo, top * 0.12) / half) * half;
+    for (let t = -step; t > bottom + half / 2; t -= step) ticks.unshift(Math.round(t));
+    ticks.unshift(Math.round(bottom));
+  }
+  return { bottom, top, ticks };
+};
+
 const TargetChart: React.FC<{ data: { label: string; value: number; grossProfit: number }[] }> = ({ data }) => {
   const [hover, setHover] = useState<number | null>(null);
-  const max = Math.max(1, ...data.map((d) => Math.max(d.value, d.grossProfit)));
-  const step = Math.pow(10, Math.floor(Math.log10(max)));
-  const top = Math.ceil(max / step) * step;
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => t * top);
+  const hi = Math.max(1, ...data.map((d) => Math.max(d.value, d.grossProfit)));
+  const lo = Math.min(0, ...data.map((d) => Math.min(d.value, d.grossProfit)));
+  const { bottom, top, ticks } = niceAxis(lo, hi);
+  const span = top - bottom;
+  /** Vị trí (% từ đáy khung) của một giá trị. */
+  const y = (v: number) => ((v - bottom) / span) * 100;
+  const zero = y(0);
+  const hasLoss = data.some((d) => d.grossProfit < 0);
   if (!data.length) return <p className="py-10 text-center text-[12px] text-slate-400">Chưa có dữ liệu đăng ký.</p>;
   return (
     <div>
@@ -273,45 +407,65 @@ const TargetChart: React.FC<{ data: { label: string; value: number; grossProfit:
         <span className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-[2px]" style={{ background: C_GP }} /> LN gộp
         </span>
+        {hasLoss && (
+          <span className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-[2px]" style={{ background: C_LOSS }} /> LN gộp âm (lỗ)
+          </span>
+        )}
         <span className="text-slate-400">ĐVT: triệu VNĐ</span>
       </div>
       <div className="flex gap-2 mt-4">
         {/* trục giá trị */}
         <div className="relative w-14 h-[220px] text-[10.5px] text-slate-400 tabular-nums">
           {ticks.map((t) => (
-            <span key={t} className="absolute right-1 -translate-y-1/2" style={{ bottom: `${(t / top) * 100}%`, transform: 'translateY(50%)' }}>
+            <span key={t} className={`absolute right-1 ${t < 0 ? 'text-rose-500' : ''}`} style={{ bottom: `${y(t)}%`, transform: 'translateY(50%)' }}>
               {fmt(t)}
             </span>
           ))}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="relative h-[220px] border-b border-slate-300">
-            {ticks.slice(1).map((t) => (
-              <div key={t} className="absolute inset-x-0 border-t border-slate-100" style={{ bottom: `${(t / top) * 100}%` }} />
+          <div className="relative h-[220px] border-b border-slate-200">
+            {ticks.map((t) => (
+              <div key={t} className={`absolute inset-x-0 border-t ${t === 0 ? 'border-slate-400' : 'border-slate-100'}`} style={{ bottom: `${y(t)}%` }} />
             ))}
-            <div className="absolute inset-0 flex items-end">
+            {bottom < 0 && <div className="absolute inset-x-0 bottom-0 bg-rose-50/50" style={{ height: `${zero}%` }} />}
+            <div className="absolute inset-0 flex">
               {data.map((d, i) => (
                 <div
                   key={d.label}
-                  className="relative flex-1 h-full flex items-end justify-center gap-[2px] cursor-default"
+                  className="relative flex-1 h-full flex justify-center gap-[2px] cursor-default"
                   onMouseEnter={() => setHover(i)}
                   onMouseLeave={() => setHover(null)}
                 >
                   {hover === i && <div className="absolute inset-y-0 inset-x-1 bg-slate-100/70 rounded-[3px]" />}
-                  {[
+                  {([
                     [d.value, C_VALUE],
-                    [d.grossProfit, C_GP],
-                  ].map(([v, c], j) => (
-                    <div key={j} className="relative w-[min(26px,30%)] rounded-t-[4px]" style={{ height: `${((v as number) / top) * 100}%`, background: c as string }} />
+                    [d.grossProfit, d.grossProfit < 0 ? C_LOSS : C_GP],
+                  ] as [number, string][]).map(([v, c], j) => (
+                    <div key={j} className="relative w-[min(26px,30%)] h-full">
+                      {v !== 0 && (
+                        <div
+                          className={`absolute inset-x-0 ${v > 0 ? 'rounded-t-[4px]' : 'rounded-b-[4px]'}`}
+                          style={
+                            v > 0
+                              ? { bottom: `${zero}%`, height: `${y(v) - zero}%`, minHeight: 2, background: c }
+                              : { top: `${100 - zero}%`, height: `${zero - y(v)}%`, minHeight: 3, background: c }
+                          }
+                        >
+                          {v < 0 && <span className="absolute left-1/2 -translate-x-1/2 top-full mt-0.5 text-[10px] font-semibold text-rose-700 tabular-nums whitespace-nowrap">{fmt(v)}</span>}
+                        </div>
+                      )}
+                    </div>
                   ))}
                   {hover === i && (
-                    <div className="absolute z-10 bottom-full mb-1 left-1/2 -translate-x-1/2 whitespace-nowrap bg-white border border-slate-300 shadow-md rounded-[4px] px-2.5 py-1.5 text-[11.5px] text-slate-700">
+                    <div className="absolute z-10 top-0 -translate-y-full left-1/2 -translate-x-1/2 whitespace-nowrap bg-white border border-slate-300 shadow-md rounded-[4px] px-2.5 py-1.5 text-[11.5px] text-slate-700">
                       <p className="font-semibold text-slate-800 mb-0.5">{d.label}</p>
                       <p className="flex items-center gap-1.5 tabular-nums">
                         <span className="w-2 h-2 rounded-[2px]" style={{ background: C_VALUE }} /> Giá trị mục tiêu: <b>{fmt(d.value)}</b>
                       </p>
                       <p className="flex items-center gap-1.5 tabular-nums">
-                        <span className="w-2 h-2 rounded-[2px]" style={{ background: C_GP }} /> LN gộp: <b>{fmt(d.grossProfit)}</b> ({d.value ? pct(d.grossProfit / d.value) : '—'})
+                        <span className="w-2 h-2 rounded-[2px]" style={{ background: d.grossProfit < 0 ? C_LOSS : C_GP }} /> LN gộp:{' '}
+                        <b className={d.grossProfit < 0 ? 'text-rose-700' : ''}>{fmt(d.grossProfit)}</b> ({d.value ? pct(d.grossProfit / d.value) : '—'})
                       </p>
                     </div>
                   )}
@@ -373,7 +527,7 @@ const PlanHeader: React.FC<{ p: TargetPlan; editable?: boolean; onChange?: (patc
   </div>
 );
 
-const PlanSummary: React.FC<{ rows: TargetRow[] }> = ({ rows }) => {
+const PlanSummary: React.FC<{ rows: TargetRow[]; title?: string; totalLabel?: string }> = ({ rows, title = 'Tổng mục tiêu khối', totalLabel = 'TỔNG KHỐI' }) => {
   const [by, setBy] = useState<'customer' | 'time'>('customer');
   const t = totals(rows);
   const byCustomer = groupBy(rows, (x) => x.customer);
@@ -386,7 +540,7 @@ const PlanSummary: React.FC<{ rows: TargetRow[] }> = ({ rows }) => {
         <KpiBox label="% Lợi nhuận gộp" value={t.value ? pct(t.rate) : '—'} sub="LN gộp / Giá trị mục tiêu" tone={t.rate >= 0.2 ? 'good' : 'neutral'} />
       </div>
       <Panel
-        title="Tổng mục tiêu khối"
+        title={title}
         icon={Target}
         actions={
           <span className="flex items-center gap-2 text-[12px] text-slate-600">
@@ -421,14 +575,14 @@ const PlanSummary: React.FC<{ rows: TargetRow[] }> = ({ rows }) => {
                   <tr key={c.label} className={erp.tr}>
                     <td className={erp.td}>{c.label}</td>
                     <td className={`${erp.td} ${erp.num}`}>{fmt(c.value)}</td>
-                    <td className={`${erp.td} ${erp.num}`}>{fmt(c.grossProfit)}</td>
-                    <td className={`${erp.td} ${erp.num}`}>{c.value ? pct(c.grossProfit / c.value) : '—'}</td>
+                    <td className={`${erp.td} ${erp.num} ${c.grossProfit < 0 ? 'text-rose-700 font-semibold' : ''}`}>{fmt(c.grossProfit)}</td>
+                    <td className={`${erp.td} ${erp.num} ${c.grossProfit < 0 ? 'text-rose-700' : ''}`}>{c.value ? pct(c.grossProfit / c.value) : '—'}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr className={erp.totalRow}>
-                  <td className={erp.td}>TỔNG KHỐI</td>
+                  <td className={erp.td}>{totalLabel}</td>
                   <td className={`${erp.td} ${erp.num}`}>{fmt(t.value)}</td>
                   <td className={`${erp.td} ${erp.num}`}>{fmt(t.grossProfit)}</td>
                   <td className={`${erp.td} ${erp.num}`}>{t.value ? pct(t.rate) : '—'}</td>
@@ -443,6 +597,31 @@ const PlanSummary: React.FC<{ rows: TargetRow[] }> = ({ rows }) => {
 };
 
 /** Bảng "Đăng ký mục tiêu theo khách hàng / dự án". */
+/** Ô nhập số có dấu (cho phép âm). Giữ chuỗi đang gõ để gõ được "-" trước khi có chữ số. */
+const SignedInput: React.FC<{ value: number; onChange: (n: number) => void; className?: string }> = ({ value, onChange, className = '' }) => {
+  const [text, setText] = useState<string | null>(null);
+  const shown = text ?? (value ? fmt(value) : '');
+  return (
+    <input
+      value={shown}
+      onFocus={() => setText(value ? fmt(value) : '')}
+      onBlur={() => setText(null)}
+      onChange={(e) => {
+        const raw = e.target.value.replace(/[^\d-]/g, '');
+        const neg = raw.startsWith('-');
+        const digits = raw.replace(/-/g, '');
+        const n = (neg ? -1 : 1) * (Number(digits) || 0);
+        setText(digits ? (neg ? '-' : '') + fmt(Number(digits)) : neg ? '-' : '');
+        onChange(n);
+      }}
+      inputMode="text"
+      placeholder="0"
+      title="LN gộp âm (dự án lỗ): gõ dấu - ở đầu, ví dụ -500"
+      className={`${className} text-right tabular-nums ${value < 0 ? 'text-rose-700 font-semibold' : ''}`}
+    />
+  );
+};
+
 /** Ô nhập tháng dạng MM/YYYY (lưu YYYY-MM). Gõ "2/2027", "02/2027" hoặc "022027". */
 const MonthInput: React.FC<{ value: string; onChange: (ym: string) => void; className: string }> = ({ value, onChange, className }) => {
   const [text, setText] = useState(value ? my(value) : '');
@@ -500,19 +679,25 @@ const RowsTable: React.FC<{
   onChange?: (rows: TargetRow[]) => void;
   onAdd?: () => void;
   customers?: string[];
-}> = ({ rows, editable, actions = editable, lockReason, onChange, onAdd, customers = [] }) => {
+  /** Xem tổng hợp nhiều hồ sơ: thêm cột "Khối · Năm" (hồ sơ nguồn của dòng). */
+  sourceOf?: (row: TargetRow) => string;
+  totalLabel?: string;
+}> = ({ rows, editable, actions = editable, lockReason, onChange, onAdd, customers = [], sourceOf, totalLabel = 'TỔNG MỤC TIÊU KHỐI' }) => {
+  const extra = sourceOf ? 1 : 0;
   const t = totals(rows);
   const set = (id: string, patch: Partial<TargetRow>) => onChange?.(rows.map((x) => (x.id === id ? { ...x, ...patch } : x)));
   const cell = 'w-full h-8 px-2 bg-transparent text-[12.5px] outline-none focus:bg-[#eaf2fc] focus:ring-1 focus:ring-inset focus:ring-[#1f5fa8]';
   const numIn = (v: number, on: (n: number) => void) => (
     <input value={v ? fmt(v) : ''} onChange={(e) => on(Number(e.target.value.replace(/[^\d]/g, '')) || 0)} inputMode="numeric" placeholder="0" className={`${cell} text-right tabular-nums`} />
   );
+  /** LN gộp được phép âm (dự án lỗ): gõ dấu "-" ở đầu. */
+  const signedIn = (v: number, on: (n: number) => void) => <SignedInput value={v} onChange={on} className={cell} />;
   return (
     <div className="overflow-x-auto">
       <table className={`${erp.table} min-w-[1100px]`}>
         <thead>
           <tr>
-            {['STT', 'Khách hàng', 'Tên dự án'].map((h) => (
+            {['STT', ...(sourceOf ? ['Khối · Năm'] : []), 'Khách hàng', 'Tên dự án'].map((h) => (
               <th key={h} rowSpan={2} className={`${erp.th} text-center border-t-0 first:border-l-0`}>
                 {h}
               </th>
@@ -544,6 +729,7 @@ const RowsTable: React.FC<{
           {rows.map((x, i) => (
             <tr key={x.id} className={erp.tr}>
               <td className={`${erp.td} text-center text-slate-500 border-l-0 w-12`}>{i + 1}</td>
+              {sourceOf && <td className={`${erp.td} whitespace-nowrap font-semibold text-[#1e3a5f]`}>{sourceOf(x)}</td>}
               {editable ? (
                 <>
                   <td className="border border-slate-200 p-0 w-44">
@@ -559,8 +745,8 @@ const RowsTable: React.FC<{
                     <MonthInput value={x.signMonth} onChange={(ym) => set(x.id, { signMonth: ym })} className={cell} />
                   </td>
                   <td className="border border-slate-200 p-0 w-32">{numIn(x.value, (n) => set(x.id, { value: n }))}</td>
-                  <td className="border border-slate-200 p-0 w-32">{numIn(x.grossProfit, (n) => set(x.id, { grossProfit: n }))}</td>
-                  <td className={`${erp.td} ${erp.num} w-28 text-slate-600`}>{x.value ? pct(x.grossProfit / x.value) : '—'}</td>
+                  <td className="border border-slate-200 p-0 w-32">{signedIn(x.grossProfit, (n) => set(x.id, { grossProfit: n }))}</td>
+                  <td className={`${erp.td} ${erp.num} w-28 ${x.grossProfit < 0 ? 'text-rose-700' : 'text-slate-600'}`}>{x.value ? pct(x.grossProfit / x.value) : '—'}</td>
                   <td className="border border-slate-200 p-0">
                     <input value={x.basis} onChange={(e) => set(x.id, { basis: e.target.value })} placeholder="Cơ sở đăng ký…" className={cell} />
                   </td>
@@ -577,8 +763,8 @@ const RowsTable: React.FC<{
                   <td className={`${erp.td} text-center`}>{my(x.tenderMonth)}</td>
                   <td className={`${erp.td} text-center`}>{my(x.signMonth)}</td>
                   <td className={`${erp.td} ${erp.num}`}>{fmt(x.value)}</td>
-                  <td className={`${erp.td} ${erp.num}`}>{fmt(x.grossProfit)}</td>
-                  <td className={`${erp.td} ${erp.num}`}>{x.value ? pct(x.grossProfit / x.value) : '—'}</td>
+                  <td className={`${erp.td} ${erp.num} ${x.grossProfit < 0 ? 'text-rose-700 font-semibold' : ''}`}>{fmt(x.grossProfit)}</td>
+                  <td className={`${erp.td} ${erp.num} ${x.grossProfit < 0 ? 'text-rose-700' : ''}`}>{x.value ? pct(x.grossProfit / x.value) : '—'}</td>
                   <td className={`${erp.td} text-slate-600 ${actions ? '' : 'border-r-0'}`}>{x.basis || '—'}</td>
                   {actions && (
                     <td className={`${erp.td} text-center border-r-0`}>
@@ -593,7 +779,7 @@ const RowsTable: React.FC<{
           ))}
           {!rows.length && (
             <tr>
-              <td colSpan={actions ? 10 : 9} className={`${erp.td} text-center text-slate-400 py-6 border-x-0`}>
+              <td colSpan={(actions ? 10 : 9) + extra} className={`${erp.td} text-center text-slate-400 py-6 border-x-0`}>
                 Chưa có dự án đăng ký. {editable && 'Bấm "+ Thêm dòng".'}
               </td>
             </tr>
@@ -601,8 +787,8 @@ const RowsTable: React.FC<{
         </tbody>
         <tfoot>
           <tr className={erp.totalRow}>
-            <td colSpan={5} className={`${erp.td} border-l-0`}>
-              TỔNG MỤC TIÊU KHỐI
+            <td colSpan={5 + extra} className={`${erp.td} border-l-0`}>
+              {totalLabel}
             </td>
             <td className={`${erp.td} ${erp.num}`}>{fmt(t.value)}</td>
             <td className={`${erp.td} ${erp.num}`}>{fmt(t.grossProfit)}</td>
@@ -611,7 +797,7 @@ const RowsTable: React.FC<{
           </tr>
           {actions && (
             <tr>
-              <td colSpan={10} className="border-t border-slate-200 px-2 py-1.5">
+              <td colSpan={10 + extra} className="border-t border-slate-200 px-2 py-1.5">
                 <button
                   type="button"
                   onClick={onAdd}
@@ -682,9 +868,12 @@ const GdkTab: React.FC<{ flash: (m: string) => void }> = ({ flash }) => {
   const today = new Date();
   // Quý 4 (tháng 10–12) mặc định chuẩn bị mục tiêu năm sau; còn lại là năm hiện tại.
   const defYear = today.getFullYear() + (today.getMonth() >= 9 ? 1 : 0);
+  // Năm được lập / sửa: năm hiện tại và năm sau. Bộ lọc xem thêm các năm đã có hồ sơ và "Tất cả".
   const years = [today.getFullYear(), today.getFullYear() + 1];
-  const [division, setDivision] = useState('G1');
-  const [year, setYear] = useState(defYear);
+  const viewYears = [...new Set([...years, ...plans.map((p) => p.year)])].sort((a, b) => a - b);
+  const [division, setDivision] = useState('G1'); // ALL_DIV = cả công ty
+  const [year, setYear] = useState(defYear); // ALL_YEAR (0) = tất cả các năm
+  const isAll = division === ALL_DIV || year === ALL_YEAR;
   // Bản thử nghiệm (chưa có đăng nhập / lịch thật): mặc định cho sửa cả ngoài kỳ; bỏ tick để thấy cơ chế khoá kỳ.
   const [ignoreLock, setIgnoreLock] = useState(true);
   const saved = plans.find((p) => p.division === division && p.year === year);
@@ -732,7 +921,8 @@ const GdkTab: React.FC<{ flash: (m: string) => void }> = ({ flash }) => {
       <div className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-1.5 text-[12px] text-slate-600">
           Khối
-          <select value={division} onChange={(e) => setDivision(e.target.value)} className={`${erp.input} w-28`}>
+          <select value={division} onChange={(e) => setDivision(e.target.value)} className={`${erp.input} w-40`}>
+            <option value={ALL_DIV}>Tất cả (cả công ty)</option>
             {DIVISIONS.map((d) => (
               <option key={d}>{d}</option>
             ))}
@@ -741,11 +931,20 @@ const GdkTab: React.FC<{ flash: (m: string) => void }> = ({ flash }) => {
         <label className="flex items-center gap-1.5 text-[12px] text-slate-600">
           Năm kế hoạch
           <select value={year} onChange={(e) => setYear(Number(e.target.value))} className={`${erp.input} w-28`}>
-            {years.map((y) => (
-              <option key={y}>{y}</option>
+            <option value={ALL_YEAR}>Tất cả</option>
+            {viewYears.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
             ))}
           </select>
         </label>
+        {isAll ? (
+          <span className="flex items-center gap-1.5 px-2.5 h-8 rounded-[3px] border border-sky-200 bg-sky-50 text-[12px] font-semibold text-sky-800">
+            <Eye size={13} /> Chế độ xem tổng hợp — chọn 1 khối và 1 năm để lập / sửa hồ sơ
+          </span>
+        ) : (
+          <>
         <span
           className={`flex items-center gap-1.5 px-2.5 h-8 rounded-[3px] border text-[12px] font-semibold ${
             win.open ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-slate-100 border-slate-300 text-slate-600'
@@ -758,8 +957,23 @@ const GdkTab: React.FC<{ flash: (m: string) => void }> = ({ flash }) => {
             <input type="checkbox" checked={ignoreLock} onChange={(e) => setIgnoreLock(e.target.checked)} className="accent-[#1f5fa8]" /> Chế độ thử: bỏ qua khoá kỳ
           </label>
         )}
+          </>
+        )}
       </div>
 
+      {isAll ? (
+        <AggregateView
+          plans={plans}
+          division={division}
+          year={year}
+          years={viewYears}
+          onOpen={(d, y) => {
+            setDivision(d);
+            setYear(y);
+          }}
+        />
+      ) : (
+      <>
       <Panel title="Mục tiêu kinh doanh" icon={Target}>
         <PlanHeader p={view} />
         {waiting && <p className="mt-3 text-[12px] text-amber-700">Hồ sơ đang chờ BOD duyệt — không sửa được cho tới khi BOD phê duyệt hoặc từ chối.</p>}
@@ -806,6 +1020,134 @@ const GdkTab: React.FC<{ flash: (m: string) => void }> = ({ flash }) => {
       </Panel>
 
       {current && <HistoryPanel p={current} />}
+      </>
+      )}
+    </>
+  );
+};
+
+// ==========================================================================
+// Xem tổng hợp: Khối = Tất cả (cả công ty) và / hoặc Năm = Tất cả — chỉ xem, không sửa
+// ==========================================================================
+const ALL_DIV = '__ALL__';
+const ALL_YEAR = 0;
+
+const AggregateView: React.FC<{ plans: TargetPlan[]; division: string; year: number; years: number[]; onOpen: (division: string, year: number) => void }> = ({
+  plans,
+  division,
+  year,
+  years,
+  onOpen,
+}) => {
+  const allDiv = division === ALL_DIV;
+  const allYear = year === ALL_YEAR;
+  const divs = allDiv ? DIVISIONS : [division];
+  const ys = allYear ? [...years].sort((a, b) => b - a) : [year];
+  const inScope = plans.filter((p) => divs.includes(p.division) && ys.includes(p.year));
+  // Hồ sơ bị BOD từ chối không cộng vào tổng (giống ô "Kế hoạch năm" ở màn Tổng quan).
+  const counted = inScope.filter((p) => p.status !== 'Từ chối');
+  const srcOf = new Map<string, string>(counted.flatMap((p) => p.rows.map((x) => [x.id, `${p.division} · ${p.year}`] as [string, string])));
+  const rows = counted.flatMap((p) => p.rows).sort((a, b) => (srcOf.get(a.id) || '').localeCompare(srcOf.get(b.id) || '') || a.signMonth.localeCompare(b.signMonth));
+  const scopeText = allDiv ? `Cả công ty (${DIVISIONS.length} khối)` : `Khối ${division}`;
+  const yearText = allYear ? `Tất cả (${Math.min(...years)} – ${Math.max(...years)})` : String(year);
+  const byStatus = (['Đã duyệt', 'Chờ BOD duyệt', 'Bản nháp', 'Từ chối'] as TargetStatus[]).map((st) => [st, inScope.filter((p) => p.status === st).length] as const).filter(([, n]) => n);
+  const label = allDiv ? 'công ty' : 'khối';
+  // Bảng tổng hợp: mỗi (năm × khối) trong phạm vi một dòng, kể cả khối chưa lập hồ sơ.
+  const grid = ys.flatMap((y) => divs.map((d) => ({ d, y, p: plans.find((x) => x.division === d && x.year === y) })));
+
+  return (
+    <>
+      <Panel title="Mục tiêu kinh doanh" icon={Target}>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {[
+            ['Phạm vi', scopeText],
+            ['Năm kế hoạch', yearText],
+            ['Số hồ sơ', `${inScope.length} hồ sơ · ${rows.length} dự án đăng ký`],
+            [
+              'Trạng thái hồ sơ',
+              byStatus.length ? (
+                <span className="flex flex-wrap gap-1">
+                  {byStatus.map(([st, n]) => (
+                    <Tag key={st} cls={STATUS_CLS[st]}>
+                      {st}: {n}
+                    </Tag>
+                  ))}
+                </span>
+              ) : (
+                <span className="text-slate-400 font-normal">Chưa có hồ sơ</span>
+              ),
+            ],
+          ].map(([k, v]) => (
+            <div key={k as string}>
+              <p className="text-[11.5px] text-slate-500 mb-1">{k}</p>
+              <div className="min-h-8 flex items-center text-[13px] font-semibold text-slate-800">{v}</div>
+            </div>
+          ))}
+        </div>
+      </Panel>
+
+      <PlanSummary rows={rows} title={`Tổng mục tiêu ${label}`} totalLabel={allDiv ? 'TỔNG CÔNG TY' : 'TỔNG KHỐI'} />
+
+      <Panel
+        title={allDiv ? 'Tổng hợp theo khối' : `Tổng hợp theo năm — khối ${division}`}
+        icon={ClipboardCheck}
+        noPad
+        footer="Bấm vào một dòng để mở hồ sơ của khối / năm đó. Hồ sơ bị BOD từ chối không cộng vào tổng. ĐVT: triệu VNĐ"
+      >
+        <table className={erp.table}>
+          <thead>
+            <tr>
+              {['Khối', 'Năm kế hoạch', 'Người lập', 'Trạng thái hồ sơ', 'Số dự án', 'Tổng giá trị mục tiêu', 'LN gộp', '% LN gộp', ''].map((h, i) => (
+                <th key={h || i} className={`${erp.th} ${i >= 4 && i <= 7 ? 'text-right' : 'text-left'} border-t-0 first:border-l-0 last:border-r-0`}>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {grid.map(({ d, y, p }) => {
+              const t = totals(p?.rows || []);
+              const out = p?.status === 'Từ chối';
+              return (
+                <tr key={`${d}-${y}`} onClick={() => onOpen(d, y)} className={`${erp.tr} cursor-pointer ${out ? 'text-slate-400' : ''}`}>
+                  <td className={`${erp.td} border-l-0 font-semibold`}>{d}</td>
+                  <td className={erp.td}>{y}</td>
+                  <td className={erp.td}>{p?.author || '—'}</td>
+                  <td className={erp.td}>{p ? <Tag cls={STATUS_CLS[p.status]}>{statusText(p)}</Tag> : <span className="text-slate-400">Chưa lập</span>}</td>
+                  <td className={`${erp.td} ${erp.num}`}>{p ? p.rows.length : '—'}</td>
+                  <td className={`${erp.td} ${erp.num} ${out ? 'line-through' : ''}`}>{p ? fmt(t.value) : '—'}</td>
+                  <td className={`${erp.td} ${erp.num} ${out ? 'line-through' : ''}`}>{p ? fmt(t.grossProfit) : '—'}</td>
+                  <td className={`${erp.td} ${erp.num}`}>{p && t.value ? pct(t.rate) : '—'}</td>
+                  <td className={`${erp.td} border-r-0 text-center`}>
+                    <span className="text-[#1f5fa8] underline text-[12px]">{p ? 'Mở hồ sơ' : 'Lập hồ sơ'}</span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            {(() => {
+              const t = totals(rows);
+              return (
+                <tr className={erp.totalRow}>
+                  <td colSpan={4} className={`${erp.td} border-l-0`}>
+                    {allDiv ? 'TỔNG CÔNG TY' : 'TỔNG KHỐI'} ({counted.length} hồ sơ)
+                  </td>
+                  <td className={`${erp.td} ${erp.num}`}>{rows.length}</td>
+                  <td className={`${erp.td} ${erp.num}`}>{fmt(t.value)}</td>
+                  <td className={`${erp.td} ${erp.num}`}>{fmt(t.grossProfit)}</td>
+                  <td className={`${erp.td} ${erp.num}`}>{t.value ? pct(t.rate) : '—'}</td>
+                  <td className={`${erp.td} border-r-0`} />
+                </tr>
+              );
+            })()}
+          </tfoot>
+        </table>
+      </Panel>
+
+      <Panel title="Danh sách dự án đăng ký" icon={PenLine} noPad footer="Chế độ xem tổng hợp — chỉ xem. Chọn 1 khối và 1 năm ở bộ lọc phía trên để lập / sửa hồ sơ.">
+        <RowsTable rows={rows} sourceOf={(x) => srcOf.get(x.id) || ''} totalLabel={allDiv ? 'TỔNG MỤC TIÊU CÔNG TY' : 'TỔNG MỤC TIÊU KHỐI'} />
+      </Panel>
     </>
   );
 };
