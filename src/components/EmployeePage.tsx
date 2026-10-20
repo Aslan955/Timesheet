@@ -1828,21 +1828,18 @@ const EmployeeDetail: React.FC<{
                     <span className={`mt-0.5 w-8 h-8 shrink-0 rounded-full flex items-center justify-center ${cur ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                       <FileSignature size={15} />
                     </span>
-                    <div className="min-w-0 flex-1">
-                      {cur ? <Tag cls={contractState(cur).cls}>{contractState(cur).text}</Tag> : <Tag cls="bg-slate-100 text-slate-600 border-slate-300">Chưa có</Tag>}
-                      <p className="text-[12.5px] text-slate-700 mt-1 truncate">
-                        {cur ? (
-                          <>
-                            Số <span className="font-semibold">{cur.no}</span> · {cur.type}
-                          </>
-                        ) : (
-                          'Chưa có hợp đồng trong hệ thống'
-                        )}
-                      </p>
-                      {cur && (
-                        <p className="text-[12px] text-slate-500">
-                          Thời hạn {dmy(cur.from)} → {cur.to ? dmy(cur.to) : 'không thời hạn'}
-                        </p>
+                    <div className="min-w-0 flex-1 text-[12.5px]">
+                      {cur ? (
+                        <dl className="grid grid-cols-[100px_1fr] gap-x-2 gap-y-0.5">
+                          <dt className="text-slate-500">Loại hợp đồng</dt>
+                          <dd className="font-semibold text-slate-800">{cur.type}</dd>
+                          <dt className="text-slate-500">Thời gian</dt>
+                          <dd className="text-slate-800 tabular-nums">
+                            {dmy(cur.from)} → {cur.to ? dmy(cur.to) : 'Không thời hạn'}
+                          </dd>
+                        </dl>
+                      ) : (
+                        <p className="pt-1.5 text-slate-500">Chưa có hợp đồng trong hệ thống</p>
                       )}
                     </div>
                   </div>
