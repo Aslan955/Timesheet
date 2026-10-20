@@ -1052,8 +1052,6 @@ const AggregateView: React.FC<{ plans: TargetPlan[]; division: string; year: num
   const yearText = allYear ? `Tất cả (${Math.min(...years)} – ${Math.max(...years)})` : String(year);
   const byStatus = (['Đã duyệt', 'Chờ BOD duyệt', 'Bản nháp', 'Từ chối'] as TargetStatus[]).map((st) => [st, inScope.filter((p) => p.status === st).length] as const).filter(([, n]) => n);
   const label = allDiv ? 'công ty' : 'khối';
-  // Bảng tổng hợp: mỗi (năm × khối) trong phạm vi một dòng, kể cả khối chưa lập hồ sơ.
-  const grid = ys.flatMap((y) => divs.map((d) => ({ d, y, p: plans.find((x) => x.division === d && x.year === y) })));
 
   return (
     <>
@@ -1087,63 +1085,6 @@ const AggregateView: React.FC<{ plans: TargetPlan[]; division: string; year: num
       </Panel>
 
       <PlanSummary rows={rows} title={`Tổng mục tiêu ${label}`} totalLabel={allDiv ? 'TỔNG CÔNG TY' : 'TỔNG KHỐI'} />
-
-      <Panel
-        title={allDiv ? 'Tổng hợp theo khối' : `Tổng hợp theo năm — khối ${division}`}
-        icon={ClipboardCheck}
-        noPad
-        footer="Bấm vào một dòng để mở hồ sơ của khối / năm đó. Hồ sơ bị BOD từ chối không cộng vào tổng. ĐVT: triệu VNĐ"
-      >
-        <table className={erp.table}>
-          <thead>
-            <tr>
-              {['Khối', 'Năm kế hoạch', 'Người lập', 'Trạng thái hồ sơ', 'Số dự án', 'Tổng giá trị mục tiêu', 'LN gộp', '% LN gộp', ''].map((h, i) => (
-                <th key={h || i} className={`${erp.th} ${i >= 4 && i <= 7 ? 'text-right' : 'text-left'} border-t-0 first:border-l-0 last:border-r-0`}>
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {grid.map(({ d, y, p }) => {
-              const t = totals(p?.rows || []);
-              const out = p?.status === 'Từ chối';
-              return (
-                <tr key={`${d}-${y}`} onClick={() => onOpen(d, y)} className={`${erp.tr} cursor-pointer ${out ? 'text-slate-400' : ''}`}>
-                  <td className={`${erp.td} border-l-0 font-semibold`}>{d}</td>
-                  <td className={erp.td}>{y}</td>
-                  <td className={erp.td}>{p?.author || '—'}</td>
-                  <td className={erp.td}>{p ? <Tag cls={STATUS_CLS[p.status]}>{statusText(p)}</Tag> : <span className="text-slate-400">Chưa lập</span>}</td>
-                  <td className={`${erp.td} ${erp.num}`}>{p ? p.rows.length : '—'}</td>
-                  <td className={`${erp.td} ${erp.num} ${out ? 'line-through' : ''}`}>{p ? fmt(t.value) : '—'}</td>
-                  <td className={`${erp.td} ${erp.num} ${out ? 'line-through' : ''}`}>{p ? fmt(t.grossProfit) : '—'}</td>
-                  <td className={`${erp.td} ${erp.num}`}>{p && t.value ? pct(t.rate) : '—'}</td>
-                  <td className={`${erp.td} border-r-0 text-center`}>
-                    <span className="text-[#1f5fa8] underline text-[12px]">{p ? 'Mở hồ sơ' : 'Lập hồ sơ'}</span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            {(() => {
-              const t = totals(rows);
-              return (
-                <tr className={erp.totalRow}>
-                  <td colSpan={4} className={`${erp.td} border-l-0`}>
-                    {allDiv ? 'TỔNG CÔNG TY' : 'TỔNG KHỐI'} ({counted.length} hồ sơ)
-                  </td>
-                  <td className={`${erp.td} ${erp.num}`}>{rows.length}</td>
-                  <td className={`${erp.td} ${erp.num}`}>{fmt(t.value)}</td>
-                  <td className={`${erp.td} ${erp.num}`}>{fmt(t.grossProfit)}</td>
-                  <td className={`${erp.td} ${erp.num}`}>{t.value ? pct(t.rate) : '—'}</td>
-                  <td className={`${erp.td} border-r-0`} />
-                </tr>
-              );
-            })()}
-          </tfoot>
-        </table>
-      </Panel>
 
       <Panel title="Danh sách dự án đăng ký" icon={PenLine} noPad footer="Chế độ xem tổng hợp — chỉ xem. Chọn 1 khối và 1 năm ở bộ lọc phía trên để lập / sửa hồ sơ.">
         <RowsTable rows={rows} sourceOf={(x) => srcOf.get(x.id) || ''} totalLabel={allDiv ? 'TỔNG MỤC TIÊU CÔNG TY' : 'TỔNG MỤC TIÊU KHỐI'} />

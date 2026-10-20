@@ -8,18 +8,18 @@
  *      Thanh tiêu đề: [Quay lại] … Vai trò · [Xuất hồ sơ] [Sửa] [Xoá]; dải thông tin Mã NV · Trạng thái · Hợp đồng · Cập nhật
  *      Khung "Nhân viên": ảnh 3×4 + Mã NV, Họ và tên, UserName, Email công ty, Khối, Phòng ban, Vị trí, Level
  *      Tab Thông tin nhân sự: Công việc · Thông tin cá nhân · Học vấn & kinh nghiệm · Giấy tờ, thuế & ngân hàng ·
- *                             Hợp đồng & tài liệu
- *      Tab Hợp đồng: danh sách hợp đồng lao động, thêm / xoá ngay trên bảng
+ *                             Hợp đồng & tài liệu (chỉ hiện Loại hợp đồng — chi tiết ở màn Contracts, nút "Quản lý hợp đồng") · Ghi chú
  *      Tab Lịch sử: mọi lần tạo / sửa (kèm nội dung thay đổi) / hợp đồng / tài liệu
+ *  • Dữ liệu nhân sự dùng chung với màn Contracts (useEmployees / setEmployees).
  *  • Sửa trực tiếp trên màn chi tiết (không popup) → [Huỷ sửa] [Lưu thay đổi].
  *  • Vai trò: Nhân sự (HR) — xem đủ, sửa, xoá, xuất hồ sơ, thêm hợp đồng / tài liệu / ảnh;
  *             Quản lý trực tiếp — chỉ xem, số CCCD / MST / BHXH / tài khoản bị che; Nhân viên — chỉ xem hồ sơ của mình.
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import * as XLSX from 'xlsx';
 import {
   AlertTriangle, Briefcase, Calendar, Check, ChevronDown, Camera, Download, FileSignature, FileSpreadsheet, FileText, GraduationCap, Hash, History, IdCard,
-  LayoutList, Lock, NotebookPen, Paperclip, Pencil, Plus, Save, Search, Table2, Trash2, Upload, User, UserCog, UserPlus, X,
+  LayoutList, Lock, NotebookPen, Paperclip, Pencil, Plus, Save, Search, Table2, Trash2, Upload, User, UserPlus, X,
 } from 'lucide-react';
 import { Btn, ErpPage, ErpTitleBar, FolderTabs, KpiBox, Panel, Tag, erp } from './erp/Erp';
 import { DIVISIONS } from '../business/BusinessProjectContext';
@@ -31,24 +31,41 @@ type Role = 'HR' | 'QL' | 'NV';
 const ROLE_LABEL: Record<Role, string> = { HR: 'Nhân sự (HR)', QL: 'Quản lý trực tiếp', NV: 'Nhân viên (bản thân)' };
 const ROLE_USER: Record<Role, string> = { HR: 'hr.lan', QL: 'quanly', NV: 'nhanvien' };
 
-const STATUSES = ['Đang làm việc', 'Thử việc', 'Nghỉ thai sản', 'Đã nghỉ việc'] as const;
-type EmpStatus = (typeof STATUSES)[number];
-const STATUS_CLS: Record<EmpStatus, string> = {
+export const STATUSES = ['Đang làm việc', 'Thử việc', 'Nghỉ thai sản', 'Đã nghỉ việc'] as const;
+export type EmpStatus = (typeof STATUSES)[number];
+export const STATUS_CLS: Record<EmpStatus, string> = {
   'Đang làm việc': 'bg-emerald-50 text-emerald-700 border-emerald-300',
   'Thử việc': 'bg-amber-50 text-amber-700 border-amber-300',
   'Nghỉ thai sản': 'bg-violet-50 text-violet-700 border-violet-300',
   'Đã nghỉ việc': 'bg-slate-100 text-slate-600 border-slate-300',
 };
-const LEVELS = ['Intern', 'Fresher', 'Junior', 'Middle', 'Senior', 'Lead', 'Manager'];
-const POSITIONS = ['Developer', 'QC', 'BA', 'PM', 'DevOps', 'Designer', 'HR', 'Kế toán'];
-const DEPARTMENTS = ['Staffing', 'Delivery', 'Sản xuất', 'Kinh doanh', 'Hành chính – Nhân sự', 'Tài chính – Kế toán'];
-const COMPANIES = ['AEQUITAS', 'VTX GROUP'];
+export const LEVELS = ['Intern', 'Fresher', 'Junior', 'Middle', 'Senior', 'Lead', 'Manager'];
+export const POSITIONS = ['Developer', 'QC', 'BA', 'PM', 'DevOps', 'Designer', 'HR', 'Kế toán'];
+export const DEPARTMENTS = ['Staffing', 'Delivery', 'Sản xuất', 'Kinh doanh', 'Hành chính – Nhân sự', 'Tài chính – Kế toán'];
+export const COMPANIES = ['AEQUITAS', 'VTX GROUP'];
 /** Tài khoản đăng nhập hệ thống chưa gán nhân viên (UserName chọn từ danh sách tài khoản). */
 const FREE_ACCOUNTS = ['tuanna', 'huongpt', 'longnh', 'trangdt', 'quangvm', 'hainv'];
 /** Quản lý không thuộc danh sách nhân sự mẫu (BOD / GĐK). */
-const EXTRA_MANAGERS = ['NGUYỄN QUANG HUY'];
-const CONTRACT_TYPES = ['Thử việc', 'Xác định thời hạn 12 tháng', 'Xác định thời hạn 24 tháng', 'Không xác định thời hạn'];
+export const EXTRA_MANAGERS = ['NGUYỄN QUANG HUY'];
+/** Loại hợp đồng lao động (theo iHRP) · số tháng (0 = không thời hạn) · ký hiệu dùng trong Số HĐ. */
+export const CONTRACT_TYPES = ['Thử việc', 'Xác định thời hạn 12 tháng', 'Xác định thời hạn 24 tháng', 'Xác định thời hạn 36 tháng', 'Không xác định thời hạn'];
+export const CONTRACT_META: Record<string, { months: number; abbr: string }> = {
+  'Thử việc': { months: 2, abbr: 'TV' },
+  'Xác định thời hạn 12 tháng': { months: 12, abbr: 'XĐ12' },
+  'Xác định thời hạn 24 tháng': { months: 24, abbr: 'XĐ24' },
+  'Xác định thời hạn 36 tháng': { months: 36, abbr: 'XĐ36' },
+  'Không xác định thời hạn': { months: 0, abbr: 'KXĐ' },
+};
+export const WORK_TIMES = ['Giờ hành chính (8h/ngày, T2–T6)', 'Ca kíp', 'Bán thời gian', 'Linh hoạt'];
+export const WORKPLACES = ['Văn phòng Hà Nội', 'Văn phòng TP. Hồ Chí Minh', 'Văn phòng Đà Nẵng', 'Onsite tại khách hàng'];
+/** Lương cơ bản gốc mẫu theo Level (VNĐ). */
+const BASE_SALARY: Record<string, number> = { Intern: 5_000_000, Fresher: 9_000_000, Junior: 14_000_000, Middle: 22_000_000, Senior: 32_000_000, Lead: 42_000_000, Manager: 55_000_000 };
 
+export interface EmpAllowance {
+  id: string;
+  name: string;
+  amount: number; // VNĐ / tháng
+}
 export interface EmpContract {
   id: string;
   no: string;
@@ -57,8 +74,28 @@ export interface EmpContract {
   from: string;
   to: string; // '' = không thời hạn
   note: string;
+  /** Mô tả công việc · Nơi làm việc · Thời gian làm việc */
+  jobDesc?: string;
+  workplace?: string;
+  workTime?: string;
+  /** Người ký (đại diện công ty) · chức danh · nơi ký · theo giấy uỷ quyền */
+  signer?: string;
+  signerTitle?: string;
+  signPlace?: string;
+  authorization?: string;
+  /** Lương cơ bản gốc (VNĐ) · mức hưởng (%) — lương cơ bản = gốc × mức hưởng */
+  baseSalary?: number;
+  rate?: number;
+  allowances?: EmpAllowance[];
+  /** Bảo hiểm tham gia */
+  insurance?: { bhxh: boolean; bhyt: boolean; bhtn: boolean };
+  files?: EmpFile[];
+  createdAt?: string;
+  createdBy?: string;
+  updatedAt?: string;
+  updatedBy?: string;
 }
-interface EmpFile {
+export interface EmpFile {
   id: string;
   name: string;
   size: number;
@@ -105,6 +142,8 @@ export interface Employee {
   personalEmail: string;
   currentAddress: string;
   permanentAddress: string;
+  /** Số người phụ thuộc (giảm trừ gia cảnh). */
+  dependents: string;
   // Học vấn
   education: string;
   school: string;
@@ -131,8 +170,8 @@ export interface Employee {
   updatedBy: string;
 }
 
-const uid = () => Math.random().toString(36).slice(2, 9);
-const nowIso = () => new Date().toISOString();
+export const uid = () => Math.random().toString(36).slice(2, 9);
+export const nowIso = () => new Date().toISOString();
 
 /** Dữ liệu mẫu — họ tên, giấy tờ, tài khoản đều là giả lập. */
 const mk = (
@@ -150,7 +189,7 @@ const mk = (
   const official = status === 'Thử việc' ? '' : addMonths(joinDate, 2);
   const created = `${joinDate}T02:00:00.000Z`;
   const words = fullName.trim().split(/\s+/).filter(Boolean);
-  return {
+  const emp: Employee = {
     id: code,
     code,
     surname: words.slice(0, -1).join(' '),
@@ -179,6 +218,7 @@ const mk = (
     personalEmail: '',
     currentAddress: '',
     permanentAddress: '',
+    dependents: '0',
     education: 'Cử nhân',
     school: '',
     major: '',
@@ -192,18 +232,67 @@ const mk = (
     bankAccount: '',
     bankName: '',
     note: '',
-    contracts: official
-      ? [
-          { id: uid(), no: `HĐTV-${code}`, type: 'Thử việc', signDate: joinDate, from: joinDate, to: addDays(official, -1), note: '' },
-          { id: uid(), no: `HĐLĐ-${code}`, type: 'Xác định thời hạn 12 tháng', signDate: official, from: official, to: addDays(addMonths(official, 12), -1), note: '' },
-        ]
-      : [{ id: uid(), no: `HĐTV-${code}`, type: 'Thử việc', signDate: joinDate, from: joinDate, to: addDays(addMonths(joinDate, 2), -1), note: '' }],
+    contracts: [],
     files: [],
     history: [{ at: created, by: 'hr.lan', action: 'Tạo hồ sơ nhân viên' }],
     updatedAt: created,
     updatedBy: 'hr.lan',
     ...extra,
   };
+  if (!extra.contracts) emp.contracts = seedContracts(emp);
+  return emp;
+};
+
+/** Số HĐ theo mẫu iHRP: Mã NV / Năm hiệu lực / Ký hiệu loại HĐ (trùng thì thêm -2, -3…). */
+export const contractNo = (code: string, type: string, from: string, existing: string[] = []) => {
+  const base = `${code}/${(from || today()).slice(0, 4)}/${CONTRACT_META[type]?.abbr || 'HĐ'}`;
+  let no = base;
+  for (let i = 2; existing.includes(no); i++) no = `${base}-${i}`;
+  return no;
+};
+/** Ngày hết hiệu lực mặc định theo loại HĐ ('' với HĐ không xác định thời hạn). */
+export const contractEnd = (type: string, from: string) => {
+  const m = CONTRACT_META[type]?.months ?? 12;
+  return m && from ? addDays(addMonths(from, m), -1) : '';
+};
+/** Loại HĐ tiếp theo khi tái ký: Thử việc → 12 tháng → 24 tháng → Không xác định thời hạn (tối đa 2 lần HĐ xác định thời hạn). */
+export const nextContractType = (type: string) =>
+  type === 'Thử việc' ? 'Xác định thời hạn 12 tháng' : type === 'Xác định thời hạn 12 tháng' ? 'Xác định thời hạn 24 tháng' : 'Không xác định thời hạn';
+const SIGNER = { signer: 'NGUYỄN QUANG HUY', signerTitle: 'Tổng Giám đốc', signPlace: 'Hà Nội' };
+/** Dữ liệu mẫu: chuỗi HĐ Thử việc → 12 tháng → 24 tháng → Không thời hạn, đến hợp đồng đang hiệu lực hôm nay. */
+const seedContracts = (e: Employee): EmpContract[] => {
+  const out: EmpContract[] = [];
+  let from = e.joinDate;
+  let type = 'Thử việc';
+  const base = BASE_SALARY[e.level] || 14_000_000;
+  while (from && from <= today() && out.length < 6) {
+    const to = contractEnd(type, from);
+    const tv = type === 'Thử việc';
+    out.push({
+      id: uid(),
+      no: contractNo(e.code, type, from, out.map((c) => c.no)),
+      type,
+      signDate: from,
+      from,
+      to,
+      note: '',
+      jobDesc: `${e.position} — ${e.department}`,
+      workplace: WORKPLACES[0],
+      workTime: WORK_TIMES[0],
+      ...SIGNER,
+      baseSalary: base,
+      rate: tv ? 85 : 100,
+      allowances: tv ? [] : [{ id: uid(), name: 'Phụ cấp ăn trưa', amount: 730_000 }, { id: uid(), name: 'Phụ cấp điện thoại', amount: 300_000 }],
+      insurance: { bhxh: !tv, bhyt: !tv, bhtn: !tv },
+      files: [],
+      createdAt: `${from}T02:00:00.000Z`,
+      createdBy: 'hr.lan',
+    });
+    if (!to || to >= today()) break;
+    from = addDays(to, 1);
+    type = nextContractType(type);
+  }
+  return out;
 };
 
 const SEED: Employee[] = [
@@ -237,47 +326,71 @@ const SEED: Employee[] = [
     updatedBy: 'hr.lan',
   }),
   mk('V00412', 'TRẦN THỊ MAI ANH', 'anhttm', 'G1', 'Delivery', 'BA', 'Lead', '2023-08-01', 'Đang làm việc', {
-    gender: 'Nữ', birthDate: '1992-03-09', maritalStatus: 'Đã kết hôn', phone: '0987000412', school: 'Học viện Công nghệ Bưu chính Viễn thông', major: 'Công nghệ thông tin', gradYear: '2014', experience: '12', bankName: 'Vietcombank', bankAccount: '0011000000412', idNo: '001192000412', taxCode: '8100000412',
+    gender: 'Nữ', birthDate: '1992-03-09', maritalStatus: 'Đã kết hôn', dependents: '2', phone: '0987000412', school: 'Học viện Công nghệ Bưu chính Viễn thông', major: 'Công nghệ thông tin', gradYear: '2014', experience: '12', bankName: 'Vietcombank', bankAccount: '0011000000412', idNo: '001192000412', taxCode: '8100000412',
   }),
   mk('V00478', 'LÊ VĂN ĐỨC', 'duclv', 'G1', 'Sản xuất', 'Developer', 'Middle', '2024-02-19', 'Đang làm việc', {
     birthDate: '1997-11-02', techStack: 'Java, Spring Boot, Oracle', school: 'Đại học Bách khoa Hà Nội', major: 'Khoa học máy tính', gradYear: '2019', experience: '5', bankName: 'Techcombank', bankAccount: '19030000478',
   }),
   mk('V00501', 'PHẠM THU HÀ', 'hapt', 'G2', 'Delivery', 'PM', 'Manager', '2024-06-03', 'Nghỉ thai sản', {
-    gender: 'Nữ', birthDate: '1990-05-21', maritalStatus: 'Đã kết hôn', school: 'Đại học FPT', major: 'Kỹ thuật phần mềm', gradYear: '2012', experience: '13', bankName: 'BIDV',
+    gender: 'Nữ', birthDate: '1990-05-21', maritalStatus: 'Đã kết hôn', dependents: '1', school: 'Đại học FPT', major: 'Kỹ thuật phần mềm', gradYear: '2012', experience: '13', bankName: 'BIDV',
   }),
   mk('V00523', 'NGUYỄN ĐÌNH PHONG', 'phongnd', 'G3', 'Sản xuất', 'DevOps', 'Senior', '2024-10-14', 'Đang làm việc', {
     birthDate: '1993-08-30', techStack: 'Kubernetes, Terraform, AWS', autoAttendance: true, bankName: 'MB Bank',
   }),
   mk('V00540', 'ĐỖ HẢI YẾN', 'yendh', 'G4', 'Kinh doanh', 'BA', 'Junior', '2025-01-06', 'Đang làm việc', { gender: 'Nữ', birthDate: '1999-12-12' }),
   mk('V00561', 'VŨ ĐĂNG KHOA', 'khoavd', 'BFSI', 'Staffing', 'Developer', 'Senior', '2025-04-21', 'Đang làm việc', { techStack: '.NET, Angular, SQL Server', autoAttendance: true }),
-  mk('V00588', 'BÙI NGỌC LINH', 'linhbn', 'GPDV', 'Delivery', 'Designer', 'Middle', '2025-08-11', 'Đang làm việc', { gender: 'Nữ', techStack: 'Figma, Illustrator' }),
+  mk('V00588', 'BÙI NGỌC LINH', 'linhbn', 'GPDV', 'Delivery', 'Designer', 'Middle', '2025-09-29', 'Đang làm việc', { gender: 'Nữ', techStack: 'Figma, Illustrator' }),
   mk('V00602', 'ĐẶNG QUỐC BẢO', 'baodq', 'BFSI', 'Staffing', 'Developer', 'Junior', '2026-09-07', 'Thử việc', { techStack: 'React, Node.js' }),
   mk('V00610', 'NGÔ THỊ THANH', 'thanhnt', 'G1', 'Hành chính – Nhân sự', 'HR', 'Middle', '2026-09-21', 'Thử việc', { gender: 'Nữ' }),
   mk('V00377', 'TRỊNH CÔNG MINH', 'minhtc', 'G2', 'Sản xuất', 'Developer', 'Senior', '2022-05-16', 'Đã nghỉ việc', { leaveDate: '2026-06-30', techStack: 'PHP, Laravel' }),
 ];
 
-// Giữ dữ liệu khi chuyển sang màn khác rồi quay lại (prototype, chưa có API).
+// Kho dữ liệu nhân sự dùng chung (Employees ↔ Contracts); giữ khi chuyển màn (prototype, chưa có API).
 let STORE: Employee[] = SEED;
+const SUBS = new Set<() => void>();
+export const getEmployees = () => STORE;
+export const setEmployees = (fn: (l: Employee[]) => Employee[]) => {
+  STORE = fn(STORE);
+  SUBS.forEach((f) => f());
+};
+export const useEmployees = () =>
+  useSyncExternalStore(
+    (cb) => (SUBS.add(cb), () => void SUBS.delete(cb)),
+    () => STORE,
+  );
+/** Chuyển sang màn khác trong ứng dụng (App lắng nghe sự kiện này); payload đọc ở màn đích. */
+let NAV_PAYLOAD: { employeeId?: string } | null = null;
+export const navigateTo = (item: string, payload?: { employeeId?: string }) => {
+  NAV_PAYLOAD = payload || null;
+  window.dispatchEvent(new CustomEvent('imis:navigate', { detail: { item } }));
+};
+export const takeNavPayload = () => {
+  const p = NAV_PAYLOAD;
+  NAV_PAYLOAD = null;
+  return p;
+};
 
 // ==========================================================================
 // Ngày tháng & định dạng
 // ==========================================================================
-function addDays(iso: string, n: number) {
+export function addDays(iso: string, n: number) {
   const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
   d.setDate(d.getDate() + n);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-function addMonths(iso: string, n: number) {
+export function addMonths(iso: string, n: number) {
   const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
   d.setMonth(d.getMonth() + n);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-const dmy = (iso: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '');
+export const dmy = (iso: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '');
 const dmyhm = (iso: string) => {
   const d = new Date(iso);
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
-const today = () => new Date().toISOString().slice(0, 10);
+export function today() {
+  return new Date().toISOString().slice(0, 10);
+}
 const initials = (name: string) => {
   const w = name.trim().split(/\s+/).filter(Boolean);
   return w.length ? (w.length === 1 ? w[0][0] : w[0][0] + w[w.length - 1][0]).toUpperCase() : '?';
@@ -286,7 +399,7 @@ const initials = (name: string) => {
 const mask = (v: string) => (v ? `${'•'.repeat(Math.max(4, v.length - 3))}${v.slice(-3)}` : '');
 const fileSize = (n: number) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 
-const contractState = (c: EmpContract): { text: string; cls: string } => {
+export const contractState = (c: EmpContract): { text: string; cls: string } => {
   const t = today();
   if (c.from > t) return { text: 'Chưa hiệu lực', cls: 'bg-sky-50 text-sky-700 border-sky-300' };
   if (c.to && c.to < t) return { text: 'Hết hạn', cls: 'bg-slate-100 text-slate-500 border-slate-300' };
@@ -359,6 +472,7 @@ const SECTIONS: SectionDef[] = [
       { key: 'currentAddress', label: 'Địa chỉ hiện tại' },
       { key: 'vehicle', label: 'Thông tin xe', placeholder: 'Biển số, loại xe' },
       { key: 'permanentAddress', label: 'Địa chỉ thường trú' },
+      { key: 'dependents', label: 'Số người phụ thuộc', type: 'number', min: 0, max: 20, unit: 'người', placeholder: '0' },
     ],
   },
   {
@@ -419,6 +533,8 @@ const validate = (e: Employee, all: Employee[]): Record<string, string> => {
   if (e.userName && all.some((x) => x.id !== e.id && x.userName === e.userName)) err.userName = 'UserName đã gán cho nhân viên khác';
   if (e.gradYear && !/^(19|20)\d{2}$/.test(e.gradYear)) err.gradYear = 'Năm dạng YYYY';
   if (e.experience && !(Number(e.experience) >= 0 && Number(e.experience) <= 50)) err.experience = 'Từ 0 đến 50 năm';
+  if (e.dependents && !/^\d{1,2}$/.test(e.dependents)) err.dependents = 'Số nguyên từ 0 đến 20';
+  else if (Number(e.dependents) > 20) err.dependents = 'Số nguyên từ 0 đến 20';
   if (e.officialDate && e.joinDate && e.officialDate < e.joinDate) err.officialDate = 'Trước ngày vào làm';
   if (e.status === 'Đã nghỉ việc' && !e.leaveDate) err.leaveDate = 'Nhập ngày nghỉ việc';
   if (e.leaveDate && e.joinDate && e.leaveDate < e.joinDate) err.leaveDate = 'Trước ngày vào làm';
@@ -430,27 +546,9 @@ const validate = (e: Employee, all: Employee[]): Record<string, string> => {
 // ==========================================================================
 const CRUMBS = ['Human Resources', 'Employees'];
 
-const RoleSelect: React.FC<{ role: Role; onChange: (r: Role) => void; disabled?: boolean }> = ({ role, onChange, disabled }) => (
-  <label className="flex items-center gap-1.5 text-[12px] text-slate-600 border border-slate-300 rounded-[3px] bg-slate-50 pl-2">
-    <UserCog size={13} className="text-slate-500" /> Vai trò
-    <select
-      value={role}
-      disabled={disabled}
-      onChange={(e) => onChange(e.target.value as Role)}
-      className="h-8 px-1.5 bg-white border-l border-slate-300 text-[12px] font-semibold text-[#1e3a5f] outline-none cursor-pointer disabled:cursor-not-allowed disabled:text-slate-400"
-    >
-      {(Object.keys(ROLE_LABEL) as Role[]).map((r) => (
-        <option key={r} value={r}>
-          {ROLE_LABEL[r]}
-        </option>
-      ))}
-    </select>
-  </label>
-);
-
-const StatusTag: React.FC<{ status: EmpStatus }> = ({ status }) => <Tag cls={STATUS_CLS[status]}>{status}</Tag>;
+export const StatusTag: React.FC<{ status: EmpStatus }> = ({ status }) => <Tag cls={STATUS_CLS[status]}>{status}</Tag>;
 /** Ô checkbox: chế độ xem chỉ hiển thị (không bấm được), chế độ sửa bấm để chọn / bỏ chọn. */
-const CheckBox: React.FC<{ checked: boolean; onChange?: (v: boolean) => void; title?: string }> = ({ checked, onChange, title }) => (
+export const CheckBox: React.FC<{ checked: boolean; onChange?: (v: boolean) => void; title?: string }> = ({ checked, onChange, title }) => (
   <label className={`relative inline-flex items-center ${onChange ? 'cursor-pointer' : 'cursor-default'}`} title={title}>
     <input type="checkbox" checked={checked} disabled={!onChange} onChange={(e) => onChange?.(e.target.checked)} className="peer sr-only" />
     <span
@@ -467,8 +565,8 @@ const CheckBox: React.FC<{ checked: boolean; onChange?: (v: boolean) => void; ti
  * Lưới thông tin 2 cột dạng bảng (nhãn | giá trị | nhãn | giá trị) — như "Thông tin chi tiết dự án":
  * các hàng hai bên thẳng hàng, nhãn nền xám một dòng.
  */
-type InfoItem = { label: React.ReactNode; value: React.ReactNode };
-const InfoGrid: React.FC<{ left: InfoItem[]; right: InfoItem[]; labelW?: [number, number] }> = ({ left, right, labelW = [150, 168] }) => {
+export type InfoItem = { label: React.ReactNode; value: React.ReactNode };
+export const InfoGrid: React.FC<{ left: InfoItem[]; right: InfoItem[]; labelW?: [number, number] }> = ({ left, right, labelW = [150, 168] }) => {
   const n = Math.max(left.length, right.length);
   const lab = 'bg-[#f3f6fa] border-b border-r border-slate-200 px-3 py-2 flex items-center text-[13px] font-medium text-slate-600 whitespace-nowrap';
   const val = 'border-b border-slate-200 px-3 py-1.5 flex flex-col items-start justify-center min-h-[40px] text-[13px] text-slate-800 min-w-0 [&>input]:w-full [&>select]:w-full [&>textarea]:w-full';
@@ -502,7 +600,7 @@ const InfoGrid: React.FC<{ left: InfoItem[]; right: InfoItem[]; labelW?: [number
 };
 
 /** Ô ngày dạng dd/mm/yyyy (lưu YYYY-MM-DD). Gõ "26/03/2025", "26032025" hoặc bấm biểu tượng lịch. */
-const DateInput: React.FC<{ value: string; onChange: (iso: string) => void; className?: string; disabled?: boolean }> = ({ value, onChange, className = '', disabled }) => {
+export const DateInput: React.FC<{ value: string; onChange: (iso: string) => void; className?: string; disabled?: boolean }> = ({ value, onChange, className = '', disabled }) => {
   const [text, setText] = useState<string | null>(null);
   const pick = useRef<HTMLInputElement>(null);
   const parse = (t: string): string | null => {
@@ -643,10 +741,8 @@ const label = (f: FieldDef, editing: boolean) => (
 // Trang
 // ==========================================================================
 export const EmployeePage: React.FC = () => {
-  const [list, setList] = useState<Employee[]>(STORE);
-  useEffect(() => {
-    STORE = list;
-  }, [list]);
+  const list = useEmployees();
+  const setList = setEmployees;
   const [openId, setOpenId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [role, setRole] = useState<Role>('HR');
@@ -742,12 +838,12 @@ export const EmployeePage: React.FC = () => {
 };
 
 /** Hợp đồng đang áp dụng (mới nhất đã có hiệu lực). */
-const currentContract = (e: Employee) => [...e.contracts].filter((c) => c.from <= today()).sort((a, b) => b.from.localeCompare(a.from))[0];
+export const currentContract = (e: Employee) => [...e.contracts].filter((c) => c.from <= today()).sort((a, b) => b.from.localeCompare(a.from))[0];
 
 // ==========================================================================
 // Danh sách
 // ==========================================================================
-const LIST_HEAD = ['TT', 'Mã NV', 'Họ và tên', 'UserName', 'Email công ty', 'Khối', 'Phòng ban', 'Vị trí', 'Level', 'Quản lý trực tiếp', 'Ngày vào làm', 'Hợp đồng hiện tại', 'Hết hạn HĐ', 'Trạng thái'];
+const LIST_HEAD = ['TT', 'Mã NV', 'Họ và tên', 'UserName', 'Email công ty', 'Khối', 'Phòng ban', 'Vị trí', 'Level', 'Quản lý trực tiếp', 'Ngày vào làm', 'Loại hợp đồng', 'Trạng thái'];
 
 const EmployeeList: React.FC<{
   list: Employee[];
@@ -771,7 +867,6 @@ const EmployeeList: React.FC<{
   }, [list, q, div]);
   const rows = base.filter((e) => !st || e.status === st);
   const count = (s: EmpStatus) => base.filter((e) => e.status === s).length;
-  const expiring = base.filter((e) => e.status !== 'Đã nghỉ việc' && currentContract(e) && contractState(currentContract(e)!).text === 'Sắp hết hạn');
 
   const th = `${erp.th} text-center whitespace-normal leading-tight align-middle`;
   const kpi: { label: string; value: number; tone: 'good' | 'bad' | 'neutral'; s: EmpStatus | ''; sub: string }[] = [
@@ -788,7 +883,6 @@ const EmployeeList: React.FC<{
         title="Danh sách nhân sự"
         actions={
           <>
-            <RoleSelect role={role} onChange={setRole} />
             {role === 'HR' && (
               <>
                 <Btn icon={Upload} onClick={() => setShowImport((v) => !v)} className={showImport ? '!bg-[#eef4fb] !border-[#1f5fa8] !text-[#1f5fa8]' : ''}>
@@ -859,21 +953,8 @@ const EmployeeList: React.FC<{
             {role !== 'NV' && <ExportMenu rows={rows} all={list} role={role} />}
           </>
         }
-        footer={`${rows.length} / ${list.length} nhân viên · Đang xem với vai trò ${ROLE_LABEL[role]} · Bấm vào dòng để xem hồ sơ`}
+        footer={`${rows.length} / ${list.length} nhân viên · Bấm vào dòng để xem hồ sơ`}
       >
-        {expiring.length > 0 && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 bg-amber-50 border-b border-amber-200 text-[12px] text-amber-800">
-            <AlertTriangle size={14} className="shrink-0" />
-            <span>
-              <b>{expiring.length}</b> nhân viên có hợp đồng sắp hết hạn trong 30 ngày:
-            </span>
-            {expiring.map((e) => (
-              <button key={e.id} type="button" onClick={() => onOpen(e.id)} className="font-semibold underline decoration-dotted underline-offset-2 hover:text-amber-950 cursor-pointer" title={e.fullName}>
-                {e.code}
-              </button>
-            ))}
-          </div>
-        )}
         <div className="overflow-x-auto">
           <table className={`${erp.table} min-w-[1500px]`}>
             <thead>
@@ -888,17 +969,11 @@ const EmployeeList: React.FC<{
             <tbody>
               {rows.map((e, i) => {
                 const c = currentContract(e);
-                const cs = c && contractState(c);
                 return (
                   <tr key={e.id} onClick={() => onOpen(e.id)} className={`${erp.tr} cursor-pointer`}>
                     <td className={`${erp.td} text-center text-slate-500 border-l-0`}>{i + 1}</td>
                     <td className={`${erp.td} ${erp.code} font-semibold whitespace-nowrap`}>{e.code}</td>
-                    <td className={erp.td}>
-                      <span className="flex items-center gap-2">
-                        <Avatar emp={e} size="sm" />
-                        <span className="font-semibold text-slate-800 whitespace-nowrap">{e.fullName}</span>
-                      </span>
-                    </td>
+                    <td className={`${erp.td} font-semibold text-slate-800 whitespace-nowrap`}>{e.fullName}</td>
                     <td className={`${erp.td} whitespace-nowrap`}>{e.userName}</td>
                     <td className={`${erp.td} whitespace-nowrap text-[#1f5fa8]`}>{e.companyEmail}</td>
                     <td className={`${erp.td} text-center`}>{e.division}</td>
@@ -908,13 +983,6 @@ const EmployeeList: React.FC<{
                     <td className={`${erp.td} whitespace-nowrap`}>{e.manager || '—'}</td>
                     <td className={`${erp.td} text-center whitespace-nowrap`}>{dmy(e.joinDate)}</td>
                     <td className={`${erp.td} whitespace-nowrap`}>{c ? c.type : <span className="text-slate-400">Chưa có</span>}</td>
-                    <td className={`${erp.td} text-center whitespace-nowrap`}>
-                      {c ? (
-                        <span className={cs!.text === 'Sắp hết hạn' ? 'font-semibold text-amber-700' : cs!.text === 'Hết hạn' ? 'text-slate-400' : ''}>{c.to ? dmy(c.to) : 'Không thời hạn'}</span>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
                     <td className={`${erp.td} whitespace-nowrap border-r-0`}>
                       <StatusTag status={e.status} />
                     </td>
@@ -946,11 +1014,11 @@ const EN_LABEL: Partial<Record<FieldKey, string>> = {
   companyEmail: 'Company Email', division: 'Division', department: 'Department', position: 'Position', level: 'Level', manager: 'Manager',
   techStack: 'Tech Stack', status: 'Employee Status', leaveDate: 'Resignation Date', joinDate: 'Start Date', officialDate: 'Official Start Date',
   autoAttendance: 'Auto Attendance', staffing: 'Staffing', vehicle: 'Vehicle Info', note: 'Notes', idNo: 'Identification Number',
-  idDate: 'Issue Date', idPlace: 'Place Of Issue', taxCode: 'Tax Code', permanentAddress: 'Permanent Address', currentAddress: 'Current Address',
+  idDate: 'Issue Date', idPlace: 'Place Of Issue', taxCode: 'Tax Code', permanentAddress: 'Permanent Address', currentAddress: 'Current Address', dependents: 'Number of Dependents',
   socialInsNo: 'Social Insurance Number', education: 'Education Level', school: 'University', major: 'Major', gradYear: 'Year of Graduation',
   experience: 'Work Experience', bankAccount: 'BankAccount', bankName: 'BankName',
 };
-const norm = (s: unknown) =>
+export const norm = (s: unknown) =>
   String(s ?? '')
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
@@ -990,14 +1058,10 @@ const COLS: ColDef[] = [
   ...HEAD_FIELDS.map((f) => fieldCol(f, 'Nhân viên')),
   ...SECTIONS.flatMap((s) => (s.fields || s.groups!.flatMap((g) => g.fields)).map((f) => fieldCol(f, s.title))),
   fieldCol(NOTE_FIELD, 'Ghi chú'),
-  { id: 'cType', label: 'Hợp đồng hiện tại', group: 'Hợp đồng', get: (e) => currentContract(e)?.type || '' },
-  { id: 'cNo', label: 'Số hợp đồng', group: 'Hợp đồng', get: (e) => currentContract(e)?.no || '' },
-  { id: 'cTo', label: 'Hết hạn HĐ', group: 'Hợp đồng', get: (e) => { const c = currentContract(e); return c ? (c.to ? dmy(c.to) : 'Không thời hạn') : ''; } },
-  { id: 'cState', label: 'Tình trạng HĐ', group: 'Hợp đồng', get: (e) => { const c = currentContract(e); return c ? contractState(c).text : 'Chưa có'; } },
-  { id: 'nContracts', label: 'Số hợp đồng đã ký', group: 'Hợp đồng', get: (e) => e.contracts.length },
+  { id: 'cType', label: 'Loại hợp đồng', group: 'Hợp đồng', get: (e) => currentContract(e)?.type || '' },
 ];
 const COL_GROUPS = [...new Set(COLS.map((c) => c.group))];
-const DEFAULT_COLS = ['tt', 'code', 'fullName', 'userName', 'companyEmail', 'division', 'department', 'position', 'level', 'manager', 'joinDate', 'cType', 'cTo', 'status'];
+const DEFAULT_COLS = ['tt', 'code', 'fullName', 'userName', 'companyEmail', 'division', 'department', 'position', 'level', 'manager', 'joinDate', 'cType', 'status'];
 const EXPORT_KEY = 'employee-export-cols';
 const loadCols = (): string[] => {
   try {
@@ -1169,7 +1233,7 @@ type ImportRow = {
   changes: string[];
 };
 
-const parseDateCell = (v: unknown): string | null => {
+export const parseDateCell = (v: unknown): string | null => {
   if (v === '' || v === null || v === undefined) return '';
   if (v instanceof Date && !isNaN(v.getTime())) return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`;
   if (typeof v === 'number') {
@@ -1296,7 +1360,7 @@ const downloadTemplate = () => {
     department: 'Sản xuất', position: 'Developer', level: 'Junior', company: 'AEQUITAS', manager: 'TRẦN THỊ MAI ANH', joinDate: '03/11/2026',
     officialDate: '', status: 'Thử việc', leaveDate: '', techStack: 'Java, React', autoAttendance: 'Có', staffing: 'Không', gender: 'Nam',
     phone: '0912000630', birthDate: '15/08/2000', personalEmail: 'tuan.nguyen@example.com', maritalStatus: 'Độc thân', currentAddress: 'Cầu Giấy, Hà Nội',
-    vehicle: '', permanentAddress: 'Nam Định', education: 'Kỹ sư', gradYear: 2022, school: 'Đại học Bách khoa Hà Nội', experience: 2,
+    vehicle: '', permanentAddress: 'Nam Định', dependents: 0, education: 'Kỹ sư', gradYear: 2022, school: 'Đại học Bách khoa Hà Nội', experience: 2,
     major: 'Công nghệ thông tin', idNo: '036200000630', idDate: '10/05/2021', idPlace: 'Cục CS QLHC về TTXH', taxCode: '8000000630',
     socialInsNo: '', bankAccount: '1900000630', bankName: 'Techcombank', note: '',
   };
@@ -1543,14 +1607,9 @@ const ImportPanel: React.FC<{
   );
 };
 
-const Avatar: React.FC<{ emp: Employee; size: 'sm' | 'lg' }> = ({ emp, size }) =>
-  size === 'sm' ? (
-    emp.photo ? (
-      <img src={emp.photo} alt="" className="w-7 h-7 shrink-0 rounded-[3px] object-cover border border-slate-200" />
-    ) : (
-      <span className="w-7 h-7 shrink-0 rounded-[3px] bg-[#e8f0fa] border border-[#cfdcee] text-[#1f5fa8] text-[11px] font-bold grid place-items-center">{initials(emp.fullName)}</span>
-    )
-  ) : emp.photo ? (
+/** Ảnh 3×4 trên hồ sơ — chưa có ảnh thì hiện chữ viết tắt họ + tên. */
+const Avatar: React.FC<{ emp: Employee }> = ({ emp }) =>
+  emp.photo ? (
     <img src={emp.photo} alt="Ảnh 3×4" className="w-[112px] h-[140px] rounded-[4px] object-cover border border-[#bcd3f0]" />
   ) : (
     <div className="w-[112px] h-[140px] rounded-[4px] bg-gradient-to-b from-[#eef4fb] to-[#e1ebf7] border border-[#bcd3f0] grid place-items-center text-[32px] font-bold text-[#1f5fa8]">{initials(emp.fullName)}</div>
@@ -1559,7 +1618,7 @@ const Avatar: React.FC<{ emp: Employee; size: 'sm' | 'lg' }> = ({ emp, size }) =
 // ==========================================================================
 // Hồ sơ nhân viên
 // ==========================================================================
-type Tab = 'info' | 'contract' | 'history';
+type Tab = 'info' | 'history';
 
 const EmployeeDetail: React.FC<{
   initial: Employee;
@@ -1579,7 +1638,6 @@ const EmployeeDetail: React.FC<{
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [tab, setTab] = useState<Tab>('info');
   const [confirmDel, setConfirmDel] = useState(false);
-  const [addContract, setAddContract] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const photoRef = useRef<HTMLInputElement>(null);
 
@@ -1639,8 +1697,7 @@ const EmployeeDetail: React.FC<{
     push('Nhân viên', HEAD_FIELDS);
     SECTIONS.forEach((s) => (s.fields ? push(s.title, s.fields) : s.groups!.forEach((g) => push(g.title, g.fields))));
     push('Ghi chú', [NOTE_FIELD]);
-    rows.push(['HỢP ĐỒNG LAO ĐỘNG'], ['Số HĐ', 'Loại HĐ', 'Ngày ký', 'Hiệu lực từ', 'Đến', 'Tình trạng']);
-    e.contracts.forEach((c) => rows.push([c.no, c.type, dmy(c.signDate), dmy(c.from), c.to ? dmy(c.to) : 'Không thời hạn', contractState(c).text]));
+    rows.push(['HỢP ĐỒNG LAO ĐỘNG'], ['Loại hợp đồng', currentContract(e)?.type || 'Chưa có']);
     const ws = XLSX.utils.aoa_to_sheet(rows);
     ws['!cols'] = [{ wch: 26 }, { wch: 48 }, { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 14 }];
     const wb = XLSX.utils.book_new();
@@ -1664,7 +1721,6 @@ const EmployeeDetail: React.FC<{
         onBack={editing ? undefined : onBack}
         actions={
           <>
-            {!isNew && <RoleSelect role={role} onChange={setRole} disabled={editing} />}
             {editing ? (
               <>
                 <Btn icon={X} onClick={cancel}>
@@ -1701,7 +1757,7 @@ const EmployeeDetail: React.FC<{
             : [
                 { label: 'Mã NV', value: <span className="font-mono">{initial.code}</span> },
                 { label: 'Trạng thái', value: <StatusTag status={initial.status} /> },
-                { label: 'Hợp đồng', value: cur ? `${cur.type}${cur.to ? ` · đến ${dmy(cur.to)}` : ''}` : 'Chưa có' },
+                { label: 'Hợp đồng', value: cur ? cur.type : 'Chưa có' },
                 { label: 'Cập nhật', value: `${dmyhm(initial.updatedAt)} bởi ${initial.updatedBy}` },
               ]
         }
@@ -1759,7 +1815,7 @@ const EmployeeDetail: React.FC<{
                   className="group relative rounded-[4px] cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#1f5fa8]/40"
                   title={e.photo ? 'Bấm để đổi ảnh 3×4' : 'Bấm để tải ảnh 3×4 lên'}
                 >
-                  <Avatar emp={e} size="lg" />
+                  <Avatar emp={e} />
                   <span className="absolute inset-0 rounded-[4px] flex flex-col items-center justify-center gap-1 bg-[#1e3a5f]/85 text-white text-[11.5px] font-semibold opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity">
                     <Camera size={20} />
                     {e.photo ? 'Đổi ảnh' : 'Tải ảnh lên'}
@@ -1780,7 +1836,7 @@ const EmployeeDetail: React.FC<{
               </>
             ) : (
               <>
-                <Avatar emp={e} size="lg" />
+                <Avatar emp={e} />
                 <span className="text-[11px] text-slate-500">Ảnh 3×4</span>
               </>
             )}
@@ -1795,7 +1851,6 @@ const EmployeeDetail: React.FC<{
         <FolderTabs
           tabs={[
             { key: 'info', label: 'Thông tin nhân sự', icon: LayoutList },
-            { key: 'contract', label: `Hợp đồng (${e.contracts.length})`, icon: FileSignature },
             { key: 'history', label: `Lịch sử (${e.history.length})`, icon: History },
           ]}
           value={tab}
@@ -1830,38 +1885,20 @@ const EmployeeDetail: React.FC<{
                     </span>
                     <div className="min-w-0 flex-1 text-[12.5px]">
                       {cur ? (
-                        <dl className="grid grid-cols-[100px_1fr] gap-x-2 gap-y-0.5">
+                        <dl className="grid grid-cols-[100px_1fr] gap-x-2 pt-1.5">
                           <dt className="text-slate-500">Loại hợp đồng</dt>
                           <dd className="font-semibold text-slate-800">{cur.type}</dd>
-                          <dt className="text-slate-500">Thời gian</dt>
-                          <dd className="text-slate-800 tabular-nums">
-                            {dmy(cur.from)} → {cur.to ? dmy(cur.to) : 'Không thời hạn'}
-                          </dd>
                         </dl>
                       ) : (
                         <p className="pt-1.5 text-slate-500">Chưa có hợp đồng trong hệ thống</p>
                       )}
                     </div>
                   </div>
-                  <div className="flex gap-1.5 mt-2">
-                    {isHR && !editing && (
-                      <Btn
-                        icon={Plus}
-                        className="h-7"
-                        onClick={() => {
-                          setTab('contract');
-                          setAddContract(true);
-                        }}
-                      >
-                        Thêm hợp đồng
-                      </Btn>
-                    )}
-                    {e.contracts.length > 0 && !editing && (
-                      <Btn className="h-7" onClick={() => setTab('contract')}>
-                        Xem tất cả ({e.contracts.length})
-                      </Btn>
-                    )}
-                  </div>
+                  {!isNew && !editing && (
+                    <Btn icon={FileSignature} className="h-7 mt-2" onClick={() => navigateTo('Contracts', { employeeId: e.id })} title="Mở màn Hợp đồng lao động của nhân viên này">
+                      Quản lý hợp đồng
+                    </Btn>
+                  )}
                 </div>
                 {/* Tài liệu đính kèm */}
                 <div className="px-3 py-2.5">
@@ -1940,7 +1977,6 @@ const EmployeeDetail: React.FC<{
         </div>
       )}
 
-      {tab === 'contract' && <ContractTab emp={e} canEdit={isHR && !editing} adding={addContract} setAdding={setAddContract} onChange={onChange} />}
 
       {tab === 'history' && (
         <Panel title="Lịch sử thay đổi" icon={History} noPad>
@@ -1979,173 +2015,5 @@ const EmployeeDetail: React.FC<{
         </Panel>
       )}
     </div>
-  );
-};
-
-// ==========================================================================
-// Tab Hợp đồng — thêm / xoá ngay trên bảng
-// ==========================================================================
-const ContractTab: React.FC<{
-  emp: Employee;
-  canEdit: boolean;
-  adding: boolean;
-  setAdding: (b: boolean) => void;
-  onChange: (e: Employee, action: string, changes?: string[]) => void;
-}> = ({ emp, canEdit, adding, setAdding, onChange }) => {
-  const last = [...emp.contracts].sort((a, b) => b.from.localeCompare(a.from))[0];
-  const fresh = (): EmpContract => {
-    const from = last?.to ? addDays(last.to, 1) : emp.joinDate || today();
-    return {
-      id: uid(),
-      no: `HĐLĐ-${emp.code}-${String(emp.contracts.length + 1).padStart(2, '0')}`,
-      type: last ? 'Xác định thời hạn 12 tháng' : 'Thử việc',
-      signDate: from,
-      from,
-      to: addDays(addMonths(from, last ? 12 : 2), -1),
-      note: '',
-    };
-  };
-  const [row, setRow] = useState<EmpContract>(fresh);
-  const [err, setErr] = useState('');
-  const [delId, setDelId] = useState<string | null>(null);
-  useEffect(() => {
-    if (adding) {
-      setRow(fresh());
-      setErr('');
-    }
-  }, [adding]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const setType = (type: string) =>
-    setRow((r) => ({ ...r, type, to: type === 'Không xác định thời hạn' ? '' : addDays(addMonths(r.from, type === 'Thử việc' ? 2 : type.includes('24') ? 24 : 12), -1) }));
-  const add = () => {
-    if (!row.no.trim() || !row.from) return setErr('Nhập Số HĐ và ngày hiệu lực.');
-    if (row.to && row.to < row.from) return setErr('Ngày kết thúc trước ngày hiệu lực.');
-    if (emp.contracts.some((c) => c.no.toLowerCase() === row.no.trim().toLowerCase())) return setErr('Số HĐ đã tồn tại.');
-    onChange({ ...emp, contracts: [...emp.contracts, { ...row, no: row.no.trim() }] }, 'Thêm hợp đồng', [`${row.no} · ${row.type} · ${dmy(row.from)} → ${row.to ? dmy(row.to) : 'không thời hạn'}`]);
-    setAdding(false);
-  };
-  const sorted = [...emp.contracts].sort((a, b) => b.from.localeCompare(a.from));
-  const td = erp.td;
-  const cellIn = 'w-full h-8 px-2 bg-white border border-slate-300 rounded-[3px] text-[12.5px] outline-none focus:border-[#1f5fa8] focus:ring-2 focus:ring-[#1f5fa8]/15';
-  return (
-    <Panel
-      title="Hợp đồng lao động"
-      icon={FileSignature}
-      noPad
-      actions={
-        canEdit && !adding ? (
-          <Btn variant="primary" icon={Plus} className="h-7" onClick={() => setAdding(true)}>
-            Thêm hợp đồng
-          </Btn>
-        ) : undefined
-      }
-      footer={`${emp.contracts.length} hợp đồng · Hợp đồng sắp hết hạn trong 30 ngày được đánh dấu "Sắp hết hạn"`}
-    >
-      <div className="overflow-x-auto">
-        <table className={`${erp.table} min-w-[1000px]`}>
-          <thead>
-            <tr>
-              {['STT', 'Số hợp đồng', 'Loại hợp đồng', 'Ngày ký', 'Hiệu lực từ', 'Đến', 'Tình trạng', 'Ghi chú', ''].map((h, i) => (
-                <th key={i} className={`${erp.th} text-left border-t-0 first:border-l-0 last:border-r-0`}>
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {adding && (
-              <tr className="bg-[#eef4fb] align-top">
-                <td className={`${td} text-center text-slate-500 border-l-0 pt-3`}>+</td>
-                <td className={td}>
-                  <input value={row.no} onChange={(ev) => setRow({ ...row, no: ev.target.value })} className={`${cellIn} font-mono min-w-[150px]`} />
-                </td>
-                <td className={td}>
-                  <select value={row.type} onChange={(ev) => setType(ev.target.value)} className={`${cellIn} min-w-[200px]`}>
-                    {CONTRACT_TYPES.map((t) => (
-                      <option key={t}>{t}</option>
-                    ))}
-                  </select>
-                </td>
-                <td className={`${td} w-36`}>
-                  <DateInput value={row.signDate} onChange={(iso) => setRow({ ...row, signDate: iso })} />
-                </td>
-                <td className={`${td} w-36`}>
-                  <DateInput value={row.from} onChange={(iso) => setRow({ ...row, from: iso })} />
-                </td>
-                <td className={`${td} w-36`}>
-                  <DateInput value={row.to} disabled={row.type === 'Không xác định thời hạn'} onChange={(iso) => setRow({ ...row, to: iso })} />
-                </td>
-                <td className={`${td} pt-2.5`}>
-                  <Tag cls={contractState(row).cls}>{contractState(row).text}</Tag>
-                </td>
-                <td className={td}>
-                  <input value={row.note} onChange={(ev) => setRow({ ...row, note: ev.target.value })} className={cellIn} placeholder="Ghi chú" />
-                  {err && <span className="block text-[11px] text-rose-600 mt-0.5">{err}</span>}
-                </td>
-                <td className={`${td} border-r-0 whitespace-nowrap`}>
-                  <span className="flex gap-1">
-                    <Btn variant="primary" icon={Save} className="h-8" onClick={add}>
-                      Lưu
-                    </Btn>
-                    <Btn className="h-8" onClick={() => setAdding(false)}>
-                      Huỷ
-                    </Btn>
-                  </span>
-                </td>
-              </tr>
-            )}
-            {sorted.map((c, i) => {
-              const s = contractState(c);
-              return (
-                <tr key={c.id} className={erp.tr}>
-                  <td className={`${td} text-center text-slate-500 border-l-0 w-12`}>{i + 1}</td>
-                  <td className={`${td} ${erp.code} font-semibold whitespace-nowrap`}>{c.no}</td>
-                  <td className={td}>{c.type}</td>
-                  <td className={`${td} text-center tabular-nums`}>{dmy(c.signDate)}</td>
-                  <td className={`${td} text-center tabular-nums`}>{dmy(c.from)}</td>
-                  <td className={`${td} text-center tabular-nums`}>{c.to ? dmy(c.to) : <span className="text-slate-500">Không thời hạn</span>}</td>
-                  <td className={td}>
-                    <Tag cls={s.cls}>{s.text}</Tag>
-                  </td>
-                  <td className={`${td} text-slate-600`}>{c.note || '—'}</td>
-                  <td className={`${td} border-r-0 text-center whitespace-nowrap w-28`}>
-                    {canEdit &&
-                      (delId === c.id ? (
-                        <span className="inline-flex items-center gap-1.5 text-[12px] text-rose-700">
-                          Xoá?
-                          <button
-                            type="button"
-                            className="font-bold underline underline-offset-2 cursor-pointer"
-                            onClick={() => {
-                              onChange({ ...emp, contracts: emp.contracts.filter((x) => x.id !== c.id) }, 'Xoá hợp đồng', [`${c.no} · ${c.type}`]);
-                              setDelId(null);
-                            }}
-                          >
-                            Có
-                          </button>
-                          <button type="button" className="underline underline-offset-2 text-slate-500 cursor-pointer" onClick={() => setDelId(null)}>
-                            Không
-                          </button>
-                        </span>
-                      ) : (
-                        <button type="button" className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer" title="Xoá hợp đồng" onClick={() => setDelId(c.id)}>
-                          <Trash2 size={14} />
-                        </button>
-                      ))}
-                  </td>
-                </tr>
-              );
-            })}
-            {!emp.contracts.length && !adding && (
-              <tr>
-                <td colSpan={9} className="px-3 py-10 text-center text-[12.5px] text-slate-400">
-                  Chưa có hợp đồng trong hệ thống.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </Panel>
   );
 };

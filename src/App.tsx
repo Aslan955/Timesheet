@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Layout } from './components/Layout';
 import { LeavesPage } from './components/LeavesPage';
 import { TimesheetPage } from './components/TimesheetPage';
@@ -18,6 +18,7 @@ import { AttendancePage } from './components/AttendancePage';
 import { AttendanceSummaryPage } from './components/AttendanceSummaryPage';
 import { DependentPage } from './components/DependentPage';
 import { EmployeePage } from './components/EmployeePage';
+import { ContractsPage } from './components/ContractsPage';
 import { ProjectsPage } from './components/ProjectsPage';
 import { ProjectFinancePage } from './components/ProjectFinancePage';
 import { RevenuePlanPage } from './components/RevenuePlanPage';
@@ -72,6 +73,12 @@ import { MarcomEmailPage } from './components/marcom/MarcomEmailPage';
 
 export default function App() {
   const [activeItem, setActiveItem] = useState('Mục tiêu kinh doanh'); // màn mở mặc định khi vào hệ thống
+  // Chuyển màn từ bên trong một màn khác (vd hồ sơ nhân viên → Hợp đồng lao động)
+  useEffect(() => {
+    const go = (ev: Event) => setActiveItem((ev as CustomEvent<{ item: string }>).detail.item);
+    window.addEventListener('imis:navigate', go);
+    return () => window.removeEventListener('imis:navigate', go);
+  }, []);
 
   const renderContent = () => {
     // Mỗi danh mục tuyển dụng là 1 màn riêng (định tuyến theo tên danh mục)
@@ -190,6 +197,8 @@ export default function App() {
         return <PeriodicEvaluationPage />;
       case 'Employees':
         return <EmployeePage />;
+      case 'Contracts':
+        return <ContractsPage />;
       case 'Thông tin người phụ thuộc':
         return <DependentPage />;
       case 'Yêu cầu tuyển dụng':
