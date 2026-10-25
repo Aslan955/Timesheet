@@ -152,6 +152,8 @@ export const NAVIGATION: NavItem[] = [
       },
       { title: 'Báo cáo nghỉ phép nhân sự', icon: PieChart },
       { title: 'Contracts', icon: FileText },
+      { title: 'Danh mục hợp đồng', icon: Database },
+      { title: 'Template hợp đồng', icon: Settings },
       { title: 'Salary History', icon: Wallet },
       { title: 'Onboarding Request', icon: UserCheck },
       { title: 'Certificate Management', icon: Award },

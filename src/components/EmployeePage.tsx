@@ -8,7 +8,7 @@
  *      Thanh tiêu đề: [Quay lại] … Vai trò · [Xuất hồ sơ] [Sửa] [Xoá]; dải thông tin Mã NV · Trạng thái · Hợp đồng · Cập nhật
  *      Khung "Nhân viên": ảnh 3×4 + Mã NV, Họ và tên, UserName, Email công ty, Khối, Phòng ban, Vị trí, Level
  *      Tab Thông tin nhân sự: Công việc · Thông tin cá nhân · Học vấn & kinh nghiệm · Giấy tờ, thuế & ngân hàng ·
- *                             Hợp đồng & tài liệu (chỉ hiện Loại hợp đồng — chi tiết ở màn Contracts, nút "Quản lý hợp đồng") · Ghi chú
+ *                             Hợp đồng & tài liệu (chỉ hiện Loại hợp đồng) · Ghi chú
  *      Tab Lịch sử: mọi lần tạo / sửa (kèm nội dung thay đổi) / hợp đồng / tài liệu
  *  • Dữ liệu nhân sự dùng chung với màn Contracts (useEmployees / setEmployees).
  *  • Sửa trực tiếp trên màn chi tiết (không popup) → [Huỷ sửa] [Lưu thay đổi].
@@ -1894,11 +1894,6 @@ const EmployeeDetail: React.FC<{
                       )}
                     </div>
                   </div>
-                  {!isNew && !editing && (
-                    <Btn icon={FileSignature} className="h-7 mt-2" onClick={() => navigateTo('Contracts', { employeeId: e.id })} title="Mở màn Hợp đồng lao động của nhân viên này">
-                      Quản lý hợp đồng
-                    </Btn>
-                  )}
                 </div>
                 {/* Tài liệu đính kèm */}
                 <div className="px-3 py-2.5">

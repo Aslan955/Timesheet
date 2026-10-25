@@ -19,6 +19,8 @@ import { AttendanceSummaryPage } from './components/AttendanceSummaryPage';
 import { DependentPage } from './components/DependentPage';
 import { EmployeePage } from './components/EmployeePage';
 import { ContractsPage } from './components/ContractsPage';
+import { ContractCatalogPage } from './components/contracts/ContractCatalogPage';
+import { ContractTemplatePage } from './components/contracts/ContractTemplatePage';
 import { ProjectsPage } from './components/ProjectsPage';
 import { ProjectFinancePage } from './components/ProjectFinancePage';
 import { RevenuePlanPage } from './components/RevenuePlanPage';
@@ -199,6 +201,10 @@ export default function App() {
         return <EmployeePage />;
       case 'Contracts':
         return <ContractsPage />;
+      case 'Danh mục hợp đồng':
+        return <ContractCatalogPage />;
+      case 'Template hợp đồng':
+        return <ContractTemplatePage />;
       case 'Thông tin người phụ thuộc':
         return <DependentPage />;
       case 'Yêu cầu tuyển dụng':
