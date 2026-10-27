@@ -25,6 +25,15 @@ export interface MailConfig {
 }
 
 export type BoxLayout = 'cards' | 'list' | 'banner';
+
+/** Banner MarCom đăng lên trang chủ — chạy slide cùng box sinh nhật. */
+export interface HomeBanner {
+  id: string;
+  name: string; // tên file / tên chương trình
+  url: string; // ảnh banner
+  link: string; // bấm vào banner mở trang này (để trống = không bấm được)
+  active: boolean;
+}
 export type BoxTheme = 'pink' | 'blue' | 'green' | 'purple' | 'orange';
 
 /** Box sinh nhật — MarCom tự thiết kế, đăng lên trang chủ iMIS và/hoặc kênh Microsoft Teams. */
@@ -56,6 +65,9 @@ export interface BoxConfig {
   // Không có sinh nhật trong ngày
   emptyMode: 'hide' | 'default';
   emptyText: string;
+  // Slide trang chủ: box sinh nhật + các banner, mỗi mục slideSeconds giây, di chuột vào thì dừng
+  banners: HomeBanner[];
+  slideSeconds: number;
 }
 
 export interface MarcomConfig {
@@ -63,6 +75,16 @@ export interface MarcomConfig {
   welcome: MailConfig;
   box: BoxConfig;
 }
+
+/** Banner mẫu (ảnh vẽ sẵn) — MarCom thay bằng banner thật ở Cấu hình › Box sinh nhật. */
+const sampleBanner = (title: string, sub: string, c1: string, c2: string) =>
+  `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="400" viewBox="0 0 1600 400"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs><rect width="1600" height="400" fill="url(#g)"/><circle cx="1380" cy="80" r="190" fill="#fff" opacity=".08"/><circle cx="1250" cy="380" r="140" fill="#fff" opacity=".07"/><text x="90" y="185" font-family="Segoe UI, Arial, sans-serif" font-size="64" font-weight="800" fill="#fff">${title}</text><text x="92" y="250" font-family="Segoe UI, Arial, sans-serif" font-size="30" fill="#fff" opacity=".9">${sub}</text></svg>`,
+  )}`;
+const SAMPLE_BANNERS: HomeBanner[] = [
+  { id: 'bn-1', name: 'Town hall quý IV', url: sampleBanner('Town hall quý IV/2026', 'Thứ Sáu 30/10 · 15:00 · Hội trường tầng 15 &amp; trực tuyến Teams', '#1f5fa8', '#0ea5e9'), link: '', active: true },
+  { id: 'bn-2', name: 'Chương trình đào tạo', url: sampleBanner('Tuần lễ học tập VTX', 'Đăng ký các khoá kỹ năng mềm &amp; công nghệ trước 05/11', '#0f8f6c', '#84cc16'), link: '', active: true },
+];
 
 const DEFAULT_CONFIG: MarcomConfig = {
   birthday: {
@@ -139,6 +161,8 @@ Cùng thả thật nhiều lời chúc và gửi chút năng lượng tích cự
     signature: 'VTX Group · MarCom',
     emptyMode: 'hide',
     emptyText: 'Hôm nay chưa có sinh nhật nào — chúc cả nhà một ngày làm việc thật hiệu quả! ✨',
+    banners: SAMPLE_BANNERS,
+    slideSeconds: 5,
   },
 };
 

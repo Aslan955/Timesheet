@@ -286,16 +286,25 @@ export const updateCatalog = (fn: (c: Catalog) => Catalog) => {
 };
 export const useCatalog = () => useSyncExternalStore((cb) => (SUBS.add(cb), () => void SUBS.delete(cb)), () => CAT);
 /** Tải bộ mẫu Word có sẵn và đọc trường trộn. */
+/** Mỗi mẫu tải riêng — 1 file lỗi không làm mất các mẫu còn lại. */
 export const templatesReady: Promise<void> = Promise.all(
   CAT.templates
     .filter((t) => t.fileUrl && !t.data)
     .map(async (t) => {
-      const data = new Uint8Array(await (await fetch(t.fileUrl!)).arrayBuffer());
-      return { id: t.id, data, size: data.length, fields: (await inspectDocx(data)).fields };
+      try {
+        const res = await fetch(t.fileUrl!);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = new Uint8Array(await res.arrayBuffer());
+        return { id: t.id, data, size: data.length, fields: (await inspectDocx(data)).fields };
+      } catch (e) {
+        console.warn(`Không tải được mẫu ${t.code} (${t.fileName})`, e);
+        return null;
+      }
     }),
-)
-  .then((rs) => updateCatalog((c) => ({ ...c, templates: c.templates.map((t) => ({ ...t, ...(rs.find((r) => r.id === t.id) || {}) })) })))
-  .catch((e) => console.warn('Không tải được bộ mẫu hợp đồng', e));
+).then((rs) => {
+  const ok = rs.filter((r): r is NonNullable<typeof r> => !!r);
+  if (ok.length) updateCatalog((c) => ({ ...c, templates: c.templates.map((t) => ({ ...t, ...(ok.find((r) => r.id === t.id) || {}) })) }));
+});
 
 // ==========================================================================
 // Tra cứu dùng ở màn Hợp đồng

@@ -127,7 +127,7 @@ export function zip(entries: ZipEntry[]): Uint8Array {
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const XML_NS = 'http://www.w3.org/XML/1998/namespace';
 /** {{Tên_trường}} — tên gồm chữ (kể cả tiếng Việt có dấu), số, gạch dưới. */
-export const FIELD_RE = /\{\{\s*([\p{L}\p{N}_]+)\s*\}\}/gu;
+export const FIELD_RE = /\{\{\s*([\p{L}\p{M}\p{N}_]+)\s*\}\}/gu; // \p{M}: dấu tách rời (chữ Việt dạng NFD, vd chép từ macOS / PDF)
 /** Đánh dấu vị trí trường Word trong văn bản xem trước. */
 export const MF_RE = /([^]+)/g;
 const MERGE_PARTS = /^word\/(document|header\d*|footer\d*|footnotes|endnotes)\.xml$/;
@@ -399,6 +399,7 @@ const read3 = (n: number, full: boolean) => {
 export const soThanhChu = (value: number) => {
   let n = Math.round(Math.abs(value));
   if (!n) return 'Không đồng';
+  if (n >= 1e18) return `${n.toLocaleString('en-US')} đồng`; // vượt đơn vị đọc được
   const units = ['', ' nghìn', ' triệu', ' tỷ', ' nghìn tỷ', ' triệu tỷ'];
   const groups: number[] = [];
   while (n > 0) {

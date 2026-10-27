@@ -8,8 +8,8 @@
  * Giao diện: khung ERP (src/components/erp/Erp.tsx) như màn Báo cáo hiệu quả dự án.
  */
 import React, { useMemo, useRef, useState } from 'react';
-import { Cake, Hand, LayoutTemplate, History, Upload, Trash2, Send, Save, RotateCcw, Image as ImageIcon, Settings2, FileText, Eye, Clock, UserSquare2, AlertTriangle, Megaphone, Palette } from 'lucide-react';
-import { useMarcom, MailConfig, BoxConfig, BoxTheme } from '../../marcom/MarcomContext';
+import { ArrowDown, ArrowUp, GalleryHorizontal, Cake, Hand, LayoutTemplate, History, Upload, Trash2, Send, Save, RotateCcw, Image as ImageIcon, Settings2, FileText, Eye, Clock, UserSquare2, AlertTriangle, Megaphone, Palette } from 'lucide-react';
+import { useMarcom, MailConfig, BoxConfig, BoxTheme, HomeBanner } from '../../marcom/MarcomContext';
 import { Avatar, FilterBar, FilterCell, Switch, TAG, useToast } from '../../marcom/MarcomUi';
 import { BirthdayBox, BOX_THEMES, useTodayBirthdays } from '../../marcom/BirthdayBox';
 import { TeamsBirthdayPost, TEAMS_PLACEHOLDERS, TEAMS_DIRECTORY, TEAMS_SENDER, SenderAvatar } from '../../marcom/TeamsBirthdayPost';
@@ -458,6 +458,7 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
   const [simulateEmpty, setSimulateEmpty] = useState(false);
   const bgRef = useRef<HTMLInputElement>(null);
   const cardRef = useRef<HTMLInputElement>(null);
+  const bannerRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const people = useTodayBirthdays(simulateEmpty);
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
@@ -471,6 +472,24 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
     if (!f.type.startsWith('image/')) return toast('Chỉ nhận file ảnh (PNG/JPG)');
     apply(URL.createObjectURL(f), f.name);
   };
+  // Banner trang chủ — chạy slide cùng box sinh nhật
+  const banners = draft.banners || [];
+  const setBanners = (fn: (l: HomeBanner[]) => HomeBanner[]) => setDraft((d) => ({ ...d, banners: fn(d.banners || []) }));
+  const patchBanner = (id: string, patch: Partial<HomeBanner>) => setBanners((l) => l.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+  const moveBanner = (i: number, d: number) =>
+    setBanners((l) => {
+      const n = [...l];
+      [n[i], n[i + d]] = [n[i + d], n[i]];
+      return n;
+    });
+  const addBanners = (files: FileList | null) => {
+    const list = [...(files || [])];
+    const imgs = list.filter((f) => f.type.startsWith('image/'));
+    if (imgs.length < list.length) toast('Chỉ nhận file ảnh (PNG/JPG/WebP) — đã bỏ qua file khác');
+    if (!imgs.length) return;
+    setBanners((l) => [...l, ...imgs.map((f, k) => ({ id: `bn-${Date.now()}-${k}`, name: f.name.replace(/\.[^.]+$/, ''), url: URL.createObjectURL(f), link: '', active: true }))]);
+  };
+  const activeBanners = banners.filter((b) => b.active).length;
   const insertBody = (token: string) => {
     const el = bodyRef.current;
     if (!el) return set({ teamsBody: draft.teamsBody + token });
@@ -557,6 +576,71 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
                     <span className="text-[12px] text-slate-700">{draft.showOnHome ? 'Hiển thị box cho toàn thể CBNV' : 'Không hiển thị'}</span>
                   </span>
                 </FormRow>
+              </Panel>
+
+              <Panel
+                title="Banner trang chủ (chạy slide)"
+                icon={GalleryHorizontal}
+                actions={
+                  <>
+                    <input ref={bannerRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => (addBanners(e.target.files), (e.target.value = ''))} data-testid="banner-input" />
+                    <Btn icon={Upload} className="h-7" onClick={() => bannerRef.current?.click()}>
+                      Tải banner
+                    </Btn>
+                  </>
+                }
+                footer={`Slide chạy lần lượt: Sinh nhật hôm nay → ${activeBanners ? `${activeBanners} banner đang bật` : 'banner'} · mỗi mục ${draft.slideSeconds || 5} giây · di chuột vào thì dừng. Ảnh khuyến nghị 1600×400 px.`}
+              >
+                <div className="space-y-2.5">
+                  <FormRow label="Thời gian mỗi mục">
+                    <span className="flex items-center gap-2">
+                      <select value={draft.slideSeconds || 5} onChange={(e) => set({ slideSeconds: Number(e.target.value) })} className={`${erp.input} w-24`}>
+                        {[3, 5, 7, 10, 15].map((x) => (
+                          <option key={x} value={x}>
+                            {x} giây
+                          </option>
+                        ))}
+                      </select>
+                    </span>
+                  </FormRow>
+                  {!banners.length ? (
+                    <div className="border border-dashed border-slate-300 rounded-[4px] bg-slate-50 py-5 text-center text-[12px] text-slate-500">
+                      Chưa có banner — trang chủ chỉ hiện box sinh nhật.{' '}
+                      <button type="button" onClick={() => bannerRef.current?.click()} className="text-[#1f5fa8] font-semibold hover:underline cursor-pointer">
+                        Tải banner
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5" data-testid="banner-list">
+                      {banners.map((b, i) => (
+                        <div key={b.id} className={`flex items-start gap-2 border rounded-[3px] p-1.5 ${b.active ? 'border-slate-300 bg-white' : 'border-slate-200 bg-slate-50 opacity-70'}`}>
+                          <img src={b.url} alt="" className="w-[136px] h-[34px] object-cover rounded-[2px] border border-slate-200 shrink-0" />
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <input value={b.name} onChange={(e) => patchBanner(b.id, { name: e.target.value })} placeholder="Tên banner" className={`${erp.inputFull} h-7 text-[12px]`} />
+                            <input value={b.link} onChange={(e) => patchBanner(b.id, { link: e.target.value })} placeholder="Link khi bấm vào banner (tuỳ chọn) — https://..." className={`${erp.inputFull} h-7 text-[12px]`} />
+                          </div>
+                          <div className="flex flex-col items-end gap-1 shrink-0">
+                            <span className="flex items-center gap-1.5" title={b.active ? 'Đang hiển thị' : 'Đang ẩn'}>
+                              <span className="text-[11px] text-slate-500">{i + 1}</span>
+                              <Switch on={b.active} onChange={(v) => patchBanner(b.id, { active: v })} />
+                            </span>
+                            <span className="flex items-center gap-0.5">
+                              <button type="button" disabled={i === 0} onClick={() => moveBanner(i, -1)} className="p-1 rounded text-slate-500 hover:bg-slate-100 disabled:opacity-30 cursor-pointer" title="Lên trước">
+                                <ArrowUp size={13} />
+                              </button>
+                              <button type="button" disabled={i === banners.length - 1} onClick={() => moveBanner(i, 1)} className="p-1 rounded text-slate-500 hover:bg-slate-100 disabled:opacity-30 cursor-pointer" title="Xuống sau">
+                                <ArrowDown size={13} />
+                              </button>
+                              <button type="button" onClick={() => setBanners((l) => l.filter((x) => x.id !== b.id))} className="p-1 rounded text-rose-500 hover:bg-rose-50 cursor-pointer" title="Xoá banner">
+                                <Trash2 size={13} />
+                              </button>
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </Panel>
 
               <Panel title="Thiết kế box" icon={Palette}>

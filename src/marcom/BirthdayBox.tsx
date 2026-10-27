@@ -3,10 +3,12 @@
  *  - Tự lấy CBNV đang làm việc có ngày-tháng sinh = hôm nay (không thao tác tay, tự đổi theo ngày).
  *  - Thiết kế do MarCom chọn: bố cục (Thẻ / Danh sách / Banner ảnh nền), màu chủ đạo, tiêu đề, trường hiển thị, kiểu ảnh.
  *  - Nhiều người → hiện đủ danh sách. Không ai → ẩn box hoặc hiện nội dung mặc định.
+ *  - Có banner MarCom (Cấu hình › Box sinh nhật) → chạy slide: Sinh nhật → Banner 1 → Banner 2…, mỗi mục N giây (mặc định 5),
+ *    di chuột vào thì dừng, bấm chấm / mũi tên để chuyển.
  */
-import React, { useMemo, useState } from 'react';
-import { Cake, PartyPopper, X, EyeOff } from 'lucide-react';
-import { useMarcom, BoxConfig, BoxTheme } from './MarcomContext';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Cake, ChevronLeft, ChevronRight, PartyPopper, X, EyeOff } from 'lucide-react';
+import { useMarcom, BoxConfig, BoxTheme, HomeBanner } from './MarcomContext';
 import { Avatar } from './MarcomUi';
 import { MarcomEmployee, isBirthdayToday, fmtDayMonth, WEEKDAY_LONG } from './marcomData';
 
@@ -35,43 +37,16 @@ export const useTodayBirthdays = (simulateEmpty = false) => {
 
 const subLine = (cfg: BoxConfig, e: MarcomEmployee) => [cfg.showPosition ? e.position : null, cfg.showDivision ? e.division : null].filter(Boolean).join(' · ');
 
-export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean; cfg?: BoxConfig }> = ({ preview = false, simulateEmpty = false, cfg }) => {
-  const { config } = useMarcom();
-  const box = cfg ?? config.box;
+/** Nội dung box sinh nhật (1 mục của slide). onClose = hiện nút ẩn ở góc. */
+const BirthdaySlide: React.FC<{ box: BoxConfig; people: MarcomEmployee[]; preview: boolean; onClose?: () => void }> = ({ box, people, preview, onClose }) => {
   const theme = BOX_THEMES[box.theme];
   const today = new Date();
-  const todayKey = today.toDateString();
-  const [dismissed, setDismissed] = useState(() => {
-    try {
-      return !preview && localStorage.getItem(DISMISS_KEY) === todayKey;
-    } catch {
-      return false;
-    }
-  });
-  const people = useTodayBirthdays(simulateEmpty);
-
-  if (!preview && (!box.showOnHome || dismissed)) return null;
-
-  const dismiss = () => {
-    setDismissed(true);
-    try {
-      localStorage.setItem(DISMISS_KEY, todayKey);
-    } catch {
-      /* bỏ qua */
-    }
-  };
+  const dismiss = () => onClose?.();
   const rounded = box.photoShape === 'circle' ? 'rounded-full' : 'rounded-xl';
 
   if (people.length === 0) {
-    if (box.emptyMode === 'hide') {
-      return preview ? (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-xs font-semibold text-slate-400 flex items-center justify-center gap-2">
-          <EyeOff size={14} /> Không có sinh nhật hôm nay → box được ẩn khỏi trang chủ
-        </div>
-      ) : null;
-    }
     return (
-      <div className={`relative rounded-2xl border bg-gradient-to-r ${theme.bg} px-5 py-4 flex items-center gap-3`}>
+      <div className={`relative h-full rounded-2xl border bg-gradient-to-r ${theme.bg} px-5 py-4 flex items-center gap-3`}>
         <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center">
           <Cake size={20} className={theme.accent} />
         </div>
@@ -95,7 +70,7 @@ export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean;
           </div>
         </div>
       </div>
-      {!preview && (
+      {!preview && onClose && (
         <button type="button" onClick={dismiss} className={`p-1.5 rounded-lg cursor-pointer ${light ? 'text-white/70 hover:bg-white/15' : 'text-slate-400 hover:bg-white/70 hover:text-slate-600'}`} title="Ẩn box trong hôm nay">
           <X size={15} />
         </button>
@@ -113,7 +88,7 @@ export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean;
   // ---- Bố cục Banner: ảnh nền MarCom + lớp phủ tối, chữ trắng
   if (box.layout === 'banner') {
     return (
-      <div className="relative overflow-hidden rounded-2xl shadow-sm">
+      <div className="relative h-full overflow-hidden rounded-2xl shadow-sm">
         {box.bgUrl ? (
           <img src={box.bgUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
         ) : (
@@ -138,7 +113,7 @@ export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean;
   }
 
   return (
-    <div className={`relative overflow-hidden rounded-2xl border bg-gradient-to-br ${theme.bg} shadow-sm`}>
+    <div className={`relative h-full overflow-hidden rounded-2xl border bg-gradient-to-br ${theme.bg} shadow-sm`}>
       <div className="pointer-events-none absolute inset-0 opacity-70">
         {Array.from({ length: 18 }).map((_, i) => (
           <span
@@ -188,6 +163,148 @@ export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean;
         )}
         {greeting()}
       </div>
+    </div>
+  );
+};
+
+/** 1 banner MarCom trong slide — có link thì bấm mở trang mới. */
+const BannerSlide: React.FC<{ b: HomeBanner }> = ({ b }) => {
+  const img = (
+    <div className="relative h-full min-h-[200px] overflow-hidden rounded-2xl shadow-sm bg-slate-100">
+      <img src={b.url} alt={b.name} className="absolute inset-0 w-full h-full object-cover" draggable={false} />
+    </div>
+  );
+  return b.link ? (
+    <a href={b.link} target="_blank" rel="noopener noreferrer" className="block h-full" title={b.name}>
+      {img}
+    </a>
+  ) : (
+    img
+  );
+};
+
+export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean; cfg?: BoxConfig }> = ({ preview = false, simulateEmpty = false, cfg }) => {
+  const { config } = useMarcom();
+  const box = cfg ?? config.box;
+  const todayKey = new Date().toDateString();
+  const [dismissed, setDismissed] = useState(() => {
+    try {
+      return !preview && localStorage.getItem(DISMISS_KEY) === todayKey;
+    } catch {
+      return false;
+    }
+  });
+  const people = useTodayBirthdays(simulateEmpty);
+  const banners = (box.banners || []).filter((b) => b.active && b.url);
+  const hasBday = people.length > 0 || box.emptyMode === 'default';
+  const slides: ({ kind: 'bday'; id: string } | { kind: 'banner'; id: string; b: HomeBanner })[] = [
+    ...(hasBday ? [{ kind: 'bday' as const, id: 'bday' }] : []),
+    ...banners.map((b) => ({ kind: 'banner' as const, id: b.id, b })),
+  ];
+  const n = slides.length;
+  const dur = Math.max(2, box.slideSeconds || 5) * 1000;
+  const [idx, setIdx] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const cur = n ? idx % n : 0;
+  useEffect(() => {
+    if (n < 2 || paused) return;
+    const t = window.setInterval(() => setElapsed((e) => e + 100), 100);
+    return () => window.clearInterval(t);
+  }, [n, paused]);
+  useEffect(() => {
+    if (elapsed < dur) return;
+    setIdx((i) => (i + 1) % Math.max(1, n));
+    setElapsed(0);
+  }, [elapsed, dur, n]);
+  const go = (i: number) => {
+    setIdx(((i % n) + n) % n);
+    setElapsed(0);
+  };
+
+  if (!preview && (!box.showOnHome || dismissed)) return null;
+  const dismiss = () => {
+    setDismissed(true);
+    try {
+      localStorage.setItem(DISMISS_KEY, todayKey);
+    } catch {
+      /* bỏ qua */
+    }
+  };
+
+  if (!n)
+    return preview ? (
+      <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-xs font-semibold text-slate-400 flex items-center justify-center gap-2">
+        <EyeOff size={14} /> Không có sinh nhật hôm nay và chưa có banner → box được ẩn khỏi trang chủ
+      </div>
+    ) : null;
+  // Chỉ có box sinh nhật → hiển thị như cũ, không chạy slide
+  if (n === 1 && hasBday) return <BirthdaySlide box={box} people={people} preview={preview} onClose={dismiss} />;
+
+  return (
+    <div
+      className="relative group"
+      data-testid="home-slider"
+      data-paused={paused ? '1' : '0'}
+      data-index={cur}
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+    >
+      <div className="grid">
+        {slides.map((x, i) => (
+          <div
+            key={x.id}
+            aria-hidden={i !== cur}
+            data-slide={x.kind === 'bday' ? 'birthday' : x.b.name}
+            className={`[grid-area:1/1] transition-opacity duration-500 ${i === cur ? 'opacity-100 z-[1]' : 'opacity-0 pointer-events-none'}`}
+          >
+            {x.kind === 'bday' ? <BirthdaySlide box={box} people={people} preview={preview} /> : <BannerSlide b={x.b} />}
+          </div>
+        ))}
+      </div>
+      {!preview && (
+        <button
+          type="button"
+          onClick={dismiss}
+          className="absolute top-3 right-3 z-[2] p-1.5 rounded-lg cursor-pointer bg-white/70 text-slate-500 hover:bg-white hover:text-slate-700 shadow-sm"
+          title="Ẩn trong hôm nay"
+        >
+          <X size={15} />
+        </button>
+      )}
+      {n > 1 && (
+        <>
+          <button
+            type="button"
+            onClick={() => go(cur - 1)}
+            className="absolute left-2 top-1/2 -translate-y-1/2 z-[2] w-8 h-8 rounded-full bg-white/80 shadow flex items-center justify-center text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-white"
+            title="Mục trước"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={() => go(cur + 1)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 z-[2] w-8 h-8 rounded-full bg-white/80 shadow flex items-center justify-center text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-white"
+            title="Mục sau"
+          >
+            <ChevronRight size={16} />
+          </button>
+          <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 z-[2] flex items-center gap-1.5 rounded-full bg-slate-900/20 px-2 py-1 backdrop-blur-sm">
+            {slides.map((x, i) => (
+              <button
+                key={x.id}
+                type="button"
+                onClick={() => go(i)}
+                title={x.kind === 'bday' ? 'Sinh nhật hôm nay' : x.b.name}
+                className={`relative h-1.5 rounded-full overflow-hidden cursor-pointer transition-all ${i === cur ? 'w-8 bg-white/50' : 'w-1.5 bg-white/70 hover:bg-white'}`}
+              >
+                {i === cur && <span className="absolute inset-y-0 left-0 bg-white" style={{ width: `${Math.min(100, (elapsed / dur) * 100)}%` }} />}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 };

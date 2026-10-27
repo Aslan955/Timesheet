@@ -45,7 +45,9 @@ const TemplateList: React.FC<{ setMode: (m: Mode) => void }> = ({ setMode }) => 
   const [kind, setKind] = useState<'' | TplKind>('');
   const [q, setQ] = useState('');
   const rows = cat.templates.filter((t) => (!kind || t.kind === kind) && (!q || `${t.code} ${t.name} ${t.fileName}`.toLowerCase().includes(q.toLowerCase())));
-  const covered = (k: TplKind, id: string) => cat.templates.some((t) => t.active && t.kind === k && t.data && t.appliesTo.includes(id));
+  // Đủ template = mọi công ty đang dùng đều có mẫu (mẫu chung hoặc mẫu riêng của công ty)
+  const covered = (k: TplKind, id: string) =>
+    cat.companies.filter((co) => co.active).every((co) => cat.templates.some((t) => t.active && t.kind === k && t.data && t.appliesTo.includes(id) && (!t.companyId || t.companyId === co.id)));
   const typesNo = cat.types.filter((t) => t.active && !covered('HD', t.id));
   const appNo = cat.appendix.filter((a) => a.active && !covered('PL', a.id));
   const th = `${erp.th} border-t-0 text-left`;
@@ -206,7 +208,7 @@ const TemplateDetail: React.FC<{ mode: Exclude<Mode, { kind: 'list' }>; setMode:
   if (!f.code.trim()) errs.code = 'Bắt buộc';
   else if (cat.templates.some((t) => t.id !== f.id && t.code.toLowerCase() === f.code.trim().toLowerCase())) errs.code = 'Mã đã tồn tại';
   if (!f.name.trim()) errs.name = 'Bắt buộc';
-  if (!f.appliesTo.length) errs.appliesTo = `Chọn ít nhất 1 ${f.kind === 'HD' ? 'loại hợp đồng' : 'loại phụ lục'}`;
+  if (!f.appliesTo.length) errs.appliesTo = `Chọn ít nhất 1 ${f.kind !== 'PL' ? 'loại hợp đồng' : 'loại phụ lục'}`;
   if (!f.data) errs.file = 'Tải lên file Word (.docx)';
   if (f.active && f.kind !== 'KT') {
     const clash = cat.templates.filter((t) => t.id !== f.id && t.active && t.kind === f.kind && t.companyId === f.companyId && t.appliesTo.some((a) => f.appliesTo.includes(a)));
@@ -336,7 +338,7 @@ const TemplateDetail: React.FC<{ mode: Exclude<Mode, { kind: 'list' }>; setMode:
             <div className="flex flex-wrap items-center gap-3 px-4 py-2 bg-rose-50 text-[12.5px] text-rose-700">
               <AlertTriangle size={14} className="shrink-0" />
               <span className="flex-1 min-w-[240px]">
-                Xoá template <b>{f.code} — {f.name}</b>? Các {f.kind === 'HD' ? 'loại hợp đồng' : 'loại phụ lục'} đang dùng template này sẽ chuyển về bản in mặc định.
+                Xoá template <b>{f.code} — {f.name}</b>? {f.kind === 'KT' ? 'Hợp đồng sẽ không còn in kèm văn bản này.' : `Các ${f.kind === 'HD' ? 'loại hợp đồng' : 'loại phụ lục'} đang dùng template này sẽ chuyển về bản in mặc định.`}
               </span>
               <Btn className="h-7" onClick={() => setConfirmDel(false)}>
                 Không xoá
@@ -689,6 +691,10 @@ const Preview: React.FC<{ t: TemplateDef; flash: (m: string) => void }> = ({ t, 
     };
   }, [t.data]);
   const shown = pool.filter((x) => !q || `${x.no} ${workerOf.get(x.workerId)?.name} ${workerOf.get(x.workerId)?.code}`.toLowerCase().includes(q.toLowerCase())).slice(0, 200);
+  // ô lọc làm hợp đồng đang chọn biến khỏi danh sách → chọn hợp đồng đầu tiên còn lại (để xem trước khớp với ô chọn)
+  useEffect(() => {
+    if (shown.length && !shown.some((x) => x.id === cid)) setCid(shown[0].id);
+  }, [q, shown.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const render = (text: string) => {
     const out: React.ReactNode[] = [];
     let last = 0;

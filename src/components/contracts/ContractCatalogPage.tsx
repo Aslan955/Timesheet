@@ -599,7 +599,7 @@ export const ContractCatalogPage: React.FC = () => {
         { label: 'Ghi chú', value: <textarea rows={2} value={f.note} onChange={(e) => set({ note: e.target.value })} className={`${INPUT} h-auto py-1.5 resize-y`} /> },
       ],
     }),
-    validate: (f) => (f.changes.length ? {} : { changes: 'Chọn ít nhất 1 nội dung' }),
+    validate: (f): Record<string, string> => (f.changes.length ? {} : { changes: 'Chọn ít nhất 1 nội dung' }),
     save: (f, old) => {
       updateCatalog((c) => ({ ...c, appendix: old ? c.appendix.map((x) => (x.id === f.id ? f : x)) : [...c.appendix, f] }));
       return old ? `Đã lưu loại phụ lục ${f.name}` : `Đã thêm loại phụ lục ${f.name}`;

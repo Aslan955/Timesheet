@@ -151,6 +151,45 @@ interface SignerSetting {
 // ==========================================================================
 const money = (n?: number) => (n ? Math.round(n).toLocaleString('en-US') : '');
 const parseMoney = (s: string) => Number(String(s).replace(/[^\d]/g, '')) || 0;
+/** Số tiền trong ô Excel: số, "24,000,000", "24,000,000.00", "24.000.000" (kiểu VN), "24 000 000 đ". Âm / sai dạng → null. */
+const parseAmount = (v: unknown): number | null => {
+  if (typeof v === 'number') return v < 0 || !isFinite(v) ? null : Math.round(v);
+  let x = String(v ?? '').trim().replace(/\s|vnđ|vnd|đ/gi, '');
+  if (!x) return 0;
+  if (x.startsWith('-')) return null;
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(x)) x = x.replace(/\./g, '').replace(',', '.');
+  else x = x.replace(/,/g, '');
+  const n = Number(x);
+  return isFinite(n) && n >= 0 ? Math.round(n) : null;
+};
+/** Mức hưởng trong ô Excel: 85 · "85%" · ô định dạng % (0.85) → 85. */
+const parseRate = (v: unknown): number | null => {
+  if (typeof v === 'number') return v > 0 && v <= 1 ? Math.round(v * 10000) / 100 : v;
+  const x = String(v ?? '').trim();
+  const pct = x.endsWith('%');
+  const n = Number(x.replace('%', '').replace(',', '.').trim());
+  if (!x || isNaN(n)) return null;
+  return !pct && n > 0 && n <= 1 ? Math.round(n * 10000) / 100 : n;
+};
+const escHtml = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+/** Số ngày "sắp hết hạn" chọn ở danh sách — dùng chung cho màn chi tiết. */
+const SOON_KEY = 'contracts.soonDays';
+let SOON_DAYS = (() => {
+  try {
+    const n = Number(localStorage.getItem(SOON_KEY));
+    return [7, 15, 30, 60, 90].includes(n) ? n : 30;
+  } catch {
+    return 30;
+  }
+})();
+const setSoonPref = (n: number) => {
+  SOON_DAYS = n;
+  try {
+    localStorage.setItem(SOON_KEY, String(n));
+  } catch {
+    /* bỏ qua */
+  }
+};
 const salaryOf = (c: Pick<Contract, 'baseSalary' | 'rate'>) => Math.round(((c.baseSalary || 0) * (c.rate ?? 100)) / 100);
 const allowTotal = (c: Contract) => c.allowances.reduce((s, a) => s + (a.amount || 0), 0);
 const supportsOf = (amounts: number[]): Allowance[] => SUPPORTS.map((x, i) => ({ id: uid(), name: x.name, amount: amounts[i] || 0 }));
@@ -169,7 +208,12 @@ const daysBetween = (a: string, b: string) => Math.round((new Date(`${b}T00:00:0
 const termMonths = (type: CType, term: string) => termsOf(type).find((x) => x.label === term)?.months || 0;
 const endOf = (type: CType, term: string, from: string) => {
   const m = termMonths(type, term);
-  return isK(type, 'KXD') || !m || !from ? '' : addDays(addMonths(from, m), -1);
+  if (isK(type, 'KXD') || !m || !from) return '';
+  // Ngày hết hạn = cùng ngày của tháng thứ m trừ 1 ngày; tháng đích không có ngày đó (31/01 + 1 tháng) → ngày cuối tháng đích (28/02)
+  const day = Number(from.slice(8, 10));
+  const tgt = addMonths(`${from.slice(0, 8)}01`, m);
+  const last = new Date(Number(tgt.slice(0, 4)), Number(tgt.slice(5, 7)), 0).getDate();
+  return day > last ? `${tgt.slice(0, 8)}${String(last).padStart(2, '0')}` : addDays(addMonths(from, m), -1);
 };
 /** Tái ký: Thử việc → HĐ xác định thời hạn 1 năm → 2 năm (cùng loại, nếu danh mục cho phép) → Không xác định thời hạn. */
 const nextOf = (c: Pick<Contract, 'type' | 'term'>): { type: CType; term: string } => {
@@ -320,10 +364,11 @@ const update = (fn: (s: Store) => Store) => {
 const useStore = () => useSyncExternalStore((cb) => (SUBS.add(cb), () => void SUBS.delete(cb)), () => STATE);
 
 /** Trạng thái hiển thị của HĐ. */
-const stateOf = (c: Contract, all: Contract[], soonDays: number): { text: string; cls: string } => {
+const stateOf = (c: Contract, all: Contract[], soonDays: number, working = true): { text: string; cls: string } => {
   const t = today();
   const later = all.some((x) => x.workerId === c.workerId && x.id !== c.id && x.from > c.from);
   if (c.from > t) return { text: 'Chưa có hiệu lực', cls: 'bg-sky-50 text-sky-700 border-sky-300' };
+  if (!working && !later) return { text: 'Đã chấm dứt', cls: 'bg-slate-100 text-slate-600 border-slate-300' };
   if (c.to && c.to < t) return later ? { text: 'Đã tái ký', cls: 'bg-slate-100 text-slate-500 border-slate-300' } : { text: 'Hết hạn', cls: 'bg-rose-50 text-rose-700 border-rose-300' };
   if (c.to && c.to <= addDays(t, soonDays) && !later) return { text: 'Sắp hết hạn', cls: 'bg-orange-50 text-orange-700 border-orange-300' };
   return { text: 'Đang hiệu lực', cls: 'bg-emerald-50 text-emerald-700 border-emerald-300' };
@@ -405,19 +450,20 @@ const blankFor = (w: Worker | undefined, s: Store, type?: CType, from?: string):
 
 /** Bản in mặc định (HTML → in / lưu PDF) — dùng khi loại HĐ chưa có template Word. Nhiều HĐ → nhiều trang. */
 const printHtml = (items: { w: Worker; c: Contract }[]) => {
-  const row = (k: string, v: string) => `<tr><td class="k">${k}</td><td>${v || '…………………………'}</td></tr>`;
+  const row = (k: string, v: string) => `<tr><td class="k">${k}</td><td>${escHtml(v) || '…………………………'}</td></tr>`;
+  const e = escHtml;
   const page = ({ w, c }: { w: Worker; c: Contract }) => `<section>
 <p class="c"><b>CỘNG HOÀ XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><br><b><u>Độc lập – Tự do – Hạnh phúc</u></b></p>
-<h1>${c.type.toUpperCase()}</h1><p class="sub">Số: ${c.no}</p>
+<h1>${e(c.type.toUpperCase())}</h1><p class="sub">Số: ${e(c.no)}</p>
 <h2>Bên A — Người sử dụng lao động</h2><table>${row('Công ty', companyById(c.companyId)?.name || '')}${row('Địa chỉ', companyById(c.companyId)?.address || '')}${row('Mã số thuế', companyById(c.companyId)?.taxCode || '')}${row('Đơn vị', c.unit)}${row('Người đại diện', `${c.signerSalutation} ${c.signer}`.trim())}${row('Chức vụ', c.signerTitle)}${c.authorization ? row('Theo', c.authorization) : ''}</table>
 <h2>Bên B — Người lao động</h2><table>${row('Họ và tên', w.name)}${row('Mã NLĐ', w.code)}${row('Giới tính', w.gender)}${row('Ngày sinh', dmy(w.birthDate))}${row('Số CCCD / Hộ chiếu', w.idNo)}${row('Ngày cấp', dmy(w.idDate))}${row('Nơi cấp', w.idPlace)}${row('Nơi đăng ký hộ khẩu', w.address)}${row('Nơi ở hiện tại', w.currentAddress)}${row('Số điện thoại', w.phone)}</table>
 <h2>Điều 1. Thời hạn và công việc</h2><table>${row('Loại hợp đồng', c.type)}${row('Thời hạn', isK(c.type, 'KXD') ? 'Không xác định thời hạn' : `${c.term} — từ ${dmy(c.from)} đến ${dmy(c.to)}`)}${row('Vị trí công việc', c.position)}${row('Mô tả công việc', c.jobDesc)}${row('Nơi làm việc', c.workplace)}${row('Thời gian làm việc', c.workTime)}</table>
 <h2>Điều 2. Tiền lương và phụ cấp</h2><table>${row('Lương cơ bản gốc', `${money(c.baseSalary)} VNĐ/tháng`)}${row('Mức hưởng', `${c.rate}%`)}${row('Lương cơ bản', `${money(salaryOf(c))} VNĐ/tháng`)}${c.allowances.filter((a) => a.amount).map((a) => row(a.name, `${money(a.amount)} VNĐ/tháng`)).join('')}${c.perfBonus ? row('Thưởng hiệu quả (tạm tính)', `${money(c.perfBonus)} VNĐ/tháng`) : ''}</table>
 <h2>Điều 3. Bảo hiểm</h2><p>Tham gia: ${[c.insurance.bhxh && 'BHXH', c.insurance.bhyt && 'BHYT', c.insurance.bhtn && 'BHTN'].filter(Boolean).join(', ') || 'Không'} theo quy định hiện hành.</p>
-${c.note ? `<h2>Ghi chú</h2><p>${c.note}</p>` : ''}
-<p style="margin-top:16px">Hợp đồng lập tại ${c.signPlace || '…………'}, ngày ${dmy(c.signDate) || '…………'}, thành 02 bản có giá trị như nhau, mỗi bên giữ 01 bản.</p>
-<div class="sig"><div><b>NGƯỜI LAO ĐỘNG</b><br><i>(Ký, ghi rõ họ tên)</i><br><br><br><br>${w.name}</div><div><b>NGƯỜI SỬ DỤNG LAO ĐỘNG</b><br><i>(Ký, đóng dấu)</i><br><br><br><br>${c.signer}</div></div></section>`;
-  const html = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${items.length === 1 ? `HĐLĐ ${items[0].c.no}` : `In ${items.length} hợp đồng`}</title>
+${c.note ? `<h2>Ghi chú</h2><p>${e(c.note)}</p>` : ''}
+<p style="margin-top:16px">Hợp đồng lập tại ${e(c.signPlace) || '…………'}, ngày ${dmy(c.signDate) || '…………'}, thành 02 bản có giá trị như nhau, mỗi bên giữ 01 bản.</p>
+<div class="sig"><div><b>NGƯỜI LAO ĐỘNG</b><br><i>(Ký, ghi rõ họ tên)</i><br><br><br><br>${e(w.name)}</div><div><b>NGƯỜI SỬ DỤNG LAO ĐỘNG</b><br><i>(Ký, đóng dấu)</i><br><br><br><br>${e(c.signer)}</div></div></section>`;
+  const html = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${items.length === 1 ? `HĐLĐ ${escHtml(items[0].c.no)}` : `In ${items.length} hợp đồng`}</title>
 <style>body{font-family:'Times New Roman',serif;font-size:14px;line-height:1.55;margin:40px 60px;color:#111}section{page-break-after:always}section:last-child{page-break-after:auto}
 h1{text-align:center;font-size:20px;margin:6px 0 2px}.c{text-align:center}.sub{text-align:center;font-style:italic;margin-bottom:16px}table{width:100%;border-collapse:collapse;margin:4px 0 10px}
 td{padding:3px 4px;vertical-align:top}td.k{width:200px;color:#333}h2{font-size:15px;margin:14px 0 4px}.sig{display:flex;justify-content:space-between;margin-top:36px;text-align:center}.sig div{width:45%}
@@ -553,7 +599,7 @@ const toPrintItem = ({ w, c }: { w: Worker; c: Contract }): PrintItem => ({
   sub: `${c.no} · ${c.type}`,
   typeName: c.type,
   companyId: c.companyId,
-  defaultTpl: templateForType(c.type, c.companyId),
+  defaultTpl: templateForType(c.type, c.companyId) || null,
   attachments: attachmentsFor(c.type, c.companyId),
   dataOf: (app, appDate) => mergeDataOf(c, w, app, appDate),
 });
@@ -582,7 +628,7 @@ const PrintHost: React.FC<{ flash: (m: string) => void }> = ({ flash }) => {
   );
   const items = useMemo(() => req?.map(toPrintItem) || [], [req]);
   if (!req || !items.length) return null;
-  return <PrintDialog items={items} onClose={() => openPrint(null)} onPrint={(jobs) => printJobs(jobs, new Map(req.map((x) => [x.c.id, x])), flash)} />;
+  return <PrintDialog items={items} notify={flash} onClose={() => openPrint(null)} onPrint={(jobs) => printJobs(jobs, new Map(req.map((x) => [x.c.id, x])), flash)} />;
 };
 /** Dùng cho màn Danh mục / Template: dữ liệu hợp đồng + đổi tên loại HĐ. */
 export const getContractStore = () => STATE;
@@ -728,7 +774,8 @@ const ContractList: React.FC<{ s: Store; setMode: (m: Mode) => void; flash: (m: 
   const [view, setView] = useState<View>('all');
   const [typeF, setTypeF] = useState<Kind | ''>('');
   const cat = useCatalog();
-  const [soonDays, setSoonDays] = useState(30);
+  const [soonDays, setSoonDaysRaw] = useState(SOON_DAYS);
+  const setSoonDays = (n: number) => (setSoonPref(n), setSoonDaysRaw(n));
   const [layout, setLayout] = useState<'list' | 'split'>('list');
   const [q, setQ] = useState('');
   const [unit, setUnit] = useState('');
@@ -756,16 +803,16 @@ const ContractList: React.FC<{ s: Store; setMode: (m: Mode) => void; flash: (m: 
     return m;
   }, [s.contracts]);
   const all: Row[] = useMemo(
-    () => s.contracts.filter((c) => workerOf.has(c.workerId)).map((c) => ({ c, w: workerOf.get(c.workerId)!, st: stateOf(c, s.contracts, soonDays) })),
+    () => s.contracts.filter((c) => workerOf.has(c.workerId)).map((c) => ({ c, w: workerOf.get(c.workerId)!, st: stateOf(c, s.contracts, soonDays, workerOf.get(c.workerId)!.working) })),
     [s.contracts, workerOf, soonDays],
   );
   const inView = (r: Row, v: View) =>
     v === 'all'
       ? true
       : v === 'valid'
-        ? isValid(r.c, t)
+        ? r.w.working && isValid(r.c, t)
         : v === 'expiring'
-          ? isValid(r.c, t) && !!r.c.to && r.c.to <= addDays(t, soonDays) && latestOf.get(r.w.id)?.id === r.c.id
+          ? r.w.working && isValid(r.c, t) && !!r.c.to && r.c.to <= addDays(t, soonDays) && latestOf.get(r.w.id)?.id === r.c.id
           : v === 'expired'
             ? !!r.c.to && r.c.to < t && latestOf.get(r.w.id)?.id === r.c.id && r.w.working
             : v === 'upcoming'
@@ -774,7 +821,7 @@ const ContractList: React.FC<{ s: Store; setMode: (m: Mode) => void; flash: (m: 
                 ? !!r.c.to && r.c.to < t
                 : false;
   // Số liệu tổng quan
-  const validRows = all.filter((r) => isValid(r.c, t));
+  const validRows = all.filter((r) => r.w.working && isValid(r.c, t));
   const byType = (['KXD', 'XD', 'TV', 'OTHER'] as Kind[]).map((tp) => ({ tp, n: validRows.filter((r) => kindOf(r.c.type) === tp).length }));
   const noContract = s.workers.filter((w) => w.working && !latestOf.has(w.id));
   const countOf = (v: View) => (v === 'noContract' ? noContract.length : all.filter((r) => inView(r, v)).length);
@@ -1225,7 +1272,7 @@ const AdvFilter: React.FC<{ adv: Adv; setAdv: (a: Adv) => void; onClose: () => v
           <span className="text-[12px] text-slate-600">Trạng thái</span>
           <select value={a.status} onChange={(e) => setA({ ...a, status: e.target.value })} className={INPUT}>
             <option value="">Tất cả</option>
-            {['Đang hiệu lực', 'Sắp hết hạn', 'Hết hạn', 'Đã tái ký', 'Chưa có hiệu lực'].map((x) => (
+            {['Đang hiệu lực', 'Sắp hết hạn', 'Hết hạn', 'Đã tái ký', 'Chưa có hiệu lực', 'Đã chấm dứt'].map((x) => (
               <option key={x}>{x}</option>
             ))}
           </select>
@@ -1449,11 +1496,13 @@ const ContractDetail: React.FC<{
     if (orig) return structuredClone(orig);
     if (src) {
       const f = today();
+      const companyId = companyById(src.companyId)?.active ? src.companyId : defaultCompanyId();
       return {
         ...structuredClone(src),
         id: uid(),
         workerId: '',
-        no: nextContractNo('', src.companyId, src.type, s.contracts),
+        companyId,
+        no: nextContractNo('', companyId, src.type, s.contracts),
         signDate: f,
         from: f,
         to: endOf(src.type, src.term, f),
@@ -1592,9 +1641,15 @@ const ContractDetail: React.FC<{
   };
 
   const others = w ? s.contracts.filter((x) => x.workerId === w.id).sort((a, b) => b.from.localeCompare(a.from)) : [];
-  const st = orig ? stateOf(orig, s.contracts, 30) : undefined;
+  const st = orig ? stateOf(orig, s.contracts, SOON_DAYS, w?.working) : undefined;
   const positions = [...new Set(UNIT_POS[d.unit] || Object.values(UNIT_POS).flat())];
   const renewing = mode.kind === 'new' && !!mode.workerId && others.length > 0;
+  const renewBlock =
+    w && !w.working
+      ? 'NLĐ đã nghỉ việc — không tái ký'
+      : others[0] && isK(others[0].type, 'KXD') && !others[0].to
+        ? `NLĐ đã có hợp đồng không xác định thời hạn (${others[0].no}) — không cần tái ký`
+        : '';
   const title = isNew ? (src ? `Sao chép hợp đồng ${src.no}` : renewing ? 'Tái ký hợp đồng' : 'Thêm hợp đồng lao động') : editing ? `Sửa hợp đồng ${orig!.no}` : `Hợp đồng ${orig!.no}`;
   const ed = editing;
   const lastLog = orig?.history[orig.history.length - 1];
@@ -1820,7 +1875,12 @@ const ContractDetail: React.FC<{
               <Btn icon={Copy} onClick={() => setMode({ kind: 'new', copyOf: d.id })}>
                 Sao chép
               </Btn>
-              <Btn icon={RefreshCw} onClick={() => setMode({ kind: 'new', workerId: d.workerId })} disabled={isK(d.type, 'KXD') && others[0]?.id === d.id} title={isK(d.type, 'KXD') && others[0]?.id === d.id ? 'Hợp đồng không xác định thời hạn không cần tái ký' : 'Tạo hợp đồng kế tiếp cho NLĐ'}>
+              <Btn
+                icon={RefreshCw}
+                onClick={() => setMode({ kind: 'new', workerId: d.workerId })}
+                disabled={!!renewBlock}
+                title={renewBlock || (others[0]?.id === d.id ? 'Tạo hợp đồng kế tiếp cho NLĐ' : `Tái ký từ hợp đồng mới nhất của NLĐ: ${others[0]?.no}`)}
+              >
                 Tái ký
               </Btn>
               <Btn variant="primary" icon={Pencil} onClick={() => (setEditing(true), setTab('info'), setConfirmDel(false))}>
@@ -2043,7 +2103,7 @@ const ContractDetail: React.FC<{
                   <td className={`${erp.td} ${erp.num}`}>{money(salaryOf(x))}</td>
                   <td className={erp.td}>{x.signer || '—'}</td>
                   <td className={`${erp.td} border-r-0`}>
-                    <StateTag st={stateOf(x, s.contracts, 30)} />
+                    <StateTag st={stateOf(x, s.contracts, SOON_DAYS, w?.working)} />
                   </td>
                 </tr>
               ))}
@@ -2115,15 +2175,17 @@ const RenewPanel: React.FC<{ s: Store; rows: Row[]; onClose: () => void; onDone:
   const [signDate, setSignDate] = useState('');
   const [signPlace, setSignPlace] = useState('Hà Nội');
 
+  const cfgOf = (id: string, last: Contract) => cfg[id] || { ...nextOf(last), from: last.to ? addDays(last.to, 1) : '' };
   const plan = (() => {
     let all = s.contracts;
     return items.map(({ r, last }) => {
-      const k = cfg[r.w.id];
+      const k = cfgOf(r.w.id, last);
+      const companyId = companyById(last.companyId)?.active ? last.companyId : defaultCompanyId();
       if (isK(last.type, 'KXD') && !last.to) return { r, last, skip: 'HĐ không xác định thời hạn — không cần tái ký' };
       const c: Contract = {
         ...blankFor(r.w, s, k.type, k.from),
-        companyId: last.companyId,
-        no: nextContractNo(r.w.code, last.companyId, k.type, all),
+        companyId,
+        no: nextContractNo(r.w.code, companyId, k.type, all),
         term: isK(k.type, 'KXD') ? '' : k.term,
         to: endOf(k.type, isK(k.type, 'KXD') ? '' : k.term, k.from),
         signDate: signDate || k.from,
@@ -2197,10 +2259,10 @@ const RenewPanel: React.FC<{ s: Store; rows: Row[]; onClose: () => void; onDone:
           </thead>
           <tbody>
             {plan.map((p, i) => {
-              const k = cfg[p.r.w.id];
+              const k = cfgOf(p.r.w.id, p.last);
               const setK = (patch: Partial<{ type: CType; term: string; from: string }>) =>
                 setCfg((o) => {
-                  const n = { ...o[p.r.w.id], ...patch };
+                  const n = { ...(o[p.r.w.id] || k), ...patch };
                   if (patch.type) n.term = defaultTerm(patch.type);
                   return { ...o, [p.r.w.id]: n };
                 });
@@ -2301,7 +2363,7 @@ const downloadTemplate = () => {
   XLSX.utils.book_append_sheet(wb, ref, 'DanhMuc');
   XLSX.writeFile(wb, 'mau-nhap-hop-dong.xlsx');
 };
-type ImpRow = { line: number; kind: 'Thêm mới' | 'Cập nhật' | 'Lỗi'; code: string; name: string; c?: Contract; err?: string };
+type ImpRow = { line: number; kind: 'Thêm mới' | 'Cập nhật' | 'Không đổi' | 'Lỗi'; code: string; name: string; c?: Contract; err?: string };
 const matchType = (v: string): CType | undefined => {
   const n = norm(v);
   if (!n) return undefined;
@@ -2309,7 +2371,7 @@ const matchType = (v: string): CType | undefined => {
   if (hit) return hit.name;
   return /thu viec/.test(n) ? defaultTypeOf('TV') : /khong xac dinh/.test(n) ? defaultTypeOf('KXD') : /xac dinh/.test(n) ? defaultTypeOf('XD') : undefined;
 };
-const KIND_CLS = { 'Thêm mới': 'bg-emerald-50 text-emerald-700 border-emerald-300', 'Cập nhật': 'bg-sky-50 text-sky-700 border-sky-300', Lỗi: 'bg-rose-50 text-rose-700 border-rose-300' };
+const KIND_CLS = { 'Thêm mới': 'bg-emerald-50 text-emerald-700 border-emerald-300', 'Cập nhật': 'bg-sky-50 text-sky-700 border-sky-300', 'Không đổi': 'bg-slate-50 text-slate-600 border-slate-300', Lỗi: 'bg-rose-50 text-rose-700 border-rose-300' };
 
 const ImportPanel: React.FC<{ s: Store; onClose: () => void; flash: (m: string) => void }> = ({ s, onClose, flash }) => {
   const [fileName, setFileName] = useState('');
@@ -2318,9 +2380,18 @@ const ImportPanel: React.FC<{ s: Store; onClose: () => void; flash: (m: string) 
   const ref = useRef<HTMLInputElement>(null);
 
   const parse = async (f: File) => {
+    try {
+      await parseFile(f);
+    } catch (e) {
+      setRows([]);
+      flash(`Không đọc được file "${f.name}" — kiểm tra lại file Excel (.xlsx) (${(e as Error).message})`);
+    }
+  };
+  const parseFile = async (f: File) => {
     setFileName(f.name);
     const wb = XLSX.read(await f.arrayBuffer(), { cellDates: true });
     const sh = wb.Sheets[wb.SheetNames[0]];
+    if (!sh) throw new Error('file không có trang tính');
     const aoa = XLSX.utils.sheet_to_json<unknown[]>(sh, { header: 1, defval: '', raw: true });
     const head = (aoa[0] || []).map((h) => norm(h));
     const idx = (label: string) => head.indexOf(norm(label));
@@ -2331,6 +2402,7 @@ const ImportPanel: React.FC<{ s: Store; onClose: () => void; flash: (m: string) 
     }
     let all = s.contracts;
     const out: ImpRow[] = [];
+    const lineOfId = new Map<string, number>(); // HĐ đã thêm / sửa ở dòng trước trong cùng file
     aoa.slice(1).forEach((r, i) => {
       const g = (label: string) => (idx(label) >= 0 ? r[idx(label)] : '');
       const gs = (label: string) => String(g(label) ?? '').trim();
@@ -2344,6 +2416,7 @@ const ImportPanel: React.FC<{ s: Store; onClose: () => void; flash: (m: string) 
       const no = gs('Số HĐ');
       const old = no ? all.find((c) => c.no.toLowerCase() === no.toLowerCase()) : undefined;
       if (old && old.workerId !== w.id) return fail(`Số HĐ ${no} thuộc NLĐ khác`);
+      if (old && lineOfId.has(old.id)) return fail(`Số HĐ ${no} trùng với dòng ${lineOfId.get(old.id)} trong file`);
       const typeRaw = gs('Loại HĐ');
       const type = matchType(typeRaw) || (typeRaw ? undefined : old?.type);
       if (!type) return fail(typeRaw ? `Loại HĐ không hợp lệ: ${typeRaw}` : 'Loại HĐ: Bắt buộc');
@@ -2369,13 +2442,18 @@ const ImportPanel: React.FC<{ s: Store; onClose: () => void; flash: (m: string) 
       if (!UNITS.includes(unit)) return fail(`Đơn vị không có trong danh mục: ${unit}`);
       const baseRaw = g('Lương cơ bản gốc');
       const rateRaw = g('Mức hưởng (%)');
-      const base = baseRaw === '' ? undefined : typeof baseRaw === 'number' ? baseRaw : parseMoney(String(baseRaw));
-      const rate = rateRaw === '' ? undefined : Number(rateRaw);
-      if (rate !== undefined && isNaN(rate)) return fail('Mức hưởng phải là số');
-      const num = (label: string) => {
+      const base = baseRaw === '' ? undefined : parseAmount(baseRaw);
+      if (base === null) return fail(`Lương cơ bản gốc không đúng dạng số: ${baseRaw}`);
+      const rate = rateRaw === '' ? undefined : parseRate(rateRaw);
+      if (rate === null) return fail('Mức hưởng phải là số');
+      const amounts: Record<string, number | undefined> = {};
+      for (const label of [...SUPPORTS.map((x) => x.name), 'Thưởng hiệu quả (tạm tính)']) {
         const v = g(label);
-        return v === '' || v === undefined ? undefined : typeof v === 'number' ? v : parseMoney(String(v));
-      };
+        const n = v === '' || v === undefined ? undefined : parseAmount(v);
+        if (n === null) return fail(`${label} không đúng dạng số: ${v}`);
+        amounts[label] = n;
+      }
+      const num = (label: string) => amounts[label];
       const baseC = old ? structuredClone(old) : blankFor(w, { ...s, contracts: all }, type, from);
       const c: Contract = {
         ...baseC,
@@ -2404,8 +2482,10 @@ const ImportPanel: React.FC<{ s: Store; onClose: () => void; flash: (m: string) 
       }
       const e = validate(c, all);
       if (Object.keys(e).length) return fail(Object.entries(e).map(([k, v]) => `${LABELS.find(([lk]) => lk === k)?.[1] || (k === 'workerId' ? 'NLĐ' : k)}: ${v}`).join(' · '));
+      lineOfId.set(c.id, line);
       if (old) {
         const ch = diffC(old, c);
+        if (!ch.length) return out.push({ line, kind: 'Không đổi', code, name: w.name });
         c.history = [...old.history, { at: nowIso(), by: ME, action: `Cập nhật từ Excel (${f.name})`, changes: ch }];
         all = all.map((x) => (x.id === old.id ? c : x));
       } else {
@@ -2420,6 +2500,7 @@ const ImportPanel: React.FC<{ s: Store; onClose: () => void; flash: (m: string) 
   const nIns = rows.filter((r) => r.kind === 'Thêm mới').length;
   const nUpd = rows.filter((r) => r.kind === 'Cập nhật').length;
   const nErr = rows.filter((r) => r.kind === 'Lỗi').length;
+  const nSame = rows.filter((r) => r.kind === 'Không đổi').length;
   const save = () => {
     const ok = rows.filter((r) => r.c);
     update((x) => {
@@ -2427,7 +2508,7 @@ const ImportPanel: React.FC<{ s: Store; onClose: () => void; flash: (m: string) 
       ok.forEach((r) => (cs = cs.some((c) => c.id === r.c!.id) ? cs.map((c) => (c.id === r.c!.id ? r.c! : c)) : [...cs, r.c!]));
       return { ...x, contracts: cs };
     });
-    flash(`Đã nhập: thêm mới ${nIns}, cập nhật ${nUpd}${nErr ? `, bỏ qua ${nErr} dòng lỗi` : ''}`);
+    flash(`Đã nhập: thêm mới ${nIns}, cập nhật ${nUpd}${nSame ? `, ${nSame} dòng không đổi` : ''}${nErr ? `, bỏ qua ${nErr} dòng lỗi` : ''}`);
     onClose();
   };
   const shown = onlyErr ? rows.filter((r) => r.kind === 'Lỗi') : rows;
@@ -2461,6 +2542,7 @@ const ImportPanel: React.FC<{ s: Store; onClose: () => void; flash: (m: string) 
           <span className="ml-auto flex flex-wrap items-center gap-1.5">
             <Tag cls={KIND_CLS['Thêm mới']}>Thêm mới {nIns}</Tag>
             <Tag cls={KIND_CLS['Cập nhật']}>Cập nhật {nUpd}</Tag>
+            {nSame > 0 && <Tag cls={KIND_CLS['Không đổi']}>Không đổi {nSame}</Tag>}
             <Tag cls={KIND_CLS['Lỗi']}>Lỗi {nErr}</Tag>
             {nErr > 0 && (
               <label className="flex items-center gap-1.5 ml-2 text-[12px] cursor-pointer">
@@ -2496,7 +2578,7 @@ const ImportPanel: React.FC<{ s: Store; onClose: () => void; flash: (m: string) 
                     <td className={`${erp.td} whitespace-nowrap`}>{r.c ? `${shortOf(r.c.type)}${r.c.term ? ` ${r.c.term}` : ''}` : ''}</td>
                     <td className={`${erp.td} whitespace-nowrap`}>{r.c ? `${dmy(r.c.from)} → ${r.c.to ? dmy(r.c.to) : '—'}` : ''}</td>
                     <td className={`${erp.td} ${erp.num}`}>{r.c ? money(salaryOf(r.c)) : ''}</td>
-                    <td className={`${erp.td} border-r-0 ${r.err ? 'text-rose-600' : 'text-slate-500'}`}>{r.err || (r.kind === 'Cập nhật' ? r.c?.history[r.c.history.length - 1]?.changes?.join(' · ') || 'Không đổi' : '')}</td>
+                    <td className={`${erp.td} border-r-0 ${r.err ? 'text-rose-600' : 'text-slate-500'}`}>{r.err || (r.kind === 'Cập nhật' ? r.c?.history[r.c.history.length - 1]?.changes?.join(' · ') : r.kind === 'Không đổi' ? 'Dữ liệu trùng với hợp đồng hiện có' : '')}</td>
                   </tr>
                 ))}
               </tbody>

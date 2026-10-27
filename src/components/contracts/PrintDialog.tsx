@@ -4,10 +4,11 @@
  * Dữ liệu trộn + tạo file do màn gọi cung cấp (dataOf / onPrint) — popup không phụ thuộc kho hợp đồng.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Check, FileText, Printer, RotateCcw, Undo2, X } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { AlertTriangle, Check, FileSpreadsheet, FileText, Printer, RotateCcw, Undo2, X } from 'lucide-react';
 import { DateInput, today } from '../EmployeePage';
 import { Btn, erp } from '../erp/Erp';
-import { fieldLabel, typeDef, useCatalog, type AppendixTypeDef, type TemplateDef } from './catalog';
+import { FIELDS, fieldLabel, typeDef, useCatalog, type AppendixTypeDef, type TemplateDef } from './catalog';
 import { FIELD_RE, MF_RE, inspectDocx, soThanhChu, type DocLine } from './docx';
 
 export type PrintItem = {
@@ -22,7 +23,7 @@ export type PrintItem = {
 };
 export type PrintJob = { item: PrintItem; main: TemplateDef | null; extras: TemplateDef[]; app?: AppendixTypeDef; data: Record<string, string>; edited: string[] };
 
-type Cfg = { tpl: string; app: string; appDate: string; kt: Record<string, boolean>; ov: Record<string, string> };
+type Cfg = { tpl: string; app: string; appDate: string; kt: Record<string, boolean>; ov: Record<string, string>; wordsManual?: boolean };
 
 /** Các tên trường cùng một dữ liệu trong bộ mẫu — sửa 1 trường thì đổi luôn các trường còn lại. */
 const ALIASES = [
@@ -32,10 +33,63 @@ const ALIASES = [
   ['HQCV_tạm_tính', 'HQCV'],
   ['Ngày_áp_dụng_text', 'Ngày_ký_Phụ_lục_điều_chỉnh'],
   ['Họ_và_tên', 'Họ_tên_1'],
+  ['Mã_NV', 'DS_Nhân_viênMã_NV_cũ1'],
+  ['Contract_start', 'Ngày_bắt_đầu_HD'],
 ];
 const aliasOf = (k: string) => ALIASES.find((g) => g.includes(k)) || [k];
+const titleCase = (v: string) => v.toLocaleLowerCase('vi').replace(/(^|\s)(\p{L})/gu, (_m, a: string, b: string) => a + b.toLocaleUpperCase('vi'));
+const wordsOf = (salary: string) => {
+  const n = Number(salary.replace(/[^\d]/g, ''));
+  return salary.trim() && n ? soThanhChu(n) : '';
+};
+/** Trường suy ra từ trường khác: họ tên IN HOA ↔ họ tên thường; mức lương → bằng chữ. */
+const derivedOf = (name: string, v: string, wordsManual: boolean): Record<string, string> => {
+  if (name === 'Họ_và_tên' || name === 'Họ_tên_1') return { Họ_và_tên2: titleCase(v) };
+  if (name === 'Họ_và_tên2') return { Họ_và_tên: v.toLocaleUpperCase('vi') };
+  if (name === 'Lương_Cơ_bản' && !wordsManual) return { LCB_bằng_chữ: wordsOf(v) };
+  return {};
+};
 const OPTIONAL = new Set(['Giấy_ủy_quyền', 'Ghi_chú', 'Mô_tả_công_việc', 'Contract_end', 'Số_tháng_HD', 'Điện_thoại_công_ty', 'Tên_phụ_lục', 'Nội_dung_điều_chỉnh', 'Mã_số_thuế']);
 const KIND_PREFIX = { HD: 'Hợp đồng', KT: 'Kèm theo', PL: 'Phụ lục' } as const;
+
+/** Trường số trong file dữ liệu trộn (ô số → mẫu Word có \\# #,##0 tự định dạng). */
+const NUM_FIELD = /^(Lương_Cơ_bản|Lương_gốc|Trợ_cấp_|HQCV|Tổng_hỗ_trợ|Tổng_thu_nhập|Mức_hưởng|Số_tháng_HD)/;
+const MONEY_FIELD = /^(Lương_Cơ_bản|Lương_gốc|Trợ_cấp_|HQCV|Tổng_hỗ_trợ|Tổng_thu_nhập)/;
+/** File Excel dữ liệu trộn: sheet "Du_lieu_tron" — dòng 1 là tên trường (đúng tên MERGEFIELD trong mẫu Word), mỗi hợp đồng 1 dòng;
+ *  sheet "Giai_thich" — ý nghĩa từng trường. Dùng làm nguồn dữ liệu Mail Merge trong Word. */
+export const exportMergeData = (jobs: PrintJob[]) => {
+  const present = new Set(jobs.flatMap((j) => Object.keys(j.data)));
+  const keys = [...FIELDS.map((f) => f.key.normalize('NFC')).filter((k) => present.has(k)), ...[...present].filter((k) => !FIELDS.some((f) => f.key.normalize('NFC') === k))];
+  const cell = (k: string, v: string) => {
+    const n = Number(v.replace(/,/g, '').trim());
+    return NUM_FIELD.test(k) && v.trim() && isFinite(n) ? n : v;
+  };
+  const aoa: (string | number)[][] = [[...keys, 'Mẫu_in', 'Số_trường_đã_sửa']];
+  jobs.forEach((j) => aoa.push([...keys.map((k) => cell(k, j.data[k] ?? '')), j.main?.name || 'Bản in mặc định', j.edited.length]));
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  keys.forEach((k, c) => {
+    if (!MONEY_FIELD.test(k)) return;
+    for (let r = 1; r < aoa.length; r++) {
+      const ref = XLSX.utils.encode_cell({ r, c });
+      if (ws[ref]?.t === 'n') ws[ref].z = '#,##0';
+    }
+  });
+  ws['!cols'] = [...keys, 'Mẫu_in', 'x'].map((k) => ({ wch: Math.min(40, Math.max(12, k.length + 2, ...jobs.map((j) => String(j.data[k] ?? '').length + 2))) }));
+  ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+  const info = XLSX.utils.aoa_to_sheet([
+    ['Tên trường', 'Ý nghĩa', 'Kiểu dữ liệu'],
+    ...keys.map((k) => [k, fieldLabel(k), MONEY_FIELD.test(k) ? 'Số tiền (VNĐ) — trong mẫu Word dùng \\# #,##0 để hiện dấu phân cách' : NUM_FIELD.test(k) ? 'Số' : jobs.some((j) => /^\d{2}\/\d{2}\/\d{4}$/.test(j.data[k] ?? '')) ? 'Ngày (chữ dạng dd/mm/yyyy)' : 'Chữ']),
+    [],
+    ['Cách dùng: Word → Mailings → Select Recipients → Use an Existing List → chọn file này → sheet Du_lieu_tron.'],
+  ]);
+  info['!cols'] = [{ wch: 30 }, { wch: 60 }, { wch: 60 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Du_lieu_tron');
+  XLSX.utils.book_append_sheet(wb, info, 'Giai_thich');
+  const name = `Du_lieu_tron_HD_${today().replace(/-/g, '')}.xlsx`;
+  XLSX.writeFile(wb, name);
+  return name;
+};
 
 const LINES = new Map<string, Promise<DocLine[]>>();
 const linesOf = (t: TemplateDef) => {
@@ -59,6 +113,7 @@ const Editable: React.FC<{ name: string; value: string; edited: boolean; empty: 
         e.preventDefault();
         e.currentTarget.blur();
       } else if (e.key === 'Escape') {
+        e.stopPropagation(); // Esc chỉ huỷ ô đang sửa, không đóng popup
         e.currentTarget.textContent = value;
         e.currentTarget.blur();
       }
@@ -79,7 +134,7 @@ const Editable: React.FC<{ name: string; value: string; edited: boolean; empty: 
   </span>
 );
 
-export const PrintDialog: React.FC<{ items: PrintItem[]; onClose: () => void; onPrint: (jobs: PrintJob[]) => Promise<void> }> = ({ items, onClose, onPrint }) => {
+export const PrintDialog: React.FC<{ items: PrintItem[]; onClose: () => void; onPrint: (jobs: PrintJob[]) => Promise<void>; notify?: (m: string) => void }> = ({ items, onClose, onPrint, notify }) => {
   const cat = useCatalog();
   const [cur, setCur] = useState(items[0]?.id || '');
   const [cfg, setCfg] = useState<Record<string, Cfg>>(() =>
@@ -144,29 +199,30 @@ export const PrintDialog: React.FC<{ items: PrintItem[]; onClose: () => void; on
   const commit = (name: string, v: string) =>
     set(it.id, (x) => {
       const ov = { ...x.ov };
-      for (const k of aliasOf(name)) {
-        if (v === (base[k] ?? '')) delete ov[k];
-        else ov[k] = v;
+      let wordsManual = !!x.wordsManual;
+      if (name === 'LCB_bằng_chữ') wordsManual = v !== wordsOf(job.data.Lương_Cơ_bản || '');
+      const patch: Record<string, string> = {};
+      aliasOf(name).forEach((k) => (patch[k] = v));
+      Object.entries(derivedOf(name, v, wordsManual)).forEach(([dk, dv]) => aliasOf(dk).forEach((k) => (patch[k] = dv)));
+      for (const [k, pv] of Object.entries(patch)) {
+        if (pv === (base[k] ?? '')) delete ov[k];
+        else ov[k] = pv;
       }
-      // sửa lương cơ bản → tự đổi "bằng chữ" (trừ khi đã tự sửa phần bằng chữ)
-      if (name === 'Lương_Cơ_bản' && !('LCB_bằng_chữ' in x.ov)) {
-        const n = Number(v.replace(/[^\d]/g, ''));
-        if (v.trim() && n) ov.LCB_bằng_chữ = soThanhChu(n);
-        else delete ov.LCB_bằng_chữ;
-      }
-      if (name === 'LCB_bằng_chữ' && v === base.LCB_bằng_chữ) delete ov.LCB_bằng_chữ;
-      return { ...x, ov };
+      return { ...x, ov, wordsManual };
     });
   const reset = (name?: string) =>
     set(it.id, (x) => {
-      if (!name) return { ...x, ov: {} };
+      if (!name) return { ...x, ov: {}, wordsManual: false };
       const ov = { ...x.ov };
-      aliasOf(name).forEach((k) => delete ov[k]);
-      if (name === 'Lương_Cơ_bản') delete ov.LCB_bằng_chữ;
-      return { ...x, ov };
+      const keys = [...aliasOf(name), ...Object.keys(derivedOf(name, '', false)).flatMap(aliasOf)];
+      keys.forEach((k) => delete ov[k]);
+      if (name === 'LCB_bằng_chữ' && 'Lương_Cơ_bản' in ov) ov.LCB_bằng_chữ = wordsOf(ov.Lương_Cơ_bản); // về lại "bằng chữ" theo mức lương đang sửa
+      return { ...x, ov, wordsManual: name === 'LCB_bằng_chữ' || name === 'Lương_Cơ_bản' ? false : x.wordsManual };
     });
   const jump = (name: string) => {
-    const el = paper.current?.querySelector<HTMLElement>(`[data-field="${CSS.escape(name)}"]`);
+    const el = aliasOf(name)
+      .map((k) => paper.current?.querySelector<HTMLElement>(`[data-field="${CSS.escape(k)}"]`))
+      .find(Boolean);
     if (!el) return;
     el.scrollIntoView({ block: 'center', behavior: 'smooth' });
     setTimeout(() => el.focus(), 250);
@@ -446,6 +502,16 @@ export const PrintDialog: React.FC<{ items: PrintItem[]; onClose: () => void; on
           </span>
           <span className="w-3" />
           <Btn onClick={onClose}>Huỷ</Btn>
+          <Btn
+            icon={FileSpreadsheet}
+            onClick={() => {
+              const name = exportMergeData(all);
+              notify?.(`Đã tải dữ liệu trộn ${name}: ${all.length} hợp đồng${all.some((j) => j.edited.length) ? ', gồm phần đã sửa trên bản xem trước' : ''} — dùng làm nguồn Mail Merge trong Word`);
+            }}
+            title="Mỗi hợp đồng 1 dòng, mỗi trường trộn 1 cột (tên cột đúng tên trường trong mẫu Word) — dùng cho Mail Merge của Word"
+          >
+            Tải dữ liệu trộn (Excel)
+          </Btn>
           <Btn variant="primary" icon={Printer} disabled={busy || (!fileCount && !htmlCount)} onClick={run}>
             {busy ? 'Đang tạo file…' : fileCount ? `Tải file Word${fileCount > 1 ? ` (${fileCount})` : ''}` : 'Mở bản in'}
           </Btn>

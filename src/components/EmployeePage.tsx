@@ -380,7 +380,10 @@ export function addDays(iso: string, n: number) {
 }
 export function addMonths(iso: string, n: number) {
   const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
+  const day = d.getDate();
+  d.setDate(1);
   d.setMonth(d.getMonth() + n);
+  d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate())); // 31/01 + 1 tháng = 28/02, không tràn sang tháng 3
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 export const dmy = (iso: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '');
@@ -388,8 +391,10 @@ const dmyhm = (iso: string) => {
   const d = new Date(iso);
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
+/** Ngày hôm nay theo giờ máy (giờ Việt Nam) — toISOString() là giờ UTC, trước 7h sáng sẽ lùi 1 ngày. */
 export function today() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 const initials = (name: string) => {
   const w = name.trim().split(/\s+/).filter(Boolean);
