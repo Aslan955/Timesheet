@@ -72,6 +72,7 @@ import { MarcomProvider } from './marcom/MarcomContext';
 import { BirthdayListPage } from './components/marcom/BirthdayListPage';
 import { WelcomeOnboardPage } from './components/marcom/WelcomeOnboardPage';
 import { MarcomEmailPage } from './components/marcom/MarcomEmailPage';
+import { ProcessPage } from './components/process/ProcessPage';
 
 export default function App() {
   const [activeItem, setActiveItem] = useState('Mục tiêu kinh doanh'); // màn mở mặc định khi vào hệ thống
@@ -201,6 +202,8 @@ export default function App() {
         return <EmployeePage />;
       case 'Contracts':
         return <ContractsPage />;
+      case 'Danh sách quy trình':
+        return <ProcessPage />;
       case 'Danh mục hợp đồng':
         return <ContractCatalogPage />;
       case 'Template hợp đồng':

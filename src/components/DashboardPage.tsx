@@ -28,9 +28,11 @@ import {
   ShieldCheck,
   FolderKanban,
   X,
-  Send
+  Send,
+  Wrench
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { CURRENT_USER, WISH_SUGGESTIONS, WISH_THEMES, sendWish, useWishes, type WishTheme } from '../marcom/wishStore';
 import { BirthdayBox } from '../marcom/BirthdayBox';
 import { 
   MOCK_LEAVES, 
@@ -76,23 +78,11 @@ const MODULE_META: Record<Exclude<RequestModule, 'all'>, { label: string; classN
 // Giới hạn ký tự lời chúc sinh nhật
 const WISH_MAX_LENGTH = 500;
 
-// Thông báo lời chúc gửi tới người được chúc
-interface WishNotification {
-  id: string;
-  fromName: string;   // người gửi lời chúc
-  toId: string;       // id người được chúc
-  toName: string;     // tên người được chúc
-  toAvatar: string;
-  message: string;
-  time: string;
-  read: boolean;
-}
 
 export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
   // Current time state
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [wishesSent, setWishesSent] = useState<Record<string, boolean>>({});
   
   // Data states initialized from constants
   const [leaves, setLeaves] = useState<LeaveRequest[]>(MOCK_LEAVES);
@@ -110,9 +100,11 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
   // Lời chúc sinh nhật: popup soạn & hệ thống thông báo
   const [wishingPerson, setWishingPerson] = useState<{ id: string; name: string; avatar: string } | null>(null);
   const [wishText, setWishText] = useState('');
-  const [wishNotifications, setWishNotifications] = useState<WishNotification[]>([]);
-  const [showNotifPanel, setShowNotifPanel] = useState(false);
-  const [openedNotif, setOpenedNotif] = useState<WishNotification | null>(null);
+  const [wishTheme, setWishTheme] = useState<WishTheme>('cake');
+  const [wishSign, setWishSign] = useState(CURRENT_USER.name);
+  const wishNotifications = useWishes(); // lời chúc → thông báo ở chuông đầu trang (Header)
+  // Đã gửi lời chúc cho ai (người dùng hiện tại)
+  const wishesSent: Record<string, boolean> = Object.fromEntries(wishNotifications.filter((w) => w.fromName === CURRENT_USER.name).map((w) => [w.toId, true]));
 
   // Sync clock time
   useEffect(() => {
@@ -163,6 +155,8 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
   const openWishCompose = (person: { id: string; name: string; avatar: string }) => {
     setWishingPerson(person);
     setWishText('');
+    setWishTheme('cake');
+    setWishSign(CURRENT_USER.name);
   };
 
   // Gửi lời chúc: lưu trạng thái, đẩy thông báo tới người được chúc
@@ -174,31 +168,22 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
       return;
     }
 
-    const notif: WishNotification = {
-      id: `WN-${Date.now()}`,
-      fromName: 'Nguyễn Văn An',
+    // Đẩy thông báo tới người được chúc: popup thông báo + chuông đầu trang → bấm vào mở thiệp chúc của người chúc
+    sendWish({
+      fromName: CURRENT_USER.name,
+      fromAvatar: CURRENT_USER.avatar,
       toId: wishingPerson.id,
       toName: wishingPerson.name,
       toAvatar: wishingPerson.avatar,
       message,
-      time: new Date().toLocaleString('vi-VN').replace(',', ''),
-      read: false,
-    };
-
-    setWishNotifications(prev => [notif, ...prev]);
-    setWishesSent(prev => ({ ...prev, [wishingPerson.id]: true }));
+      signature: wishSign.trim(),
+      theme: wishTheme,
+    });
     showToast(`🎉 Đã gửi lời chúc mừng sinh nhật tới ${wishingPerson.name} và đẩy thông báo!`);
     setWishingPerson(null);
     setWishText('');
   };
 
-  // Người được chúc bấm vào thông báo -> mở popup xem lời chúc, đánh dấu đã đọc
-  const openNotification = (notif: WishNotification) => {
-    setOpenedNotif(notif);
-    setWishNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, read: true } : n));
-  };
-
-  const unreadNotifCount = wishNotifications.filter(n => !n.read).length;
 
   // Quick Approve/Reject Action handlers
   const handleApproveLeave = (id: string, applicant: string) => {
@@ -416,28 +401,34 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
               </div>
             </div>
 
-            {/* Stat 4: Đơn của tôi đang chờ */}
-            <div 
-              onClick={() => onNavigate && onNavigate('Quản lý Đơn từ')}
-              className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-xs hover:shadow-md hover:border-[#0fa57c]/50 transition-all duration-200 group cursor-pointer flex flex-col justify-between"
+            {/* Stat 4: Đơn từ đang chờ — tạm bảo trì, đang phát triển */}
+            <div
+              className="relative overflow-hidden bg-white border border-dashed border-amber-300 p-5 rounded-2xl shadow-xs flex flex-col justify-between cursor-default"
+              title="Chức năng đang được bảo trì / phát triển"
+              data-testid="pending-requests-maintenance"
             >
-              <div className="flex items-center justify-between mb-3">
+              <div
+                className="pointer-events-none absolute inset-0 opacity-[0.06]"
+                style={{ backgroundImage: 'repeating-linear-gradient(45deg, #f59e0b 0 10px, transparent 10px 20px)' }}
+              />
+              <div className="relative flex items-center justify-between mb-3">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Đơn từ đang chờ</span>
-                <div className="p-2.5 rounded-xl bg-amber-50 text-amber-600 group-hover:scale-110 transition-transform">
-                  <Inbox size={18} />
+                <div className="p-2.5 rounded-xl bg-amber-50 text-amber-600">
+                  <Wrench size={18} />
                 </div>
               </div>
-              <div>
-                <div className="flex items-baseline space-x-1.5">
-                  <span className="text-2xl font-black text-slate-800 font-mono">1</span>
-                  <span className="text-xs font-bold text-slate-400">yêu cầu</span>
+              <div className="relative">
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75 animate-ping" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
+                  </span>
+                  <span className="text-[15px] font-black text-slate-800">Đang bảo trì</span>
                 </div>
-                <div className="w-full bg-slate-100 rounded-full h-1.5 mt-2.5 overflow-hidden">
-                  <div className="bg-amber-500 h-full rounded-full w-[50%]" />
-                </div>
-                <p className="text-[10px] font-bold text-amber-600 mt-2 flex items-center justify-between">
-                  <span>Nghỉ phép năm (1 ngày)</span>
+                <p className="text-[11px] font-medium text-slate-500 mt-1.5 leading-snug">
+                  Chức năng đang được nâng cấp &amp; phát triển, sẽ sớm hoạt động trở lại.
                 </p>
+                <p className="text-[10px] font-bold text-amber-600 mt-2">Tạm thời chưa xem được đơn từ đang chờ</p>
               </div>
             </div>
           </div>
@@ -620,53 +611,7 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                     </div>
                   </div>
 
-                  {/* Nút chuông thông báo lời chúc */}
-                  <button
-                    onClick={() => setShowNotifPanel(v => !v)}
-                    className="relative p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors cursor-pointer"
-                    title="Thông báo lời chúc"
-                  >
-                    <Bell size={16} />
-                    {unreadNotifCount > 0 && (
-                      <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 bg-rose-500 text-white text-[9px] font-black rounded-full flex items-center justify-center">
-                        {unreadNotifCount}
-                      </span>
-                    )}
-                  </button>
                 </div>
-
-                {/* Bảng danh sách thông báo lời chúc (người được chúc nhận được) */}
-                {showNotifPanel && (
-                  <div className="mb-4 border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
-                    <div className="px-3 py-2 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
-                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Thông báo lời chúc ({wishNotifications.length})</span>
-                      <button onClick={() => setShowNotifPanel(false)} className="text-slate-400 hover:text-slate-600"><X size={14} /></button>
-                    </div>
-                    {wishNotifications.length === 0 ? (
-                      <div className="px-3 py-6 text-center text-[11px] text-slate-400 font-semibold">Chưa có lời chúc nào được gửi.</div>
-                    ) : (
-                      <div className="max-h-52 overflow-y-auto divide-y divide-slate-50">
-                        {wishNotifications.map(n => (
-                          <button
-                            key={n.id}
-                            onClick={() => openNotification(n)}
-                            className={`w-full text-left px-3 py-2.5 flex items-start gap-2.5 transition-colors cursor-pointer ${n.read ? 'hover:bg-slate-50' : 'bg-rose-50/40 hover:bg-rose-50'}`}
-                          >
-                            <img src={n.toAvatar} alt={n.toName} className="w-8 h-8 rounded-full border border-slate-100 mt-0.5" referrerPolicy="no-referrer" />
-                            <div className="min-w-0 flex-1">
-                              <p className="text-[11px] font-bold text-slate-800 truncate">
-                                🎂 Lời chúc gửi tới {n.toName}
-                                {!n.read && <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-rose-500 align-middle" />}
-                              </p>
-                              <p className="text-[10px] text-slate-500 truncate">{n.fromName}: {n.message}</p>
-                              <p className="text-[9px] text-slate-400 font-medium mt-0.5">{n.time}</p>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
 
                 <div className="space-y-3">
                   {birthdays.map((person) => (
@@ -1012,6 +957,30 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
               </div>
 
               <div>
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Mẫu thiệp</p>
+                <div className="grid grid-cols-4 gap-2" data-testid="wish-themes">
+                  {(Object.keys(WISH_THEMES) as WishTheme[]).map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setWishTheme(k)}
+                      className={`rounded-xl bg-gradient-to-br ${WISH_THEMES[k].bg} py-2 text-center cursor-pointer border transition-all ${wishTheme === k ? 'border-rose-400 ring-2 ring-rose-200' : 'border-slate-100 hover:border-slate-300'}`}
+                    >
+                      <span className="block text-xl leading-none">{WISH_THEMES[k].emoji}</span>
+                      <span className="block text-[10px] font-bold text-slate-600 mt-1">{WISH_THEMES[k].label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {WISH_SUGGESTIONS.map((t, i) => (
+                    <button key={i} type="button" onClick={() => setWishText(t)} className="px-2 py-1 rounded-lg bg-rose-50 text-rose-600 text-[10px] font-bold hover:bg-rose-100 cursor-pointer" title={t}>
+                      Gợi ý {i + 1}
+                    </button>
+                  ))}
+                </div>
                 <textarea
                   autoFocus
                   value={wishText}
@@ -1025,6 +994,16 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                     {wishText.length}/{WISH_MAX_LENGTH} ký tự
                   </span>
                 </div>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider whitespace-nowrap">Ký tên</span>
+                  <input
+                    value={wishSign}
+                    onChange={(e) => setWishSign(e.target.value.slice(0, 60))}
+                    placeholder="Tên hiển thị cuối thiệp"
+                    className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:border-rose-400 focus:bg-white"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-2">{wishingPerson.name} sẽ nhận thông báo ở chuông trên thanh đầu trang; bấm vào thông báo sẽ mở thiệp chúc của bạn.</p>
               </div>
 
               <div className="flex space-x-3">
@@ -1041,39 +1020,6 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                   <Send size={14} /> Gửi lời chúc
                 </button>
               </div>
-            </motion.div>
-          </div>
-        )}
-
-      {/* Popup xem chi tiết lời chúc (khi người được chúc bấm vào thông báo) */}
-      {openedNotif && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => setOpenedNotif(null)}
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-              className="relative bg-white w-full max-w-md rounded-3xl p-7 shadow-2xl text-center space-y-4 overflow-hidden"
-            >
-              <button onClick={() => setOpenedNotif(null)} className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-full transition-colors">
-                <X size={18} className="text-slate-400" />
-              </button>
-              <div className="mx-auto w-14 h-14 rounded-2xl bg-rose-50 text-rose-500 flex items-center justify-center text-2xl">🎂</div>
-              <div>
-                <h4 className="font-black text-slate-900 text-base">Chúc mừng sinh nhật {openedNotif.toName}!</h4>
-                <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Từ {openedNotif.fromName} • {openedNotif.time}</p>
-              </div>
-              <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-left">
-                <p className="text-sm text-slate-700 font-medium whitespace-pre-wrap break-words">{openedNotif.message}</p>
-              </div>
-              <button
-                onClick={() => setOpenedNotif(null)}
-                className="w-full py-2.5 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg shadow-rose-500/20 transition-all"
-              >
-                Đóng
-              </button>
             </motion.div>
           </div>
         )}

@@ -35,6 +35,7 @@ import {
   Cake,
   Hand,
   MailCheck,
+  Workflow,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -132,6 +133,12 @@ export const NAVIGATION: NavItem[] = [
       { title: 'Resource Allocation', icon: Users },
       { title: 'Projects Cost Efficiency', icon: BarChart3 },
     ]
+  },
+  {
+    // Phân hệ Quy trình: Kế toán / Admin thiết lập quy trình phê duyệt (thanh toán, tạm ứng, phê duyệt dự án…)
+    title: 'Quy trình',
+    icon: Workflow,
+    children: [{ title: 'Danh sách quy trình', icon: Workflow }],
   },
   {
     title: 'Human Resources',

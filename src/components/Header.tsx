@@ -1,5 +1,6 @@
 import React from 'react';
-import { Menu, Bell, User } from 'lucide-react';
+import { Menu, User } from 'lucide-react';
+import { NotificationBell, WishHost } from '../marcom/WishUi';
 
 interface HeaderProps {
   onToggleSidebar?: () => void;
@@ -18,10 +19,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
       </div>
       
       <div className="flex items-center space-x-4">
-        <button className="relative p-2 hover:bg-gray-100 rounded-md text-gray-600 transition-colors">
-          <Bell size={18} />
-          <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
-        </button>
+        <NotificationBell />
         
         <div className="flex items-center space-x-2 pl-4 border-l border-gray-200">
           <span className="text-sm font-medium text-gray-700">admin</span>
@@ -32,6 +30,8 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           </div>
         </div>
       </div>
+      {/* Popup thông báo lời chúc sinh nhật + thiệp chúc (mở khi người nhận bấm thông báo) */}
+      <WishHost />
     </header>
   );
 };
