@@ -34,7 +34,22 @@ export interface MarcomEmployee {
   active: boolean;
   /** Lý do huỷ khi status = 'Cancel Onboard' (HCNS nhập). */
   cancelReason?: string;
+  /** Nguồn ảnh MarCom dùng: 'upload' khi đã có ảnh tải lên, ngược lại 'employee'; photoUrl = ảnh hiệu lực. */
+  photoSource?: PhotoSource;
+  /** Ảnh gốc trên hồ sơ Employee. */
+  employeePhotoUrl?: string | null;
+  /** Ảnh MarCom tải lên. */
+  uploadedPhotoUrl?: string | null;
+  uploadedPhotoName?: string | null;
 }
+
+export type PhotoSource = 'employee' | 'upload';
+
+/** Dung lượng tối đa mọi ảnh MarCom tải lên (ảnh chúc mừng, banner, ảnh nền, nền thiệp). */
+export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/** Tạm ẩn kênh đăng bài Microsoft Teams (UI + logic khoá ảnh) — đổi true để bật lại. */
+export const TEAMS_POST_ENABLED = false;
 
 export type MailKind = 'birthday' | 'welcome';
 export type MailStatus = 'sent' | 'failed' | 'skipped' | 'test';
@@ -283,15 +298,19 @@ export const buildMailLogs = (employees: MarcomEmployee[], ref = new Date()): Ma
     return r.toISOString();
   };
   employees.forEach((e, idx) => {
-    const dob = fromKey(e.dob);
-    const bday = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
+    const bday = birthdayThisYear(e, today);
     const passed = bday < today || (bday.getTime() === today.getTime() && isPastTimeToday('09:00', ref));
-    if (bday.getMonth() === today.getMonth() && passed) {
+    // Mail sinh nhật các ngày đã qua trong năm; idx 9 = hôm đó đang tắt tự động → không có bản ghi ("Không gửi")
+    if (passed && idx !== 9) {
       if (e.status === 'Resigned') {
         logs.push({ id: `L-b-${e.id}`, kind: 'birthday', employeeId: e.id, employeeName: e.name, to: e.email, sentAt: at(bday, 9, 0), status: 'skipped', note: 'Nhân sự đã nghỉ việc' });
       } else {
         const failed = idx === 5;
-        logs.push({
+        // idx 7: lần đầu lỗi, tự thử lại thành công sau 10 phút → lịch sử ghi cả 2 bản ghi
+        if (idx === 7) {
+          logs.push({ id: `L-bf-${e.id}`, kind: 'birthday', employeeId: e.id, employeeName: e.name, to: e.email, sentAt: at(bday, 9, 0), status: 'failed', note: 'Máy chủ mail tạm thời không phản hồi (421)' });
+          logs.push({ id: `L-b-${e.id}`, kind: 'birthday', employeeId: e.id, employeeName: e.name, to: e.email, sentAt: at(bday, 9, 10), status: 'sent', note: 'Gửi thành công khi tự thử lại' });
+        } else logs.push({
           id: `L-b-${e.id}`, kind: 'birthday', employeeId: e.id, employeeName: e.name, to: e.email, sentAt: at(bday, 9, failed ? 0 : 1), status: failed ? 'failed' : 'sent',
           note: failed ? 'Mailbox không tồn tại (550 5.1.1)' : undefined,
         });
@@ -330,14 +349,15 @@ export const buildOnboardChanges = (employees: MarcomEmployee[], ref = new Date(
 };
 
 /** Sinh nhật (ngày-tháng) của nhân sự rơi vào năm hiện tại. */
-export const birthdayThisYear = (e: MarcomEmployee, ref = new Date()) => {
+const isLeapYear = (y: number) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+/** Ngày sinh nhật trong năm y — sinh 29/02 mà năm y không nhuận thì chúc ngày 28/02. */
+export const birthdayInYear = (e: MarcomEmployee, y: number) => {
   const d = fromKey(e.dob);
-  return new Date(ref.getFullYear(), d.getMonth(), d.getDate());
+  const day = d.getMonth() === 1 && d.getDate() === 29 && !isLeapYear(y) ? 28 : d.getDate();
+  return new Date(y, d.getMonth(), day);
 };
-export const isBirthdayToday = (e: MarcomEmployee, ref = new Date()) => {
-  const d = fromKey(e.dob);
-  return d.getDate() === ref.getDate() && d.getMonth() === ref.getMonth();
-};
+export const birthdayThisYear = (e: MarcomEmployee, ref = new Date()) => birthdayInYear(e, ref.getFullYear());
+export const isBirthdayToday = (e: MarcomEmployee, ref = new Date()) => birthdayThisYear(e, ref).getTime() === startOfDay(ref).getTime();
 
 /** Thay biến {{...}} trong mẫu email. */
 export const fillTemplate = (tpl: string, e: MarcomEmployee) =>
@@ -361,6 +381,7 @@ export const downloadPhoto = (e: MarcomEmployee) => {
   if (!e.photoUrl) return;
   const a = document.createElement('a');
   a.href = e.photoUrl;
-  a.download = `${e.code}_${slug(e.name).join('-')}.${e.photoUrl.startsWith('data:image/svg') ? 'svg' : 'png'}`;
+  const upExt = e.photoSource === 'upload' ? e.uploadedPhotoName?.split('.').pop() : undefined;
+  a.download = `${e.code}_${slug(e.name).join('-')}.${upExt ?? (e.photoUrl.startsWith('data:image/svg') ? 'svg' : 'png')}`;
   a.click();
 };

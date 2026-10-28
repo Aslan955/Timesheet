@@ -6,15 +6,18 @@ import React, { useEffect, useState } from 'react';
 import { Check, Filter, ImageOff, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MarcomEmployee } from './marcomData';
+import { useMarcomLang } from './i18n';
 
-export const Avatar: React.FC<{ e: MarcomEmployee; size?: number; rounded?: string; className?: string }> = ({ e, size = 32, rounded = 'rounded-full', className = '' }) =>
-  e.photoUrl ? (
+export const Avatar: React.FC<{ e: MarcomEmployee; size?: number; rounded?: string; className?: string }> = ({ e, size = 32, rounded = 'rounded-full', className = '' }) => {
+  const { tr } = useMarcomLang();
+  return e.photoUrl ? (
     <img src={e.photoUrl} alt={e.name} width={size} height={size} className={`${rounded} object-cover shrink-0 ${className}`} style={{ width: size, height: size }} />
   ) : (
-    <div className={`${rounded} bg-slate-100 border border-dashed border-slate-300 flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }} title="Chưa có ảnh trên hồ sơ Employee">
+    <div className={`${rounded} bg-slate-100 border border-dashed border-slate-300 flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }} title={tr('Chưa có ảnh trên hồ sơ Employee', 'No photo on the Employee profile')}>
       <ImageOff size={Math.max(12, size * 0.38)} className="text-slate-300" />
     </div>
   );
+};
 
 /** Màu nhãn trạng thái (dùng với <Tag cls=...> của Erp). */
 export const TAG = {
@@ -27,15 +30,18 @@ export const TAG = {
 };
 
 /** Dải lọc một hàng, nền xám nhạt (giống FilterBar màn Báo cáo hiệu quả dự án). */
-export const FilterBar: React.FC<{ children: React.ReactNode; right?: React.ReactNode }> = ({ children, right }) => (
+export const FilterBar: React.FC<{ children: React.ReactNode; right?: React.ReactNode }> = ({ children, right }) => {
+  const { tr } = useMarcomLang();
+  return (
   <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-3 py-1.5 bg-[#f3f6fa] border border-slate-200 rounded-[4px] [&_input]:h-7 [&_select]:h-7 [&_input]:text-[12px] [&_select]:text-[12px]">
     <span className="flex items-center gap-1.5 text-[12px] font-bold text-[#1e3a5f] pr-3 border-r border-slate-300 whitespace-nowrap">
-      <Filter size={13} className="text-[#1f5fa8]" /> Lọc
+      <Filter size={13} className="text-[#1f5fa8]" /> {tr('Lọc', 'Filter')}
     </span>
     {children}
     {right && <span className="ml-auto flex items-center gap-2">{right}</span>}
   </div>
-);
+  );
+};
 export const FilterCell: React.FC<{ label: string; children: React.ReactNode; className?: string }> = ({ label, children, className = '' }) => (
   <label className={`flex items-center gap-1.5 min-w-0 ${className}`}>
     <span className="text-[12px] text-slate-600 whitespace-nowrap">{label}</span>
@@ -102,6 +108,26 @@ export const Modal: React.FC<{ open: boolean; onClose: () => void; title: React.
 /** Nút icon nhỏ trong bảng. */
 export const iconBtn =
   'inline-flex items-center justify-center w-7 h-7 rounded-[3px] border border-transparent text-slate-500 hover:border-slate-300 hover:bg-white hover:text-[#1f5fa8] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed';
+
+/** Nút chuyển ngôn ngữ VI / EN (đặt ở actions của ErpTitleBar). */
+export const LangSwitch: React.FC = () => {
+  const { lang, setLanguage } = useMarcomLang();
+  return (
+    <div className="inline-flex h-7 border border-slate-300 rounded-[3px] overflow-hidden text-[11px] font-bold">
+      {(['vi', 'en'] as const).map((l) => (
+        <button
+          key={l}
+          type="button"
+          onClick={() => setLanguage(l)}
+          title={l === 'vi' ? 'Tiếng Việt' : 'English'}
+          className={`px-2 cursor-pointer ${lang === l ? 'bg-[#1f5fa8] text-white' : 'bg-white text-slate-500 hover:bg-slate-100'}`}
+        >
+          {l.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  );
+};
 
 /** Công tắc bật/tắt. */
 export const Switch: React.FC<{ on: boolean; onChange: (v: boolean) => void }> = ({ on, onChange }) => (

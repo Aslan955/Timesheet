@@ -36,6 +36,7 @@ import {
   Hand,
   MailCheck,
   Workflow,
+  MapPin,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -138,7 +139,10 @@ export const NAVIGATION: NavItem[] = [
     // Phân hệ Quy trình: Kế toán / Admin thiết lập quy trình phê duyệt (thanh toán, tạm ứng, phê duyệt dự án…)
     title: 'Quy trình',
     icon: Workflow,
-    children: [{ title: 'Danh sách quy trình', icon: Workflow }],
+    children: [
+      { title: 'Quy trình của tôi', icon: Inbox },
+      { title: 'Danh sách quy trình', icon: Workflow },
+    ],
   },
   {
     title: 'Human Resources',
@@ -174,6 +178,7 @@ export const NAVIGATION: NavItem[] = [
       { title: 'Yêu cầu tuyển dụng', icon: Briefcase },
       { title: 'Quản lý ứng viên', icon: Users },
       { title: 'Mẫu email', icon: Mail },
+      { title: 'Báo cáo theo khối', icon: BarChart3 },
       {
         title: 'Danh mục tuyển dụng',
         icon: ListChecks,
@@ -185,6 +190,7 @@ export const NAVIGATION: NavItem[] = [
           { title: 'Khối ứng tuyển', icon: Users2 },
           { title: 'Vị trí', icon: Briefcase },
           { title: 'Kỹ năng', icon: ClipboardList },
+          { title: 'Địa điểm phỏng vấn', icon: MapPin },
         ],
       },
     ]

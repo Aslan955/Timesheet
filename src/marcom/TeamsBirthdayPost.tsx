@@ -10,6 +10,7 @@
 import React from 'react';
 import { BoxConfig } from './MarcomContext';
 import { MarcomEmployee } from './marcomData';
+import { useMarcomLang } from './i18n';
 
 /** Danh bạ Team › Kênh lấy từ Microsoft Teams (mock). */
 export const TEAMS_DIRECTORY: { team: string; channels: string[] }[] = [{ team: 'VTX Group Community', channels: ['General', 'HCNS'] }];
@@ -24,7 +25,7 @@ const initialsOf = (name: string) =>
     .toUpperCase();
 
 /** Tài khoản đăng bài cố định: Bot iMIS dành riêng cho MarCom (không đổi tài khoản / ảnh). */
-export const TEAMS_SENDER = { name: 'iMIS · MarCom', account: 'Bot iMIS (ứng dụng Teams)' };
+export const TEAMS_SENDER = { name: 'iMIS · MarCom', account: 'Bot iMIS (ứng dụng Teams)', accountEn: 'iMIS Bot (Teams app)' };
 
 export const SenderAvatar: React.FC<{ size?: number }> = ({ size = 32 }) => (
   <span
@@ -39,12 +40,12 @@ const NUM_WORDS = ['không', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'b�
 export const numberWord = (n: number) => NUM_WORDS[n] ?? String(n);
 
 /** Biến dùng trong nội dung bài đăng Teams. */
-export const TEAMS_PLACEHOLDERS: { key: string; desc: string }[] = [
-  { key: '{{danhsach}}', desc: 'Danh sách người sinh nhật: 🎂 @Họ tên – Vị trí, Khối (mỗi người 1 dòng)' },
-  { key: '{{soluong_chu}}', desc: 'Số người bằng chữ (VD: hai)' },
-  { key: '{{soluong}}', desc: 'Số người bằng số' },
-  { key: '{{thang}}', desc: 'Tháng hiện tại' },
-  { key: '{{team}}', desc: 'Tên team Teams' },
+export const TEAMS_PLACEHOLDERS: { key: string; desc: string; descEn: string }[] = [
+  { key: '{{danhsach}}', desc: 'Danh sách người sinh nhật: 🎂 @Họ tên – Vị trí, Khối (mỗi người 1 dòng)', descEn: 'Birthday list: 🎂 @Full name – Position, Division (one per line)' },
+  { key: '{{soluong_chu}}', desc: 'Số người bằng chữ (VD: hai)', descEn: 'Headcount in words, Vietnamese (e.g. hai)' },
+  { key: '{{soluong}}', desc: 'Số người bằng số', descEn: 'Headcount in digits' },
+  { key: '{{thang}}', desc: 'Tháng hiện tại', descEn: 'Current month' },
+  { key: '{{team}}', desc: 'Tên team Teams', descEn: 'Teams team name' },
 ];
 
 /** **đậm** → <b>. */
@@ -62,6 +63,7 @@ const rich = (text: string, keyBase: string) =>
 const Mention: React.FC<{ children: React.ReactNode }> = ({ children }) => <span className="text-[#7f85f5] hover:underline cursor-pointer">{children}</span>;
 
 export const TeamsBirthdayPost: React.FC<{ cfg: BoxConfig; people: MarcomEmployee[] }> = ({ cfg, people }) => {
+  const { tr } = useMarcomLang();
   const today = new Date();
   const skip = people.length === 0 && cfg.emptyMode === 'hide';
   const fill = (t: string) =>
@@ -85,14 +87,14 @@ export const TeamsBirthdayPost: React.FC<{ cfg: BoxConfig; people: MarcomEmploye
 
       <div className="p-4">
         {skip ? (
-          <div className="text-center text-[12px] text-[#8a8a8a] py-6">Hôm nay không có sinh nhật → bot không đăng bài.</div>
+          <div className="text-center text-[12px] text-[#8a8a8a] py-6">{tr('Hôm nay không có sinh nhật → bot không đăng bài.', 'No birthdays today → the bot does not post.')}</div>
         ) : (
           <div className="flex gap-3">
             <SenderAvatar />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 text-[12px]">
                 <span className="font-semibold text-white">{TEAMS_SENDER.name}</span>
-                <span className="px-1 rounded-[3px] bg-[#3d3e66] text-[10px] font-semibold text-[#c5c7fa]">Ứng dụng</span>
+                <span className="px-1 rounded-[3px] bg-[#3d3e66] text-[10px] font-semibold text-[#c5c7fa]">{tr('Ứng dụng', 'App')}</span>
                 <span className="text-[#8a8a8a]">{cfg.teamsPostTime}</span>
               </div>
 
@@ -145,6 +147,7 @@ export const TeamsBirthdayPost: React.FC<{ cfg: BoxConfig; people: MarcomEmploye
 
 /** Ảnh thiệp sinh nhật tự ghép: nền (MarCom / mặc định) + polaroid từng người (ảnh Employee, họ tên, Vị trí - Khối). */
 export const BirthdayCardImage: React.FC<{ cfg: BoxConfig; people: MarcomEmployee[]; size?: number }> = ({ cfg, people, size = 260 }) => {
+  const { tr } = useMarcomLang();
   const shown = people.slice(0, 4);
   const pw = shown.length <= 2 ? 92 : 70; // độ rộng polaroid
   return (
@@ -174,7 +177,7 @@ export const BirthdayCardImage: React.FC<{ cfg: BoxConfig; people: MarcomEmploye
             {e.photoUrl ? (
               <img src={e.photoUrl} alt={e.name} className="w-full aspect-square object-cover" />
             ) : (
-              <div className="w-full aspect-square bg-slate-200 flex items-center justify-center text-[9px] text-slate-500">Chưa có ảnh</div>
+              <div className="w-full aspect-square bg-slate-200 flex items-center justify-center text-[9px] text-slate-500">{tr('Chưa có ảnh', 'No photo')}</div>
             )}
             <div className="mt-0.5 text-center text-[8px] font-bold text-slate-800 leading-tight truncate">{e.name}</div>
             <div className="text-center text-[6.5px] text-slate-500 leading-tight truncate">
@@ -183,7 +186,7 @@ export const BirthdayCardImage: React.FC<{ cfg: BoxConfig; people: MarcomEmploye
           </div>
         ))}
       </div>
-      {people.length > 4 && <span className="absolute bottom-2 left-1/2 -translate-x-1/2 px-1.5 rounded-full bg-white/90 text-[9px] font-bold text-[#ef3b2d]">+{people.length - 4} người</span>}
+      {people.length > 4 && <span className="absolute bottom-2 left-1/2 -translate-x-1/2 px-1.5 rounded-full bg-white/90 text-[9px] font-bold text-[#ef3b2d]">+{people.length - 4} {tr('người', 'more')}</span>}
     </div>
   );
 };

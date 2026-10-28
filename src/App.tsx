@@ -67,12 +67,23 @@ import { RecruitmentProvider } from './recruitment/RecruitmentContext';
 import { CandidateProvider } from './candidates/CandidateContext';
 import { EmailProvider } from './email/EmailContext';
 import { EmailTemplatePage } from './components/EmailTemplatePage';
+import { OnboardingProvider } from './onboarding/OnboardingContext';
+import { RcProvider } from './recruitment/rc/RcContext';
+import { CATALOG_MENU } from './recruitment/rc/rcData';
+import { RcRequestPage } from './components/recruitment/RcRequestPage';
+import { RcCandidatePage } from './components/recruitment/RcCandidatePage';
+import { RcCatalogPage } from './components/recruitment/RcCatalogPage';
+import { RcMailTemplatePage } from './components/recruitment/RcMailTemplatePage';
+import { RcReportPage } from './components/recruitment/RcReportPage';
+import { OnboardingHandoffPage } from './components/onboarding/OnboardingHandoffPage';
 import { PeriodicEvaluationPage } from './components/PeriodicEvaluationPage';
 import { MarcomProvider } from './marcom/MarcomContext';
+import { LanguageProvider } from './i18n/LanguageContext';
 import { BirthdayListPage } from './components/marcom/BirthdayListPage';
 import { WelcomeOnboardPage } from './components/marcom/WelcomeOnboardPage';
 import { MarcomEmailPage } from './components/marcom/MarcomEmailPage';
 import { ProcessPage } from './components/process/ProcessPage';
+import { MyProcessPage } from './components/process/MyProcessPage';
 
 export default function App() {
   const [activeItem, setActiveItem] = useState('Mục tiêu kinh doanh'); // màn mở mặc định khi vào hệ thống
@@ -84,6 +95,9 @@ export default function App() {
   }, []);
 
   const renderContent = () => {
+    // Module Tuyển dụng (bám code iMIS): 7 danh mục dùng chung
+    const rcCatalog = CATALOG_MENU.find((m) => m.label === activeItem);
+    if (rcCatalog) return <RcCatalogPage key={rcCatalog.type} type={rcCatalog.type} />;
     // Mỗi danh mục tuyển dụng là 1 màn riêng (định tuyến theo tên danh mục)
     const catalogDef = CATALOG_DEFS.find((d) => d.label === activeItem);
     if (catalogDef) {
@@ -202,6 +216,8 @@ export default function App() {
         return <EmployeePage />;
       case 'Contracts':
         return <ContractsPage />;
+      case 'Quy trình của tôi':
+        return <MyProcessPage />;
       case 'Danh sách quy trình':
         return <ProcessPage />;
       case 'Danh mục hợp đồng':
@@ -211,14 +227,19 @@ export default function App() {
       case 'Thông tin người phụ thuộc':
         return <DependentPage />;
       case 'Yêu cầu tuyển dụng':
-        return <RecruitmentRequestPage />;
+        return <RcRequestPage onNavigate={setActiveItem} />;
       case 'Quản lý ứng viên':
       case 'Ứng viên':
-        return <CandidatePage />;
+        return <RcCandidatePage onNavigate={setActiveItem} />;
       case 'Chi tiết ứng viên (Giao diện mới)':
         return <CandidateDetailV2Page />;
       case 'Mẫu email':
-        return <EmailTemplatePage />;
+        return <RcMailTemplatePage />;
+      case 'Báo cáo theo khối':
+        return <RcReportPage onNavigate={setActiveItem} />;
+      // HCNS tiếp nhận "Gửi thông tin sang HCNS" từ popup Gửi mail của Tuyển dụng
+      case 'Onboarding Request':
+        return <OnboardingHandoffPage onNavigate={setActiveItem} />;
       default:
         return (
           <div className="flex flex-col items-center justify-center h-full text-gray-500 space-y-4">
@@ -232,10 +253,13 @@ export default function App() {
   };
 
   return (
+    <LanguageProvider>
+    <RcProvider>
     <CatalogProvider>
       <RecruitmentProvider>
         <CandidateProvider>
           <EmailProvider>
+            <OnboardingProvider>
             <FinancePlanProvider>
               <BusinessProjectProvider>
                 <BizTargetProvider>
@@ -253,9 +277,12 @@ export default function App() {
                 </BizTargetProvider>
               </BusinessProjectProvider>
             </FinancePlanProvider>
+            </OnboardingProvider>
           </EmailProvider>
         </CandidateProvider>
       </RecruitmentProvider>
     </CatalogProvider>
+    </RcProvider>
+    </LanguageProvider>
   );
 }

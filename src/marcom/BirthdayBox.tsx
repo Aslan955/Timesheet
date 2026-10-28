@@ -10,23 +10,24 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Cake, ChevronLeft, ChevronRight, PartyPopper, X, EyeOff } from 'lucide-react';
 import { useMarcom, BoxConfig, BoxTheme, HomeBanner } from './MarcomContext';
 import { Avatar } from './MarcomUi';
-import { MarcomEmployee, isBirthdayToday, fmtDayMonth, WEEKDAY_LONG } from './marcomData';
+import { MarcomEmployee, isBirthdayToday, fmtDayMonth } from './marcomData';
+import { useMarcomLang } from './i18n';
 
 const DISMISS_KEY = 'marcom_bday_box_hidden';
 
-export const BOX_THEMES: Record<BoxTheme, { label: string; swatch: string; bg: string; accent: string; icon: string; ring: string; hex: string }> = {
-  pink: { label: 'Hồng', swatch: 'bg-pink-500', bg: 'from-[#fff1f5] via-[#fff8ec] to-[#ecfdf5] border-pink-100', accent: 'text-pink-500', icon: 'from-pink-500 to-amber-400', ring: 'ring-pink-100', hex: '#ec4899' },
-  blue: { label: 'Xanh dương', swatch: 'bg-[#1f5fa8]', bg: 'from-[#eef5ff] via-[#f5f9ff] to-[#eefcf8] border-[#cfe0f5]', accent: 'text-[#1f5fa8]', icon: 'from-[#1f5fa8] to-sky-400', ring: 'ring-sky-100', hex: '#1f5fa8' },
-  green: { label: 'Xanh lá', swatch: 'bg-[#0f8f6c]', bg: 'from-[#ecfdf5] via-[#f4fdf9] to-[#fffbea] border-emerald-100', accent: 'text-[#0f8f6c]', icon: 'from-[#0f8f6c] to-lime-400', ring: 'ring-emerald-100', hex: '#0f8f6c' },
-  purple: { label: 'Tím', swatch: 'bg-violet-600', bg: 'from-[#f5f3ff] via-[#fdf4ff] to-[#fff1f5] border-violet-100', accent: 'text-violet-600', icon: 'from-violet-600 to-fuchsia-400', ring: 'ring-violet-100', hex: '#7c3aed' },
-  orange: { label: 'Cam', swatch: 'bg-orange-500', bg: 'from-[#fff7ed] via-[#fffbeb] to-[#fef2f2] border-orange-100', accent: 'text-orange-500', icon: 'from-orange-500 to-amber-300', ring: 'ring-orange-100', hex: '#f97316' },
+export const BOX_THEMES: Record<BoxTheme, { label: string; labelEn: string; swatch: string; bg: string; accent: string; icon: string; ring: string; hex: string }> = {
+  pink: { label: 'Hồng', labelEn: 'Pink', swatch: 'bg-pink-500', bg: 'from-[#fff1f5] via-[#fff8ec] to-[#ecfdf5] border-pink-100', accent: 'text-pink-500', icon: 'from-pink-500 to-amber-400', ring: 'ring-pink-100', hex: '#ec4899' },
+  blue: { label: 'Xanh dương', labelEn: 'Blue', swatch: 'bg-[#1f5fa8]', bg: 'from-[#eef5ff] via-[#f5f9ff] to-[#eefcf8] border-[#cfe0f5]', accent: 'text-[#1f5fa8]', icon: 'from-[#1f5fa8] to-sky-400', ring: 'ring-sky-100', hex: '#1f5fa8' },
+  green: { label: 'Xanh lá', labelEn: 'Green', swatch: 'bg-[#0f8f6c]', bg: 'from-[#ecfdf5] via-[#f4fdf9] to-[#fffbea] border-emerald-100', accent: 'text-[#0f8f6c]', icon: 'from-[#0f8f6c] to-lime-400', ring: 'ring-emerald-100', hex: '#0f8f6c' },
+  purple: { label: 'Tím', labelEn: 'Purple', swatch: 'bg-violet-600', bg: 'from-[#f5f3ff] via-[#fdf4ff] to-[#fff1f5] border-violet-100', accent: 'text-violet-600', icon: 'from-violet-600 to-fuchsia-400', ring: 'ring-violet-100', hex: '#7c3aed' },
+  orange: { label: 'Cam', labelEn: 'Orange', swatch: 'bg-orange-500', bg: 'from-[#fff7ed] via-[#fffbeb] to-[#fef2f2] border-orange-100', accent: 'text-orange-500', icon: 'from-orange-500 to-amber-300', ring: 'ring-orange-100', hex: '#f97316' },
 };
 
 export const boxTitle = (cfg: BoxConfig, n: number) => cfg.title.replace(/\{\{soluong\}\}/g, String(n));
 
 /** CBNV đang làm việc có sinh nhật hôm nay. */
 export const useTodayBirthdays = (simulateEmpty = false) => {
-  const { employees } = useMarcom();
+  const { birthdayEmployees: employees } = useMarcom();
   const todayKey = new Date().toDateString();
   return useMemo(
     () => (simulateEmpty ? [] : employees.filter((e) => e.active && isBirthdayToday(e)).sort((a, b) => a.name.localeCompare(b.name, 'vi'))),
@@ -39,6 +40,7 @@ const subLine = (cfg: BoxConfig, e: MarcomEmployee) => [cfg.showPosition ? e.pos
 
 /** Nội dung box sinh nhật (1 mục của slide). onClose = hiện nút ẩn ở góc. */
 const BirthdaySlide: React.FC<{ box: BoxConfig; people: MarcomEmployee[]; preview: boolean; onClose?: () => void }> = ({ box, people, preview, onClose }) => {
+  const { tr, wdLong } = useMarcomLang();
   const theme = BOX_THEMES[box.theme];
   const today = new Date();
   const dismiss = () => onClose?.();
@@ -63,7 +65,7 @@ const BirthdaySlide: React.FC<{ box: BoxConfig; people: MarcomEmployee[]; previe
         </div>
         <div>
           <div className={`text-[11px] font-black uppercase tracking-wider ${light ? 'text-white/80' : theme.accent}`}>
-            Sinh nhật hôm nay · {WEEKDAY_LONG[today.getDay()]}, {fmtDayMonth(today)}
+            {tr('Sinh nhật hôm nay', "Today's birthdays")} · {wdLong[today.getDay()]}, {fmtDayMonth(today)}
           </div>
           <div className={`text-base font-black flex items-center gap-1.5 ${light ? 'text-white' : 'text-slate-800'}`}>
             {boxTitle(box, people.length)} <PartyPopper size={16} className="text-amber-400" />
@@ -71,7 +73,7 @@ const BirthdaySlide: React.FC<{ box: BoxConfig; people: MarcomEmployee[]; previe
         </div>
       </div>
       {!preview && onClose && (
-        <button type="button" onClick={dismiss} className={`p-1.5 rounded-lg cursor-pointer ${light ? 'text-white/70 hover:bg-white/15' : 'text-slate-400 hover:bg-white/70 hover:text-slate-600'}`} title="Ẩn box trong hôm nay">
+        <button type="button" onClick={dismiss} className={`p-1.5 rounded-lg cursor-pointer ${light ? 'text-white/70 hover:bg-white/15' : 'text-slate-400 hover:bg-white/70 hover:text-slate-600'}`} title={tr('Ẩn box trong hôm nay', 'Hide this box for today')}>
           <X size={15} />
         </button>
       )}
@@ -185,6 +187,7 @@ const BannerSlide: React.FC<{ b: HomeBanner }> = ({ b }) => {
 
 export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean; cfg?: BoxConfig }> = ({ preview = false, simulateEmpty = false, cfg }) => {
   const { config } = useMarcom();
+  const { tr } = useMarcomLang();
   const box = cfg ?? config.box;
   const todayKey = new Date().toDateString();
   const [dismissed, setDismissed] = useState(() => {
@@ -235,7 +238,7 @@ export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean;
   if (!n)
     return preview ? (
       <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-xs font-semibold text-slate-400 flex items-center justify-center gap-2">
-        <EyeOff size={14} /> Không có sinh nhật hôm nay và chưa có banner → box được ẩn khỏi trang chủ
+        <EyeOff size={14} /> {tr('Không có sinh nhật hôm nay và chưa có banner → box được ẩn khỏi trang chủ', 'No birthdays today and no banners → the box is hidden from the home page')}
       </div>
     ) : null;
   // Chỉ có box sinh nhật → hiển thị như cũ, không chạy slide
@@ -267,7 +270,7 @@ export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean;
           type="button"
           onClick={dismiss}
           className="absolute top-3 right-3 z-[2] p-1.5 rounded-lg cursor-pointer bg-white/70 text-slate-500 hover:bg-white hover:text-slate-700 shadow-sm"
-          title="Ẩn trong hôm nay"
+          title={tr('Ẩn trong hôm nay', 'Hide for today')}
         >
           <X size={15} />
         </button>
@@ -278,7 +281,7 @@ export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean;
             type="button"
             onClick={() => go(cur - 1)}
             className="absolute left-2 top-1/2 -translate-y-1/2 z-[2] w-8 h-8 rounded-full bg-white/80 shadow flex items-center justify-center text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-white"
-            title="Mục trước"
+            title={tr('Mục trước', 'Previous')}
           >
             <ChevronLeft size={16} />
           </button>
@@ -286,7 +289,7 @@ export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean;
             type="button"
             onClick={() => go(cur + 1)}
             className="absolute right-2 top-1/2 -translate-y-1/2 z-[2] w-8 h-8 rounded-full bg-white/80 shadow flex items-center justify-center text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-white"
-            title="Mục sau"
+            title={tr('Mục sau', 'Next')}
           >
             <ChevronRight size={16} />
           </button>
@@ -296,7 +299,7 @@ export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean;
                 key={x.id}
                 type="button"
                 onClick={() => go(i)}
-                title={x.kind === 'bday' ? 'Sinh nhật hôm nay' : x.b.name}
+                title={x.kind === 'bday' ? tr('Sinh nhật hôm nay', "Today's birthdays") : x.b.name}
                 className={`relative h-1.5 rounded-full overflow-hidden cursor-pointer transition-all ${i === cur ? 'w-8 bg-white/50' : 'w-1.5 bg-white/70 hover:bg-white'}`}
               >
                 {i === cur && <span className="absolute inset-y-0 left-0 bg-white" style={{ width: `${Math.min(100, (elapsed / dur) * 100)}%` }} />}

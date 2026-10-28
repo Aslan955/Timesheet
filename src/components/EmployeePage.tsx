@@ -347,6 +347,35 @@ const SEED: Employee[] = [
 
 // Kho dữ liệu nhân sự dùng chung (Employees ↔ Contracts); giữ khi chuyển màn (prototype, chưa có API).
 let STORE: Employee[] = SEED;
+
+/** Onboarding Request được HCNS duyệt → tạo hồ sơ Thử việc (lần sau gọi lại = cập nhật theo patch). */
+export const upsertEmployeeFromOnboarding = (
+  code: string,
+  p: { fullName: string; division: string; department: string; position: string; level: string; manager: string; joinDate: string; personalEmail: string; phone: string; techStack: string },
+  patch: Partial<Employee> = {},
+  action = 'Tạo hồ sơ từ Onboarding Request',
+) => {
+  const at = nowIso();
+  const entry: EmpLog = { at, by: 'onboarding', action, changes: Object.keys(patch) };
+  if (STORE.some((e) => e.code === code)) {
+    STORE = STORE.map((e) => (e.code === code ? { ...e, ...patch, history: [...e.history, entry], updatedAt: at, updatedBy: 'onboarding' } : e));
+    return;
+  }
+  const emp = mk(code, p.fullName.toUpperCase(), '', p.division, p.department, p.position, p.level, p.joinDate, 'Thử việc', {
+    manager: p.manager.toUpperCase(),
+    personalEmail: p.personalEmail,
+    phone: p.phone,
+    techStack: p.techStack,
+    companyEmail: '',
+    ...patch,
+  });
+  STORE = [{ ...emp, history: [{ at, by: 'onboarding', action }], updatedAt: at, updatedBy: 'onboarding' }, ...STORE];
+};
+
+/** Báo huỷ onboard khi hồ sơ chưa có tài khoản → xoá mềm hồ sơ. */
+export const removeEmployeeFromOnboarding = (code: string) => {
+  STORE = STORE.filter((e) => e.code !== code);
+};
 const SUBS = new Set<() => void>();
 export const getEmployees = () => STORE;
 export const setEmployees = (fn: (l: Employee[]) => Employee[]) => {

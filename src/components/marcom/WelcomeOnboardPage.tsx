@@ -14,23 +14,25 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { UserX, AlertTriangle, ArrowRight, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Download, FileSpreadsheet, History, RefreshCw, Table2, UserMinus } from 'lucide-react';
 import { useMarcom } from '../../marcom/MarcomContext';
-import { Avatar, FilterBar, FilterCell, TAG, iconBtn, useToast } from '../../marcom/MarcomUi';
+import { Avatar, FilterBar, FilterCell, LangSwitch, TAG, iconBtn, useToast } from '../../marcom/MarcomUi';
+import { useMarcomLang } from '../../marcom/i18n';
 import { Btn, ErpPage, ErpTitleBar, KpiBox, Panel, Tag, erp } from '../erp/Erp';
 import {
   BatchPhase, DIVISIONS, MarcomEmployee, addDays, batchDeadline, batchPhase, batchTuesdayOf, batchWindow, downloadPhoto,
-  fmtDate, fmtDateTime, fmtDayMonth, fmtTime, fromKey, inWelcomeBatch, isCancelOnboard, isPastTimeToday, startOfDay, toKey, WEEKDAY_LONG, WEEKDAY_SHORT,
+  fmtDate, fmtDateTime, fmtDayMonth, fmtTime, fromKey, inWelcomeBatch, isCancelOnboard, isPastTimeToday, startOfDay, toKey,
 } from '../../marcom/marcomData';
 
-const PHASE: Record<BatchPhase, { text: string; cls: string }> = {
-  upcoming: { text: 'Chưa tới kỳ', cls: TAG.slate },
-  collecting: { text: 'Đang cập nhật', cls: TAG.blue },
-  locked: { text: 'Đã chốt gửi MarCom', cls: TAG.amber },
-  done: { text: 'Đã Welcome', cls: TAG.green },
+const PHASE: Record<BatchPhase, { text: string; en: string; cls: string }> = {
+  upcoming: { text: 'Chưa tới kỳ', en: 'Upcoming', cls: TAG.slate },
+  collecting: { text: 'Đang cập nhật', en: 'Collecting', cls: TAG.blue },
+  locked: { text: 'Đã chốt gửi MarCom', en: 'Locked for MarCom', cls: TAG.amber },
+  done: { text: 'Đã Welcome', en: 'Welcomed', cls: TAG.green },
 };
 
 export const WelcomeOnboardPage: React.FC = () => {
   const { employees, logs, config, changes, refresh } = useMarcom();
   const { toast, toastNode } = useToast();
+  const { tr, wdShort, wdLong, statusLabel, note } = useMarcomLang();
   const now = new Date();
   const today = startOfDay(now);
   const currentTue = batchTuesdayOf(today);
@@ -68,31 +70,31 @@ export const WelcomeOnboardPage: React.FC = () => {
   const mailStatus = (e: MarcomEmployee) => {
     const d = fromKey(e.onboardDate);
     const log = logs.find((l) => l.kind === 'welcome' && l.employeeId === e.id && l.status !== 'test');
-    if (log?.status === 'sent') return <Tag cls={TAG.green}>Đã gửi {fmtDayMonth(d)} {fmtTime(log.sentAt)}</Tag>;
-    if (log?.status === 'failed') return <Tag cls={TAG.rose}>Gửi lỗi</Tag>;
+    if (log?.status === 'sent') return <Tag cls={TAG.green}>{tr('Đã gửi', 'Sent')} {fmtDayMonth(d)} {fmtTime(log.sentAt)}</Tag>;
+    if (log?.status === 'failed') return <Tag cls={TAG.rose}>{tr('Gửi lỗi', 'Failed')}</Tag>;
     const isToday = d.getTime() === today.getTime();
-    if (d < today || (isToday && isPastTimeToday(config.welcome.sendTime))) return <Tag cls={TAG.green}>Đã gửi</Tag>;
-    if (!config.welcome.enabled) return <Tag cls={TAG.slate}>Tắt tự động</Tag>;
-    return <Tag cls={isToday ? TAG.amber : TAG.blue}>{isToday ? `Chờ gửi ${config.welcome.sendTime}` : `Lên lịch ${fmtDayMonth(d)} ${config.welcome.sendTime}`}</Tag>;
+    if (d < today || (isToday && isPastTimeToday(config.welcome.sendTime))) return <Tag cls={TAG.green}>{tr('Đã gửi', 'Sent')}</Tag>;
+    if (!config.welcome.enabled) return <Tag cls={TAG.slate}>{tr('Tắt tự động', 'Auto-send off')}</Tag>;
+    return <Tag cls={isToday ? TAG.amber : TAG.blue}>{isToday ? `${tr('Chờ gửi', 'Pending')} ${config.welcome.sendTime}` : `${tr('Lên lịch', 'Scheduled')} ${fmtDayMonth(d)} ${config.welcome.sendTime}`}</Tag>;
   };
 
   const exportExcel = () => {
     const data = batchAll.map((e, i) => ({
-      STT: i + 1,
-      'Họ và tên': e.name,
-      'Mã NV': e.code,
-      'Vị trí': e.position,
-      'Division (Khối)': e.division,
-      'Ngày onboard': fmtDate(e.onboardDate),
-      Thứ: WEEKDAY_LONG[fromKey(e.onboardDate).getDay()],
-      'Email nội bộ': e.email,
-      'Có ảnh': e.photoUrl ? 'Có' : 'Chưa có',
+      [tr('STT', 'No.')]: i + 1,
+      [tr('Họ và tên', 'Full name')]: e.name,
+      [tr('Mã NV', 'Employee ID')]: e.code,
+      [tr('Vị trí', 'Position')]: e.position,
+      [tr('Division (Khối)', 'Division')]: e.division,
+      [tr('Ngày onboard', 'Onboard date')]: fmtDate(e.onboardDate),
+      [tr('Thứ', 'Weekday')]: wdLong[fromKey(e.onboardDate).getDay()],
+      [tr('Email nội bộ', 'Internal email')]: e.email,
+      [tr('Có ảnh', 'Has photo')]: e.photoUrl ? tr('Có', 'Yes') : tr('Chưa có', 'No'),
     }));
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, `Welcome ${fmtDayMonth(tue).replace('/', '-')}`);
     XLSX.writeFile(wb, `WelcomeOnboard_${toKey(tue)}.xlsx`);
-    toast(`Đã xuất ${batchAll.length} nhân sự đợt Welcome ${fmtDate(tue)}`);
+    toast(tr(`Đã xuất ${batchAll.length} nhân sự đợt Welcome ${fmtDate(tue)}`, `Exported ${batchAll.length} employees of Welcome batch ${fmtDate(tue)}`));
   };
 
   return (
@@ -103,11 +105,12 @@ export const WelcomeOnboardPage: React.FC = () => {
         title="Welcome Onboard"
         actions={
           <>
-            <Btn icon={RefreshCw} onClick={refresh} title="Dữ liệu đọc trực tiếp từ hồ sơ Employee">
-              Làm mới
+            <LangSwitch />
+            <Btn icon={RefreshCw} onClick={refresh} title={tr('Dữ liệu đọc trực tiếp từ hồ sơ Employee', 'Data is read directly from Employee profiles')}>
+              {tr('Làm mới', 'Refresh')}
             </Btn>
             <Btn variant="success" icon={FileSpreadsheet} onClick={exportExcel} disabled={batchAll.length === 0}>
-              Xuất Excel
+              {tr('Xuất Excel', 'Export Excel')}
             </Btn>
           </>
         }
@@ -115,7 +118,7 @@ export const WelcomeOnboardPage: React.FC = () => {
 
       {/* ===== Chọn đợt Welcome ===== */}
       <Panel
-        title="Đợt Welcome"
+        title={tr('Đợt Welcome', 'Welcome batch')}
         icon={CalendarDays}
       >
         <div className="flex flex-col gap-3">
@@ -128,22 +131,22 @@ export const WelcomeOnboardPage: React.FC = () => {
                     setDivision('all');
                   }}
                 >
-                  Bỏ lọc
+                  {tr('Bỏ lọc', 'Clear filter')}
                 </Btn>
               )
             }
           >
-            <FilterCell label="Đợt">
+            <FilterCell label={tr('Đợt', 'Batch')}>
               <WeekPicker value={tue} current={currentTue} onChange={goto} countOf={countOfBatch} />
             </FilterCell>
             {tue.getTime() !== currentTue.getTime() && (
               <Btn className="h-7" onClick={() => goto(currentTue)}>
-                Đợt tuần này
+                {tr('Đợt tuần này', 'This week')}
               </Btn>
             )}
-            <FilterCell label="Division (Khối)">
+            <FilterCell label={tr('Division (Khối)', 'Division')}>
               <select value={division} onChange={(e) => setDivision(e.target.value)} className={`${erp.input} w-44`}>
-                <option value="all">Tất cả</option>
+                <option value="all">{tr('Tất cả', 'All')}</option>
                 {DIVISIONS.map((d) => (
                   <option key={d}>{d}</option>
                 ))}
@@ -152,57 +155,82 @@ export const WelcomeOnboardPage: React.FC = () => {
           </FilterBar>
 
           <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] text-slate-600">
-            Đợt <b className="text-[#1e3a5f]">thứ 3 {fmtDate(tue)}</b> gồm nhân sự onboard từ <b>T4 {fmtDayMonth(from)}</b> đến hết <b>T3 {fmtDayMonth(to)}</b>.
+            {tr(
+              <>
+                Đợt <b className="text-[#1e3a5f]">thứ 3 {fmtDate(tue)}</b> gồm nhân sự onboard từ <b>T4 {fmtDayMonth(from)}</b> đến hết <b>T3 {fmtDayMonth(to)}</b>.
+              </>,
+              <>
+                The <b className="text-[#1e3a5f]">Tuesday {fmtDate(tue)}</b> batch includes employees onboarding from <b>Wed {fmtDayMonth(from)}</b> through <b>Tue {fmtDayMonth(to)}</b>.
+              </>,
+            )}
             <span>
-              Onboard từ T4 {fmtDayMonth(addDays(tue, 1))} trở đi chuyển sang đợt {fmtDayMonth(nextTue)} ({nextBatch.length} nhân sự)
+              {tr(
+                `Onboard từ T4 ${fmtDayMonth(addDays(tue, 1))} trở đi chuyển sang đợt ${fmtDayMonth(nextTue)} (${nextBatch.length} nhân sự)`,
+                `Onboarding from Wed ${fmtDayMonth(addDays(tue, 1))} onwards moves to the ${fmtDayMonth(nextTue)} batch (${nextBatch.length} employees)`,
+              )}
             </span>
             <button type="button" onClick={() => goto(nextTue)} className="text-[#1f5fa8] font-semibold hover:underline cursor-pointer">
-              Xem đợt sau →
+              {tr('Xem đợt sau →', 'View next batch →')}
             </button>
           </div>
         </div>
       </Panel>
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-        <KpiBox label="Trong đợt" value={batchAll.length} sub={`Đợt thứ 3 ${fmtDate(tue)}`} />
-        <KpiBox label="Thiếu ảnh trên Employee" value={batchAll.filter((e) => !e.photoUrl).length} tone={batchAll.some((e) => !e.photoUrl) ? 'bad' : 'good'} sub="Cần HCNS bổ sung ảnh" />
-        <KpiBox label="Chuyển sang đợt sau" value={nextBatch.length} sub={`Đợt ${fmtDate(nextTue)}`} />
-        <KpiBox label="Cancel Onboard" value={cancelled.length} tone={cancelled.length ? 'bad' : 'neutral'} sub="Không vào đợt Welcome nào" />
+        <KpiBox label={tr('Trong đợt', 'In batch')} value={batchAll.length} sub={tr(`Đợt thứ 3 ${fmtDate(tue)}`, `Tuesday batch ${fmtDate(tue)}`)} />
+        <KpiBox
+          label={tr('Thiếu ảnh trên Employee', 'Missing Employee photo')}
+          value={batchAll.filter((e) => !e.photoUrl).length}
+          tone={batchAll.some((e) => !e.photoUrl) ? 'bad' : 'good'}
+          sub={tr('Cần HCNS bổ sung ảnh', 'HR needs to add photos')}
+        />
+        <KpiBox label={tr('Chuyển sang đợt sau', 'Moved to next batch')} value={nextBatch.length} sub={tr(`Đợt ${fmtDate(nextTue)}`, `Batch ${fmtDate(nextTue)}`)} />
+        <KpiBox label="Cancel Onboard" value={cancelled.length} tone={cancelled.length ? 'bad' : 'neutral'} sub={tr('Không vào đợt Welcome nào', 'Excluded from all Welcome batches')} />
       </div>
 
       {lockedChanges.length > 0 && (
         <div className="flex items-start gap-2 px-3 py-2 bg-amber-50 border border-amber-300 rounded-[4px] text-[12px] text-amber-800">
           <AlertTriangle size={14} className="shrink-0 mt-px" />
-          Có <b>{lockedChanges.length}</b> thay đổi sau hạn chốt 17:00 T2 {fmtDayMonth(deadline)} — danh sách đã tự cập nhật, MarCom kiểm tra lại nội dung Welcome.
+          {tr(
+            <>
+              Có <b>{lockedChanges.length}</b> thay đổi sau hạn chốt 17:00 T2 {fmtDayMonth(deadline)} — danh sách đã tự cập nhật, MarCom kiểm tra lại nội dung Welcome.
+            </>,
+            <>
+              <b>{lockedChanges.length}</b> change(s) after the cut-off 17:00 Mon {fmtDayMonth(deadline)} — the list has been updated automatically, MarCom please re-check the Welcome content.
+            </>,
+          )}
         </div>
       )}
 
       <Panel
-        title="Danh sách Welcome"
+        title={tr('Danh sách Welcome', 'Welcome list')}
         icon={Table2}
         noPad
-        actions={<span className="text-[12px] text-slate-600">{rows.length} / {batchAll.length} nhân sự</span>}
-        footer={`Ảnh lấy từ hồ sơ Employee · Mail Welcome gửi ${config.welcome.sendTime} đúng ngày onboard (độc lập với đợt) · Ngày onboard / trạng thái do HCNS cập nhật trên Employee`}
+        actions={<span className="text-[12px] text-slate-600">{rows.length} / {batchAll.length} {tr('nhân sự', 'employees')}</span>}
+        footer={tr(
+          `Ảnh lấy từ hồ sơ Employee · Mail Welcome gửi ${config.welcome.sendTime} đúng ngày onboard (độc lập với đợt) · Ngày onboard / trạng thái do HCNS cập nhật trên Employee`,
+          `Photos come from Employee profiles · Welcome mail is sent at ${config.welcome.sendTime} on the onboard date (independent of the batch) · Onboard date / status are maintained by HR on Employee`,
+        )}
       >
         <div className="overflow-x-auto">
           <table className={erp.table}>
             <thead>
               <tr>
-                <th className={`${erp.th} text-left`}>Họ và tên</th>
-                <th className={`${erp.th} text-left`}>Mã NV</th>
-                <th className={`${erp.th} text-left`}>Division (Khối)</th>
-                <th className={`${erp.th} text-left`}>Vị trí</th>
-                <th className={`${erp.th} text-center`}>Ngày onboard</th>
-                <th className={`${erp.th} text-left`}>Email nội bộ</th>
+                <th className={`${erp.th} text-left`}>{tr('Họ và tên', 'Full name')}</th>
+                <th className={`${erp.th} text-left`}>{tr('Mã NV', 'Employee ID')}</th>
+                <th className={`${erp.th} text-left`}>{tr('Division (Khối)', 'Division')}</th>
+                <th className={`${erp.th} text-left`}>{tr('Vị trí', 'Position')}</th>
+                <th className={`${erp.th} text-center`}>{tr('Ngày onboard', 'Onboard date')}</th>
+                <th className={`${erp.th} text-left`}>{tr('Email nội bộ', 'Internal email')}</th>
                 <th className={`${erp.th} text-left`}>Mail Welcome</th>
-                <th className={`${erp.th} w-[60px] text-center`}>Ảnh</th>
+                <th className={`${erp.th} w-[60px] text-center`}>{tr('Ảnh', 'Photo')}</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 && (
                 <tr>
                   <td colSpan={8} className={`${erp.td} py-10 text-center text-slate-400`}>
-                    Không có nhân sự phù hợp.
+                    {tr('Không có nhân sự phù hợp.', 'No matching employees.')}
                   </td>
                 </tr>
               )}
@@ -221,17 +249,17 @@ export const WelcomeOnboardPage: React.FC = () => {
                     <td className={erp.td}>{e.division}</td>
                     <td className={erp.td}>{e.position}</td>
                     <td className={`${erp.td} text-center whitespace-nowrap`}>
-                      {WEEKDAY_SHORT[d.getDay()]}, {fmtDate(d)}
+                      {wdShort[d.getDay()]}, {fmtDate(d)}
                       {changed && (
                         <span className="ml-1">
-                          <Tag cls={TAG.amber}>đã đổi</Tag>
+                          <Tag cls={TAG.amber}>{tr('đã đổi', 'changed')}</Tag>
                         </span>
                       )}
                     </td>
                     <td className={erp.td}>{e.email}</td>
                     <td className={erp.td}>{mailStatus(e)}</td>
                     <td className={`${erp.td} text-center whitespace-nowrap`}>
-                      <button type="button" className={iconBtn} disabled={!e.photoUrl} onClick={() => downloadPhoto(e)} title={e.photoUrl ? 'Tải ảnh (từ hồ sơ Employee)' : 'Hồ sơ Employee chưa có ảnh'}>
+                      <button type="button" className={iconBtn} disabled={!e.photoUrl} onClick={() => downloadPhoto(e)} title={e.photoUrl ? tr('Tải ảnh (từ hồ sơ Employee)', 'Download photo (from Employee profile)') : tr('Hồ sơ Employee chưa có ảnh', 'Employee profile has no photo')}>
                         <Download size={14} />
                       </button>
                     </td>
@@ -245,22 +273,30 @@ export const WelcomeOnboardPage: React.FC = () => {
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start">
         <div className="space-y-3 min-w-0">
-        <Panel title={`Cancel Onboard · không vào đợt Welcome`} icon={UserX} noPad footer="Trạng thái Employee = Cancel Onboard → không xếp vào đợt Welcome nào và không gửi mail Welcome">
+        <Panel
+          title={tr('Cancel Onboard · không vào đợt Welcome', 'Cancel Onboard · excluded from Welcome')}
+          icon={UserX}
+          noPad
+          footer={tr(
+            'Trạng thái Employee = Cancel Onboard → không xếp vào đợt Welcome nào và không gửi mail Welcome',
+            'Employee status = Cancel Onboard → not assigned to any Welcome batch and no Welcome mail is sent',
+          )}
+        >
           <table className={erp.table}>
             <thead>
               <tr>
-                <th className={`${erp.th} text-left`}>Họ và tên</th>
-                <th className={`${erp.th} text-left`}>Division (Khối)</th>
-                <th className={`${erp.th} text-center`}>Ngày onboard dự kiến</th>
-                <th className={`${erp.th} text-left`}>Trạng thái Employee</th>
-                <th className={`${erp.th} text-left`}>Lý do</th>
+                <th className={`${erp.th} text-left`}>{tr('Họ và tên', 'Full name')}</th>
+                <th className={`${erp.th} text-left`}>{tr('Division (Khối)', 'Division')}</th>
+                <th className={`${erp.th} text-center`}>{tr('Ngày onboard dự kiến', 'Expected onboard date')}</th>
+                <th className={`${erp.th} text-left`}>{tr('Trạng thái Employee', 'Employee status')}</th>
+                <th className={`${erp.th} text-left`}>{tr('Lý do', 'Reason')}</th>
               </tr>
             </thead>
             <tbody>
               {cancelled.length === 0 && (
                 <tr>
                   <td colSpan={5} className={`${erp.td} py-6 text-center text-slate-400`}>
-                    Không có.
+                    {tr('Không có.', 'None.')}
                   </td>
                 </tr>
               )}
@@ -272,32 +308,32 @@ export const WelcomeOnboardPage: React.FC = () => {
                   </td>
                   <td className={erp.td}>{e.division}</td>
                   <td className={`${erp.td} text-center whitespace-nowrap`}>
-                    {WEEKDAY_SHORT[fromKey(e.onboardDate).getDay()]}, {fmtDayMonth(e.onboardDate)}
+                    {wdShort[fromKey(e.onboardDate).getDay()]}, {fmtDayMonth(e.onboardDate)}
                   </td>
                   <td className={erp.td}>
-                    <Tag cls={TAG.rose}>Cancel Onboard</Tag>
+                    <Tag cls={TAG.rose}>{statusLabel(e.status)}</Tag>
                   </td>
-                  <td className={`${erp.td} text-slate-600`}>{e.cancelReason ?? '—'}</td>
+                  <td className={`${erp.td} text-slate-600`}>{note(e.cancelReason) ?? '—'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </Panel>
 
-        <Panel title={`Chuyển sang đợt sau · ${fmtDate(nextTue)}`} icon={UserMinus} noPad>
+        <Panel title={tr(`Chuyển sang đợt sau · ${fmtDate(nextTue)}`, `Moved to next batch · ${fmtDate(nextTue)}`)} icon={UserMinus} noPad>
           <table className={erp.table}>
             <thead>
               <tr>
-                <th className={`${erp.th} text-left`}>Họ và tên</th>
-                <th className={`${erp.th} text-center`}>Ngày onboard</th>
-                <th className={`${erp.th} text-left`}>Lý do</th>
+                <th className={`${erp.th} text-left`}>{tr('Họ và tên', 'Full name')}</th>
+                <th className={`${erp.th} text-center`}>{tr('Ngày onboard', 'Onboard date')}</th>
+                <th className={`${erp.th} text-left`}>{tr('Lý do', 'Reason')}</th>
               </tr>
             </thead>
             <tbody>
               {nextBatch.length === 0 && (
                 <tr>
                   <td colSpan={3} className={`${erp.td} py-6 text-center text-slate-400`}>
-                    Không có.
+                    {tr('Không có.', 'None.')}
                   </td>
                 </tr>
               )}
@@ -305,10 +341,10 @@ export const WelcomeOnboardPage: React.FC = () => {
                 <tr key={e.id} className={erp.tr}>
                   <td className={`${erp.td} font-semibold`}>{e.name}</td>
                   <td className={`${erp.td} text-center`}>
-                    {WEEKDAY_SHORT[fromKey(e.onboardDate).getDay()]}, {fmtDayMonth(e.onboardDate)}
+                    {wdShort[fromKey(e.onboardDate).getDay()]}, {fmtDayMonth(e.onboardDate)}
                   </td>
                   <td className={erp.td}>
-                    <Tag cls={TAG.violet}>Onboard sau T3 {fmtDayMonth(tue)}</Tag>
+                    <Tag cls={TAG.violet}>{tr(`Onboard sau T3 ${fmtDayMonth(tue)}`, `Onboard after Tue ${fmtDayMonth(tue)}`)}</Tag>
                   </td>
                 </tr>
               ))}
@@ -317,21 +353,29 @@ export const WelcomeOnboardPage: React.FC = () => {
         </Panel>
         </div>
 
-        <Panel title="Lịch sử thay đổi onboard (từ Employee)" icon={History} noPad footer="HCNS đổi ngày onboard / chuyển Cancel Onboard trên Employee → danh sách Welcome tự xếp lại đợt">
+        <Panel
+          title={tr('Lịch sử thay đổi onboard (từ Employee)', 'Onboard change history (from Employee)')}
+          icon={History}
+          noPad
+          footer={tr(
+            'HCNS đổi ngày onboard / chuyển Cancel Onboard trên Employee → danh sách Welcome tự xếp lại đợt',
+            'HR changes the onboard date / sets Cancel Onboard on Employee → the Welcome list re-assigns batches automatically',
+          )}
+        >
           <table className={erp.table}>
             <thead>
               <tr>
-                <th className={`${erp.th} text-left`}>Thời gian</th>
-                <th className={`${erp.th} text-left`}>Nhân sự</th>
-                <th className={`${erp.th} text-left`}>Thay đổi</th>
-                <th className={`${erp.th} text-left`}>Lý do</th>
+                <th className={`${erp.th} text-left`}>{tr('Thời gian', 'Time')}</th>
+                <th className={`${erp.th} text-left`}>{tr('Nhân sự', 'Employee')}</th>
+                <th className={`${erp.th} text-left`}>{tr('Thay đổi', 'Change')}</th>
+                <th className={`${erp.th} text-left`}>{tr('Lý do', 'Reason')}</th>
               </tr>
             </thead>
             <tbody>
               {changes.length === 0 && (
                 <tr>
                   <td colSpan={4} className={`${erp.td} py-6 text-center text-slate-400`}>
-                    Chưa có thay đổi từ Employee.
+                    {tr('Chưa có thay đổi từ Employee.', 'No changes from Employee yet.')}
                   </td>
                 </tr>
               )}
@@ -346,17 +390,19 @@ export const WelcomeOnboardPage: React.FC = () => {
                       {toTue ? (
                         <>
                           {fmtDayMonth(c.from)} → {fmtDayMonth(c.to)}
-                          <div className="text-[11px] text-slate-500">{fromTue.getTime() === toTue.getTime() ? `Giữ đợt ${fmtDayMonth(toTue)}` : `Chuyển đợt ${fmtDayMonth(fromTue)} → ${fmtDayMonth(toTue)}`}</div>
+                          <div className="text-[11px] text-slate-500">{fromTue.getTime() === toTue.getTime()
+                              ? tr(`Giữ đợt ${fmtDayMonth(toTue)}`, `Stays in batch ${fmtDayMonth(toTue)}`)
+                              : tr(`Chuyển đợt ${fmtDayMonth(fromTue)} → ${fmtDayMonth(toTue)}`, `Moved batch ${fmtDayMonth(fromTue)} → ${fmtDayMonth(toTue)}`)}</div>
                         </>
                       ) : (
                         <>
-                          Trạng thái → <Tag cls={TAG.rose}>Cancel Onboard</Tag>
-                          <div className="text-[11px] text-slate-500">Loại khỏi đợt {fmtDayMonth(fromTue)}</div>
+                          {tr('Trạng thái', 'Status')} → <Tag cls={TAG.rose}>{statusLabel('Cancel Onboard')}</Tag>
+                          <div className="text-[11px] text-slate-500">{tr('Loại khỏi đợt', 'Removed from batch')} {fmtDayMonth(fromTue)}</div>
                         </>
                       )}
                     </td>
                     <td className={erp.td}>
-                      {c.reason}
+                      {note(c.reason)}
                       <div className="text-[11px] text-slate-500">{c.by}</div>
                     </td>
                   </tr>
@@ -376,6 +422,7 @@ export const WelcomeOnboardPage: React.FC = () => {
 // ---------------------------------------------------------------------------
 const WeekPicker: React.FC<{ value: Date; current: Date; onChange: (t: Date) => void; countOf: (t: Date) => number }> = ({ value, current, onChange, countOf }) => {
   const [open, setOpen] = useState(false);
+  const { tr, wdShort, wdLong } = useMarcomLang();
   const ref = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -389,23 +436,23 @@ const WeekPicker: React.FC<{ value: Date; current: Date; onChange: (t: Date) => 
 
   return (
     <span ref={ref} className="relative inline-flex items-center border border-slate-300 rounded-[3px] bg-white h-7">
-      <button type="button" onClick={() => onChange(addDays(value, -7))} className="w-7 h-full flex items-center justify-center text-slate-500 hover:bg-slate-100 border-r border-slate-300 cursor-pointer" title="Đợt trước">
+      <button type="button" onClick={() => onChange(addDays(value, -7))} className="w-7 h-full flex items-center justify-center text-slate-500 hover:bg-slate-100 border-r border-slate-300 cursor-pointer" title={tr('Đợt trước', 'Previous batch')}>
         <ChevronLeft size={14} />
       </button>
       <button type="button" onClick={() => setOpen((v) => !v)} className="h-full px-2.5 flex items-center gap-2 text-[12px] hover:bg-slate-50 cursor-pointer">
-        <span className="font-bold text-[#1e3a5f]">Thứ 3, {fmtDate(value)}</span>
+        <span className="font-bold text-[#1e3a5f]">{wdLong[2]}, {fmtDate(value)}</span>
         <span className="text-slate-400">
           ({fmtDayMonth(w.from)} – {fmtDayMonth(w.to)})
         </span>
         <ChevronDown size={13} className="text-slate-400" />
       </button>
-      <button type="button" onClick={() => onChange(addDays(value, 7))} className="w-7 h-full flex items-center justify-center text-slate-500 hover:bg-slate-100 border-l border-slate-300 cursor-pointer" title="Đợt sau">
+      <button type="button" onClick={() => onChange(addDays(value, 7))} className="w-7 h-full flex items-center justify-center text-slate-500 hover:bg-slate-100 border-l border-slate-300 cursor-pointer" title={tr('Đợt sau', 'Next batch')}>
         <ChevronRight size={14} />
       </button>
 
       {open && (
         <div className="absolute z-30 top-[calc(100%+4px)] left-0 w-[340px] bg-white border border-slate-300 rounded-[4px] shadow-lg overflow-hidden">
-          <div className="px-3 py-1.5 bg-[#e8edf4] border-b border-slate-300 text-[11px] font-semibold text-[#1e3a5f]">Chọn đợt Welcome</div>
+          <div className="px-3 py-1.5 bg-[#e8edf4] border-b border-slate-300 text-[11px] font-semibold text-[#1e3a5f]">{tr('Chọn đợt Welcome', 'Select Welcome batch')}</div>
           <div className="max-h-[300px] overflow-y-auto">
             {options.map((t) => {
               const win = batchWindow(t);
@@ -426,19 +473,19 @@ const WeekPicker: React.FC<{ value: Date; current: Date; onChange: (t: Date) => 
                   }`}
                 >
                   <span>
-                    <span className={`font-semibold ${isSel ? 'text-[#1f5fa8]' : 'text-slate-800'}`}>T3 {fmtDate(t)}</span>
+                    <span className={`font-semibold ${isSel ? 'text-[#1f5fa8]' : 'text-slate-800'}`}>{wdShort[2]} {fmtDate(t)}</span>
                     <span className="text-slate-400">
                       {' '}
                       · {fmtDayMonth(win.from)} – {fmtDayMonth(win.to)}
                     </span>
                     {isCur && (
                       <span className="ml-1.5">
-                        <Tag cls={TAG.blue}>Tuần này</Tag>
+                        <Tag cls={TAG.blue}>{tr('Tuần này', 'This week')}</Tag>
                       </span>
                     )}
                   </span>
-                  <span className="tabular-nums font-semibold text-slate-700">{n} NS</span>
-                  <Tag cls={PHASE[ph].cls}>{PHASE[ph].text}</Tag>
+                  <span className="tabular-nums font-semibold text-slate-700">{n} {tr('NS', 'emp.')}</span>
+                  <Tag cls={PHASE[ph].cls}>{tr(PHASE[ph].text, PHASE[ph].en)}</Tag>
                 </button>
               );
             })}

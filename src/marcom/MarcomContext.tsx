@@ -4,8 +4,8 @@
  */
 import React, { createContext, useContext, useMemo, useState } from 'react';
 import {
-  MarcomEmployee, MailLog, MailKind, OnboardChange,
-  buildEmployees, buildMailLogs, buildOnboardChanges,
+  MarcomEmployee, MailLog, MailKind, OnboardChange, PhotoSource,
+  buildEmployees, buildMailLogs, buildOnboardChanges, birthdayThisYear, startOfDay,
 } from './marcomData';
 
 export interface MailConfig {
@@ -21,7 +21,9 @@ export interface MailConfig {
   /** Khung thiệp / ảnh nền MarCom cung cấp (tuỳ chọn) — ảnh nhân sự được ghép lên khung này. */
   frameUrl: string | null;
   frameName: string | null;
-  cc: string;
+  /** Banner cuối mail (mail sinh nhật) — MarCom cung cấp, tuỳ chọn. */
+  footerUrl?: string | null;
+  footerName?: string | null;
 }
 
 export type BoxLayout = 'cards' | 'list' | 'banner';
@@ -105,7 +107,6 @@ VTX Group · MarCom`,
     noPhoto: 'default',
     frameUrl: null,
     frameName: null,
-    cc: '',
   },
   welcome: {
     enabled: true,
@@ -124,7 +125,6 @@ VTX Group · MarCom`,
     noPhoto: 'default',
     frameUrl: null,
     frameName: null,
-    cc: 'marcom@aequitas.vn',
   },
   box: {
     showOnHome: true,
@@ -167,7 +167,12 @@ Cùng thả thật nhiều lời chúc và gửi chút năng lượng tích cự
 };
 
 interface MarcomContextValue {
+  /** Nhân sự theo hồ sơ Employee (ảnh Employee) — dùng cho Welcome Onboard. */
   employees: MarcomEmployee[];
+  /** Nhân sự kèm ảnh chúc mừng của lần sinh nhật sắp tới / hôm nay — chỉ dùng cho sinh nhật: box, Teams, mail. */
+  birthdayEmployees: MarcomEmployee[];
+  /** Nhân sự kèm ảnh chúc mừng của sinh nhật năm `year` (ảnh tải lên chỉ dùng cho đúng lần sinh nhật đó). */
+  photoForYear: (e: MarcomEmployee, year: number) => MarcomEmployee;
   config: MarcomConfig;
   logs: MailLog[];
   changes: OnboardChange[];
@@ -178,21 +183,50 @@ interface MarcomContextValue {
   sendTest: (kind: MailKind, employee: MarcomEmployee, to: string) => void;
   resend: (logId: string) => void;
   refresh: () => void;
+  /** Tải ảnh lên cho sinh nhật năm `forYear` của nhân sự (mock S3) → nguồn ảnh tự chuyển sang 'upload'. */
+  uploadPhoto: (employeeId: string, file: File, forYear: number) => void;
+  /** Xoá ảnh tải lên → quay về ảnh Employee. */
+  removePhoto: (employeeId: string) => void;
 }
 
 const MarcomContext = createContext<MarcomContextValue | null>(null);
 
 export const MarcomProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [employees, setEmployees] = useState<MarcomEmployee[]>(() => buildEmployees());
+  const [employees] = useState<MarcomEmployee[]>(() => buildEmployees());
   const [logs, setLogs] = useState<MailLog[]>(() => buildMailLogs(employees));
   const [config, setConfig] = useState<MarcomConfig>(DEFAULT_CONFIG);
   // Ngày onboard / Cancel Onboard do HCNS cập nhật trên Employee — ở đây chỉ đọc sang (mock: lịch sử mẫu)
   const [changes] = useState<OnboardChange[]>(() => buildOnboardChanges(employees));
   const [syncedAt, setSyncedAt] = useState(() => new Date());
+  // Ảnh tải lên lưu đến khi xoá, nhưng chỉ dùng cho sinh nhật năm forYear
+  const [uploads, setUploads] = useState<Record<string, { url: string; name: string; forYear: number }>>({});
+
+  const photoForYear = useMemo(
+    () => (e: MarcomEmployee, year: number): MarcomEmployee => {
+      const up = uploads[e.id]?.forYear === year ? uploads[e.id] : undefined;
+      const source: PhotoSource = up ? 'upload' : 'employee';
+      return {
+        ...e,
+        photoUrl: up ? up.url : e.photoUrl,
+        photoSource: source,
+        employeePhotoUrl: e.photoUrl,
+        uploadedPhotoUrl: up?.url ?? null,
+        uploadedPhotoName: up?.name ?? null,
+      };
+    },
+    [uploads],
+  );
+  // Lần sinh nhật đang áp dụng: năm nay nếu chưa qua (gồm hôm nay), ngược lại năm sau
+  const birthdayEmployees = useMemo(() => {
+    const today = startOfDay(new Date());
+    return employees.map((e) => photoForYear(e, today.getFullYear() + (birthdayThisYear(e) < today ? 1 : 0)));
+  }, [employees, photoForYear]);
 
   const value = useMemo<MarcomContextValue>(
     () => ({
       employees,
+      birthdayEmployees,
+      photoForYear,
       config,
       logs,
       changes,
@@ -211,8 +245,15 @@ export const MarcomProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           return [{ ...src, id: `R${Date.now()}`, sentAt: new Date().toISOString(), status: 'sent', note: 'Gửi lại thủ công' }, ...l];
         }),
       refresh: () => setSyncedAt(new Date()),
+      uploadPhoto: (id, file, forYear) => setUploads((m) => ({ ...m, [id]: { url: URL.createObjectURL(file), name: file.name, forYear } })),
+      removePhoto: (id) =>
+        setUploads((m) => {
+          if (m[id]) URL.revokeObjectURL(m[id].url);
+          const { [id]: _removed, ...rest } = m;
+          return rest;
+        }),
     }),
-    [employees, config, logs, changes, syncedAt],
+    [employees, birthdayEmployees, photoForYear, config, logs, changes, syncedAt],
   );
 
   return <MarcomContext.Provider value={value}>{children}</MarcomContext.Provider>;

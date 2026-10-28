@@ -16,6 +16,53 @@ import {
   nextCode, nowIsoP, updateProcesses, useProcesses, type FieldType, type PermMode, type ProcField, type ProcStep, type Process,
 } from './processStore';
 import { ProcIcon } from './ProcIcon';
+import { FieldSettings } from './FieldSettings';
+import { cfgOf, COL_TYPES, CURRENCIES, RUN_SOURCES } from './processStore';
+import { FieldInput, formulaError, initialValue } from './FieldInput';
+
+/** Tóm tắt thiết lập của trường (hiện trên thẻ trường). */
+const summaryOf = (f: ProcField): string => {
+  const c = cfgOf(f);
+  const many = c.multiple ? 'chọn nhiều' : 'chọn một';
+  switch (f.type) {
+    case 'text':
+    case 'textarea':
+      return [c.maxLength ? `tối đa ${c.maxLength} ký tự` : '', c.format === 'digits' ? 'chỉ chữ số' : c.format === 'phone' ? 'số điện thoại' : '', c.dependsOn ? 'có trường phụ thuộc' : ''].filter(Boolean).join(' · ');
+    case 'select':
+      return `${(f.options || []).length} lựa chọn · ${many}${c.display === 'radio' ? ' · nút chọn' : ''}`;
+    case 'datetime':
+      return [{ date: 'Ngày/tháng/năm', month: 'Tháng/năm', datetime: 'Ngày/tháng/năm Giờ:phút' }[c.dateKind || 'date'], c.dateLimit === 'notPast' ? 'không chọn quá khứ' : c.dateLimit === 'notFuture' ? 'không chọn tương lai' : '', c.defaultToday ? 'mặc định hôm nay' : ''].filter(Boolean).join(' · ');
+    case 'address':
+      return `${c.addrKind === 'ward' ? 'Phường/Xã' : 'Tỉnh/Thành phố'} · ${many}`;
+    case 'number':
+      return [{ decimal: 'Số thập phân', integer: 'Số tự nhiên', percent: 'Số phần trăm' }[c.numKind || 'decimal'], c.numSource === 'list' ? `chọn từ ${(c.numOptions || []).length} giá trị` : '', c.min != null ? `≥ ${c.min}` : '', c.max != null ? `≤ ${c.max}` : ''].filter(Boolean).join(' · ');
+    case 'currency':
+      return [`${c.currency} — ${CURRENCIES.find((x) => x.code === c.currency)?.name}`, c.allowCurrencyChoice ? 'đổi được loại tiền' : '', c.showWords ? 'số bằng chữ' : ''].filter(Boolean).join(' · ');
+    case 'employee':
+      return [many, c.defaultCreator ? 'mặc định người tạo đơn' : ''].filter(Boolean).join(' · ');
+    case 'position':
+    case 'org':
+      return many;
+    case 'catalog':
+      return `Danh mục ${c.catalog} · ${many}`;
+    case 'file':
+      return [`tối đa ${c.maxFiles || '∞'} tệp`, c.accept ? c.accept : '', c.mergeTemplate ? `trộn mẫu ${c.mergeTemplate}` : '', c.signers?.length ? `trình ký ${c.signers.length} người` : ''].filter(Boolean).join(' · ');
+    case 'subtask':
+      return `${(c.tasks || []).length} công việc${c.requireAll ? ' · bắt buộc hoàn thành hết' : ''}`;
+    case 'table':
+      return `${(c.columns || []).length} cột: ${(c.columns || []).map((x) => `${x.name}${x.type !== 'text' && x.type !== 'stt' ? ` (${COL_TYPES.find((t) => t.type === x.type)?.label})` : ''}`).join(', ')}`;
+    case 'formula':
+      return `= ${c.expr || '(chưa có công thức)'}`;
+    case 'runData':
+      return `Tự điền: ${RUN_SOURCES.find((x) => x.key === c.source)?.label}`;
+    case 'linkedData':
+      return c.linkProcess ? `Chọn đơn đã duyệt của ${c.linkProcess}` : 'Chưa chọn quy trình nguồn';
+    case 'autoCode':
+      return `${c.prefix}${c.withYear !== false ? '-năm' : ''}-${'0'.repeat((c.digits || 4) - 1)}1`;
+    default:
+      return '';
+  }
+};
 
 const DT_TYPE = 'application/x-qt-type';
 const DT_MOVE = 'application/x-qt-move';
@@ -104,6 +151,7 @@ export const ProcessEditor: React.FC<{ id: string | null; onBack: () => void; fl
   const [over, setOver] = useState<number | null>(null);
   const [armed, setArmed] = useState<string | null>(null);
   const [focusField, setFocusField] = useState<string | null>(null);
+  const [edit, setEdit] = useState<{ field: ProcField; isNew: boolean; at?: number } | null>(null);
   const stepRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const iconRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -142,14 +190,19 @@ export const ProcessEditor: React.FC<{ id: string | null; onBack: () => void; fl
   };
 
   // ---- Trường thông tin
-  const addField = (type: FieldType, at?: number) => {
-    const f = newField(type);
-    setFields((l) => {
-      const n = [...l];
-      n.splice(at ?? n.length, 0, f);
-      return n;
-    });
+  // Thêm trường: mở popup thiết lập, Lưu mới thêm vào biểu mẫu
+  const addField = (type: FieldType, at?: number) => setEdit({ field: newField(type), isNew: true, at });
+  const saveEdit = (f: ProcField) => {
+    if (!edit) return;
+    if (edit.isNew)
+      setFields((l) => {
+        const n = [...l];
+        n.splice(edit.at ?? n.length, 0, f);
+        return n;
+      });
+    else setFields((l) => l.map((x) => (x.id === f.id ? f : x)));
     setFocusField(f.id);
+    setEdit(null);
   };
   const moveField = (fid: string, to: number) =>
     setFields((l) => {
@@ -189,6 +242,9 @@ export const ProcessEditor: React.FC<{ id: string | null; onBack: () => void; fl
   if (d.permMode === 'people' && !d.permPeople.length) errs.perm = 'Chọn ít nhất 1 nhân viên';
   const emptyLabels = d.steps.flatMap((s, i) => s.fields.filter((f) => !f.label.trim()).map(() => i + 1));
   if (emptyLabels.length) errs.fields = `Có trường chưa đặt tên ở bước ${[...new Set(emptyLabels)].join(', ')}`;
+  const allF = d.steps.flatMap((s) => s.fields);
+  const badF = allF.filter((f) => f.type === 'formula' && formulaError(f, allF));
+  if (!errs.fields && badF.length) errs.fields = `Công thức lỗi: ${badF.map((f) => `"${f.label}" (${formulaError(f, allF)})`).join(', ')}`;
   const E = tried ? errs : {};
 
   const save = () => {
@@ -555,32 +611,22 @@ export const ProcessEditor: React.FC<{ id: string | null; onBack: () => void; fl
                         <span onMouseDown={() => setArmed(f.id)} onMouseUp={() => setArmed(null)} className="mt-1.5 text-slate-400 cursor-grab active:cursor-grabbing" title="Kéo để sắp xếp">
                           <GripVertical size={15} />
                         </span>
-                        <span className="mt-0.5 w-7 h-7 rounded-[4px] bg-[#e8f1fb] text-[#1f5fa8] flex items-center justify-center shrink-0" title={T.label}>
-                          <T.icon size={15} />
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <input
-                              autoFocus={focusField === f.id}
-                              value={f.label}
-                              onFocus={() => setFocusField(f.id)}
-                              onChange={(e) => patchField(f.id, { label: e.target.value })}
-                              placeholder="Tên trường"
-                              className={`${erp.inputFull} font-semibold ${tried && !f.label.trim() ? '!border-rose-400' : ''}`}
-                            />
-                            <label className="flex items-center gap-1 text-[12px] text-slate-600 whitespace-nowrap cursor-pointer">
-                              <input type="checkbox" className="accent-[#1f5fa8]" checked={f.required} onChange={(e) => patchField(f.id, { required: e.target.checked })} />
-                              Bắt buộc
-                            </label>
+                        {/* Xem trước trường đúng như trên biểu mẫu quy trình — bấm để thiết lập */}
+                        <div className="flex-1 min-w-0 cursor-pointer" onClick={() => (setFocusField(f.id), setEdit({ field: f, isNew: false }))} title="Bấm để thiết lập trường" data-testid="field-preview">
+                          <div className="grid grid-cols-[170px_minmax(0,1fr)] gap-x-3 items-start">
+                            <span className={`text-[12.5px] pt-1.5 leading-tight ${f.label.trim() ? 'text-slate-700' : 'text-rose-600 italic'}`}>
+                              {f.label.trim() || '(chưa đặt tên trường)'}
+                              {f.required && !['formula', 'autoCode', 'runData'].includes(f.type) && <span className="text-rose-600"> *</span>}
+                            </span>
+                            <span className="min-w-0 pointer-events-none select-none" aria-hidden>
+                              <FieldInput f={f} v={initialValue(f, 'Người tạo đơn') ?? ''} onChange={() => {}} ctx={{ fields: step.fields, values: {}, req: { code: 'DON-2026-0001', creator: 'Người tạo đơn', createdAt: new Date().toISOString(), submittedAt: null, processName: d.name || 'Quy trình', version: d.version, unit: 'Phòng ban' } }} />
+                            </span>
                           </div>
-                          <div className="flex items-center gap-2 mt-1 text-[11.5px] text-slate-500">
-                            <span className="rounded-[3px] bg-slate-100 border border-slate-200 px-1.5">{T.label}</span>
-                            <input
-                              value={f.hint}
-                              onChange={(e) => patchField(f.id, { hint: e.target.value })}
-                              placeholder="Gợi ý nhập (tuỳ chọn)"
-                              className="flex-1 min-w-0 h-6 border-0 border-b border-dashed border-slate-300 bg-transparent px-1 text-[11.5px] outline-none focus:border-[#1f5fa8]"
-                            />
+                          <div className="flex items-center gap-1.5 mt-1.5 pl-[182px] text-[11px] text-slate-400">
+                            <T.icon size={11} className="shrink-0" />
+                            <span className="shrink-0">{T.label}</span>
+                            {summaryOf(f) && <span className="truncate">· {summaryOf(f)}</span>}
+                            {f.type === 'formula' && formulaError(f, d.steps.flatMap((x) => x.fields)) && <span className="text-rose-600 shrink-0">⚠ {formulaError(f, d.steps.flatMap((x) => x.fields))}</span>}
                           </div>
                         </div>
                         <span className="flex items-center shrink-0 opacity-60 group-hover:opacity-100">
@@ -598,7 +644,7 @@ export const ProcessEditor: React.FC<{ id: string | null; onBack: () => void; fl
                           >
                             <CopyPlus size={14} />
                           </button>
-                          <button type="button" disabled className="p-1 rounded text-slate-400 disabled:opacity-40 cursor-not-allowed" title={`Thiết lập chi tiết trường "${T.label}" — sẽ bổ sung ở bản sau`}>
+                          <button type="button" onClick={() => setEdit({ field: f, isNew: false })} className="p-1 rounded text-[#1f5fa8] hover:bg-[#eaf2fc] cursor-pointer" title={`Thiết lập trường "${T.label}"`} data-testid="field-gear">
                             <Settings2 size={14} />
                           </button>
                           <button type="button" onClick={() => setFields((l) => l.filter((x) => x.id !== f.id))} className="p-1 rounded text-rose-500 hover:bg-rose-50 cursor-pointer" title="Xoá trường">
@@ -652,7 +698,7 @@ export const ProcessEditor: React.FC<{ id: string | null; onBack: () => void; fl
         </Panel>
 
         {/* ============ Cột phải: loại trường ============ */}
-        <Panel title="Trường thông tin" noPad footer="Bấm để thêm vào biểu mẫu bước đang chọn, hoặc kéo thả vào vị trí mong muốn. Thiết lập chi tiết từng loại trường: bổ sung ở bản sau.">
+        <Panel title="Trường thông tin" noPad footer="Bấm để thêm vào biểu mẫu bước đang chọn (mở popup thiết lập trường), hoặc kéo thả vào vị trí mong muốn.">
           <div className="py-1 xl:max-h-[calc(100vh-230px)] overflow-auto" data-testid="proc-palette">
             {FIELD_TYPES.map((t) => (
               <button
@@ -672,6 +718,17 @@ export const ProcessEditor: React.FC<{ id: string | null; onBack: () => void; fl
           </div>
         </Panel>
       </div>
+      {edit && (
+        <FieldSettings
+          field={edit.field}
+          isNew={edit.isNew}
+          stepFields={step.fields}
+          allFields={edit.isNew ? [...allF, edit.field] : allF}
+          processes={list}
+          onSave={saveEdit}
+          onCancel={() => setEdit(null)}
+        />
+      )}
     </>
   );
 };
