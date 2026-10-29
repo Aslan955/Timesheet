@@ -13,7 +13,7 @@ import {
 import { Btn, ErpTitleBar, Panel, erp } from '../erp/Erp';
 import {
   FIELD_TYPES, ME, PERM_LABEL, PROC_COLORS, PROC_GROUPS, PROC_ICONS, PROC_PEOPLE, PROC_UNITS, blankProcess, fieldTypeOf, fmtDateTime, getProcesses, newField, newStep,
-  nextCode, nowIsoP, updateProcesses, useProcesses, type FieldType, type PermMode, type ProcField, type ProcStep, type Process,
+  nextCode, nowIsoP, titleRefs, updateProcesses, useProcesses, type FieldType, type PermMode, type ProcField, type ProcStep, type Process,
 } from './processStore';
 import { ProcIcon } from './ProcIcon';
 import { FieldSettings } from './FieldSettings';
@@ -245,6 +245,8 @@ export const ProcessEditor: React.FC<{ id: string | null; onBack: () => void; fl
   const allF = d.steps.flatMap((s) => s.fields);
   const badF = allF.filter((f) => f.type === 'formula' && formulaError(f, allF));
   if (!errs.fields && badF.length) errs.fields = `Công thức lỗi: ${badF.map((f) => `"${f.label}" (${formulaError(f, allF)})`).join(', ')}`;
+  const badRefs = titleRefs(d.titleTpl || '').filter((n) => !(d.steps[0]?.fields || []).some((f) => f.label.trim() === n));
+  if (badRefs.length) errs.titleTpl = `Tiêu đề dùng trường không có ở bước 1: ${badRefs.map((n) => `{${n}}`).join(', ')}`;
   const E = tried ? errs : {};
 
   const save = () => {
@@ -254,6 +256,7 @@ export const ProcessEditor: React.FC<{ id: string | null; onBack: () => void; fl
     const clean: Process = {
       ...d,
       name: d.name.trim(),
+      titleTpl: (d.titleTpl || '').trim(),
       version: d.version.trim(),
       steps: d.steps.map((s) => ({ ...s, name: s.name.trim(), fields: s.fields.map((f) => ({ ...f, label: f.label.trim() })) })),
       updatedAt: at,
@@ -266,7 +269,7 @@ export const ProcessEditor: React.FC<{ id: string | null; onBack: () => void; fl
     } else {
       const o = orig!;
       const parts = [
-        (o.name !== clean.name || o.desc !== clean.desc || o.version !== clean.version || o.group !== clean.group || o.icon !== clean.icon || o.color !== clean.color) && 'thông tin chung',
+        (o.name !== clean.name || o.desc !== clean.desc || (o.titleTpl || '') !== clean.titleTpl || o.version !== clean.version || o.group !== clean.group || o.icon !== clean.icon || o.color !== clean.color) && 'thông tin chung',
         JSON.stringify(o.steps.map((s) => [s.name, s.desc, s.deadlineDays])) !== JSON.stringify(clean.steps.map((s) => [s.name, s.desc, s.deadlineDays])) || o.unlimitedSteps !== clean.unlimitedSteps ? 'các bước' : '',
         JSON.stringify(o.steps.map((s) => s.fields)) !== JSON.stringify(clean.steps.map((s) => s.fields)) && 'trường thông tin',
         (o.permMode !== clean.permMode || o.permUnits.join() !== clean.permUnits.join() || o.permPeople.join() !== clean.permPeople.join()) && 'phân quyền',
@@ -348,6 +351,29 @@ export const ProcessEditor: React.FC<{ id: string | null; onBack: () => void; fl
                   <PenLine size={13} /> Mô tả chung
                 </button>
               )}
+            </div>
+            <div>
+              <Lbl>Tiêu đề đơn</Lbl>
+              <input
+                value={d.titleTpl || ''}
+                onChange={(e) => set({ titleTpl: e.target.value })}
+                placeholder="VD: Đề nghị tạm ứng {Mục đích tạm ứng} của {Người đề nghị}"
+                className={`${erp.inputFull} ${errCls(E.titleTpl)}`}
+                data-testid="proc-title-tpl"
+              />
+              <Err e={E.titleTpl} />
+              <div className="mt-1 flex flex-wrap items-center gap-1 text-[11.5px]">
+                <span className="text-slate-400">Chèn trường bước 1:</span>
+                {(d.steps[0]?.fields || [])
+                  .filter((f) => ['text', 'select', 'employee', 'org', 'catalog', 'datetime', 'autoCode', 'number', 'currency'].includes(f.type))
+                  .slice(0, 12)
+                  .map((f) => (
+                    <button key={f.id} type="button" onClick={() => set({ titleTpl: `${(d.titleTpl || '').trimEnd()} {${f.label.trim()}}`.trim() })} className="rounded-[3px] border border-slate-300 bg-slate-50 px-1.5 hover:border-[#1f5fa8] cursor-pointer">
+                      {f.label}
+                    </button>
+                  ))}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-0.5">Tiêu đề đơn tự ghép từ giá trị các trường {'{…}'}; để trống thì người tạo tự nhập tiêu đề.</p>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>

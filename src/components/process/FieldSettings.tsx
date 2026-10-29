@@ -14,7 +14,7 @@ import { CurrencyPick, autoCodeOf } from './FieldInput';
 import { evalFormula, fmtNumber, refsOf, roundBy } from './formula';
 import { soThanhChu } from '../contracts/docx';
 
-const NUM_TYPES = ['number', 'currency', 'formula', 'table'];
+const NUM_TYPES = ['number', 'currency', 'formula', 'table', 'linkedData'];
 const Lbl: React.FC<{ children: React.ReactNode; req?: boolean; right?: React.ReactNode }> = ({ children, req, right }) => (
   <div className="flex items-center justify-between mb-1">
     <span className="text-[13px] font-semibold text-slate-700">
@@ -82,6 +82,16 @@ const ListEditor: React.FC<{ items: string[]; set: (v: string[]) => void; addLab
   );
 };
 
+/** Lỗi công thức của cột: tham chiếu {Tên cột} phải là cột số / tiền / công thức khác trong cùng bảng. */
+const colExprErr = (col: TableCol, cols: TableCol[]) => {
+  if (!col.expr?.trim()) return 'chưa nhập công thức';
+  try {
+    evalFormula(col.expr, (name) => (cols.some((x) => x.id !== col.id && x.name.trim() === name && ['decimal', 'integer', 'percent', 'currency', 'formula'].includes(x.type)) ? 1 : null));
+    return '';
+  } catch (e) {
+    return (e as Error).message === 'Chia cho 0' ? '' : (e as Error).message.replace('Không có trường', 'Không có cột số');
+  }
+};
 export const FieldSettings: React.FC<{
   field: ProcField;
   isNew?: boolean;
@@ -131,6 +141,11 @@ export const FieldSettings: React.FC<{
     if (!cols.length) errs.columns = 'Thêm ít nhất 1 cột.';
     else if (cols.some((x) => !x.name.trim())) errs.columns = 'Nhập tên cho tất cả các cột.';
     else if ((c.columns || []).some((x) => x.type === 'select' && !(x.options || []).filter((o) => o.trim()).length)) errs.columns = 'Cột "Chọn giá trị" cần danh sách lựa chọn (bấm ⚙).';
+    else if ((c.columns || []).some((x) => x.type === 'catalog' && !x.catalog)) errs.columns = 'Cột "Danh mục" cần chọn danh mục (bấm ⚙).';
+    else {
+      const bad = (c.columns || []).find((x) => x.type === 'formula' && colExprErr(x, c.columns || []));
+      if (bad) errs.columns = `Cột công thức "${bad.name || '…'}": ${colExprErr(bad, c.columns || [])} (bấm ⚙).`;
+    }
   }
   if (f.type === 'formula' && exprErr) errs.expr = exprErr;
   if (f.type === 'linkedData' && !c.linkProcess) errs.link = 'Chọn quy trình nguồn.';
@@ -216,7 +231,7 @@ export const FieldSettings: React.FC<{
   const depSelect = (
     <div>
       <Lbl>Trường phụ thuộc</Lbl>
-      <select value={c.dependsOn || ''} onChange={(e) => setC({ dependsOn: e.target.value || undefined })} className={erp.inputFull}>
+      <select value={c.dependsOn || ''} onChange={(e) => setC({ dependsOn: e.target.value || undefined, dependsValue: undefined })} className={erp.inputFull}>
         <option value="">Không phụ thuộc</option>
         {stepFields
           .filter((x) => x.id !== f.id)
@@ -226,7 +241,21 @@ export const FieldSettings: React.FC<{
             </option>
           ))}
       </select>
-      {c.dependsOn && <p className="text-[11.5px] text-slate-400 mt-0.5">Trường chỉ hiện khi "{stepFields.find((x) => x.id === c.dependsOn)?.label}" đã có giá trị.</p>}
+      {c.dependsOn && stepFields.find((x) => x.id === c.dependsOn)?.type === 'select' && (
+        <select value={c.dependsValue || ''} onChange={(e) => setC({ dependsValue: e.target.value || undefined })} className={`${erp.inputFull} mt-1.5`} data-testid="fs-depvalue">
+          <option value="">Khi đã chọn bất kỳ giá trị nào</option>
+          {(stepFields.find((x) => x.id === c.dependsOn)?.options || []).map((o) => (
+            <option key={o} value={o}>
+              Chỉ khi chọn "{o}"
+            </option>
+          ))}
+        </select>
+      )}
+      {c.dependsOn && (
+        <p className="text-[11.5px] text-slate-400 mt-0.5">
+          Trường chỉ hiện khi "{stepFields.find((x) => x.id === c.dependsOn)?.label}" {c.dependsValue ? `chọn "${c.dependsValue}"` : 'đã có giá trị'}.
+        </p>
+      )}
     </div>
   );
   const hasAdv = f.type === 'text' || f.type === 'textarea' || f.type === 'datetime';
@@ -469,6 +498,9 @@ export const FieldSettings: React.FC<{
           {/* ===== Email ===== */}
           {f.type === 'email' && (
             <>
+              <Check on={!!c.multiple} set={(v) => setC({ multiple: v })}>
+                Cho nhập nhiều email (gõ rồi nhấn Enter để thêm)
+              </Check>
               {hint}
               {required}
               {defaultBox(<input value={c.defaultValue || ''} onChange={(e) => setC({ defaultValue: e.target.value })} placeholder="ten@congty.vn" className={erp.inputFull} />)}
@@ -593,7 +625,7 @@ export const FieldSettings: React.FC<{
                     >
                       <GripVertical size={15} className="text-slate-500 cursor-grab" />
                       <input value={col.name} onChange={(e) => setCols(cols.map((x) => (x.id === col.id ? { ...x, name: e.target.value } : x)))} className={`${erp.inputFull} bg-white`} placeholder="Tên cột" />
-                      <select value={col.type} onChange={(e) => setCols(cols.map((x) => (x.id === col.id ? { ...x, type: e.target.value as ColType, sum: ['currency', 'decimal', 'integer'].includes(e.target.value) ? x.sum : false } : x)))} className={`${erp.inputFull} bg-white`}>
+                      <select value={col.type} onChange={(e) => setCols(cols.map((x) => (x.id === col.id ? { ...x, type: e.target.value as ColType, sum: ['currency', 'decimal', 'integer', 'formula'].includes(e.target.value) ? x.sum : false, catalog: e.target.value === 'catalog' ? x.catalog || 'Dự án' : undefined, fmt: e.target.value === 'formula' ? x.fmt || 'currency' : undefined } : x)))} className={`${erp.inputFull} bg-white`}>
                         {COL_TYPES.filter((t) => !t.group).slice(0, 4).map((t) => (
                           <option key={t.type} value={t.type}>
                             {t.label}
@@ -615,6 +647,15 @@ export const FieldSettings: React.FC<{
                           ))}
                         </optgroup>
                         <option value="currency">Tiền tệ</option>
+                        <optgroup label="Chọn từ danh mục">
+                          {COL_TYPES.filter((t) => t.group === 'Chọn từ danh mục').map((t) => (
+                            <option key={t.type} value={t.type}>
+                              {t.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                        <option value="file">Tải tệp</option>
+                        <option value="formula">Công thức (theo cột)</option>
                       </select>
                       <button
                         type="button"
@@ -638,10 +679,65 @@ export const FieldSettings: React.FC<{
                               <div className="font-semibold text-slate-700">Danh sách lựa chọn của cột "{col.name || '…'}"</div>
                               <ListEditor items={col.options?.length ? col.options : ['']} set={(v) => setCols(cols.map((x) => (x.id === col.id ? { ...x, options: v } : x)))} addLabel="Thêm lựa chọn" placeholder="Nhập lựa chọn" />
                             </>
+                          ) : col.type === 'catalog' ? (
+                            <label className="flex items-center gap-2">
+                              <span className="font-semibold text-slate-700 shrink-0">Danh mục</span>
+                              <select value={col.catalog || ''} onChange={(e) => setCols(cols.map((x) => (x.id === col.id ? { ...x, catalog: e.target.value } : x)))} className={erp.inputFull}>
+                                <option value="">— Chọn danh mục —</option>
+                                {Object.keys(CATALOGS).map((k) => (
+                                  <option key={k}>{k}</option>
+                                ))}
+                              </select>
+                            </label>
+                          ) : col.type === 'formula' ? (
+                            <>
+                              <div className="font-semibold text-slate-700">Công thức của cột "{col.name || '…'}" — tính trên từng dòng</div>
+                              <input
+                                value={col.expr || ''}
+                                onChange={(e) => setCols(cols.map((x) => (x.id === col.id ? { ...x, expr: e.target.value } : x)))}
+                                placeholder="VD: {Số lượng} * {Đơn giá}"
+                                className={`${erp.inputFull} font-mono ${colExprErr(col, cols) ? '!border-rose-400' : ''}`}
+                                data-testid="fs-colexpr"
+                              />
+                              <div className="flex flex-wrap gap-1">
+                                <span className="text-slate-500">Chèn cột:</span>
+                                {cols
+                                  .filter((x) => x.id !== col.id && ['decimal', 'integer', 'percent', 'currency', 'formula'].includes(x.type))
+                                  .map((x) => (
+                                    <button key={x.id} type="button" onClick={() => setCols(cols.map((y) => (y.id === col.id ? { ...y, expr: `${y.expr || ''}{${x.name.trim()}}` } : y)))} className="rounded-[3px] border border-slate-300 bg-slate-50 px-1.5 hover:border-[#1f5fa8] cursor-pointer">
+                                      {x.name || '…'}
+                                    </button>
+                                  ))}
+                              </div>
+                              {colExprErr(col, cols) && <p className="text-rose-600">{colExprErr(col, cols)}</p>}
+                              <label className="flex items-center gap-2">
+                                <span className="font-semibold text-slate-700 shrink-0">Hiển thị</span>
+                                <select value={col.fmt || 'currency'} onChange={(e) => setCols(cols.map((x) => (x.id === col.id ? { ...x, fmt: e.target.value as TableCol['fmt'] } : x)))} className={`${erp.inputFull} w-48`}>
+                                  <option value="currency">Tiền tệ (làm tròn đồng)</option>
+                                  <option value="decimal">Số thập phân</option>
+                                  <option value="percent">Phần trăm (%)</option>
+                                </select>
+                              </label>
+                              <Check on={!!col.sum} set={(v) => setCols(cols.map((x) => (x.id === col.id ? { ...x, sum: v } : x)))}>
+                                Tính tổng cột ở dòng cuối (dùng được trong Công thức)
+                              </Check>
+                              {col.sum && col.fmt !== 'percent' && (
+                                <Check on={!!col.words} set={(v) => setCols(cols.map((x) => (x.id === col.id ? { ...x, words: v } : x)))}>
+                                  Hiện tổng bằng chữ
+                                </Check>
+                              )}
+                            </>
                           ) : ['currency', 'decimal', 'integer'].includes(col.type) ? (
-                            <Check on={!!col.sum} set={(v) => setCols(cols.map((x) => (x.id === col.id ? { ...x, sum: v } : x)))}>
-                              Tính tổng cột ở dòng cuối (dùng được trong Công thức)
-                            </Check>
+                            <>
+                              <Check on={!!col.sum} set={(v) => setCols(cols.map((x) => (x.id === col.id ? { ...x, sum: v } : x)))}>
+                                Tính tổng cột ở dòng cuối (dùng được trong Công thức)
+                              </Check>
+                              {col.sum && col.type === 'currency' && (
+                                <Check on={!!col.words} set={(v) => setCols(cols.map((x) => (x.id === col.id ? { ...x, words: v } : x)))}>
+                                  Hiện tổng bằng chữ
+                                </Check>
+                              )}
+                            </>
                           ) : (
                             <span className="text-slate-500">Cột "{COL_TYPES.find((t) => t.type === col.type)?.label}" không có thiết lập thêm.</span>
                           )}
@@ -802,8 +898,27 @@ export const FieldSettings: React.FC<{
                     </option>
                   ))}
                 </select>
-                {E.link ? <p className="text-[12px] text-rose-600 mt-0.5">{E.link}</p> : <p className="text-[11.5px] text-slate-400 mt-0.5">Người tạo đơn chọn 1 đơn đã được duyệt của quy trình nguồn (VD: đề nghị tạm ứng khi làm hoàn ứng).</p>}
+                {E.link ? <p className="text-[12px] text-rose-600 mt-0.5">{E.link}</p> : <p className="text-[11.5px] text-slate-400 mt-0.5">Người tạo đơn chọn đơn đã được duyệt của quy trình nguồn (VD: đề nghị tạm ứng khi làm quyết toán).</p>}
               </div>
+              <Check on={!!c.multiple} set={(v) => setC({ multiple: v })}>
+                Cho chọn nhiều đơn
+              </Check>
+              {c.linkProcess && (
+                <div>
+                  <Lbl>Số tiền lấy từ trường</Lbl>
+                  <select value={c.linkSum || ''} onChange={(e) => setC({ linkSum: e.target.value || undefined })} className={erp.inputFull} data-testid="fs-linksum">
+                    <option value="">— Không lấy số tiền —</option>
+                    {(processes.find((p) => p.code === c.linkProcess)?.steps[0]?.fields || [])
+                      .filter((x) => ['number', 'currency', 'formula', 'table'].includes(x.type))
+                      .map((x) => (
+                        <option key={x.id} value={x.label}>
+                          {x.label}
+                        </option>
+                      ))}
+                  </select>
+                  <p className="text-[11.5px] text-slate-400 mt-0.5">Cộng dồn trường này của các đơn đã chọn — dùng được trong Công thức (VD: Tổng số tiền đã tạm ứng = {'{'}{f.label || 'tên trường này'}{'}'}).</p>
+                </div>
+              )}
               {hint}
               {required}
             </>

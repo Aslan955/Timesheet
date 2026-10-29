@@ -7,7 +7,7 @@
  * Bản prototype: chọn "Đang dùng với tài khoản" để thử vai người tạo / người duyệt.
  */
 import { useSyncExternalStore } from 'react';
-import { PROC_PEOPLE, PROC_UNITS, getProcesses, uidP, type ProcStep, type Process } from './processStore';
+import { PROC_PEOPLE, PROC_UNITS, getProcesses, renderTitle, uidP, type ProcStep, type Process } from './processStore';
 
 export type ReqStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'recalled';
 export type RunStatus = 'waiting' | 'pending' | 'approved' | 'rejected' | 'skipped';
@@ -52,6 +52,8 @@ export interface ProcRequest {
   unlimitedSteps: boolean;
   showStep1: boolean;
   title: string;
+  /** Mẫu tiêu đề của quy trình lúc tạo đơn — có thì tiêu đề tự ghép từ giá trị trường */
+  titleTpl?: string;
   creator: string;
   createdAt: string;
   submittedAt: string | null;
@@ -122,6 +124,7 @@ export const newRequest = (p: Process, creator: string, list: ProcRequest[]): Pr
     unlimitedSteps: p.unlimitedSteps,
     showStep1: p.showStep1,
     title: '',
+    titleTpl: p.titleTpl || '',
     creator,
     createdAt: t,
     submittedAt: null,
@@ -158,14 +161,14 @@ const seed = (): ProcRequest[] => {
     return d.toISOString();
   };
   /** Đơn mẫu: người tạo, ngày gửi, dữ liệu bước 1, người xử lý từng bước, số bước đã duyệt, kết thúc. */
-  const mk = (code: string, creator: string, sentDaysAgo: number, title: string, d1: (r: ProcRequest) => void, assignees: string[], done: number, end?: 'approved' | 'rejected' | 'recalled', note = '') => {
+  const mk = (code: string, creator: string, sentDaysAgo: number, d1: (r: ProcRequest) => void, assignees: string[], done: number, end?: 'approved' | 'rejected' | 'recalled', note = '') => {
     const p = byCode(code);
     const r = newRequest(p, creator, list);
     const sent = day(sentDaysAgo);
     r.createdAt = sent;
     r.submittedAt = sent;
-    r.title = title;
     d1(r);
+    r.title = r.titleTpl ? renderTitle(r.titleTpl, r.runs[0].def.fields, r.runs[0].data) : p.name;
     r.history = [{ at: sent, by: creator, action: 'Gửi đơn', comment: '' }];
     r.runs[0] = { ...r.runs[0], status: 'approved', startedAt: sent, actedAt: sent };
     let t = sent;
@@ -210,45 +213,152 @@ const seed = (): ProcRequest[] => {
   };
   const f = (r: ProcRequest, label: string) => r.runs[0].def.fields.find((x) => x.label === label)?.id || '';
   const setF = (r: ProcRequest, label: string, v: FieldValue) => (r.runs[0].data[f(r, label)] = v);
-
-  // Đề nghị thanh toán (4 bước)
-  const tt = (r: ProcRequest, nd: string, rows: { text: string; amount: number }[], ben: string) => {
-    setF(r, 'Số đề nghị', r.code);
-    setF(r, 'Người đề nghị', r.creator);
-    setF(r, 'Phòng ban', UNIT_OF[r.creator]);
-    setF(r, 'Nội dung thanh toán', nd);
-    setF(r, 'Chi tiết khoản chi', { rows: rows.map((x) => ({ nd: x.text, st: x.amount })) });
-    setF(r, 'Hạng mục chi phí', 'Chi phí văn phòng');
-    setF(r, 'Hạn thanh toán', new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10));
-    setF(r, 'Đơn vị thụ hưởng', ben);
-    setF(r, 'Chứng từ kèm theo', ['hoa-don-GTGT.pdf']);
+  /** Bảng: dòng khai báo theo tên cột */
+  const setT = (r: ProcRequest, label: string, rows: Record<string, string | number>[]) => {
+    const fd = r.runs[0].def.fields.find((x) => x.label === label);
+    const cols = fd?.cfg?.columns || [];
+    setF(r, label, { rows: rows.map((row) => Object.fromEntries(Object.entries(row).map(([k, v]) => [cols.find((c) => c.name === k)?.id || k, v]))) });
   };
-  mk('QT-001', PROC_PEOPLE[0], 2, 'Thanh toán chi phí in ấn tài liệu hội thảo', (r) => tt(r, 'Thanh toán in ấn 300 bộ tài liệu hội thảo khách hàng tháng 10', [{ text: 'In tài liệu 300 bộ', amount: 9_000_000 }, { text: 'Thiết kế', amount: 2_500_000 }], 'Công ty In Ánh Dương (mẫu)'), [PROC_PEOPLE[1], PROC_PEOPLE[9], PROC_PEOPLE[12]], 1);
-  mk('QT-001', PROC_PEOPLE[3], 1, 'Thanh toán thuê phòng họp sự kiện', (r) => tt(r, 'Thuê phòng họp + âm thanh cho sự kiện ra mắt sản phẩm', [{ text: 'Thuê phòng 1 ngày', amount: 15_000_000 }, { text: 'Âm thanh ánh sáng', amount: 6_000_000 }], 'Khách sạn Hoà Bình (mẫu)'), [PROC_PEOPLE[0], PROC_PEOPLE[9], PROC_PEOPLE[12]], 0);
-  mk('QT-001', PROC_PEOPLE[5], 9, 'Thanh toán văn phòng phẩm quý IV', (r) => tt(r, 'Văn phòng phẩm quý IV/2026', [{ text: 'Giấy, bút, sổ', amount: 4_200_000 }], 'Cửa hàng VPP Minh Tâm (mẫu)'), [PROC_PEOPLE[1], PROC_PEOPLE[9], PROC_PEOPLE[12]], 3);
-  // Tạm ứng
-  mk('QT-002', PROC_PEOPLE[0], 6, 'Tạm ứng công tác Đà Nẵng', (r) => {
-    setF(r, 'Người tạm ứng', r.creator);
-    setF(r, 'Lý do tạm ứng', 'Công tác triển khai dự án tại Đà Nẵng 3 ngày');
-    setF(r, 'Số tiền tạm ứng', 8_000_000);
-  }, [PROC_PEOPLE[1], PROC_PEOPLE[9]], 1, 'rejected', 'Đề nghị bổ sung kế hoạch công tác được duyệt rồi gửi lại.');
-  mk('QT-002', PROC_PEOPLE[7], 3, 'Tạm ứng mua vật tư lắp đặt', (r) => {
-    setF(r, 'Người tạm ứng', r.creator);
-    setF(r, 'Lý do tạm ứng', 'Mua vật tư lắp đặt thiết bị cho khách hàng');
-    setF(r, 'Số tiền tạm ứng', 12_500_000);
-  }, [PROC_PEOPLE[0], PROC_PEOPLE[9]], 0);
-  // Phê duyệt dự án
-  mk('QT-003', PROC_PEOPLE[2], 4, 'Dự án triển khai hệ thống kho cho khách hàng X (mẫu)', (r) => {
-    setF(r, 'Tên dự án', 'Triển khai hệ thống quản lý kho');
-    setF(r, 'Khách hàng', 'Khách hàng X (mẫu)');
-    setF(r, 'Giá trị hợp đồng dự kiến', 1_250_000_000);
-    setF(r, 'Tỷ suất lợi nhuận dự kiến (%)', 22);
-  }, [PROC_PEOPLE[4], PROC_PEOPLE[0], PROC_PEOPLE[12]], 1);
-  // OT
-  mk('QT-005', PROC_PEOPLE[0], 12, 'Làm thêm giờ chốt số liệu cuối tháng', (r) => {
-    setF(r, 'Số giờ', 4);
-    setF(r, 'Nội dung công việc', 'Chốt số liệu báo cáo tháng 9');
-  }, [PROC_PEOPLE[4], PROC_PEOPLE[1]], 2);
+  const P = PROC_PEOPLE;
+  const DUAN = ['PRJ-001 · Hệ thống quản lý kho (mẫu)', 'PRJ-002 · Cổng thông tin khách hàng (mẫu)', 'PRJ-003 · Ứng dụng di động bán hàng (mẫu)', 'NỘI BỘ · Chi phí chung công ty'];
+  const inDays = (n: number) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+  const bank = (r: ProcRequest, who: string, acc: string) => {
+    setF(r, 'Tổ chức/Cá nhân nhận tiền', who);
+    setF(r, 'Số tài khoản', acc);
+    setF(r, 'Ngân hàng', 'Ngân hàng TMCP Mẫu — CN Hà Nội');
+  };
+  const appr4 = [P[1], P[9], P[12], P[4]];
+
+  // 1. Tạm ứng — 2 đơn đã duyệt (dùng cho quyết toán) + 1 đơn đang xử lý
+  const tu1 = mk('QT-001', P[0], 20, (r) => {
+    setF(r, 'Người đề nghị', [r.creator]);
+    setF(r, 'Mục đích tạm ứng', 'công tác triển khai PRJ-001 tại Đà Nẵng');
+    setF(r, 'Hạn thanh toán', inDays(-18));
+    setF(r, 'Ngày hoàn ứng', inDays(5));
+    bank(r, r.creator, '0011000000001');
+    setT(r, 'Bảng kê tạm ứng', [
+      { 'Nội dung tạm ứng': 'Vé máy bay khứ hồi Hà Nội – Đà Nẵng', 'Loại tiền': 'VND', 'Số tiền': 6_200_000, 'Mã dự án': DUAN[0], 'Hóa đơn, chứng từ, tài liệu khác kèm theo (nếu có)': 'ke-hoach-cong-tac.pdf' },
+      { 'Nội dung tạm ứng': 'Khách sạn 3 đêm', 'Loại tiền': 'VND', 'Số tiền': 4_500_000, 'Mã dự án': DUAN[0] },
+      { 'Nội dung tạm ứng': 'Công tác phí', 'Loại tiền': 'VND', 'Số tiền': 1_800_000, 'Mã dự án': DUAN[0] },
+    ]);
+  }, appr4, 4);
+  mk('QT-001', P[0], 15, (r) => {
+    setF(r, 'Người đề nghị', [r.creator]);
+    setF(r, 'Mục đích tạm ứng', 'mua vật tư lắp đặt thiết bị cho khách hàng');
+    setF(r, 'Hạn thanh toán', inDays(-13));
+    setF(r, 'Ngày hoàn ứng', inDays(10));
+    bank(r, r.creator, '0011000000001');
+    setT(r, 'Bảng kê tạm ứng', [{ 'Nội dung tạm ứng': 'Vật tư lắp đặt (dây, ống, giá đỡ)', 'Loại tiền': 'VND', 'Số tiền': 7_800_000, 'Mã dự án': DUAN[0], 'Hóa đơn, chứng từ, tài liệu khác kèm theo (nếu có)': 'bao-gia-vat-tu.pdf' }]);
+  }, appr4, 4);
+  mk('QT-001', P[7], 2, (r) => {
+    setF(r, 'Người đề nghị', [r.creator]);
+    setF(r, 'Mục đích tạm ứng', 'tiếp khách đối tác dự án PRJ-003');
+    setF(r, 'Hạn thanh toán', inDays(3));
+    setF(r, 'Ngày hoàn ứng', inDays(20));
+    bank(r, r.creator, '0011000000008');
+    setT(r, 'Bảng kê tạm ứng', [{ 'Nội dung tạm ứng': 'Chi phí tiếp khách', 'Loại tiền': 'VND', 'Số tiền': 5_000_000, 'Mã dự án': DUAN[2], 'Hóa đơn, chứng từ, tài liệu khác kèm theo (nếu có)': 'ke-hoach-tiep-khach.docx' }]);
+  }, [P[0], P[9], P[12], P[4]], 2);
+
+  // 2. Quyết toán tạm ứng — quyết toán đơn tạm ứng công tác Đà Nẵng
+  mk('QT-002', P[0], 1, (r) => {
+    setF(r, 'Người đề nghị', [r.creator]);
+    setF(r, 'Mục đích quyết toán', 'công tác triển khai PRJ-001 tại Đà Nẵng');
+    setF(r, 'Danh sách đề nghị tạm ứng được quyết toán', [tu1.id]);
+    setT(r, 'Bảng chi tiết quyết toán', [
+      { 'Khoản chi': 'Vé máy bay khứ hồi', 'Số tiền đề nghị thanh toán': 5_950_000, 'Mã dự án': DUAN[0], 'Hóa đơn, chứng từ, tài liệu kèm theo': 've-may-bay.pdf' },
+      { 'Khoản chi': 'Khách sạn 3 đêm', 'Số tiền đề nghị thanh toán': 4_200_000, 'Mã dự án': DUAN[0], 'Hóa đơn, chứng từ, tài liệu kèm theo': 'hoa-don-khach-san.pdf' },
+      { 'Khoản chi': 'Công tác phí', 'Số tiền đề nghị thanh toán': 1_800_000, 'Mã dự án': DUAN[0] },
+    ]);
+    bank(r, r.creator, '0011000000001');
+  }, appr4, 1);
+
+  // 3. Thanh toán
+  mk('QT-003', P[3], 1, (r) => {
+    setF(r, 'Người đề nghị', [r.creator]);
+    setF(r, 'Mục đích thanh toán', 'in ấn tài liệu hội thảo khách hàng tháng 10');
+    bank(r, 'Công ty In Ánh Dương (mẫu)', '1234500000');
+    setF(r, 'Hạn thanh toán', inDays(7));
+    setT(r, 'Bảng chi tiết đề nghị thanh toán', [
+      { 'Khoản chi': 'In tài liệu 300 bộ', 'Loại tiền': 'VND', 'Số tiền thanh toán': 9_000_000, 'Mã dự án': DUAN[3], 'Hóa đơn, chứng từ, tài liệu đính kèm': 'hoa-don-GTGT.pdf' },
+      { 'Khoản chi': 'Thiết kế', 'Loại tiền': 'VND', 'Số tiền thanh toán': 2_500_000, 'Mã dự án': DUAN[3] },
+    ]);
+  }, [P[1], P[9], P[12], P[4]], 1);
+  mk('QT-003', P[5], 9, (r) => {
+    setF(r, 'Người đề nghị', [r.creator]);
+    setF(r, 'Mục đích thanh toán', 'văn phòng phẩm quý IV/2026');
+    bank(r, 'Cửa hàng VPP Minh Tâm (mẫu)', '9876500000');
+    setF(r, 'Hạn thanh toán', inDays(-2));
+    setT(r, 'Bảng chi tiết đề nghị thanh toán', [{ 'Khoản chi': 'Giấy, bút, sổ', 'Loại tiền': 'VND', 'Số tiền thanh toán': 4_200_000, 'Mã dự án': DUAN[3], 'Hóa đơn, chứng từ, tài liệu đính kèm': 'hoa-don-vpp.pdf' }]);
+  }, appr4, 4);
+
+  // 4. Xuất hoá đơn
+  mk('QT-004', P[2], 1, (r) => {
+    setF(r, 'Người đề nghị', [r.creator]);
+    setF(r, 'Tên đơn vị', 'Công ty TNHH Khách hàng X (mẫu)');
+    setF(r, 'Mã số thuế', '0100000001');
+    setF(r, 'Địa chỉ', 'Số 1 phố Mẫu, Hà Nội');
+    setF(r, 'Email', 'ketoan@khachhangx.example; giamdoc@khachhangx.example');
+    setF(r, 'Ngày hóa đơn', inDays(2));
+    setT(r, 'Bảng kê chi tiết', [{ 'Nội dung xuất hóa đơn': 'Triển khai phần mềm quản lý kho — giai đoạn 1', 'Loại tiền': 'VND', 'Đơn vị tính': 'Gói', 'Số lượng': 1, 'Đơn giá trước VAT': 250_000_000, 'Thuế suất': 8, 'Dự án': DUAN[0] }]);
+  }, [P[4], P[9], P[12], P[9]], 0);
+
+  // 5. Phát hành bảo lãnh
+  mk('QT-005', P[2], 3, (r) => {
+    setF(r, 'Người đề nghị', [r.creator]);
+    setF(r, 'Khách hàng', 'Công ty TNHH Khách hàng X (mẫu)');
+    setF(r, 'Mã số thuế', '0100000001');
+    setF(r, 'Địa chỉ', 'Số 1 phố Mẫu, Hà Nội');
+    setF(r, 'Loại bảo lãnh', 'Bảo lãnh thực hiện hợp đồng');
+    setF(r, 'Ngày phát hành', inDays(4));
+    setT(r, 'Thông tin phát hành bảo lãnh', [{ 'Tên gói thầu': 'Gói thầu số 02 — Phần mềm quản lý kho', 'Tên hạng mục công việc': 'Triển khai & đào tạo', 'Hiệu lực bảo lãnh': '12 tháng kể từ ngày phát hành', 'Giá trị': 1_200_000_000, 'Giá trị bảo lãnh': 120_000_000, 'Dự án': DUAN[0], 'Mẫu thư': 'mau-thu-bao-lanh.docx' }]);
+  }, [P[4], P[11], P[12], P[4], P[9]], 2);
+
+  // 7. Mua hàng hoá, dịch vụ
+  mk('QT-007', P[8], 0.5, (r) => {
+    setF(r, 'Người đề xuất', [r.creator]);
+    setF(r, 'Mục đích mua sắm', 'Trang bị máy tính cho nhân sự mới khối G2');
+    setF(r, 'Thời gian mua sắm dự kiến', inDays(10));
+    setT(r, 'Danh mục hàng hóa cần mua', [{ 'Tên hàng hóa, dịch vụ': 'Máy tính xách tay', 'Thông số kỹ thuật': 'Core i7, 16GB RAM, SSD 512GB', 'Xuất xứ': 'Trung Quốc', 'Đơn vị tính': 'Chiếc', 'Số lượng': 3, 'Loại tiền': 'VND', 'Đơn giá tham khảo': 24_500_000 }]);
+    setT(r, 'So sánh Vendor', [
+      { 'Tên nhà cung cấp': 'Nhà cung cấp A (mẫu)', 'Mã số thuế': '0100000002', 'Tổng giá trị NCC báo giá': 73_500_000, 'Ưu điểm': 'Giao nhanh, bảo hành 24 tháng', 'Nhược điểm': 'Giá cao hơn 3%', 'Đề xuất': 'Chọn', 'Lý do chọn/Không chọn': 'Bảo hành tốt', 'Báo giá': 'bao-gia-A.pdf' },
+      { 'Tên nhà cung cấp': 'Nhà cung cấp B (mẫu)', 'Mã số thuế': '0100000003', 'Tổng giá trị NCC báo giá': 71_200_000, 'Ưu điểm': 'Giá thấp', 'Nhược điểm': 'Giao sau 3 tuần', 'Đề xuất': 'Không chọn', 'Lý do chọn/Không chọn': 'Không kịp tiến độ', 'Báo giá': 'bao-gia-B.pdf' },
+    ]);
+  }, [P[1], P[6], P[12]], 0);
+
+  // 8. Làm thêm giờ
+  mk('QT-008', P[0], 12, (r) => {
+    setF(r, 'Người đề xuất', [r.creator]);
+    setF(r, 'Hình thức OT', 'Theo giờ');
+    setF(r, 'Lý do làm thêm giờ', 'Chốt số liệu báo cáo tài chính tháng 9');
+    setF(r, 'Mục tiêu công việc', 'Hoàn thành báo cáo trước hạn nộp');
+    setF(r, 'Hiệu quả kỳ vọng', 'Nộp báo cáo đúng hạn');
+    setF(r, 'KPI hoặc sản phẩm công việc gắn kèm', 'Bộ báo cáo tài chính tháng 9');
+    setF(r, 'Tài liệu đính kèm', ['ke-hoach-OT.xlsx']);
+    setT(r, 'Ngân sách OT', [{ 'Nhân viên': P[0], 'Từ': inDays(-14), 'Đến': inDays(-13), 'Loại tiền': 'VND', 'Số tiền': 1_200_000, 'Dự án': DUAN[3] }, { 'Nhân viên': P[9], 'Từ': inDays(-14), 'Đến': inDays(-13), 'Loại tiền': 'VND', 'Số tiền': 900_000, 'Dự án': DUAN[3] }]);
+  }, [P[4], P[2], P[6], P[1], P[9], P[12]], 6);
+  mk('QT-008', P[4], 5, (r) => {
+    setF(r, 'Người đề xuất', [r.creator]);
+    setF(r, 'Hình thức OT', 'Theo ngày');
+    setF(r, 'Lý do làm thêm giờ', 'Hỗ trợ go-live hệ thống cho khách hàng cuối tuần');
+    setF(r, 'Mục tiêu công việc', 'Go-live thành công');
+    setF(r, 'Hiệu quả kỳ vọng', 'Không gián đoạn vận hành của khách hàng');
+    setF(r, 'KPI hoặc sản phẩm công việc gắn kèm', 'Biên bản go-live');
+    setF(r, 'Tài liệu đính kèm', ['ke-hoach-golive.pdf']);
+    setT(r, 'Ngân sách OT', [{ 'Nhân viên': P[4], 'Từ': inDays(-3), 'Đến': inDays(-2), 'Loại tiền': 'VND', 'Số tiền': 3_000_000, 'Dự án': DUAN[0] }]);
+  }, [P[0], P[2], P[6], P[1], P[9], P[12]], 1, 'rejected', 'Đề nghị bổ sung xác nhận lịch go-live của khách hàng.');
+
+  // 11. Khen thưởng
+  mk('QT-011', P[6], 2, (r) => {
+    setF(r, 'Người đề xuất', [r.creator]);
+    setF(r, 'Tên đợt khen thưởng', 'Khen thưởng dự án PRJ-001 về đích sớm');
+    setF(r, 'Khối/Phòng ban', 'Khối Sản xuất (G2)');
+    setF(r, 'Hình thức khen thưởng', 'Tiền mặt');
+    setF(r, 'Tổng giá trị', 15_000_000);
+    setF(r, 'Đối tượng khen thưởng', 'Cá nhân và tập thể');
+    setF(r, 'Căn cứ', 'Quy chế khen thưởng hiện hành của công ty');
+    setF(r, 'Lý do', 'Hoàn thành dự án trước hạn 2 tuần, khách hàng đánh giá tốt');
+    setT(r, 'Danh sách khen thưởng', [{ 'Tên nhân viên/Phòng ban/Bộ phận': 'Nhóm dự án PRJ-001', 'Chức vụ': 'Tập thể', 'Số tiền': 10_000_000, 'Dự án': DUAN[0] }, { 'Tên nhân viên/Phòng ban/Bộ phận': P[4], 'Chức vụ': 'Quản lý dự án', 'Số tiền': 5_000_000, 'Dự án': DUAN[0] }]);
+  }, [P[4], P[1], P[9], P[12], P[4]], 1);
   return list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 };
 

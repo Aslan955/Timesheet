@@ -53,7 +53,9 @@ export interface ProcField {
 // ==========================================================================
 // Thiết lập chi tiết từng loại trường
 // ==========================================================================
-export type ColType = 'stt' | 'text' | 'textarea' | 'select' | 'date' | 'month' | 'datetime' | 'address' | 'decimal' | 'integer' | 'percent' | 'currency';
+export type ColType =
+  | 'stt' | 'text' | 'textarea' | 'select' | 'date' | 'month' | 'datetime' | 'address' | 'decimal' | 'integer' | 'percent' | 'currency'
+  | 'currencyCode' | 'catalog' | 'employee' | 'file' | 'formula';
 export const COL_TYPES: { type: ColType; label: string; group?: string }[] = [
   { type: 'stt', label: 'Sinh STT tự động' },
   { type: 'text', label: 'Một dòng' },
@@ -67,6 +69,11 @@ export const COL_TYPES: { type: ColType; label: string; group?: string }[] = [
   { type: 'integer', label: 'Số tự nhiên', group: 'Số' },
   { type: 'percent', label: 'Số phần trăm', group: 'Số' },
   { type: 'currency', label: 'Tiền tệ' },
+  { type: 'currencyCode', label: 'Loại tiền', group: 'Chọn từ danh mục' },
+  { type: 'catalog', label: 'Danh mục (dự án, khách hàng…)', group: 'Chọn từ danh mục' },
+  { type: 'employee', label: 'Nhân viên', group: 'Chọn từ danh mục' },
+  { type: 'file', label: 'Tải tệp' },
+  { type: 'formula', label: 'Công thức (theo cột)' },
 ];
 export interface TableCol {
   id: string;
@@ -75,6 +82,10 @@ export interface TableCol {
   required: boolean;
   options?: string[]; // cột Chọn giá trị
   sum?: boolean; // cột số / tiền: hiện dòng tổng
+  words?: boolean; // dòng tổng hiện số tiền bằng chữ
+  catalog?: string; // cột Danh mục: tên danh mục (Dự án, Khách hàng…)
+  expr?: string; // cột Công thức: biểu thức theo tên cột, VD {Số lượng} * {Đơn giá}
+  fmt?: 'currency' | 'percent' | 'decimal'; // cột Công thức: kiểu hiển thị
 }
 export type NumKind = 'decimal' | 'integer' | 'percent';
 export interface FieldCfg {
@@ -83,6 +94,7 @@ export interface FieldCfg {
   defaultValue?: string;
   // Một dòng / Nhiều dòng / Email
   dependsOn?: string; // id trường phụ thuộc (chỉ hiện khi trường đó đã có giá trị)
+  dependsValue?: string; // chỉ hiện khi trường phụ thuộc có đúng giá trị này (VD "Khác")
   maxLength?: number;
   format?: 'free' | 'digits' | 'phone';
   // Chọn giá trị / Nhân viên / Vị trí / Cơ cấu tổ chức / Danh mục / Địa giới hành chính
@@ -128,6 +140,7 @@ export interface FieldCfg {
   // Dữ liệu lượt chạy / kết nối
   source?: string;
   linkProcess?: string; // mã quy trình nguồn (QT-xxx)
+  linkSum?: string; // tên trường số / bảng của quy trình nguồn — cộng dồn để dùng trong Công thức (VD tổng tiền đã tạm ứng)
   // Mã số tự sinh
   prefix?: string;
   withYear?: boolean;
@@ -162,7 +175,7 @@ export const POSITIONS = ['Giám đốc', 'Phó giám đốc', 'Kế toán trư�
 /** Danh mục dùng cho trường "Danh mục" (mẫu — bản chính thức lấy từ IMIS). */
 export const CATALOGS: Record<string, string[]> = {
   'Khách hàng': ['Khách hàng X (mẫu)', 'Khách hàng Y (mẫu)', 'Khách hàng Z (mẫu)'],
-  'Dự án': ['Dự án quản lý kho (mẫu)', 'Dự án cổng thông tin (mẫu)', 'Dự án ứng dụng di động (mẫu)'],
+  'Dự án': ['PRJ-001 · Hệ thống quản lý kho (mẫu)', 'PRJ-002 · Cổng thông tin khách hàng (mẫu)', 'PRJ-003 · Ứng dụng di động bán hàng (mẫu)', 'PRJ-004 · Chuyển đổi số văn phòng (mẫu)', 'NỘI BỘ · Chi phí chung công ty'],
   'Nhà cung cấp': ['Nhà cung cấp A (mẫu)', 'Nhà cung cấp B (mẫu)', 'Nhà cung cấp C (mẫu)'],
   'Hạng mục chi phí': ['Chi phí văn phòng', 'Chi phí tiếp khách', 'Chi phí công tác', 'Chi phí marketing', 'Chi phí đào tạo'],
 };
@@ -240,6 +253,8 @@ export interface Process {
   code: string;
   name: string;
   desc: string;
+  /** Mẫu tiêu đề đơn — {Tên trường} được thay bằng giá trị, VD "Đề nghị tạm ứng {Mục đích tạm ứng} của {Người đề nghị}" */
+  titleTpl?: string;
   version: string;
   group: string;
   steps: ProcStep[];
@@ -263,7 +278,7 @@ export interface Process {
 // ==========================================================================
 // Danh mục dùng chung (mẫu — bản chính thức lấy từ IMIS)
 // ==========================================================================
-export const PROC_GROUPS = ['Kế toán – Tài chính', 'Hành chính – Nhân sự', 'Kinh doanh', 'Dự án', 'Kỹ thuật', 'Khác'];
+export const PROC_GROUPS = ['Kế toán – Tài chính', 'Hành chính – Nhân sự', 'Mua hàng', 'Kinh doanh', 'Dự án', 'Kỹ thuật', 'Khác'];
 export const PROC_UNITS = ['Ban Giám đốc', 'Phòng Kế toán', 'Phòng Hành chính – Nhân sự', 'Khối Kinh doanh (G1)', 'Khối Sản xuất (G2)', 'Khối Sản xuất (G3)', 'Phòng Mua hàng'];
 export const PROC_PEOPLE = [
   'Nguyễn Văn An', 'Trần Thị Bình', 'Lê Hoàng Cường', 'Phạm Thu Dung', 'Hoàng Minh Đức', 'Vũ Thị Giang', 'Đặng Quốc Huy', 'Bùi Thanh Hương',
@@ -306,9 +321,10 @@ export const blankProcess = (): Process => {
     code: '',
     name: '',
     desc: '',
+    titleTpl: '',
     version: '1.0',
     group: '',
-    steps: [newStep('Người đề nghị'), newStep(), newStep()],
+    steps: [newStep('Lập đề nghị'), newStep(), newStep()],
     unlimitedSteps: false,
     permMode: 'all',
     permUnits: [],
@@ -332,6 +348,19 @@ export const nextCode = (list: Process[]) => {
   return `QT-${String(n).padStart(3, '0')}`;
 };
 export const fieldCount = (p: Process) => p.steps.reduce((n, s) => n + s.fields.length, 0);
+/** Tên trường dùng trong mẫu tiêu đề */
+export const titleRefs = (tpl: string) => [...(tpl || '').matchAll(/\{([^{}]+)\}/g)].map((m) => m[1].trim());
+/** Dựng tiêu đề đơn từ mẫu; trường chưa nhập giữ nguyên tên trường. */
+export const renderTitle = (tpl: string, fields: ProcField[], values: Record<string, unknown>, empty = (name: string) => name) =>
+  (tpl || '').replace(/\{([^{}]+)\}/g, (_, n: string) => {
+    const f = fields.find((x) => x.label.trim() === n.trim());
+    const v = f ? values[f.id] : undefined;
+    const s = Array.isArray(v) ? v.join(', ') : typeof v === 'number' ? v.toLocaleString('en-US') : typeof v === 'string' ? v.trim() : '';
+    return s || empty(n.trim());
+  });
+/** Cột của bảng (dựng nhanh dữ liệu mẫu) */
+export const col = (name: string, type: ColType, required = false, extra: Partial<TableCol> = {}): TableCol => ({ id: uidP('c'), name, type, required, ...extra });
+export const STT = (): TableCol => ({ id: 'stt', name: 'STT', type: 'stt', required: true });
 
 // ==========================================================================
 // Dữ liệu mẫu
@@ -354,59 +383,230 @@ const seed = (): Process[] => {
       ...rest,
     };
   };
+  // ---- Trường dùng lại
+  const F = newField;
+  const nguoi = (label = 'Người đề nghị') => F('employee', label, true, { multiple: true, defaultCreator: true });
+  const nhanTien = () => [F('text', 'Tổ chức/Cá nhân nhận tiền', true), F('text', 'Số tài khoản', true, { format: 'digits' }), F('text', 'Ngân hàng', true)];
+  const tbl = (label: string, required: boolean, columns: TableCol[]) => F('table', label, required, { columns, rowsDefault: 1, allowAddRows: true });
+  const sel = (label: string, required: boolean, options: string[], cfg: FieldCfg = {}) => ({ ...F('select', label, required, cfg), options });
+  const tien = (name: string, required = true) => col(name, 'currency', required, { sum: true, words: true });
+  const loaiTien = () => col('Loại tiền', 'currencyCode', true);
+  const duAn = (name = 'Mã dự án', required = false) => col(name, 'catalog', required, { catalog: 'Dự án' });
+  const tep = (name: string, required = false) => col(name, 'file', required);
+  const coKhong = (name: string) => col(name, 'select', true, { options: ['Có', 'Không'] });
+  const deXuat = () => col('Đề xuất', 'select', true, { options: ['Chọn', 'Không chọn'] });
+  const dl = (n: number) => n; // hạn xử lý (ngày)
+  const S = newStep;
+
   return [
-    mk('QT-001', 'Đề nghị thanh toán', 'Kế toán – Tài chính', 'wallet', 'blue', [
-      newStep('Người đề nghị', [
-        newField('autoCode', 'Số đề nghị', true, { prefix: 'DNTT', withYear: true, digits: 4 }),
-        newField('employee', 'Người đề nghị', true, { defaultCreator: true }),
-        newField('org', 'Phòng ban', true),
-        newField('catalog', 'Hạng mục chi phí', true, { catalog: 'Hạng mục chi phí' }),
-        newField('textarea', 'Nội dung thanh toán', true),
-        newField('table', 'Chi tiết khoản chi', true),
-        newField('formula', 'Tổng tiền đề nghị', false, { returnKind: 'currency', decimals: 0, expr: '{Chi tiết khoản chi}', showWords: true }),
-        newField('formula', 'Thuế GTGT (10%)', false, { returnKind: 'currency', decimals: 0, expr: '{Tổng tiền đề nghị} * 10 / 100' }),
-        newField('formula', 'Tổng thanh toán', false, { returnKind: 'currency', decimals: 0, expr: '{Tổng tiền đề nghị} + {Thuế GTGT (10%)}', showWords: true }),
-        newField('datetime', 'Hạn thanh toán', true, { dateKind: 'date', dateLimit: 'notPast' }),
-        newField('text', 'Đơn vị thụ hưởng', true),
-        newField('text', 'Số tài khoản / Ngân hàng', false, { dependsOn: '__Đơn vị thụ hưởng' }),
-        newField('file', 'Chứng từ kèm theo', true, { maxFiles: 5, accept: '.pdf,.jpg,.png' }),
+    // 1. Tạm ứng
+    mk('QT-001', 'Quy trình tạm ứng', 'Kế toán – Tài chính', 'coins', 'orange', [
+      S('Lập yêu cầu', [
+        nguoi(),
+        F('text', 'Mục đích tạm ứng', true),
+        F('datetime', 'Hạn thanh toán', true, { dateKind: 'date', dateLimit: 'notPast' }),
+        F('datetime', 'Ngày hoàn ứng', true, { dateKind: 'date', dateLimit: 'notPast' }),
+        ...nhanTien(),
+        tbl('Bảng kê tạm ứng', true, [STT(), tep('Hóa đơn, chứng từ, tài liệu khác kèm theo (nếu có)', true), col('Nội dung tạm ứng', 'text', true), loaiTien(), tien('Số tiền'), duAn(), col('Ghi chú', 'text')]),
       ]),
-      newStep('Trưởng bộ phận duyệt', [], 1),
-      newStep('Kế toán kiểm tra', [{ ...newField('select', 'Kết quả kiểm tra chứng từ', true), options: ['Đủ chứng từ hợp lệ', 'Thiếu chứng từ – cần bổ sung', 'Chứng từ không hợp lệ'] }, newField('textarea', 'Ghi chú kế toán')], 2),
-      newStep('Giám đốc phê duyệt', [], 2),
-    ], { requests: 46, quickSteps: [], related: ['Ngô Thị Lan'], days: 60, desc: 'Thanh toán cho nhà cung cấp, chi phí dự án, chi phí văn phòng có chứng từ.' }),
-    mk('QT-002', 'Đề nghị tạm ứng', 'Kế toán – Tài chính', 'coins', 'orange', [
-      newStep('Người đề nghị', [
-        newField('employee', 'Người tạm ứng', true), newField('textarea', 'Lý do tạm ứng', true), newField('currency', 'Số tiền tạm ứng', true),
-        newField('datetime', 'Ngày hoàn ứng dự kiến', true),
+      S('Trưởng bộ phận duyệt', [], dl(1)),
+      S('Kế toán kiểm tra', [], dl(1)),
+      S('Kế toán trưởng duyệt', [], dl(1)),
+      S('Giám đốc phê duyệt', [], dl(2)),
+    ], { titleTpl: 'Đề nghị tạm ứng {Mục đích tạm ứng} của {Người đề nghị}', requests: 37, days: 90, desc: 'Tạm ứng chi phí công tác, mua sắm, chi phí dự án. Hoàn ứng qua "Quy trình quyết toán tạm ứng".' }),
+
+    // 2. Quyết toán tạm ứng
+    mk('QT-002', 'Quy trình quyết toán tạm ứng', 'Kế toán – Tài chính', 'calc', 'green', [
+      S('Lập đề nghị', [
+        nguoi(),
+        F('text', 'Mục đích quyết toán', true),
+        { ...F('linkedData', 'Danh sách đề nghị tạm ứng được quyết toán', true, { linkProcess: 'QT-001', multiple: true, linkSum: 'Bảng kê tạm ứng' }), hint: 'Thêm đề nghị tạm ứng' },
+        F('formula', 'Tổng số tiền đã tạm ứng', false, { returnKind: 'currency', decimals: 0, expr: '{Danh sách đề nghị tạm ứng được quyết toán}' }),
+        tbl('Bảng chi tiết quyết toán', true, [STT(), col('Khoản chi', 'text', true), tep('Hóa đơn, chứng từ, tài liệu kèm theo'), tien('Số tiền đề nghị thanh toán'), duAn(), col('Ghi chú', 'text')]),
+        F('formula', 'Tổng tiền quyết toán', false, { returnKind: 'currency', decimals: 0, expr: '{Bảng chi tiết quyết toán}' }),
+        { ...F('formula', 'Chênh lệch thừa/thiếu', false, { returnKind: 'currency', decimals: 0, expr: '{Tổng tiền quyết toán} - {Tổng số tiền đã tạm ứng}' }), hint: 'Dương: công ty trả thêm cho người đề nghị · Âm: người đề nghị hoàn lại công ty' },
+        ...nhanTien(),
       ]),
-      newStep('Trưởng bộ phận duyệt', [], 1),
-      newStep('Kế toán trưởng duyệt', [], 1),
-    ], { requests: 23, days: 45 }),
-    mk('QT-003', 'Phê duyệt dự án', 'Dự án', 'project', 'violet', [
-      newStep('Người đề xuất', [
-        newField('text', 'Tên dự án', true), newField('catalog', 'Khách hàng', true), newField('currency', 'Giá trị hợp đồng dự kiến', true),
-        newField('number', 'Tỷ suất lợi nhuận dự kiến (%)'), newField('file', 'Phương án kinh doanh (PAKD)', true),
+      S('Trưởng bộ phận duyệt', [], dl(1)),
+      S('Kế toán kiểm tra chứng từ', [], dl(2)),
+      S('Kế toán trưởng duyệt', [], dl(1)),
+      S('Giám đốc phê duyệt', [], dl(2)),
+    ], { titleTpl: 'Đề nghị hoàn ứng {Mục đích quyết toán} của {Người đề nghị}', requests: 21, days: 88 }),
+
+    // 3. Thanh toán
+    mk('QT-003', 'Quy trình thanh toán', 'Kế toán – Tài chính', 'wallet', 'blue', [
+      S('Lập đề nghị', [
+        nguoi(),
+        F('text', 'Mục đích thanh toán', true),
+        ...nhanTien(),
+        F('datetime', 'Hạn thanh toán', true, { dateKind: 'date', dateLimit: 'notPast' }),
+        tbl('Bảng chi tiết đề nghị thanh toán', true, [STT(), col('Khoản chi', 'text', true), tep('Hóa đơn, chứng từ, tài liệu đính kèm'), loaiTien(), tien('Số tiền thanh toán'), duAn(), col('Ghi chú', 'text')]),
       ]),
-      newStep('Giám đốc khối duyệt', [], 2),
-      newStep('Kế toán thẩm định', [newField('textarea', 'Ý kiến thẩm định tài chính', true)], 3),
-      newStep('Tổng giám đốc phê duyệt', [], 3),
-    ], { requests: 12, days: 30, showStep1: true }),
-    mk('QT-004', 'Đề nghị chi trả', 'Kế toán – Tài chính', 'receipt', 'green', [
-      newStep('Người đề nghị', [newField('textarea', 'Nội dung chi', true), newField('currency', 'Số tiền', true), newField('file', 'Hoá đơn / chứng từ')]),
-      newStep('Kế toán xử lý', [], 2),
-      newStep('Thủ quỹ chi tiền', [newField('datetime', 'Ngày chi', true)], 1),
-    ], { requests: 31, unlimitedSteps: true, days: 25 }),
-    mk('QT-005', 'Đề nghị làm thêm giờ (OT)', 'Hành chính – Nhân sự', 'clock', 'rose', [
-      newStep('Người đề nghị', [newField('datetime', 'Thời gian làm thêm', true), newField('number', 'Số giờ', true), newField('textarea', 'Nội dung công việc', true)]),
-      newStep('Quản lý trực tiếp duyệt', [], 1),
-      newStep('HCNS xác nhận', [], 2),
-    ], { requests: 58, permMode: 'units', permUnits: ['Khối Sản xuất (G2)', 'Khối Sản xuất (G3)'], days: 15 }),
-    mk('QT-006', 'Đề nghị mua sắm tài sản', 'Hành chính – Nhân sự', 'cart', 'slate', [
-      newStep('Người đề nghị', [newField('table', 'Danh sách tài sản', true), newField('currency', 'Tổng giá trị dự kiến', true)]),
-      newStep('Phòng Mua hàng báo giá', [newField('file', 'Báo giá nhà cung cấp', true)], 3),
-      newStep('Giám đốc phê duyệt', [], 2),
-    ], { requests: 0, active: false, version: '0.9', days: 5, desc: 'Bản nháp — chưa áp dụng.' }),
+      S('Trưởng bộ phận duyệt', [], dl(1)),
+      S('Kế toán kiểm tra', [], dl(1)),
+      S('Kế toán trưởng duyệt', [], dl(1)),
+      S('Giám đốc phê duyệt', [], dl(2)),
+    ], { titleTpl: 'Đề nghị thanh toán {Mục đích thanh toán} của {Người đề nghị}', requests: 64, days: 86, related: ['Ngô Thị Lan'] }),
+
+    // 4. Xuất hoá đơn
+    mk('QT-004', 'Quy trình xuất hóa đơn', 'Kế toán – Tài chính', 'receipt', 'violet', [
+      S('Lập đề nghị', [
+        nguoi(),
+        F('text', 'Tên đơn vị', true),
+        F('text', 'Mã số thuế', true, { format: 'digits', maxLength: 14 }),
+        F('text', 'Địa chỉ', true),
+        { ...F('email', 'Email', true, { multiple: true }), hint: 'Nhấn Enter để thêm mới email' },
+        F('datetime', 'Ngày hóa đơn', true, { dateKind: 'date' }),
+        tbl('Bảng kê chi tiết', true, [
+          STT(), col('Nội dung xuất hóa đơn', 'text', true), loaiTien(), col('Đơn vị tính', 'text'), col('Số lượng', 'decimal'),
+          col('Đơn giá trước VAT', 'currency', true), col('Thuế suất', 'percent', true),
+          col('Thành tiền', 'formula', true, { expr: '{Số lượng} * {Đơn giá trước VAT} * (1 + {Thuế suất} / 100)', fmt: 'currency', sum: true, words: true }),
+          duAn('Dự án', true),
+        ]),
+      ]),
+      S('Quản lý dự án xác nhận', [], dl(1)),
+      S('Kế toán kiểm tra', [], dl(1)),
+      S('Kế toán trưởng duyệt', [], dl(1)),
+      S('Kế toán xuất hóa đơn', [F('text', 'Số hóa đơn', true), F('datetime', 'Ngày xuất hóa đơn', true, { dateKind: 'date', defaultToday: true }), F('file', 'File hóa đơn', true, { maxFiles: 3, accept: '.pdf,.xml' })], dl(1)),
+    ], { titleTpl: 'Đề nghị xuất hóa đơn của {Người đề nghị} cho {Tên đơn vị}', requests: 18, days: 80 }),
+
+    // 5. Phát hành bảo lãnh
+    mk('QT-005', 'Quy trình phát hành bảo lãnh', 'Kế toán – Tài chính', 'building', 'slate', [
+      S('Lập đề nghị', [
+        nguoi(),
+        F('text', 'Khách hàng', true),
+        F('text', 'Mã số thuế', true, { format: 'digits', maxLength: 14 }),
+        F('text', 'Địa chỉ', true),
+        sel('Loại bảo lãnh', true, ['Bảo lãnh dự thầu', 'Bảo lãnh thực hiện hợp đồng', 'Bảo lãnh tạm ứng', 'Bảo lãnh bảo hành', 'Khác']),
+        F('text', 'Điền loại bảo lãnh (nếu ở trên chọn Khác)', true, { dependsOn: '__Loại bảo lãnh', dependsValue: 'Khác' }),
+        F('datetime', 'Ngày phát hành', true, { dateKind: 'date' }),
+        tbl('Thông tin phát hành bảo lãnh', true, [
+          col('Tên gói thầu', 'text', true), col('Tên hạng mục công việc', 'text', true), col('Hiệu lực bảo lãnh', 'text', true), col('Giá trị', 'currency', true),
+          col('Tỷ lệ bảo lãnh', 'formula', false, { expr: '{Giá trị bảo lãnh} / {Giá trị} * 100', fmt: 'percent' }),
+          tien('Giá trị bảo lãnh', false), duAn('Dự án', true), tep('Mẫu thư', true),
+        ]),
+      ]),
+      S('Trưởng bộ phận duyệt', [], dl(1)),
+      S('Pháp chế kiểm tra', [], dl(2)),
+      S('Kế toán trưởng duyệt', [], dl(1)),
+      S('Giám đốc phê duyệt', [], dl(2)),
+      S('Kế toán làm thủ tục với ngân hàng', [F('text', 'Số thư bảo lãnh', true), F('file', 'Thư bảo lãnh đã phát hành', true)], dl(3)),
+    ], { titleTpl: 'Đề nghị phát hành {Loại bảo lãnh} của {Người đề nghị}', requests: 9, days: 75 }),
+
+    // 6. Tổ chức sự kiện
+    mk('QT-006', 'Đề xuất tổ chức sự kiện', 'Hành chính – Nhân sự', 'list', 'rose', [
+      S('Lập đề xuất', [
+        nguoi('Người đề xuất'),
+        F('text', 'Tên sự kiện', true),
+        F('text', 'Mục đích', true),
+        F('datetime', 'Thời gian tổ chức', true, { dateKind: 'date', dateLimit: 'notPast' }),
+        F('file', 'File kế hoạch tổng thể', true),
+        F('currency', 'Ngân sách dự kiến', true, { showWords: true }),
+        F('file', 'Bảng tính chi tiết ngân sách', true),
+        F('file', 'Báo giá NCC'),
+        F('text', 'Trưởng BTC', true),
+        F('file', 'Danh sách thành viên BTC', true),
+      ]),
+      S('Trưởng bộ phận duyệt', [], dl(1)),
+      S('Hành chính – Nhân sự xem xét', [], dl(2)),
+      S('Truyền thông góp ý', [], dl(2)),
+      S('Kế toán kiểm tra ngân sách', [], dl(1)),
+      S('Kế toán trưởng duyệt', [], dl(1)),
+      S('Giám đốc phê duyệt', [], dl(2)),
+    ], { titleTpl: 'Đề xuất tổ chức sự kiện của {Người đề xuất}', requests: 6, days: 70 }),
+
+    // 7. Mua hàng hoá, dịch vụ
+    mk('QT-007', 'Đề xuất mua hàng hóa, dịch vụ', 'Mua hàng', 'cart', 'orange', [
+      S('Lập đề xuất', [
+        nguoi('Người đề xuất'),
+        F('textarea', 'Mục đích mua sắm', true),
+        F('datetime', 'Thời gian mua sắm dự kiến', true, { dateKind: 'date' }),
+        tbl('Danh mục hàng hóa cần mua', true, [
+          STT(), col('Tên hàng hóa, dịch vụ', 'text', true), col('Thông số kỹ thuật', 'text'), col('Xuất xứ', 'text'), col('Đơn vị tính', 'text', true),
+          col('Số lượng', 'decimal', true), loaiTien(), col('Đơn giá tham khảo', 'currency', true),
+          col('Thành tiền', 'formula', false, { expr: '{Số lượng} * {Đơn giá tham khảo}', fmt: 'currency', sum: true, words: true }),
+        ]),
+        tbl('So sánh Vendor', true, [
+          STT(), col('Tên nhà cung cấp', 'text', true), col('Mã số thuế', 'text', true), col('Tổng giá trị NCC báo giá', 'currency', true),
+          col('Ưu điểm', 'text', true), col('Nhược điểm', 'text', true), deXuat(), col('Lý do chọn/Không chọn', 'text', true), tep('Báo giá'),
+        ]),
+        F('file', 'Tài liệu đính kèm'),
+      ]),
+      S('Trưởng bộ phận duyệt', [], dl(1)),
+      S('Phòng Mua hàng thẩm định', [], dl(3)),
+      S('Giám đốc phê duyệt', [], dl(2)),
+    ], { titleTpl: 'Đề xuất mua HHDV của {Người đề xuất}', requests: 27, days: 65 }),
+
+    // 8. Làm thêm giờ
+    mk('QT-008', 'Đề xuất làm thêm giờ (OT)', 'Hành chính – Nhân sự', 'clock', 'blue', [
+      S('Lập yêu cầu', [
+        nguoi('Người đề xuất'),
+        sel('Hình thức OT', true, ['Theo giờ', 'Theo ngày', 'Theo khối lượng công việc'], { defaultOn: true, defaultValue: 'Theo giờ' }),
+        F('textarea', 'Lý do làm thêm giờ', true),
+        F('textarea', 'Mục tiêu công việc', true),
+        F('textarea', 'Hiệu quả kỳ vọng', true),
+        F('textarea', 'KPI hoặc sản phẩm công việc gắn kèm', true),
+        F('file', 'Tài liệu đính kèm', true),
+        tbl('Ngân sách OT', true, [STT(), col('Nhân viên', 'employee', true), col('Từ', 'date', true), col('Đến', 'date', true), loaiTien(), tien('Số tiền'), duAn('Dự án', true), col('Ghi chú', 'text')]),
+      ]),
+      S('Quản lý trực tiếp duyệt', [], dl(1)),
+      S('Quản lý dự án xác nhận', [], dl(1)),
+      S('Giám đốc khối duyệt', [], dl(1)),
+      S('Hành chính – Nhân sự kiểm tra', [], dl(1)),
+      S('Kế toán kiểm tra ngân sách', [], dl(1)),
+      S('Giám đốc phê duyệt', [], dl(2)),
+    ], { titleTpl: 'Đề xuất OT của {Người đề xuất}', requests: 52, days: 60 }),
+
+    // 10. Thuê ngoài cho dự án
+    mk('QT-010', 'Đề xuất thuê ngoài cho dự án', 'Dự án', 'project', 'violet', [
+      S('Lập đề xuất', [
+        nguoi('Người đề xuất'),
+        tbl('Thông tin dự án', true, [
+          duAn('Dự án', true), col('Quản lý dự án', 'text', true), col('Thời hạn hoàn thành', 'date', true), col('Phạm vi công việc thuê ngoài', 'text', true),
+          col('Nguồn lực nội bộ hiện có', 'text'), col('Lý do thuê ngoài', 'text', true), col('Rủi ro nếu không thuê ngoài', 'text'),
+        ]),
+        tbl('Thông tin đề xuất', true, [
+          col('Hạng mục thuê ngoài', 'text', true), col('Mô tả công việc cụ thể', 'text', true), col('Đầu ra/Bàn giao cần đạt', 'text', true), col('Tiêu chuẩn nghiệm thu', 'text', true),
+          col('Tài liệu/Sản phẩm Vendor phải bàn giao', 'text', true), coKhong('Có bàn giao Source Code không?'), coKhong('Có bàn giao tài liệu kỹ thuật không?'),
+          coKhong('Có yêu cầu bảo hành/hỗ trợ sau bàn giao không?'),
+        ]),
+        tbl('Cơ sở xác định giá thuê ngoài', true, [
+          col('Phương pháp tính giá', 'select', true, { options: ['Theo man-month', 'Theo khối lượng', 'Trọn gói'] }), col('Số lượng nhân sự/Khối lượng', 'decimal', true), col('Đơn giá', 'currency', true),
+          col('Tổng giá trị (Đã bao gồm VAT/PIT)', 'formula', true, { expr: '{Số lượng nhân sự/Khối lượng} * {Đơn giá}', fmt: 'currency', sum: true, words: true }),
+          col('Giá nội bộ dự kiến tự thực hiện', 'currency', true), col('Điều khoản thanh toán', 'text', true), col('Điều kiện nghiệm thu trước thanh toán', 'text', true), col('Ghi chú', 'text'),
+        ]),
+        tbl('Bảng báo giá so sánh Vendor', true, [
+          STT(), col('Vendor/NCC', 'text', true), col('MST', 'text'), col('Tổng giá trị hợp đồng theo yêu cầu đề xuất', 'currency', true),
+          col('Ưu điểm', 'text', true), col('Nhược điểm', 'text', true), deXuat(), col('Lý do chọn/Không chọn', 'text', true), tep('Báo giá'),
+        ]),
+        F('file', 'Tài liệu đính kèm', true),
+      ]),
+      S('Quản lý dự án xem xét', [], dl(1)),
+      S('Giám đốc khối duyệt', [], dl(2)),
+      S('Kế toán trưởng thẩm định', [], dl(2)),
+      S('Giám đốc phê duyệt', [], dl(2)),
+    ], { titleTpl: 'Đề xuất thuê ngoài cho dự án của {Người đề xuất}', requests: 8, days: 55 }),
+
+    // 11. Khen thưởng
+    mk('QT-011', 'Đề xuất khen thưởng', 'Hành chính – Nhân sự', 'docs', 'green', [
+      S('Lập đề xuất', [
+        nguoi('Người đề xuất'),
+        F('text', 'Tên đợt khen thưởng', true),
+        F('org', 'Khối/Phòng ban', true),
+        sel('Hình thức khen thưởng', true, ['Tiền mặt', 'Hiện vật', 'Giấy khen', 'Kết hợp tiền và giấy khen']),
+        F('currency', 'Tổng giá trị', true),
+        sel('Đối tượng khen thưởng', true, ['Cá nhân', 'Tập thể', 'Cá nhân và tập thể']),
+        F('textarea', 'Căn cứ', true),
+        F('textarea', 'Lý do', true),
+        tbl('Danh sách khen thưởng', false, [STT(), col('Tên nhân viên/Phòng ban/Bộ phận', 'text'), col('Chức vụ', 'text'), tien('Số tiền', false), duAn('Dự án'), col('Ghi chú', 'text')]),
+        F('file', 'Tài liệu đính kèm'),
+      ]),
+      S('Trưởng bộ phận duyệt', [], dl(1)),
+      S('Hành chính – Nhân sự thẩm định', [], dl(2)),
+      S('Kế toán kiểm tra', [], dl(1)),
+      S('Kế toán trưởng duyệt', [], dl(1)),
+      S('Giám đốc phê duyệt', [], dl(2)),
+    ], { titleTpl: 'Đề xuất khen thưởng của {Người đề xuất}', requests: 4, days: 50 }),
   ];
 };
 

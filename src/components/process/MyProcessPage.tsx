@@ -16,7 +16,7 @@ import {
   type FieldValue, type ProcRequest,
 } from './requestStore';
 import { FieldInput, FieldView, autoCodeOf, fieldError, formulaValue, hiddenByDep, initialValue, type FormCtx } from './FieldInput';
-import { RUN_SOURCES } from './processStore';
+import { RUN_SOURCES, renderTitle } from './processStore';
 import { ProcIcon } from './ProcIcon';
 
 const CRUMBS = ['Quy trình', 'Quy trình của tôi'];
@@ -450,7 +450,9 @@ const RequestForm: React.FC<{ id: string; setMode: (m: Mode) => void; flash: (m:
   const visible = s1.def.fields.filter((f) => !hiddenByDep(f, ctx));
   const bad = visible.map((f) => [f, fieldError(f, s1.data[f.id] ?? '')] as const).filter(([, e]) => e);
   const errs: string[] = [];
-  if (!r.title.trim()) errs.push('Nhập tiêu đề');
+  const tpl = r.titleTpl || '';
+  const titleOf = (x: ProcRequest) => (x.titleTpl ? renderTitle(x.titleTpl, x.runs[0].def.fields, x.runs[0].data) : x.title.trim());
+  if (!tpl && !r.title.trim()) errs.push('Nhập tiêu đề');
   if (bad.length) errs.push(bad.map(([f, e]) => `${f.label}: ${e}`).join('; '));
   if (r.runs.length > 1 && !next) errs.push(`Chọn người xử lý bước 2`);
   /** Chốt giá trị tự sinh / tự tính vào đơn: mã số tự sinh, công thức, dữ liệu lượt chạy. */
@@ -467,10 +469,11 @@ const RequestForm: React.FC<{ id: string; setMode: (m: Mode) => void; flash: (m:
       }
     });
     const runs = x.runs.map((y, i) => (i === 0 ? { ...y, data: { ...y.data, ...auto } } : y));
-    return { ...x, title: x.title.trim(), runs };
+    const out = { ...x, runs };
+    return { ...out, title: titleOf(out) };
   };
   const saveDraft = () => {
-    saveRequest({ ...r, title: r.title.trim(), runs: r.runs.map((y, i) => (i === 1 ? { ...y, assignee: next || null } : y)), history: [...r.history, { at: new Date().toISOString(), by: user, action: 'Lưu nháp' }] });
+    saveRequest({ ...r, title: titleOf(r), runs: r.runs.map((y, i) => (i === 1 ? { ...y, assignee: next || null } : y)), history: [...r.history, { at: new Date().toISOString(), by: user, action: 'Lưu nháp' }] });
     flash(`Đã lưu nháp ${r.code}`);
     setMode({ kind: 'list' });
   };
@@ -522,7 +525,22 @@ const RequestForm: React.FC<{ id: string; setMode: (m: Mode) => void; flash: (m:
             <span className="text-[12.5px] text-slate-600 pt-1.5">
               Tiêu đề <span className="text-rose-600">*</span>
             </span>
-            <input value={r.title} onChange={(e) => setR({ ...r, title: e.target.value })} className={`${erp.inputFull} ${tried && !r.title.trim() ? '!border-rose-400' : ''}`} data-testid="req-title" />
+            {tpl ? (
+              <span className="pt-1 text-[14px] font-semibold text-slate-800 leading-relaxed" data-testid="req-title-auto" title="Tiêu đề tự ghép theo thiết lập của quy trình">
+                {tpl.split(/(\{[^{}]+\})/).map((part, i) => {
+                  const m = part.match(/^\{([^{}]+)\}$/);
+                  if (!m) return <React.Fragment key={i}>{part}</React.Fragment>;
+                  const val = renderTitle(part, s1.def.fields, s1.data, () => '');
+                  return (
+                    <span key={i} className={`inline-block mx-0.5 px-1.5 rounded-[4px] ${val ? 'bg-[#e8f1fb] text-[#1e3a5f]' : 'bg-slate-100 text-slate-400 font-normal'}`}>
+                      {val || m[1]}
+                    </span>
+                  );
+                })}
+              </span>
+            ) : (
+              <input value={r.title} onChange={(e) => setR({ ...r, title: e.target.value })} className={`${erp.inputFull} ${tried && !r.title.trim() ? '!border-rose-400' : ''}`} data-testid="req-title" />
+            )}
             <span className="text-[12.5px] text-slate-600 pt-1.5">Người tạo</span>
             <span className="pt-1.5 text-[13px]">
               <b>{r.creator}</b> <span className="text-slate-500">· {UNIT_OF[r.creator]}</span>
@@ -537,7 +555,7 @@ const RequestForm: React.FC<{ id: string; setMode: (m: Mode) => void; flash: (m:
                   <span className="min-w-0" data-field={f.label}>
                     <FieldInput f={f} v={s1.data[f.id] ?? ''} onChange={(v) => setData(f.id, v)} ctx={ctx} invalid={!!e} />
                     {e && <span className="block text-[11.5px] text-rose-600 mt-0.5">{e}</span>}
-                    {f.hint && !['text', 'textarea', 'number', 'email'].includes(f.type) && <span className="block text-[11px] text-slate-400 mt-0.5">{f.hint}</span>}
+                    {f.hint && !['text', 'textarea', 'number', 'email', 'linkedData'].includes(f.type) && <span className="block text-[11px] text-slate-400 mt-0.5">{f.hint}</span>}
                   </span>
                 </React.Fragment>
               );

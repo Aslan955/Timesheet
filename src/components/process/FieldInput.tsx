@@ -4,7 +4,8 @@
  * dữ liệu lượt chạy, dữ liệu kết nối, mã số tự sinh…
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Paperclip, PenLine, Plus, RotateCcw, Search, Trash2, X } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { ChevronDown, Download, FileUp, Info, Paperclip, PenLine, Plus, RotateCcw, Search, Trash2, X } from 'lucide-react';
 import { erp } from '../erp/Erp';
 import { soThanhChu } from '../contracts/docx';
 import {
@@ -20,7 +21,7 @@ export interface FormCtx {
   fields: ProcField[];
   values: Record<string, FieldValue>;
   set?: (key: string, v: FieldValue) => void;
-  req?: Pick<ProcRequest, 'code' | 'creator' | 'createdAt' | 'submittedAt' | 'processName' | 'version'> & { unit?: string };
+  req?: Partial<Pick<ProcRequest, 'id'>> & Pick<ProcRequest, 'code' | 'creator' | 'createdAt' | 'submittedAt' | 'processName' | 'version'> & { unit?: string };
   linked?: ProcRequest[];
 }
 
@@ -38,7 +39,7 @@ const todayIso = () => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
 const colsOf = (f: ProcField) => cfgOf(f).columns || [];
-const isNumCol = (t: ColType) => t === 'decimal' || t === 'integer' || t === 'percent' || t === 'currency';
+const isNumCol = (t: ColType) => t === 'decimal' || t === 'integer' || t === 'percent' || t === 'currency' || t === 'formula';
 export const curKey = (fid: string) => `${fid}__cur`;
 export const fmlKey = (fid: string) => `${fid}__edited`;
 
@@ -48,12 +49,20 @@ export const fmlKey = (fid: string) => `${fid}__edited`;
 export const tableTotal = (f: ProcField, v: FieldValue) => {
   const col = colsOf(f).find((c) => c.sum && isNumCol(c.type)) || colsOf(f).find((c) => isNumCol(c.type));
   if (!col) return 0;
-  return ((v as TableVal)?.rows || []).reduce((s, r) => s + (Number(r[col.id]) || 0), 0);
+  return ((v as TableVal)?.rows || []).reduce((s, r) => s + (cellNum(colsOf(f), r, col) || 0), 0);
 };
+/** Số tiền của 1 đơn liên kết = giá trị trường "linkSum" ở bước 1 của đơn đó. */
+export const linkedAmount = (r: ProcRequest, label?: string) => {
+  const fields = r.runs[0]?.def.fields || [];
+  const src = fields.find((x) => x.label.trim() === (label || '').trim());
+  return src ? numericOf(src, { fields, values: r.runs[0].data }) ?? 0 : 0;
+};
+const idsOf = (v: FieldValue) => (Array.isArray(v) ? v : v ? [String(v)] : []);
 export const numericOf = (f: ProcField, ctx: FormCtx, depth = 0): number | null => {
   const v = ctx.values[f.id];
   if (f.type === 'formula') return formulaValue(f, ctx, depth + 1);
   if (f.type === 'table') return tableTotal(f, v);
+  if (f.type === 'linkedData') return idsOf(v).reduce((s, id) => s + linkedAmount(ctx.linked?.find((x) => x.id === id) || ({ runs: [] } as unknown as ProcRequest), cfgOf(f).linkSum), 0);
   const n = toNum(v);
   return isNaN(n) ? 0 : n;
 };
@@ -119,7 +128,7 @@ export const fieldError = (f: ProcField, v: FieldValue): string => {
   }
   if (f.type === 'table') {
     const rows = (v as TableVal).rows || [];
-    const miss = colsOf(f).filter((col) => col.required && col.type !== 'stt' && rows.some((r) => Object.values(r).some((x) => x !== '' && x !== 0) && (r[col.id] === '' || r[col.id] === undefined)));
+    const miss = colsOf(f).filter((col) => col.required && col.type !== 'stt' && col.type !== 'formula' && rows.some((r) => Object.values(r).some((x) => x !== '' && x !== 0) && (r[col.id] === '' || r[col.id] === undefined)));
     if (miss.length) return `Nhập cột ${miss.map((x) => x.name).join(', ')}`;
   }
   if (f.type === 'file' && (v as string[]).length > (c.maxFiles || 99)) return `Tối đa ${c.maxFiles} tệp`;
@@ -130,7 +139,13 @@ export const hiddenByDep = (f: ProcField, ctx: FormCtx) => {
   const dep = cfgOf(f).dependsOn;
   if (!dep) return false;
   const src = ctx.fields.find((x) => x.id === dep);
-  return !!src && isEmpty(src, ctx.values[dep]);
+  if (!src) return false;
+  const want = cfgOf(f).dependsValue;
+  if (want) {
+    const v = ctx.values[dep];
+    return !(Array.isArray(v) ? v.includes(want) : v === want);
+  }
+  return isEmpty(src, ctx.values[dep]);
 };
 /** Giá trị khởi tạo khi mở biểu mẫu (giá trị mặc định, người tạo, ngày hiện tại, số dòng bảng). */
 export const initialValue = (f: ProcField, creator: string): FieldValue | undefined => {
@@ -236,6 +251,43 @@ const Pick: React.FC<{ options: string[]; value: FieldValue; multiple?: boolean;
     </select>
   );
 };
+/** Email nhiều địa chỉ: gõ rồi Enter (hoặc dấu phẩy / chấm phẩy) để thêm; giá trị lưu dạng "a@x.vn; b@y.vn". */
+const EmailTags: React.FC<{ value: string; onChange: (v: string) => void; invalid?: boolean; placeholder?: string }> = ({ value, onChange, invalid, placeholder }) => {
+  const [t, setT] = useState('');
+  const list = value.split(/[;,]\s*/).filter(Boolean);
+  const ok = (m: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m);
+  const add = (raw = t) => {
+    const m = raw.trim().replace(/[;,]$/, '');
+    if (!m) return;
+    if (!list.includes(m)) onChange([...list, m].join('; '));
+    setT('');
+  };
+  return (
+    <span className={`flex flex-wrap items-center gap-1 min-h-[30px] max-w-[520px] px-1.5 py-1 border rounded-[3px] bg-white ${invalid ? 'border-rose-400' : 'border-slate-300 focus-within:border-[#1f5fa8]'}`} data-testid="email-tags">
+      {list.map((m) => (
+        <span key={m} className={`inline-flex items-center gap-1 rounded-[3px] border pl-1.5 pr-0.5 text-[12px] ${ok(m) ? 'border-slate-200 bg-slate-50' : 'border-rose-300 bg-rose-50 text-rose-700'}`} title={ok(m) ? m : 'Email không hợp lệ'}>
+          {m}
+          <button type="button" onClick={() => onChange(list.filter((x) => x !== m).join('; '))} className="p-0.5 rounded hover:bg-white cursor-pointer">
+            <X size={10} />
+          </button>
+        </span>
+      ))}
+      <input
+        value={t}
+        onChange={(e) => (/[;,]$/.test(e.target.value) ? add(e.target.value) : setT(e.target.value))}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            add();
+          } else if (e.key === 'Backspace' && !t && list.length) onChange(list.slice(0, -1).join('; '));
+        }}
+        onBlur={() => add()}
+        placeholder={list.length ? '' : placeholder}
+        className="flex-1 min-w-[160px] h-6 px-1 text-[13px] outline-none"
+      />
+    </span>
+  );
+};
 /** Chọn loại tiền (tìm kiếm, bảng Ký hiệu · Tên loại tiền). */
 export const CurrencyPick: React.FC<{ value: string; onChange: (v: string) => void; disabled?: boolean }> = ({ value, onChange, disabled }) => {
   const [open, setOpen] = useState(false);
@@ -284,21 +336,76 @@ export const CurrencyPick: React.FC<{ value: string; onChange: (v: string) => vo
 // ==========================================================================
 // Ô của bảng
 // ==========================================================================
-const CellInput: React.FC<{ col: TableCol; v: string | number | undefined; onChange: (v: string | number) => void; idx: number }> = ({ col, v, onChange, idx }) => {
+/** Giá trị số của 1 ô (cột Công thức tính theo các cột khác trên cùng dòng). */
+export const cellNum = (cols: TableCol[], row: Row, col: TableCol, depth = 0): number => {
+  if (col.type === 'formula') {
+    if (!col.expr || depth > 6) return NaN;
+    try {
+      const v = evalFormula(col.expr, (name) => {
+        const ref = cols.find((x) => x.name.trim() === name);
+        if (!ref || ref.id === col.id) return null;
+        const n = cellNum(cols, row, ref, depth + 1);
+        return isNaN(n) ? 0 : n;
+      });
+      return col.fmt === 'currency' ? Math.round(v) : Math.round(v * 100) / 100;
+    } catch {
+      return NaN;
+    }
+  }
+  return toNum(row[col.id]);
+};
+const filesOf = (v: unknown) => (typeof v === 'string' && v ? v.split(' | ') : []);
+const FileCell: React.FC<{ v: string; onChange: (v: string) => void }> = ({ v, onChange }) => {
+  const files = filesOf(v);
+  return (
+    <span className="flex flex-wrap items-center gap-1 px-1 py-0.5">
+      {files.map((n) => (
+        <span key={n} className="inline-flex items-center gap-1 rounded-[3px] border border-slate-200 bg-slate-50 pl-1 pr-0.5 text-[11.5px] max-w-[180px]">
+          <Paperclip size={10} className="shrink-0" /> <span className="truncate">{n}</span>
+          <button type="button" onClick={() => onChange(files.filter((x) => x !== n).join(' | '))} className="p-0.5 rounded hover:bg-white cursor-pointer" title="Bỏ tệp">
+            <X size={10} />
+          </button>
+        </span>
+      ))}
+      <label className="inline-flex items-center gap-1 text-[12px] text-[#1f6fd1] hover:underline cursor-pointer whitespace-nowrap">
+        <Plus size={12} /> Tải tệp lên
+        <input type="file" multiple className="hidden" onChange={(e) => (onChange([...files, ...[...(e.target.files || [])].map((x) => x.name)].join(' | ')), (e.target.value = ''))} />
+      </label>
+    </span>
+  );
+};
+const CellInput: React.FC<{ col: TableCol; v: string | number | undefined; onChange: (v: string | number) => void; idx: number; computed?: number }> = ({ col, v, onChange, idx, computed }) => {
   const cls = `${erp.inputFull} h-7 border-transparent`;
+  const pick = (opts: string[], ph = '') => (
+    <select value={(v as string) || ''} onChange={(e) => onChange(e.target.value)} className={`${cls} ${v ? '' : 'text-slate-400'}`}>
+      <option value="">{ph}</option>
+      {opts.map((o) => (
+        <option key={o} className="text-slate-800">
+          {o}
+        </option>
+      ))}
+    </select>
+  );
   switch (col.type) {
     case 'stt':
       return <span className="block text-center text-slate-500">{idx + 1}</span>;
     case 'textarea':
       return <textarea rows={1} value={(v as string) || ''} onChange={(e) => onChange(e.target.value)} className="w-full border border-transparent rounded-[3px] px-2 py-1 text-[12.5px] outline-none focus:border-[#1f5fa8] resize-y" />;
     case 'select':
+      return pick(col.options || []);
+    case 'currencyCode':
+      return pick(CURRENCIES.map((c) => c.code), '- Chọn loại tiền -');
+    case 'catalog':
+      return pick(CATALOGS[col.catalog || ''] || [], `- Chọn ${(col.catalog || '').toLowerCase()} -`);
+    case 'employee':
+      return pick(PROC_PEOPLE, '- Chọn nhân viên -');
+    case 'file':
+      return <FileCell v={(v as string) || ''} onChange={onChange} />;
+    case 'formula':
       return (
-        <select value={(v as string) || ''} onChange={(e) => onChange(e.target.value)} className={cls}>
-          <option value="" />
-          {(col.options || []).map((o) => (
-            <option key={o}>{o}</option>
-          ))}
-        </select>
+        <span className="block h-7 leading-7 px-2 rounded-[3px] bg-slate-100 text-right tabular-nums text-slate-700" title={`Tự tính = ${col.expr || ''}`}>
+          {computed === undefined || isNaN(computed) ? '' : col.fmt === 'percent' ? `${computed.toLocaleString('en-US')}%` : money0(computed)}
+        </span>
       );
     case 'date':
       return <input type="date" value={(v as string) || ''} onChange={(e) => onChange(e.target.value)} className={cls} />;
@@ -307,14 +414,7 @@ const CellInput: React.FC<{ col: TableCol; v: string | number | undefined; onCha
     case 'datetime':
       return <input type="datetime-local" value={(v as string) || ''} onChange={(e) => onChange(e.target.value)} className={cls} />;
     case 'address':
-      return (
-        <select value={(v as string) || ''} onChange={(e) => onChange(e.target.value)} className={cls}>
-          <option value="" />
-          {PROVINCES.map((o) => (
-            <option key={o}>{o}</option>
-          ))}
-        </select>
-      );
+      return pick(PROVINCES);
     case 'decimal':
     case 'integer':
     case 'percent':
@@ -337,82 +437,181 @@ const CellInput: React.FC<{ col: TableCol; v: string | number | undefined; onCha
 };
 const cellView = (col: TableCol, v: unknown, idx: number) => {
   if (col.type === 'stt') return idx + 1;
-  if (v === '' || v === undefined || v === null) return '';
-  if (col.type === 'currency') return money0(Number(v));
-  if (col.type === 'percent') return `${v}%`;
+  if (v === '' || v === undefined || v === null || (typeof v === 'number' && isNaN(v))) return '';
+  if (col.type === 'currency' || (col.type === 'formula' && col.fmt !== 'percent')) return money0(Number(v));
+  if (col.type === 'percent' || (col.type === 'formula' && col.fmt === 'percent')) return `${Number(v).toLocaleString('en-US')}%`;
   if (col.type === 'decimal' || col.type === 'integer') return Number(v).toLocaleString('en-US');
   if (col.type === 'date' || col.type === 'month' || col.type === 'datetime') return dmy(String(v));
+  if (col.type === 'file')
+    return (
+      <span className="flex flex-wrap gap-1">
+        {filesOf(v).map((n) => (
+          <span key={n} className="inline-flex items-center gap-1 rounded-[3px] border border-slate-200 bg-slate-50 px-1 text-[11.5px]">
+            <Paperclip size={10} /> {n}
+          </span>
+        ))}
+      </span>
+    );
   return String(v);
+};
+/** Xuất bảng ra Excel (giá trị đang nhập, cột công thức đã tính). */
+const exportTable = (f: ProcField, rows: Row[]) => {
+  const cols = colsOf(f);
+  const aoa = [cols.map((c) => c.name), ...rows.map((r, i) => cols.map((c) => (c.type === 'stt' ? i + 1 : c.type === 'formula' ? (isNaN(cellNum(cols, r, c)) ? '' : cellNum(cols, r, c)) : r[c.id] ?? '')))];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = cols.map((c) => ({ wch: Math.max(8, Math.min(40, c.name.length + 4)) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Bang');
+  XLSX.writeFile(wb, `${f.label.replace(/[\\/:*?"<>|]+/g, '-')}.xlsx`);
+};
+/** Nhập bảng từ Excel: dòng 1 là tên cột (khớp tên cột của bảng, không phân biệt hoa thường; bỏ qua cột STT / công thức). */
+const importTable = async (f: ProcField, file: File): Promise<{ rows: Row[]; msg: string }> => {
+  const cols = colsOf(f);
+  const wb = XLSX.read(await file.arrayBuffer(), { cellDates: true });
+  const aoa = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
+  const norm = (s: unknown) => String(s ?? '').replace(/\*/g, '').trim().toLowerCase();
+  const head = (aoa[0] || []).map(norm);
+  const map = cols.filter((c) => c.type !== 'stt' && c.type !== 'formula').map((c) => ({ c, i: head.indexOf(norm(c.name)) }));
+  const found = map.filter((x) => x.i >= 0);
+  if (!found.length) return { rows: [], msg: 'Không thấy cột nào trùng tên với bảng — dùng "Xuất khẩu" để lấy file mẫu.' };
+  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const rows = aoa
+    .slice(1)
+    .filter((r) => r.some((x) => String(x ?? '').trim()))
+    .map((r) => {
+      const row: Row = {};
+      found.forEach(({ c, i }) => {
+        const v = r[i];
+        if (v === '' || v === undefined) return;
+        if (isNumCol(c.type)) {
+          const n = typeof v === 'number' ? v : Number(String(v).replace(/[,\s]/g, '').replace(/%$/, ''));
+          if (!isNaN(n)) row[c.id] = n;
+        } else if (c.type === 'date') row[c.id] = v instanceof Date ? iso(v) : /^\d{2}\/\d{2}\/\d{4}$/.test(String(v)) ? String(v).split('/').reverse().join('-') : String(v);
+        else row[c.id] = String(v).trim();
+      });
+      return row;
+    });
+  const miss = map.filter((x) => x.i < 0).map((x) => x.c.name);
+  return { rows, msg: `Đã nhập ${rows.length} dòng${miss.length ? ` · không có cột: ${miss.join(', ')}` : ''}` };
 };
 const TableEditor: React.FC<{ f: ProcField; v: FieldValue; onChange: (v: FieldValue) => void; invalid?: boolean; readOnly?: boolean }> = ({ f, v, onChange, invalid, readOnly }) => {
   const c = cfgOf(f);
   const cols = c.columns || [];
   const rows = (v as TableVal)?.rows?.length ? (v as TableVal).rows : readOnly ? [] : [{}];
+  const [msg, setMsg] = useState('');
   const setCell = (i: number, col: string, x: string | number) => onChange({ rows: rows.map((r, k) => (k === i ? { ...r, [col]: x } : r)) });
   const sums = cols.filter((col) => col.sum && isNumCol(col.type));
-  const editable = !readOnly && c.allowAddRows !== false;
-  // ô ghi chữ "Tổng cộng": cột đầu tiên không phải STT / cột tổng (cột 0 dành cho nút Thêm dòng khi được sửa)
-  const labelAt = cols.findIndex((col, k) => !(editable && k === 0) && col.type !== 'stt' && !col.sum);
+  const canAdd = !readOnly && c.allowAddRows !== false;
+  const hasCur = cols.some((x) => x.type === 'currencyCode');
+  const sumOf = (col: TableCol) => rows.reduce((s, r) => s + (cellNum(cols, r, col) || 0), 0);
+  // ô ghi chữ "Tổng": cột đầu tiên không phải cột tổng
+  const labelAt = cols.findIndex((col) => !col.sum);
+  const link = 'inline-flex items-center gap-1 text-[12.5px] text-[#1f6fd1] hover:underline cursor-pointer';
   return (
-    <div className="overflow-x-auto">
-      <table className={`${erp.table} ${invalid ? 'outline outline-1 outline-rose-400' : ''}`}>
-        <thead>
-          <tr>
-            {cols.map((col) => (
-              <th key={col.id} className={`${erp.th} ${col.type === 'stt' ? 'w-10 text-center' : isNumCol(col.type) ? 'text-right min-w-[120px]' : 'text-left min-w-[140px]'}`}>
-                {col.name}
-                {col.required && col.type !== 'stt' && !readOnly && <span className="text-rose-600"> *</span>}
-                {col.type === 'currency' && <span className="font-normal text-slate-500"> (VNĐ)</span>}
-              </th>
-            ))}
-            {!readOnly && c.allowAddRows !== false && <th className={`${erp.th} w-8`} />}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={i}>
-              {cols.map((col) =>
-                readOnly ? (
-                  <td key={col.id} className={`${erp.td} ${col.type === 'stt' ? 'text-center' : isNumCol(col.type) ? erp.num : ''}`}>
-                    {cellView(col, r[col.id], i)}
-                  </td>
-                ) : (
-                  <td key={col.id} className={`${erp.td} p-0.5`}>
-                    <CellInput col={col} v={r[col.id]} onChange={(x) => setCell(i, col.id, x)} idx={i} />
-                  </td>
-                ),
-              )}
-              {!readOnly && c.allowAddRows !== false && (
-                <td className={`${erp.td} text-center`}>
-                  <button type="button" disabled={rows.length === 1} onClick={() => onChange({ rows: rows.filter((_, k) => k !== i) })} className="p-0.5 text-rose-500 disabled:opacity-30 cursor-pointer" title="Xoá dòng">
-                    <Trash2 size={13} />
-                  </button>
-                </td>
-              )}
-            </tr>
-          ))}
-          {(sums.length > 0 || (!readOnly && c.allowAddRows !== false)) && (
-            <tr className={erp.totalRow}>
-              {cols.map((col, k) => (
-                <td key={col.id} className={`${erp.td} ${isNumCol(col.type) ? erp.num : ''}`}>
-                  {k === 0 && !readOnly && c.allowAddRows !== false ? (
-                    <button type="button" onClick={() => onChange({ rows: [...rows, {}] })} className="inline-flex items-center gap-1 text-[12px] font-semibold text-[#1f5fa8] hover:underline cursor-pointer whitespace-nowrap">
-                      <Plus size={12} /> Thêm dòng
-                    </button>
-                  ) : k === labelAt ? (
-                    sums.length ? 'Tổng cộng' : ''
-                  ) : col.sum && isNumCol(col.type) ? (
-                    cellView(col, rows.reduce((s, r) => s + (Number(r[col.id]) || 0), 0), 0)
-                  ) : (
-                    ''
+    <div>
+      <div className="overflow-x-auto">
+        <table className={`${erp.table} ${invalid ? 'outline outline-1 outline-rose-400' : ''}`}>
+          <thead>
+            <tr>
+              {cols.map((col) => (
+                <th key={col.id} className={`${erp.th} ${col.type === 'stt' ? 'w-10 text-center' : isNumCol(col.type) ? 'text-right min-w-[120px]' : col.type === 'file' ? 'text-left min-w-[170px]' : 'text-left min-w-[140px]'}`}>
+                  {col.name}
+                  {col.required && col.type !== 'stt' && col.type !== 'formula' && !readOnly && <span className="text-rose-600"> *</span>}
+                  {col.type === 'currency' && !hasCur && <span className="font-normal text-slate-500"> (VNĐ)</span>}
+                  {col.type === 'formula' && (
+                    <span title={`Tự tính = ${col.expr || ''}`} className="inline-flex align-middle ml-1 text-[#1f6fd1] cursor-help">
+                      <Info size={12} />
+                    </span>
                   )}
-                </td>
+                </th>
               ))}
-              {!readOnly && c.allowAddRows !== false && <td className={erp.td} />}
+              {canAdd && <th className={`${erp.th} w-8`} />}
             </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i}>
+                {cols.map((col) =>
+                  readOnly ? (
+                    <td key={col.id} className={`${erp.td} ${col.type === 'stt' ? 'text-center' : isNumCol(col.type) ? erp.num : ''}`}>
+                      {cellView(col, col.type === 'formula' ? cellNum(cols, r, col) : r[col.id], i)}
+                    </td>
+                  ) : (
+                    <td key={col.id} className={`${erp.td} p-0.5`}>
+                      <CellInput col={col} v={r[col.id]} onChange={(x) => setCell(i, col.id, x)} idx={i} computed={col.type === 'formula' ? cellNum(cols, r, col) : undefined} />
+                    </td>
+                  ),
+                )}
+                {canAdd && (
+                  <td className={`${erp.td} text-center`}>
+                    <button type="button" disabled={rows.length === 1} onClick={() => onChange({ rows: rows.filter((_, k) => k !== i) })} className="p-0.5 text-rose-500 disabled:opacity-30 cursor-pointer" title="Xoá dòng">
+                      <Trash2 size={13} />
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+            {sums.length > 0 && (
+              <tr className={erp.totalRow}>
+                {cols.map((col, k) => (
+                  <td key={col.id} className={`${erp.td} ${isNumCol(col.type) ? erp.num : ''}`}>
+                    {k === labelAt ? (
+                      <b>Tổng</b>
+                    ) : col.sum && isNumCol(col.type) ? (
+                      <span data-testid="table-sum">
+                        <b>{cellView(col, sumOf(col), 0) || '0'}</b>
+                        {col.words && col.fmt !== 'percent' && col.type !== 'percent' && <span className="block text-[11px] font-normal italic text-slate-500">({soThanhChu(Math.round(sumOf(col)))})</span>}
+                      </span>
+                    ) : (
+                      ''
+                    )}
+                  </td>
+                ))}
+                {canAdd && <td className={erp.td} />}
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-1 gap-y-1 mt-1.5 text-slate-300">
+        {canAdd && (
+          <>
+            <button type="button" onClick={() => onChange({ rows: [...rows, {}] })} className={link} data-testid="table-add">
+              <Plus size={13} /> Thêm mới
+            </button>
+            <span className="px-1.5">|</span>
+            <label className={link}>
+              <FileUp size={13} /> Nhập khẩu
+              <input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                data-testid="table-import"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!file) return;
+                  try {
+                    const res = await importTable(f, file);
+                    if (res.rows.length) {
+                      const keep = rows.filter((r) => Object.values(r).some((x) => x !== '' && x !== undefined));
+                      onChange({ rows: [...keep, ...res.rows] });
+                    }
+                    setMsg(res.msg);
+                  } catch (err) {
+                    setMsg(`Không đọc được file: ${(err as Error).message}`);
+                  }
+                }}
+              />
+            </label>
+            <span className="px-1.5">|</span>
+          </>
+        )}
+        <button type="button" onClick={() => exportTable(f, rows)} className={link} data-testid="table-export">
+          <Download size={13} /> Xuất khẩu
+        </button>
+        {msg && <span className="ml-2 text-[11.5px] text-slate-500">{msg}</span>}
+      </div>
     </div>
   );
 };
@@ -480,9 +679,30 @@ export const FieldView: React.FC<{ f: ProcField; v: FieldValue; ctx?: FormCtx }>
     case 'table':
       return <TableEditor f={f} v={v} onChange={() => {}} readOnly />;
     case 'linkedData': {
-      const r = ctx?.linked?.find((x) => x.id === v);
-      return <span>{r ? `${r.code} — ${r.title}` : String(v)}</span>;
+      const list = idsOf(v).map((id) => ctx?.linked?.find((x) => x.id === id) || id);
+      return (
+        <span className="block space-y-0.5">
+          {list.map((r) =>
+            typeof r === 'string' ? (
+              <span key={r} className="block">{r}</span>
+            ) : (
+              <span key={r.id} className="block">
+                <span className={erp.code}>{r.code}</span> — {r.title}
+                {c.linkSum && <b className="ml-1.5 tabular-nums">{money0(linkedAmount(r, c.linkSum))}</b>}
+              </span>
+            ),
+          )}
+        </span>
+      );
     }
+    case 'email':
+      return (
+        <span className="flex flex-wrap gap-1">
+          {String(v).split(/[;,]\s*/).filter(Boolean).map((m) => (
+            <span key={m} className="inline-flex rounded-[3px] border border-slate-200 bg-slate-50 px-1.5 text-[12px]">{m}</span>
+          ))}
+        </span>
+      );
     default:
       return <span className="whitespace-pre-wrap break-words">{Array.isArray(v) ? v.join(', ') : String(v)}</span>;
   }
@@ -616,7 +836,11 @@ export const FieldInput: React.FC<{ f: ProcField; v: FieldValue; onChange: (v: F
     case 'catalog':
       return <Pick options={CATALOGS[c.catalog || ''] || []} value={v} multiple={c.multiple} onChange={onChange} invalid={invalid} placeholder={`— Chọn ${(c.catalog || 'danh mục').toLowerCase()} —`} />;
     case 'email':
-      return <input type="text" value={(v as string) || ''} onChange={(e) => onChange(e.target.value)} placeholder={f.hint || 'ten@congty.vn (nhiều email cách nhau bằng dấu ;)'} className={cls} />;
+      return c.multiple ? (
+        <EmailTags value={(v as string) || ''} onChange={(x) => onChange(x)} invalid={invalid} placeholder={f.hint || 'Nhấn Enter để thêm mới email'} />
+      ) : (
+        <input type="text" value={(v as string) || ''} onChange={(e) => onChange(e.target.value)} placeholder={f.hint || 'ten@congty.vn'} className={cls} />
+      );
     case 'file': {
       const files = (v as string[]) || [];
       return (
@@ -703,7 +927,49 @@ export const FieldInput: React.FC<{ f: ProcField; v: FieldValue; onChange: (v: F
       );
     }
     case 'linkedData': {
-      const src = (ctx?.linked || []).filter((r) => r.processCode === c.linkProcess && r.status === 'approved');
+      // đơn nguồn đã được dùng ở đơn khác (đang xử lý / đã duyệt) thì không chọn lại
+      const usedElsewhere = new Set(
+        (ctx?.linked || [])
+          .filter((x) => x.id !== ctx?.req?.id && ['pending', 'approved'].includes(x.status))
+          .flatMap((x) => x.runs[0]?.def.fields.filter((y) => y.type === 'linkedData' && cfgOf(y).linkProcess === c.linkProcess).flatMap((y) => idsOf(x.runs[0].data[y.id] ?? null)) || []),
+      );
+      const src = (ctx?.linked || []).filter((r) => r.processCode === c.linkProcess && r.status === 'approved' && (!usedElsewhere.has(r.id) || idsOf(v).includes(r.id)));
+      if (c.multiple) {
+        const ids = idsOf(v);
+        const chosen = ids.map((id) => src.find((x) => x.id === id) || ctx?.linked?.find((x) => x.id === id)).filter(Boolean) as ProcRequest[];
+        const left = src.filter((r) => !ids.includes(r.id));
+        return (
+          <span className="block" data-testid="linked-multi">
+            {chosen.length > 0 && (
+              <span className="block mb-1.5 rounded-[3px] border border-slate-200 divide-y divide-slate-100">
+                {chosen.map((r) => (
+                  <span key={r.id} className="flex items-center gap-2 px-2 py-1 text-[12.5px]">
+                    <span className={erp.code}>{r.code}</span>
+                    <span className="flex-1 min-w-0 truncate" title={r.title}>{r.title}</span>
+                    {c.linkSum && <b className="tabular-nums">{money0(linkedAmount(r, c.linkSum))}</b>}
+                    <button type="button" onClick={() => onChange(ids.filter((x) => x !== r.id))} className="p-0.5 rounded text-slate-400 hover:text-rose-600 cursor-pointer" title="Bỏ">
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+              </span>
+            )}
+            <select
+              value=""
+              onChange={(e) => e.target.value && onChange([...ids, e.target.value])}
+              className={`h-7 max-w-[420px] border-0 bg-transparent text-[12.5px] text-[#1f6fd1] cursor-pointer outline-none ${invalid ? '!text-rose-600' : ''}`}
+            >
+              <option value="">+ {f.hint || 'Thêm đơn'}{c.linkProcess ? ` (${left.length} đơn đã duyệt)` : ''}</option>
+              {left.map((r) => (
+                <option key={r.id} value={r.id} className="text-slate-800">
+                  {r.code} — {r.title}
+                  {c.linkSum ? ` · ${money0(linkedAmount(r, c.linkSum))}` : ''}
+                </option>
+              ))}
+            </select>
+          </span>
+        );
+      }
       return (
         <select value={(v as string) || ''} onChange={(e) => onChange(e.target.value)} className={cls}>
           <option value="">{c.linkProcess ? `— Chọn đơn đã duyệt (${src.length}) —` : '— Chưa thiết lập quy trình nguồn —'}</option>
