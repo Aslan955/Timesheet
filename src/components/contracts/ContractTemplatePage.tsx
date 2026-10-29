@@ -10,6 +10,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { AlertTriangle, FileSpreadsheet, Check, CheckCircle2, ClipboardCopy, Download, Eye, FileCog, FileSignature, FileText, History, LayoutList, Pencil, Plus, Save, Search, Table2, Trash2, Upload, X } from 'lucide-react';
 import { Btn, ErpPage, ErpTitleBar, FolderTabs, KpiBox, Panel, Segmented, Tag, erp } from '../erp/Erp';
+import { ColumnFilterBar, useColumnFilters } from '../erp/ColumnFilter';
 import { CheckBox, DateInput, InfoGrid, dmy, today } from '../EmployeePage';
 import { mergeDataOf, useContractStore, type Contract, type Worker } from '../ContractsPage';
 import { FIELDS, FIELD_GROUPS, FIELD_KEYS, TPL_KIND_LABEL, getCatalog, updateCatalog, useCatalog, type TemplateDef, type TplKind } from './catalog';
@@ -76,11 +77,25 @@ const downloadFieldsXlsx = () => {
   XLSX.writeFile(wb, 'danh-sach-truong-tron.xlsx');
 };
 
+/** Giá trị cho phễu lọc theo cột của danh sách template (đúng chữ hiển thị trong ô) */
+const TPL_GETTERS: Record<string, (t: TemplateDef) => string | string[]> = {
+  Mã: (t) => t.code,
+  'Tên template': (t) => t.name,
+  Loại: (t) => TPL_KIND_LABEL[t.kind],
+  'Áp dụng cho': (t) => (t.appliesTo.length ? t.appliesTo.map((id) => targetName(t, id)) : 'Chưa chọn'),
+  'Công ty': (t) => (t.companyId ? getCatalog().companies.find((c) => c.id === t.companyId)?.shortName || '' : 'Tất cả công ty'),
+  'File Word': (t) => (t.data ? t.fileName : 'Chưa có file'),
+  'Trường trộn': (t) => `${t.fields.length} trường${unknownOf(t).length ? ` · ${unknownOf(t).length} không hợp lệ` : ''}`,
+  'Cập nhật': (t) => dmy(t.uploadedAt.slice(0, 10)),
+  'Trạng thái': (t) => (t.active ? 'Đang sử dụng' : 'Ngừng sử dụng'),
+};
 const TemplateList: React.FC<{ setMode: (m: Mode) => void }> = ({ setMode }) => {
   const cat = useCatalog();
   const [kind, setKind] = useState<'' | TplKind>('');
   const [q, setQ] = useState('');
-  const rows = cat.templates.filter((t) => (!kind || t.kind === kind) && (!q || `${t.code} ${t.name} ${t.fileName}`.toLowerCase().includes(q.toLowerCase())));
+  const base = cat.templates.filter((t) => (!kind || t.kind === kind) && (!q || `${t.code} ${t.name} ${t.fileName}`.toLowerCase().includes(q.toLowerCase())));
+  const colF = useColumnFilters(base, TPL_GETTERS);
+  const rows = colF.rows;
   // Đủ template = mọi công ty đang dùng đều có mẫu (mẫu chung hoặc mẫu riêng của công ty)
   const covered = (k: TplKind, id: string) =>
     cat.companies.filter((co) => co.active).every((co) => cat.templates.some((t) => t.active && t.kind === k && t.data && t.appliesTo.includes(id) && (!t.companyId || t.companyId === co.id)));
@@ -147,6 +162,7 @@ const TemplateList: React.FC<{ setMode: (m: Mode) => void }> = ({ setMode }) => 
         }
         footer={`${rows.length} / ${cat.templates.length} template · Bấm vào dòng để xem / sửa`}
       >
+        <ColumnFilterBar active={colF.active} filters={colF.filters} labelOf={(k) => k} onRemove={(k) => colF.set(k, [])} onClear={colF.clear} />
         <div className="overflow-auto">
           <table className={erp.table}>
             <thead>
@@ -154,7 +170,10 @@ const TemplateList: React.FC<{ setMode: (m: Mode) => void }> = ({ setMode }) => 
                 <th className={`${th} border-l-0 w-12 !text-center`}>STT</th>
                 {['Mã', 'Tên template', 'Loại', 'Áp dụng cho', 'Công ty', 'File Word', 'Trường trộn', 'Cập nhật', 'Trạng thái'].map((h) => (
                   <th key={h} className={th}>
-                    {h}
+                    <div className="flex items-center gap-1">
+                      <span className="flex-1 min-w-0 whitespace-nowrap">{h}</span>
+                      {colF.funnel(h, h)}
+                    </div>
                   </th>
                 ))}
                 <th className={`${th} border-r-0 w-24 !text-center`}>Tải file</th>

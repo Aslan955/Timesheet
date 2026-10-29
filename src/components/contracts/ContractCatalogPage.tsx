@@ -7,18 +7,19 @@
  * Thêm / sửa ngay trên trang (không popup); xoá có xác nhận; mục đang được dùng chỉ được ngừng sử dụng.
  */
 import React, { useMemo, useState } from 'react';
-import { AlertTriangle, Building2, Check, FilePlus2, FileSignature, FileSpreadsheet, Plus, Save, Search, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Building2, Check, PenLine, FilePlus2, FileSignature, FileSpreadsheet, Plus, Save, Search, Trash2, X } from 'lucide-react';
 import { Btn, ErpPage, ErpTitleBar, FolderTabs, Panel, Tag, erp } from '../erp/Erp';
+import { ColumnFilterBar, useColumnFilters } from '../erp/ColumnFilter';
 import { CheckBox, InfoGrid, type InfoItem } from '../EmployeePage';
 import { getContractStore, renameContractType, useContractStore } from '../ContractsPage';
 import {
   APPENDIX_FIELDS, KINDS, KIND_CLS, KIND_LABEL, KIND_MAX, TERM_OPTIONS, termLabel, updateCatalog, useCatalog,
-  type AppendixTypeDef, type CompanyDef, type ContractTypeDef, type Kind,
+  type AppendixTypeDef, type CompanyDef, type ContractTypeDef, type Kind, type SignerDef,
 } from './catalog';
 import { ACTIVE_TAG, ErrText, INACTIVE_TAG, INPUT, LINK, errCls, exportSheet, lb, uid, useFlash } from './ui';
 
 const CRUMBS = ['Human Resources', 'Danh mục hợp đồng'];
-type Tab = 'types' | 'companies' | 'appendix';
+type Tab = 'types' | 'companies' | 'signers' | 'appendix';
 type Item = { id: string; code: string; name: string; active: boolean };
 
 // ==========================================================================
@@ -45,6 +46,8 @@ interface TabCfg<T extends Item> {
   hint: string;
   exportName: string;
   search: (x: T) => string;
+  /** false: cho phép trùng tên (vd người ký cùng tên ở 2 công ty) — tự kiểm tra trong validate */
+  uniqueName?: boolean;
 }
 
 function CatalogTab<T extends Item>({ cfg, flash }: { cfg: TabCfg<T>; flash: (m: string) => void; key?: string }) {
@@ -53,14 +56,20 @@ function CatalogTab<T extends Item>({ cfg, flash }: { cfg: TabCfg<T>; flash: (m:
   const [form, setForm] = useState<{ f: T; old?: T } | null>(null);
   const [tried, setTried] = useState(false);
   const [delId, setDelId] = useState<string | null>(null);
-  const rows = cfg.items.filter((x) => (!st || (st === 'on') === x.active) && (!q || cfg.search(x).toLowerCase().includes(q.toLowerCase())));
+  const base = cfg.items.filter((x) => (!st || (st === 'on') === x.active) && (!q || cfg.search(x).toLowerCase().includes(q.toLowerCase())));
+  const getters = useMemo(
+    () => ({ ...Object.fromEntries(cfg.cols.map((c) => [c.label, (x: T) => String(c.xlsx(x) ?? '')])), 'Trạng thái': (x: T) => (x.active ? 'Đang sử dụng' : 'Ngừng sử dụng') }),
+    [cfg.cols],
+  );
+  const colF = useColumnFilters(base, getters);
+  const rows = colF.rows;
   const errs: Record<string, string> = {};
   if (form) {
     const f = form.f;
     if (!f.code.trim()) errs.code = 'Bắt buộc';
     else if (cfg.items.some((x) => x.id !== f.id && x.code.trim().toLowerCase() === f.code.trim().toLowerCase())) errs.code = 'Mã đã tồn tại';
     if (!f.name.trim()) errs.name = 'Bắt buộc';
-    else if (cfg.items.some((x) => x.id !== f.id && x.name.trim().toLowerCase() === f.name.trim().toLowerCase())) errs.name = 'Tên đã tồn tại';
+    else if (cfg.uniqueName !== false && cfg.items.some((x) => x.id !== f.id && x.name.trim().toLowerCase() === f.name.trim().toLowerCase())) errs.name = 'Tên đã tồn tại';
     Object.assign(errs, cfg.validate(f, cfg.items, form.old));
   }
   const E = (k: string) => (tried ? errs[k] : undefined);
@@ -124,6 +133,7 @@ function CatalogTab<T extends Item>({ cfg, flash }: { cfg: TabCfg<T>; flash: (m:
             </div>
           </div>
         )}
+        <ColumnFilterBar active={colF.active} filters={colF.filters} labelOf={(k) => k} onRemove={(k) => colF.set(k, [])} onClear={colF.clear} />
         <div className="overflow-auto">
           <table className={erp.table}>
             <thead>
@@ -131,10 +141,18 @@ function CatalogTab<T extends Item>({ cfg, flash }: { cfg: TabCfg<T>; flash: (m:
                 <th className={`${th} border-l-0 w-12 !text-center`}>STT</th>
                 {cfg.cols.map((c) => (
                   <th key={c.label} className={`${th} ${c.cls || ''}`}>
-                    {c.label}
+                    <div className="flex items-center gap-1">
+                      <span className="flex-1 min-w-0">{c.label}</span>
+                      {colF.funnel(c.label, c.label)}
+                    </div>
                   </th>
                 ))}
-                <th className={`${th} w-32`}>Trạng thái</th>
+                <th className={`${th} w-36`}>
+                  <div className="flex items-center gap-1">
+                    <span className="flex-1 min-w-0">Trạng thái</span>
+                    {colF.funnel('Trạng thái', 'Trạng thái')}
+                  </div>
+                </th>
                 <th className={`${th} border-r-0 w-28 !text-center`}>Thao tác</th>
               </tr>
             </thead>
@@ -238,11 +256,13 @@ export const ContractCatalogPage: React.FC = () => {
   const countBy = useMemo(() => {
     const byType = new Map<string, number>();
     const byCo = new Map<string, number>();
+    const bySigner = new Map<string, number>();
     cs.contracts.forEach((c) => {
+      if (c.signerId) bySigner.set(c.signerId, (bySigner.get(c.signerId) || 0) + 1);
       byType.set(c.type, (byType.get(c.type) || 0) + 1);
       byCo.set(c.companyId, (byCo.get(c.companyId) || 0) + 1);
     });
-    return { byType, byCo };
+    return { byType, byCo, bySigner };
   }, [cs.contracts]);
   const tplNames = (kind: 'HD' | 'PL', id: string) => cat.templates.filter((t) => t.kind === kind && t.active && t.appliesTo.includes(id)).map((t) => t.name);
   const tplCell = (kind: 'HD' | 'PL', id: string) => {
@@ -608,6 +628,119 @@ export const ContractCatalogPage: React.FC = () => {
     remove: (x) => updateCatalog((c) => ({ ...c, appendix: c.appendix.filter((a) => a.id !== x.id), templates: c.templates.map((t) => ({ ...t, appliesTo: t.appliesTo.filter((a) => a !== x.id) })) })),
   };
 
+  // ---------------- Người ký (1 công ty có nhiều người ký)
+  const coName = (id: string) => cat.companies.find((c) => c.id === id)?.shortName || '—';
+  const signersCfg: TabCfg<SignerDef> = {
+    title: 'Danh mục người ký hợp đồng',
+    noun: 'người ký',
+    icon: PenLine,
+    items: [...cat.signers].sort((a, b) => coName(a.companyId).localeCompare(coName(b.companyId)) || Number(b.isDefault) - Number(a.isDefault) || a.code.localeCompare(b.code)),
+    uniqueName: false,
+    blank: () => ({ id: `sg-${uid()}`, code: '', companyId: cat.companies.find((c) => c.isDefault)?.id || cat.companies[0]?.id || '', salutation: 'Ông', name: '', title: '', authorization: '', isDefault: false, active: true, note: '' }),
+    search: (x) => `${x.code} ${x.name} ${x.title} ${coName(x.companyId)} ${x.authorization}`,
+    hint: 'Người được ký hợp đồng thay mặt công ty (Bên A). Màn hợp đồng chọn người ký theo công ty ký HĐ; người ký mặc định được chọn sẵn khi không có Thiết lập người ký phù hợp.',
+    exportName: 'danh-muc-nguoi-ky.xlsx',
+    cols: [
+      { label: 'Mã', cls: 'w-24', cell: (x) => <span className={`${erp.code} font-semibold`}>{x.code}</span>, xlsx: (x) => x.code },
+      { label: 'Công ty', cls: 'whitespace-nowrap', cell: (x) => coName(x.companyId), xlsx: (x) => cat.companies.find((c) => c.id === x.companyId)?.name || '' },
+      {
+        label: 'Người ký',
+        cls: 'whitespace-nowrap',
+        cell: (x) => (
+          <span className="flex flex-wrap items-center gap-1.5">
+            <b className="text-slate-800">
+              {x.salutation} {x.name}
+            </b>
+            {x.isDefault && <Tag cls="bg-amber-50 text-amber-700 border-amber-300">Mặc định</Tag>}
+          </span>
+        ),
+        xlsx: (x) => `${x.salutation} ${x.name}`,
+      },
+      { label: 'Chức danh', cls: 'whitespace-nowrap', cell: (x) => x.title, xlsx: (x) => x.title },
+      { label: 'Giấy uỷ quyền', cell: (x) => x.authorization || <i className="text-slate-500">Đại diện theo pháp luật</i>, xlsx: (x) => x.authorization || 'Đại diện theo pháp luật' },
+      { label: 'Số HĐ đã ký', cls: 'w-24 text-right', cell: (x) => countBy.bySigner.get(x.id) || 0, xlsx: (x) => countBy.bySigner.get(x.id) || 0 },
+    ],
+    form: (f, set, E) => ({
+      left: [
+        { label: lb('Mã', true), value: text(f.code, (v) => set({ code: v.toUpperCase() }), E('code'), 'VD: AEQ-PGD') },
+        {
+          label: lb('Công ty', true),
+          value: (
+            <>
+              <select value={f.companyId} onChange={(e) => set({ companyId: e.target.value })} className={`${INPUT} ${errCls(E('companyId'))}`}>
+                <option value="">— Chọn công ty —</option>
+                {cat.companies
+                  .filter((c) => c.active || c.id === f.companyId)
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+              </select>
+              <ErrText e={E('companyId')} />
+            </>
+          ),
+        },
+        {
+          label: lb('Người ký', true),
+          value: (
+            <>
+              <span className="flex items-center gap-1.5 w-full">
+                <select value={f.salutation} onChange={(e) => set({ salutation: e.target.value })} className={`${INPUT} w-20`}>
+                  <option>Ông</option>
+                  <option>Bà</option>
+                </select>
+                <input value={f.name} placeholder="Họ và tên" onChange={(e) => set({ name: e.target.value })} className={`${INPUT} ${errCls(E('name'))}`} />
+              </span>
+              <ErrText e={E('name')} />
+            </>
+          ),
+        },
+        { label: lb('Chức danh', true), value: text(f.title, (v) => set({ title: v }), E('title'), 'VD: Phó Giám đốc') },
+      ],
+      right: [
+        { label: 'Giấy uỷ quyền', value: text(f.authorization, (v) => set({ authorization: v }), E('authorization'), 'Số / ngày giấy uỷ quyền — để trống nếu là người đại diện theo pháp luật') },
+        {
+          label: 'Người ký mặc định',
+          value: (
+            <span className="flex items-center gap-2">
+              <CheckBox checked={f.isDefault} onChange={(b) => set({ isDefault: b })} /> Chọn sẵn cho hợp đồng của công ty này
+            </span>
+          ),
+        },
+        { label: 'Trạng thái', value: activeCheck(f.active, (b) => set({ active: b }), E('active')) },
+        { label: 'Ghi chú', value: <textarea rows={2} value={f.note} onChange={(e) => set({ note: e.target.value })} className={`${INPUT} h-auto py-1.5 resize-y`} /> },
+      ],
+    }),
+    validate: (f, list, old) => {
+      const e: Record<string, string> = {};
+      if (!f.companyId) e.companyId = 'Bắt buộc';
+      if (!f.title.trim()) e.title = 'Bắt buộc';
+      if (f.name.trim() && list.some((x) => x.id !== f.id && x.companyId === f.companyId && x.name.trim().toLowerCase() === f.name.trim().toLowerCase())) e.name = 'Công ty này đã có người ký trùng tên';
+      if (f.isDefault && !f.active) e.active = 'Người ký mặc định phải đang sử dụng';
+      if (old?.isDefault && old.companyId === f.companyId && (!f.isDefault || !f.active)) e.active = 'Mỗi công ty cần 1 người ký mặc định — chọn người ký mặc định khác thay thế trước';
+      if (!f.active && cs.signers.some((x) => x.signerId === f.id)) e.active = 'Đang dùng trong Thiết lập người ký — đổi thiết lập trước khi ngừng sử dụng';
+      return e;
+    },
+    save: (f, old) => {
+      const clean = { ...f, title: f.title.trim(), authorization: f.authorization.trim() };
+      const noDefault = !cat.signers.some((x) => x.id !== f.id && x.companyId === f.companyId && x.isDefault && x.active);
+      if (noDefault && clean.active) clean.isDefault = true; // công ty chưa có người ký mặc định → người này
+      updateCatalog((c) => {
+        let list = old ? c.signers.map((x) => (x.id === f.id ? clean : x)) : [...c.signers, clean];
+        if (clean.isDefault) list = list.map((x) => (x.id !== clean.id && x.companyId === clean.companyId ? { ...x, isDefault: false } : x));
+        return { ...c, signers: list };
+      });
+      return old ? `Đã lưu người ký ${f.name}` : `Đã thêm người ký ${f.name} (${coName(f.companyId)})`;
+    },
+    usedBy: (x) => {
+      const n = countBy.bySigner.get(x.id) || 0;
+      const st = cs.signers.filter((y) => y.signerId === x.id).length;
+      return [n && `đã ký ${n} hợp đồng`, st && `dùng trong ${st} thiết lập người ký`, x.isDefault && 'là người ký mặc định của công ty'].filter(Boolean).join(', ');
+    },
+    remove: (x) => updateCatalog((c) => ({ ...c, signers: c.signers.filter((y) => y.id !== x.id) })),
+  };
+
   return (
     <ErpPage>
       {toast}
@@ -617,6 +750,7 @@ export const ContractCatalogPage: React.FC = () => {
         meta={[
           { label: 'Loại hợp đồng', value: `${cat.types.filter((t) => t.active).length} đang sử dụng / ${cat.types.length}` },
           { label: 'Công ty', value: `${cat.companies.filter((t) => t.active).length} đang sử dụng / ${cat.companies.length}` },
+          { label: 'Người ký', value: `${cat.signers.filter((t) => t.active).length} đang sử dụng / ${cat.signers.length}` },
           { label: 'Loại phụ lục', value: `${cat.appendix.filter((t) => t.active).length} đang sử dụng / ${cat.appendix.length}` },
           { label: 'Công ty mặc định', value: cat.companies.find((c) => c.isDefault)?.shortName || '—' },
         ]}
@@ -626,6 +760,7 @@ export const ContractCatalogPage: React.FC = () => {
           tabs={[
             { key: 'types', label: `Loại hợp đồng (${cat.types.length})`, icon: FileSignature },
             { key: 'companies', label: `Công ty (${cat.companies.length})`, icon: Building2 },
+            { key: 'signers', label: `Người ký (${cat.signers.length})`, icon: PenLine },
             { key: 'appendix', label: `Loại phụ lục hợp đồng (${cat.appendix.length})`, icon: FilePlus2 },
           ]}
           value={tab}
@@ -633,6 +768,7 @@ export const ContractCatalogPage: React.FC = () => {
         />
         {tab === 'types' && <CatalogTab key="t" cfg={typesCfg} flash={flash} />}
         {tab === 'companies' && <CatalogTab key="c" cfg={companiesCfg} flash={flash} />}
+        {tab === 'signers' && <CatalogTab key="s" cfg={signersCfg} flash={flash} />}
         {tab === 'appendix' && <CatalogTab key="a" cfg={appendixCfg} flash={flash} />}
       </div>
     </ErpPage>

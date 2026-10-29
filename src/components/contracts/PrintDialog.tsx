@@ -5,7 +5,7 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { AlertTriangle, Check, FileSpreadsheet, FileText, Printer, RotateCcw, Undo2, X } from 'lucide-react';
+import { AlertTriangle, Check, FileDown, FileSpreadsheet, FileText, Printer, RotateCcw, Undo2, X } from 'lucide-react';
 import { DateInput, today } from '../EmployeePage';
 import { Btn, erp } from '../erp/Erp';
 import { FIELDS, fieldLabel, typeDef, useCatalog, type AppendixTypeDef, type TemplateDef } from './catalog';
@@ -20,6 +20,8 @@ export type PrintItem = {
   defaultTpl: TemplateDef | null;
   attachments: TemplateDef[];
   dataOf: (app?: AppendixTypeDef, appDate?: string) => Record<string, string>;
+  /** Trang bản in mặc định (HTML) khi không dùng mẫu Word */
+  defaultHtml?: () => string;
 };
 export type PrintJob = { item: PrintItem; main: TemplateDef | null; extras: TemplateDef[]; app?: AppendixTypeDef; data: Record<string, string>; edited: string[] };
 
@@ -92,6 +94,60 @@ export const exportMergeData = (jobs: PrintJob[]) => {
 };
 
 const LINES = new Map<string, Promise<DocLine[]>>();
+export const PRINT_CSS = `section{page-break-after:always}section:last-child{page-break-after:auto}
+.dflt h1{text-align:center;font-size:20px;margin:6px 0 2px}.dflt .c{text-align:center}.dflt .sub{text-align:center;font-style:italic;margin-bottom:16px}.dflt table{width:100%;border-collapse:collapse;margin:4px 0 10px}
+.dflt td{padding:3px 4px;vertical-align:top}.dflt td.k{width:200px;color:#333}.dflt h2{font-size:15px;margin:14px 0 4px}.dflt .sig{display:flex;justify-content:space-between;margin-top:36px;text-align:center}.dflt .sig div{width:45%}`;
+const escH = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+/** In trực tiếp (trình duyệt → máy in / lưu PDF) đúng nội dung đang xem trước, gồm phần đã sửa. Mỗi văn bản 1 trang mới.
+ *  Dùng iframe ẩn nên không bị chặn cửa sổ bật lên. */
+export const printJobsDirect = async (jobs: PrintJob[]) => {
+  const re = () => new RegExp(`${MF_RE.source}|${FIELD_RE.source}`, 'gu');
+  const fill = (text: string, data: Record<string, string>) => {
+    let out = '';
+    let last = 0;
+    for (const m of text.matchAll(re())) {
+      const name = (m[1] ?? m[2]).normalize('NFC');
+      out += escH(text.slice(last, m.index)) + (data[name]?.trim() ? escH(data[name]) : '…………………');
+      last = m.index! + m[0].length;
+    }
+    return out + escH(text.slice(last));
+  };
+  const sections: string[] = [];
+  for (const j of jobs) {
+    if (!j.main) {
+      if (j.item.defaultHtml) sections.push(j.item.defaultHtml());
+      continue;
+    }
+    for (const t of [j.main, ...j.extras]) {
+      const lines = await linesOf(t);
+      sections.push(
+        `<section class="doc">${lines
+          .map((l) => (l.text.trim() ? `<p class="${l.center || l.table ? 'c' : l.right ? 'r' : 'j'}${l.bold ? ' b' : ''}">${fill(l.text, j.data)}</p>` : '<div class="gap"></div>'))
+          .join('')}</section>`,
+      );
+    }
+  }
+  if (!sections.length) return 0;
+  const title = jobs.length === 1 ? `In ${jobs[0].item.sub.split(' · ')[0]}` : `In ${jobs.length} hợp đồng`;
+  const html = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${escH(title)}</title><style>
+@page{size:A4;margin:18mm 20mm}body{font-family:'Times New Roman',Times,serif;font-size:13.5pt;line-height:1.5;color:#000;margin:0}
+.doc p{margin:0 0 3pt;white-space:pre-wrap}.doc .c{text-align:center}.doc .r{text-align:right}.doc .j{text-align:justify}.doc .b{font-weight:bold}.doc .gap{height:9pt}
+${PRINT_CSS}</style></head><body>${sections.join('')}</body></html>`;
+  const fr = document.createElement('iframe');
+  fr.setAttribute('aria-hidden', 'true');
+  fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+  document.body.appendChild(fr);
+  await new Promise<void>((ok) => {
+    fr.onload = () => ok();
+    fr.srcdoc = html;
+  });
+  const w = fr.contentWindow!;
+  w.focus();
+  w.print();
+  setTimeout(() => fr.remove(), 60_000);
+  return sections.length;
+};
+
 const linesOf = (t: TemplateDef) => {
   const key = `${t.id}:${t.size}:${t.uploadedAt}`;
   if (!LINES.has(key)) LINES.set(key, inspectDocx(t.data!).then((r) => r.lines));
@@ -275,6 +331,19 @@ export const PrintDialog: React.FC<{ items: PrintItem[]; onClose: () => void; on
         }),
       ),
     );
+  };
+  const pageCount = all.reduce((n, j) => n + (j.main ? 1 + j.extras.length : 1), 0);
+  const [printing, setPrinting] = useState(false);
+  const printNow = async () => {
+    setPrinting(true);
+    try {
+      const n = await printJobsDirect(all);
+      notify?.(`Đã mở hộp thoại in: ${n} văn bản của ${all.length} hợp đồng${all.some((j) => j.edited.length) ? ', gồm phần đã sửa trên bản xem trước' : ''}`);
+    } catch (e) {
+      notify?.(`Không in được: ${(e as Error).message}`);
+    } finally {
+      setPrinting(false);
+    }
   };
   const run = async () => {
     setBusy(true);
@@ -512,7 +581,10 @@ export const PrintDialog: React.FC<{ items: PrintItem[]; onClose: () => void; on
           >
             Tải dữ liệu trộn (Excel)
           </Btn>
-          <Btn variant="primary" icon={Printer} disabled={busy || (!fileCount && !htmlCount)} onClick={run}>
+          <Btn icon={Printer} disabled={printing} onClick={printNow} title="In trực tiếp ra máy in (hoặc lưu PDF) đúng nội dung đang xem trước, gồm phần đã sửa" data-testid="print-direct">
+            {printing ? 'Đang chuẩn bị…' : `In hợp đồng${pageCount > 1 ? ` (${pageCount})` : ''}`}
+          </Btn>
+          <Btn variant="primary" icon={FileDown} disabled={busy || (!fileCount && !htmlCount)} onClick={run}>
             {busy ? 'Đang tạo file…' : fileCount ? `Tải file Word${fileCount > 1 ? ` (${fileCount})` : ''}` : 'Mở bản in'}
           </Btn>
         </div>

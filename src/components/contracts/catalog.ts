@@ -59,6 +59,19 @@ export interface CompanyDef {
   active: boolean;
   note: string;
 }
+/** Danh mục người ký hợp đồng — 1 công ty có thể có nhiều người ký (người đại diện theo pháp luật, người được uỷ quyền). */
+export interface SignerDef {
+  id: string;
+  code: string;
+  companyId: string;
+  salutation: string; // Ông / Bà
+  name: string; // họ tên người ký
+  title: string; // chức danh
+  authorization: string; // số / ngày giấy uỷ quyền (để trống nếu là người đại diện theo pháp luật)
+  isDefault: boolean; // người ký mặc định của công ty
+  active: boolean;
+  note: string;
+}
 export const APPENDIX_FIELDS = ['Tiền lương', 'Phụ cấp', 'Vị trí / chức danh', 'Đơn vị công tác', 'Nơi làm việc', 'Thời gian làm việc', 'Thời hạn hợp đồng', 'Nội dung khác'];
 export interface AppendixTypeDef {
   id: string;
@@ -94,7 +107,7 @@ export interface TemplateDef {
   note: string;
   history: TplLog[];
 }
-export type Catalog = { types: ContractTypeDef[]; companies: CompanyDef[]; appendix: AppendixTypeDef[]; templates: TemplateDef[] };
+export type Catalog = { types: ContractTypeDef[]; companies: CompanyDef[]; signers: SignerDef[]; appendix: AppendixTypeDef[]; templates: TemplateDef[] };
 
 // ==========================================================================
 // Trường trộn — đặt tên theo bộ mẫu hợp đồng AEQUITAS (trường trộn thư của Word «Tên_trường»).
@@ -203,6 +216,14 @@ const COMPANIES_SEED: CompanyDef[] = [
     note: 'Theo “Mẫu Edso”. Mẫu đang ghi mã số thuế giống AEQUITAS (0108598427) — cần bổ sung mã số thuế đúng của EDSO LABS.',
   },
 ];
+// Dữ liệu mẫu (người được uỷ quyền là tên giả định)
+const SIGNERS_SEED: SignerDef[] = [
+  { id: 'sg-aeq-1', code: 'AEQ-GD', companyId: 'co-1', salutation: 'Ông', name: 'Lê Hoài Thanh', title: 'Giám đốc', authorization: '', isDefault: true, active: true, note: 'Người đại diện theo pháp luật' },
+  { id: 'sg-aeq-2', code: 'AEQ-PGD', companyId: 'co-1', salutation: 'Bà', name: 'Nguyễn Thu Hà', title: 'Phó Giám đốc', authorization: 'Giấy uỷ quyền số 01/2026/UQ-AEQ ngày 02/01/2026', isDefault: false, active: true, note: 'Ký HĐ thử việc, học việc, thực tập' },
+  { id: 'sg-aeq-3', code: 'AEQ-NS', companyId: 'co-1', salutation: 'Ông', name: 'Phạm Minh Tuấn', title: 'Trưởng phòng Nhân sự', authorization: 'Giấy uỷ quyền số 02/2026/UQ-AEQ ngày 02/01/2026', isDefault: false, active: true, note: '' },
+  { id: 'sg-edso-1', code: 'EDSO-GD', companyId: 'co-2', salutation: 'Ông', name: 'Lê Hoài Thanh', title: 'Giám đốc', authorization: '', isDefault: true, active: true, note: 'Người đại diện theo pháp luật' },
+  { id: 'sg-edso-2', code: 'EDSO-PGD', companyId: 'co-2', salutation: 'Ông', name: 'Trần Quốc Bảo', title: 'Phó Giám đốc', authorization: 'Giấy uỷ quyền số 05/2026/UQ-EDSO ngày 15/03/2026', isDefault: false, active: true, note: '' },
+];
 const APPENDIX_SEED: AppendixTypeDef[] = [
   { id: 'pl-01', code: 'PL01', name: 'Phụ lục điều chỉnh lương', changes: ['Tiền lương', 'Phụ cấp'], order: 1, active: true, note: 'Điều chỉnh các khoản hỗ trợ và thưởng hiệu quả' },
   { id: 'pl-02', code: 'PL02', name: 'Phụ lục điều chỉnh chức vụ & lương', changes: ['Vị trí / chức danh', 'Tiền lương', 'Phụ cấp'], order: 2, active: true, note: '' },
@@ -277,7 +298,7 @@ export const SAMPLE_FILES = {
 // ==========================================================================
 // Kho dữ liệu danh mục
 // ==========================================================================
-let CAT: Catalog = { types: TYPES_SEED, companies: COMPANIES_SEED, appendix: APPENDIX_SEED, templates: TEMPLATES_SEED() };
+let CAT: Catalog = { types: TYPES_SEED, companies: COMPANIES_SEED, signers: SIGNERS_SEED, appendix: APPENDIX_SEED, templates: TEMPLATES_SEED() };
 const SUBS = new Set<() => void>();
 export const getCatalog = () => CAT;
 export const updateCatalog = (fn: (c: Catalog) => Catalog) => {
@@ -334,6 +355,18 @@ export const defaultTypeOf = (k: Kind) => [...CAT.types].filter((t) => t.kind ==
 export const companyById = (id: string) => CAT.companies.find((c) => c.id === id);
 export const defaultCompanyId = () => (CAT.companies.find((c) => c.isDefault && c.active) || CAT.companies.find((c) => c.active))?.id || '';
 export const activeCompanies = (keep = '') => CAT.companies.filter((c) => c.active || c.id === keep);
+export const signerById = (id?: string) => (id ? CAT.signers.find((x) => x.id === id) : undefined);
+/** Người ký của công ty (đang sử dụng; giữ thêm người đang chọn) — mặc định lên đầu */
+export const signersOf = (companyId: string, keep = '') =>
+  CAT.signers.filter((x) => x.companyId === companyId && (x.active || x.id === keep)).sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.code.localeCompare(b.code));
+/** Người ký mặc định của công ty; chưa khai báo → người đại diện theo pháp luật trong danh mục công ty */
+export const defaultSignerOf = (companyId: string): SignerDef | undefined => {
+  const list = signersOf(companyId);
+  const sg = list.find((x) => x.isDefault) || list[0];
+  if (sg) return sg;
+  const co = companyById(companyId);
+  return co?.legalRep ? { id: '', code: '', companyId, salutation: co.legalRepSalutation, name: co.legalRep, title: co.legalRepTitle, authorization: '', isDefault: true, active: true, note: '' } : undefined;
+};
 
 /** Template áp dụng: đang dùng, đúng loại (HĐ / phụ lục), ưu tiên template riêng của công ty. */
 export const findTemplate = (kind: TplKind, targetId: string | undefined, companyId: string) =>

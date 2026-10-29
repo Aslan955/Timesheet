@@ -22,10 +22,11 @@ import { CheckBox, DateInput, InfoGrid, addDays, addMonths, dmy, nowIso, norm, p
 import { Btn, ErpPage, ErpTitleBar, FieldTable, FolderTabs, KpiBox, Panel, Segmented, Tag, erp } from './erp/Erp';
 import {
   KIND_COLOR, KIND_LABEL, activeCompanies, colorOf, companyById, defaultCompanyId, defaultTerm, defaultTypeOf, getCatalog, insuranceOf, isK, kindOf, rateOf,
-  KIND_SHORT, attachmentsFor, contractNoBase, fieldLabel, shortOf, templateForType, termsOf, typeDef, typeNames, useCatalog, type AppendixTypeDef, type Kind,
+  KIND_SHORT, attachmentsFor, contractNoBase, defaultSignerOf, fieldLabel, shortOf, signerById, signersOf, templateForType, termsOf, typeDef, typeNames, useCatalog, type AppendixTypeDef, type Kind,
 } from './contracts/catalog';
 import { downloadBytes, mergeDocx, soThanhChu, zip } from './contracts/docx';
-import { PrintDialog, type PrintItem, type PrintJob } from './contracts/PrintDialog';
+import { ColumnFilterBar, useColumnFilters } from './erp/ColumnFilter';
+import { PRINT_CSS, PrintDialog, type PrintItem, type PrintJob } from './contracts/PrintDialog';
 
 // ==========================================================================
 // Danh mục
@@ -134,9 +135,14 @@ export interface Contract {
   files: CFile[];
   note: string;
   history: CLog[];
+  /** Hết hiệu lực trước hạn (chấm dứt / thay thế) — nhập tay; không có thì trạng thái tự tính theo ngày. */
+  ended?: { date: string; reason: string } | null;
+  /** Người ký chọn từ Danh mục người ký (theo công ty ký HĐ) */
+  signerId?: string;
 }
 interface SignerSetting {
   id: string;
+  signerId: string; // người ký trong Danh mục người ký
   unit: string; // '' = tất cả đơn vị
   types: CType[];
   from: string;
@@ -196,6 +202,33 @@ const supportsOf = (amounts: number[]): Allowance[] => SUPPORTS.map((x, i) => ({
 /** Chuẩn hoá về đúng 4 khoản hỗ trợ (giữ số tiền theo tên). */
 const normSupports = (list: Allowance[]) => SUPPORTS.map((x) => ({ id: uid(), name: x.name, amount: list.find((a) => a.name === x.name)?.amount || 0 }));
 const supportAmt = (c: Pick<Contract, 'allowances'>, name: string) => c.allowances.find((a) => a.name === name)?.amount || 0;
+
+// ── Phụ lục 01: chia Tổng thu nhập thành các khoản hỗ trợ + HQCV tạm tính ──
+// Ăn trưa cố định 730.000 · Điện thoại = TN − LCB − ăn trưa (0 → 1.000.000) · Xăng xe = phần còn lại (0 → 1.500.000)
+// · Nhà ở = phần còn lại (0 → 2.000.000) · HQCV tạm tính = TN − (LCB + ăn trưa + điện thoại + xăng xe + nhà ở). LCB = Mức lương (lương gốc × mức hưởng).
+export const LUNCH = 730_000;
+export const INCOME_RULE: { name: string; cap: number }[] = [
+  { name: 'Hỗ trợ điện thoại', cap: 1_000_000 },
+  { name: 'Hỗ trợ xăng xe', cap: 1_500_000 },
+  { name: 'Hỗ trợ nhà ở', cap: 2_000_000 },
+];
+const incomeOf = (c: Pick<Contract, 'baseSalary' | 'rate' | 'allowances' | 'perfBonus'>) => salaryOf(c) + c.allowances.reduce((x, a) => x + (a.amount || 0), 0) + (c.perfBonus || 0);
+export const splitIncome = (total: number, lcb: number) => {
+  const out: Record<string, number> = { 'Hỗ trợ ăn trưa': LUNCH };
+  let rest = total - lcb - LUNCH;
+  for (const { name, cap } of INCOME_RULE) {
+    out[name] = Math.min(cap, Math.max(0, rest));
+    rest -= out[name];
+  }
+  return { supports: out, perf: total - lcb - LUNCH - INCOME_RULE.reduce((x, r) => x + out[r.name], 0) };
+};
+/** Tính lại các khoản hỗ trợ + HQCV theo Tổng thu nhập (mặc định giữ nguyên Tổng thu nhập hiện tại). */
+const withIncome = <T extends Pick<Contract, 'baseSalary' | 'rate' | 'allowances' | 'perfBonus'>>(c: T, total = incomeOf(c)): T => {
+  const p = splitIncome(total, salaryOf(c));
+  return { ...c, allowances: SUPPORTS.map((x) => ({ id: uid(), name: x.name, amount: p.supports[x.name] || 0 })), perfBonus: p.perf };
+};
+/** Dữ liệu tự sinh: Tổng thu nhập tối thiểu = LCB + ăn trưa */
+const fitIncome = <T extends Pick<Contract, 'baseSalary' | 'rate' | 'allowances' | 'perfBonus'>>(c: T, total = incomeOf(c)) => withIncome(c, Math.max(total, salaryOf(c) + LUNCH));
 /** Số HĐ theo mẫu: «Mã_NV»/«ký hiệu công ty»/«ký hiệu loại HĐ» — trùng thì thêm -2, -3… */
 const nextContractNo = (empCode: string, companyId: string, type: CType, contracts: Pick<Contract, 'id' | 'no'>[], selfId = '') => {
   const base = contractNoBase(empCode || '…', companyId, type);
@@ -226,8 +259,26 @@ const nextOf = (c: Pick<Contract, 'type' | 'term'>): { type: CType; term: string
   if (k === 'XD' && termMonths(c.type, c.term) <= 12 && termsOf(c.type).some((x) => x.months === 24)) return { type: c.type, term: '2 năm' };
   return { type: defaultTypeOf('KXD'), term: '' };
 };
-const isValid = (c: Contract, t = today()) => c.from <= t && (!c.to || c.to >= t);
-const overlaps = (a: Pick<Contract, 'from' | 'to'>, b: Pick<Contract, 'from' | 'to'>) => a.from <= (b.to || '9999-12-31') && b.from <= (a.to || '9999-12-31');
+const isValid = (c: Contract, t = today()) => c.from <= t && (!c.to || c.to >= t) && !(c.ended?.date && c.ended.date <= t);
+/** Trạng thái hợp đồng: Đang thực hiện · Hết hạn · Hết hiệu lực. */
+type CStatus = 'Đang thực hiện' | 'Hết hạn' | 'Hết hiệu lực';
+const CSTATUS_CLS: Record<CStatus, string> = {
+  'Đang thực hiện': 'bg-emerald-50 text-emerald-700 border-emerald-300',
+  'Hết hạn': 'bg-rose-50 text-rose-700 border-rose-300',
+  'Hết hiệu lực': 'bg-slate-100 text-slate-600 border-slate-300',
+};
+const contractStatus = (c: Contract, all: Contract[], working = true): { text: CStatus; note: string } => {
+  const t = today();
+  if (c.ended?.date && c.ended.date <= t) return { text: 'Hết hiệu lực', note: `từ ${dmy(c.ended.date)}${c.ended.reason ? ` — ${c.ended.reason}` : ''}` };
+  const next = all.filter((x) => x.workerId === c.workerId && x.id !== c.id && x.from > c.from).sort((a, b) => a.from.localeCompare(b.from))[0];
+  if (next && next.from <= t && (!c.to || next.from <= c.to)) return { text: 'Hết hiệu lực', note: `thay bằng HĐ ${next.no} từ ${dmy(next.from)}` };
+  if (c.to && c.to < t) return { text: 'Hết hạn', note: `hết hạn ngày ${dmy(c.to)}` };
+  if (!working) return { text: 'Hết hiệu lực', note: 'người lao động đã nghỉ việc' };
+  return { text: 'Đang thực hiện', note: c.from > t ? `có hiệu lực từ ${dmy(c.from)}` : c.ended?.date ? `sẽ hết hiệu lực từ ${dmy(c.ended.date)}` : c.to ? `đến ${dmy(c.to)}` : isK(c.type, 'KXD') ? 'không xác định thời hạn' : 'chưa có ngày kết thúc' };
+};
+/** Ngày cuối còn hiệu lực: hết hiệu lực từ ngày X → còn hiệu lực đến X−1; không thì theo ngày kết thúc. */
+const effEnd = (c: Pick<Contract, 'to' | 'ended'>) => (c.ended?.date ? addDays(c.ended.date, -1) : c.to) || '9999-12-31';
+const overlaps = (a: Pick<Contract, 'from' | 'to' | 'ended'>, b: Pick<Contract, 'from' | 'to' | 'ended'>) => a.from <= effEnd(b) && b.from <= effEnd(a);
 
 // ==========================================================================
 // Dữ liệu mẫu (giả lập) — NLĐ, hợp đồng, thiết lập người ký
@@ -240,28 +291,43 @@ const GIVEN_F = ['An', 'Chi', 'Giang', 'Hà', 'Hương', 'Lan', 'Linh', 'My', 'N
 const BASE_BY_POS = (pos: string) =>
   /Phó Tổng|Giám đốc|Kế toán trưởng/.test(pos) ? 60_000_000 : /Trưởng|Quản lý/.test(pos) ? 40_000_000 : /Kỹ sư|Thiết kế|DevOps|phân tích|tư vấn/.test(pos) ? 24_000_000 : 15_000_000;
 
-const SIGNER_SEED: SignerSetting[] = [{ id: 's1', unit: '', types: SEED_TYPES, from: '2022-01-01', salutation: 'Ông', signer: 'Lê Hoài Thanh', signerTitle: 'Giám đốc', authorization: '' }];
-/** Người ký mặc định: thiết lập khớp đơn vị (cụ thể hơn "tất cả") + loại HĐ, có hiệu lực đến ngày ký — mới nhất. */
-const findSigner = (unit: string, type: CType, date: string, list: SignerSetting[]) =>
+const SIGNER_SEED: SignerSetting[] = [{ id: 's1', signerId: 'sg-aeq-1', unit: '', types: SEED_TYPES, from: '2022-01-01', salutation: 'Ông', signer: 'Lê Hoài Thanh', signerTitle: 'Giám đốc', authorization: '' }];
+/** Thông tin người ký đưa vào hợp đồng (lấy từ Danh mục người ký) */
+type SignerPick = { signerId: string; salutation: string; signer: string; signerTitle: string; authorization: string };
+const pickOf = (x: { id: string; salutation: string; name: string; title: string; authorization: string }): SignerPick => ({ signerId: x.id, salutation: x.salutation, signer: x.name, signerTitle: x.title, authorization: x.authorization });
+/** Người ký mặc định: thiết lập khớp công ty (của người ký) + đơn vị (cụ thể hơn "tất cả") + loại HĐ, có hiệu lực đến ngày ký — mới nhất. */
+const findSigner = (unit: string, type: CType, date: string, list: SignerSetting[], companyId: string) =>
   list
-    .filter((s) => (!s.unit || s.unit === unit) && s.types.includes(type) && s.from <= (date || today()))
+    .filter((s) => {
+      const sg = signerById(s.signerId);
+      return sg?.active && sg.companyId === companyId && (!s.unit || s.unit === unit) && s.types.includes(type) && s.from <= (date || today());
+    })
     .sort((a, b) => Number(!!b.unit) - Number(!!a.unit) || b.from.localeCompare(a.from))[0];
 
-/** Người ký mặc định: theo Thiết lập người ký; không có thiết lập phù hợp → người đại diện theo pháp luật của công ty ký HĐ. */
-const signerOf = (unit: string, type: CType, date: string, list: SignerSetting[], companyId: string) => {
-  const sg = findSigner(unit, type, date, list);
-  if (sg) return sg;
-  const co = companyById(companyId);
-  return co ? { salutation: co.legalRepSalutation, signer: co.legalRep, signerTitle: co.legalRepTitle, authorization: '' } : undefined;
+/** Người ký mặc định: theo Thiết lập người ký; không có thiết lập phù hợp → người ký mặc định của công ty trong Danh mục người ký. */
+const signerOf = (unit: string, type: CType, date: string, list: SignerSetting[], companyId: string): SignerPick | undefined => {
+  const st = findSigner(unit, type, date, list, companyId);
+  const sg = (st && signerById(st.signerId)) || defaultSignerOf(companyId);
+  return sg ? pickOf(sg) : undefined;
 };
+/** Gán người ký vào hợp đồng */
+const applyPick = <T extends Partial<Contract>>(c: T, sg?: SignerPick): T => ({
+  ...c,
+  signerId: sg?.signerId || '',
+  signerSalutation: sg?.salutation || '',
+  signer: sg?.signer || '',
+  signerTitle: sg?.signerTitle || '',
+  authorization: sg?.authorization || '',
+});
 
-const mkContract = (w: Worker, type: CType, term: string, from: string, all: Contract[]): Contract => {
+const mkContract = (w: Worker, type: CType, term: string, from: string, all: Contract[]): Contract => fitIncome(mkContract0(w, type, term, from, all));
+const mkContract0 = (w: Worker, type: CType, term: string, from: string, all: Contract[]): Contract => {
   const other = isK(type, 'OTHER'); // học việc / thực tập / dịch vụ: khoản hỗ trợ cố định
   const base = other ? 3_000_000 : BASE_BY_POS(w.position);
   const tv = isK(type, 'TV');
   const ins = insuranceOf(type);
-  const sg = findSigner(w.unit, type, from, SIGNER_SEED);
   const companyId = w.unit === 'Trung tâm Sản xuất phần mềm' ? 'co-2' : 'co-1';
+  const sg = signerOf(w.unit, type, from, SIGNER_SEED, companyId);
   const n = Number(w.code.replace(/\D/g, '')) || 0;
   return {
     id: uid(),
@@ -283,6 +349,7 @@ const mkContract = (w: Worker, type: CType, term: string, from: string, all: Con
     allowances: supportsOf(other ? [] : [730_000, n % 3 ? 500_000 : 0, base >= 24_000_000 ? 300_000 : 0, base >= 40_000_000 ? 2_000_000 : 0]),
     perfBonus: tv || isK(type, 'OTHER') ? 0 : base >= 40_000_000 ? 5_000_000 : base >= 24_000_000 ? 2_000_000 : 1_000_000,
     insurance: { bhxh: ins, bhyt: ins, bhtn: ins },
+    signerId: sg?.signerId || '',
     signerSalutation: sg?.salutation || '',
     signer: sg?.signer || '',
     signerTitle: sg?.signerTitle || '',
@@ -368,6 +435,7 @@ const stateOf = (c: Contract, all: Contract[], soonDays: number, working = true)
   const t = today();
   const later = all.some((x) => x.workerId === c.workerId && x.id !== c.id && x.from > c.from);
   if (c.from > t) return { text: 'Chưa có hiệu lực', cls: 'bg-sky-50 text-sky-700 border-sky-300' };
+  if (c.ended?.date && c.ended.date <= t) return { text: 'Hết hiệu lực', cls: 'bg-slate-100 text-slate-600 border-slate-300' };
   if (!working && !later) return { text: 'Đã chấm dứt', cls: 'bg-slate-100 text-slate-600 border-slate-300' };
   if (c.to && c.to < t) return later ? { text: 'Đã tái ký', cls: 'bg-slate-100 text-slate-500 border-slate-300' } : { text: 'Hết hạn', cls: 'bg-rose-50 text-rose-700 border-rose-300' };
   if (c.to && c.to <= addDays(t, soonDays) && !later) return { text: 'Sắp hết hạn', cls: 'bg-orange-50 text-orange-700 border-orange-300' };
@@ -381,11 +449,14 @@ const validate = (c: Contract, all: Contract[]): Record<string, string> => {
   if (!c.no.trim()) e.no = 'Bắt buộc';
   else if (all.some((x) => x.id !== c.id && x.no.toLowerCase() === c.no.trim().toLowerCase())) e.no = 'Số hợp đồng đã tồn tại';
   if (!c.type) e.type = 'Bắt buộc';
-  if (!isK(c.type, 'KXD') && !c.term) e.term = 'Bắt buộc';
   if (!c.signDate) e.signDate = 'Bắt buộc';
   if (!c.from) e.from = 'Bắt buộc';
-  if (!isK(c.type, 'KXD') && !c.to) e.to = 'Bắt buộc';
   if (c.to && c.from && c.to < c.from) e.to = 'Trước ngày có hiệu lực';
+  if (!c.signer.trim()) e.signer = 'Chọn người ký';
+  if (incomeOf(c) < salaryOf(c) + LUNCH) e.income = `Tối thiểu ${money(salaryOf(c) + LUNCH)} (Lương cơ bản + ăn trưa ${money(LUNCH)})`;
+  if (c.ended && !c.ended.date) e.ended = 'Nhập ngày hết hiệu lực';
+  else if (c.ended && c.from && c.ended.date < c.from) e.ended = 'Ngày hết hiệu lực trước ngày bắt đầu';
+  else if (c.ended && c.to && c.ended.date > c.to) e.ended = 'Sau ngày kết thúc — hợp đồng sẽ tự hết hạn';
   if (!c.unit) e.unit = 'Bắt buộc';
   if (!c.position.trim()) e.position = 'Bắt buộc';
   if (c.rate < 0 || c.rate > 100) e.rate = 'Từ 0 đến 100%';
@@ -405,6 +476,8 @@ const diffC = (a: Contract, b: Contract) => {
   SUPPORTS.forEach((x) => supportAmt(a, x.name) !== supportAmt(b, x.name) && out.push(`${x.name}: ${money(supportAmt(a, x.name)) || 0} → ${money(supportAmt(b, x.name)) || 0}`));
   if (JSON.stringify(a.insurance) !== JSON.stringify(b.insurance)) out.push('Bảo hiểm: đã cập nhật');
   if (a.files.length !== b.files.length) out.push('File đính kèm: đã cập nhật');
+  if (JSON.stringify(a.ended || null) !== JSON.stringify(b.ended || null))
+    out.push(b.ended ? `Trạng thái hợp đồng: Hết hiệu lực từ ${dmy(b.ended.date)}${b.ended.reason ? ` (${b.ended.reason})` : ''}` : 'Trạng thái hợp đồng: bỏ hết hiệu lực — tự động theo ngày');
   return out;
 };
 const lineOf = (c: Contract) => `${c.no} · ${shortOf(c.type)}${c.term ? ` ${c.term}` : ''} · ${dmy(c.from)} → ${c.to ? dmy(c.to) : 'không thời hạn'}`;
@@ -434,9 +507,9 @@ const blankFor = (w: Worker | undefined, s: Store, type?: CType, from?: string):
     jobDesc: last?.jobDesc || (w ? `${w.position} — ${w.unit}` : ''),
     baseSalary: last?.baseSalary || (w ? BASE_BY_POS(w.position) : 0),
     rate: rateOf(tp),
-    allowances: last ? normSupports(last.allowances) : supportsOf([730_000]),
-    perfBonus: last?.perfBonus || 0,
+    ...fitIncome({ baseSalary: last?.baseSalary || (w ? BASE_BY_POS(w.position) : 0), rate: rateOf(tp), allowances: [], perfBonus: 0 }, last ? incomeOf(last) : 0),
     insurance: { bhxh: insuranceOf(tp), bhyt: insuranceOf(tp), bhtn: insuranceOf(tp) },
+    signerId: sg?.signerId || '',
     signerSalutation: sg?.salutation || '',
     signer: sg?.signer || '',
     signerTitle: sg?.signerTitle || '',
@@ -448,26 +521,27 @@ const blankFor = (w: Worker | undefined, s: Store, type?: CType, from?: string):
   };
 };
 
-/** Bản in mặc định (HTML → in / lưu PDF) — dùng khi loại HĐ chưa có template Word. Nhiều HĐ → nhiều trang. */
-const printHtml = (items: { w: Worker; c: Contract }[]) => {
+/** Một trang bản in mặc định (HTML) — dùng khi loại HĐ chưa có template Word; dùng chung cho "In hợp đồng" trong popup. */
+const defaultPageHtml = ({ w, c }: { w: Worker; c: Contract }) => {
   const row = (k: string, v: string) => `<tr><td class="k">${k}</td><td>${escHtml(v) || '…………………………'}</td></tr>`;
   const e = escHtml;
-  const page = ({ w, c }: { w: Worker; c: Contract }) => `<section>
+  return `<section class="dflt">
 <p class="c"><b>CỘNG HOÀ XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><br><b><u>Độc lập – Tự do – Hạnh phúc</u></b></p>
 <h1>${e(c.type.toUpperCase())}</h1><p class="sub">Số: ${e(c.no)}</p>
 <h2>Bên A — Người sử dụng lao động</h2><table>${row('Công ty', companyById(c.companyId)?.name || '')}${row('Địa chỉ', companyById(c.companyId)?.address || '')}${row('Mã số thuế', companyById(c.companyId)?.taxCode || '')}${row('Đơn vị', c.unit)}${row('Người đại diện', `${c.signerSalutation} ${c.signer}`.trim())}${row('Chức vụ', c.signerTitle)}${c.authorization ? row('Theo', c.authorization) : ''}</table>
 <h2>Bên B — Người lao động</h2><table>${row('Họ và tên', w.name)}${row('Mã NLĐ', w.code)}${row('Giới tính', w.gender)}${row('Ngày sinh', dmy(w.birthDate))}${row('Số CCCD / Hộ chiếu', w.idNo)}${row('Ngày cấp', dmy(w.idDate))}${row('Nơi cấp', w.idPlace)}${row('Nơi đăng ký hộ khẩu', w.address)}${row('Nơi ở hiện tại', w.currentAddress)}${row('Số điện thoại', w.phone)}</table>
-<h2>Điều 1. Thời hạn và công việc</h2><table>${row('Loại hợp đồng', c.type)}${row('Thời hạn', isK(c.type, 'KXD') ? 'Không xác định thời hạn' : `${c.term} — từ ${dmy(c.from)} đến ${dmy(c.to)}`)}${row('Vị trí công việc', c.position)}${row('Mô tả công việc', c.jobDesc)}${row('Nơi làm việc', c.workplace)}${row('Thời gian làm việc', c.workTime)}</table>
+<h2>Điều 1. Thời hạn và công việc</h2><table>${row('Loại hợp đồng', c.type)}${row('Thời hạn', isK(c.type, 'KXD') ? 'Không xác định thời hạn' : `${c.term ? `${c.term} — ` : ''}từ ${dmy(c.from)}${c.to ? ` đến ${dmy(c.to)}` : ''}`)}${row('Vị trí công việc', c.position)}${row('Mô tả công việc', c.jobDesc)}${row('Nơi làm việc', c.workplace)}${row('Thời gian làm việc', c.workTime)}</table>
 <h2>Điều 2. Tiền lương và phụ cấp</h2><table>${row('Lương cơ bản gốc', `${money(c.baseSalary)} VNĐ/tháng`)}${row('Mức hưởng', `${c.rate}%`)}${row('Lương cơ bản', `${money(salaryOf(c))} VNĐ/tháng`)}${c.allowances.filter((a) => a.amount).map((a) => row(a.name, `${money(a.amount)} VNĐ/tháng`)).join('')}${c.perfBonus ? row('Thưởng hiệu quả (tạm tính)', `${money(c.perfBonus)} VNĐ/tháng`) : ''}</table>
 <h2>Điều 3. Bảo hiểm</h2><p>Tham gia: ${[c.insurance.bhxh && 'BHXH', c.insurance.bhyt && 'BHYT', c.insurance.bhtn && 'BHTN'].filter(Boolean).join(', ') || 'Không'} theo quy định hiện hành.</p>
 ${c.note ? `<h2>Ghi chú</h2><p>${e(c.note)}</p>` : ''}
 <p style="margin-top:16px">Hợp đồng lập tại ${e(c.signPlace) || '…………'}, ngày ${dmy(c.signDate) || '…………'}, thành 02 bản có giá trị như nhau, mỗi bên giữ 01 bản.</p>
 <div class="sig"><div><b>NGƯỜI LAO ĐỘNG</b><br><i>(Ký, ghi rõ họ tên)</i><br><br><br><br>${e(w.name)}</div><div><b>NGƯỜI SỬ DỤNG LAO ĐỘNG</b><br><i>(Ký, đóng dấu)</i><br><br><br><br>${e(c.signer)}</div></div></section>`;
+};
+/** Bản in mặc định (HTML → in / lưu PDF) — dùng khi loại HĐ chưa có template Word. Nhiều HĐ → nhiều trang. */
+const printHtml = (items: { w: Worker; c: Contract }[]) => {
   const html = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${items.length === 1 ? `HĐLĐ ${escHtml(items[0].c.no)}` : `In ${items.length} hợp đồng`}</title>
-<style>body{font-family:'Times New Roman',serif;font-size:14px;line-height:1.55;margin:40px 60px;color:#111}section{page-break-after:always}section:last-child{page-break-after:auto}
-h1{text-align:center;font-size:20px;margin:6px 0 2px}.c{text-align:center}.sub{text-align:center;font-style:italic;margin-bottom:16px}table{width:100%;border-collapse:collapse;margin:4px 0 10px}
-td{padding:3px 4px;vertical-align:top}td.k{width:200px;color:#333}h2{font-size:15px;margin:14px 0 4px}.sig{display:flex;justify-content:space-between;margin-top:36px;text-align:center}.sig div{width:45%}
-@media print{body{margin:18mm}}</style></head><body>${items.map(page).join('')}<script>window.onload=()=>setTimeout(()=>window.print(),300)</script></body></html>`;
+<style>body{font-family:'Times New Roman',serif;font-size:14px;line-height:1.55;margin:40px 60px;color:#111}${PRINT_CSS}
+@media print{body{margin:18mm}}</style></head><body>${items.map(defaultPageHtml).join('')}<script>window.onload=()=>setTimeout(()=>window.print(),300)</script></body></html>`;
   const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
   if (!window.open(url, '_blank')) {
     const a = document.createElement('a');
@@ -602,6 +676,7 @@ const toPrintItem = ({ w, c }: { w: Worker; c: Contract }): PrintItem => ({
   defaultTpl: templateForType(c.type, c.companyId) || null,
   attachments: attachmentsFor(c.type, c.companyId),
   dataOf: (app, appDate) => mergeDataOf(c, w, app, appDate),
+  defaultHtml: () => defaultPageHtml({ w, c }),
 });
 /** In ngay theo mẫu mặc định (không mở popup). */
 export const printContracts = (items: { w: Worker; c: Contract }[], flash?: (m: string) => void) =>
@@ -717,6 +792,16 @@ const COLS: Col[] = [
   { key: 'workplace', label: 'Nơi làm việc', width: 180, sort: (r) => r.c.workplace, cell: (r) => r.c.workplace || '—', xlsx: (r) => r.c.workplace },
   { key: 'note', label: 'Ghi chú', width: 200, sort: (r) => r.c.note, cell: (r) => r.c.note || '—', xlsx: (r) => r.c.note },
 ];
+/** Giá trị dùng cho phễu lọc theo cột = đúng chữ đang hiển thị trong ô */
+const COL_GETTERS: Record<string, (r: Row) => string> = Object.fromEntries(
+  COLS.map((c) => [
+    c.key,
+    (r: Row) => {
+      const v = c.xlsx(r);
+      return typeof v === 'number' ? money(v) : String(v ?? '');
+    },
+  ]),
+);
 const COLS_KEY = 'contracts-visible-cols-v2';
 const loadCols = (): string[] => {
   try {
@@ -826,9 +911,9 @@ const ContractList: React.FC<{ s: Store; setMode: (m: Mode) => void; flash: (m: 
   const noContract = s.workers.filter((w) => w.working && !latestOf.has(w.id));
   const countOf = (v: View) => (v === 'noContract' ? noContract.length : all.filter((r) => inView(r, v)).length);
 
-  const rows = useMemo(() => {
+  const pre = useMemo(() => {
     const n = norm(q);
-    const out = all
+    return all
       .filter((r) => inView(r, view))
       .filter((r) => !typeF || kindOf(r.c.type) === typeF)
       .filter((r) => !unit || r.c.unit === unit)
@@ -844,14 +929,18 @@ const ContractList: React.FC<{ s: Store; setMode: (m: Mode) => void; flash: (m: 
           (!adv.toB || (r.c.to && r.c.to <= adv.toB)) &&
           (!adv.status || r.st.text === adv.status),
       );
+  }, [all, view, typeF, unit, q, adv, latestOf, t, soonDays, cat]); // eslint-disable-line react-hooks/exhaustive-deps
+  const colF = useColumnFilters(pre, COL_GETTERS);
+  const rows = useMemo(() => {
+    const out = [...colF.rows];
     const col = COLS.find((c) => c.key === sort.key);
     if (col?.sort) out.sort((a, b) => (col.sort!(a) < col.sort!(b) ? -1 : col.sort!(a) > col.sort!(b) ? 1 : 0) * sort.dir || b.c.no.localeCompare(a.c.no));
     return out;
-  }, [all, view, typeF, unit, q, adv, sort, latestOf, t, soonDays, cat]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [colF.rows, sort]);
   const pages = Math.max(1, Math.ceil(rows.length / size));
   const pg = Math.min(page, pages);
   const shown = rows.slice((pg - 1) * size, pg * size);
-  useEffect(() => setPage(1), [view, typeF, unit, q, adv, size]);
+  useEffect(() => setPage(1), [view, typeF, unit, q, adv, size, colF.filters]);
   const pickedRows = rows.filter((r) => picked.has(r.c.id));
   const allOnPage = shown.length > 0 && shown.every((r) => picked.has(r.c.id));
   const advCount = [adv.types.length > 0, adv.signA || adv.signB, adv.fromA || adv.fromB, adv.toA || adv.toB, adv.status].filter(Boolean).length;
@@ -1115,6 +1204,7 @@ const ContractList: React.FC<{ s: Store; setMode: (m: Mode) => void; flash: (m: 
               <NoContractTable workers={noContract.filter((w) => (!unit || w.unit === unit) && (!q || [w.name, w.code, w.position].some((v) => norm(v).includes(norm(q)))))} onAdd={(id) => setMode({ kind: 'new', workerId: id })} />
             ) : (
               <>
+                <ColumnFilterBar active={colF.active} filters={colF.filters} labelOf={(k) => COLS.find((c) => c.key === k)?.label || k} onRemove={(k) => colF.set(k, [])} onClear={colF.clear} />
                 <div className="overflow-auto max-h-[calc(100vh-320px)] min-h-[260px]">
                   <table className={erp.table} style={{ width: LEAD[0] + LEAD[1] + cols.reduce((x, c) => x + c.width, 0), minWidth: '100%' }}>
                     <thead className="sticky top-0 z-20">
@@ -1140,10 +1230,17 @@ const ContractList: React.FC<{ s: Store; setMode: (m: Mode) => void; flash: (m: 
                             style={{ width: c.width, minWidth: c.width, left: pinOffsets[i] >= 0 ? pinOffsets[i] : undefined }}
                             className={`${th} ${pinOffsets[i] >= 0 ? 'sticky z-30' : ''} ${i === lastPin ? 'shadow-[2px_0_0_0_#cbd5e1]' : ''} ${i === cols.length - 1 ? 'border-r-0' : ''} ${c.align === 'right' ? 'text-right' : c.align === 'center' ? 'text-center' : 'text-left'}`}
                           >
-                            <button type="button" onClick={() => setSort((x) => ({ key: c.key, dir: x.key === c.key ? (x.dir === 1 ? -1 : 1) : 1 }))} className={`inline-flex items-center gap-1 cursor-pointer hover:text-[#1f5fa8] ${c.align === 'right' ? 'flex-row-reverse' : ''}`}>
-                              {c.label}
-                              {sort.key === c.key && (sort.dir === 1 ? <ArrowUp size={12} className="text-[#1f5fa8]" /> : <ArrowDown size={12} className="text-[#1f5fa8]" />)}
-                            </button>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setSort((x) => ({ key: c.key, dir: x.key === c.key ? (x.dir === 1 ? -1 : 1) : 1 }))}
+                                className={`flex-1 min-w-0 flex items-center gap-1 cursor-pointer hover:text-[#1f5fa8] ${c.align === 'right' ? 'flex-row-reverse justify-start' : c.align === 'center' ? 'justify-center' : 'justify-start'}`}
+                              >
+                                <span className="truncate">{c.label}</span>
+                                {sort.key === c.key && (sort.dir === 1 ? <ArrowUp size={12} className="shrink-0 text-[#1f5fa8]" /> : <ArrowDown size={12} className="shrink-0 text-[#1f5fa8]" />)}
+                              </button>
+                              {colF.funnel(c.key, c.label)}
+                            </div>
                           </th>
                         ))}
                       </tr>
@@ -1272,7 +1369,7 @@ const AdvFilter: React.FC<{ adv: Adv; setAdv: (a: Adv) => void; onClose: () => v
           <span className="text-[12px] text-slate-600">Trạng thái</span>
           <select value={a.status} onChange={(e) => setA({ ...a, status: e.target.value })} className={INPUT}>
             <option value="">Tất cả</option>
-            {['Đang hiệu lực', 'Sắp hết hạn', 'Hết hạn', 'Đã tái ký', 'Chưa có hiệu lực', 'Đã chấm dứt'].map((x) => (
+            {['Đang hiệu lực', 'Sắp hết hạn', 'Hết hạn', 'Đã tái ký', 'Chưa có hiệu lực', 'Hết hiệu lực', 'Đã chấm dứt'].map((x) => (
               <option key={x}>{x}</option>
             ))}
           </select>
@@ -1556,10 +1653,17 @@ const ContractDetail: React.FC<{
         n.rate = rateOf(n.type);
         n.insurance = { bhxh: insuranceOf(n.type), bhyt: insuranceOf(n.type), bhtn: insuranceOf(n.type) };
       }
-      if ('type' in patch || 'term' in patch || 'from' in patch) n.to = endOf(n.type, n.term, n.from);
+      // Có thời hạn → tự tính ngày kết thúc; không chọn thời hạn → ngày kết thúc nhập tay (không bắt buộc)
+      // Lương / mức hưởng đổi → giữ nguyên Tổng thu nhập, chia lại hỗ trợ + HQCV theo Phụ lục 01
+      if (!('allowances' in patch) && (n.baseSalary !== o.baseSalary || n.rate !== o.rate)) Object.assign(n, withIncome(n, incomeOf(o)));
+      if ('type' in patch || 'term' in patch || 'from' in patch) {
+        if (isK(n.type, 'KXD') || n.term) n.to = endOf(n.type, n.term, n.from);
+        else if ('term' in patch || 'type' in patch) n.to = '';
+      }
       if (!noTouched && ('type' in patch || 'companyId' in patch)) n.no = nextContractNo(empCode, n.companyId, n.type, s.contracts, n.id);
-      if (!signerTouched && ('type' in patch || 'unit' in patch || 'from' in patch || 'signDate' in patch || 'companyId' in patch)) {
+      if ((!signerTouched && ('type' in patch || 'unit' in patch || 'from' in patch || 'signDate' in patch || 'companyId' in patch)) || ('companyId' in patch && signerById(n.signerId)?.companyId !== n.companyId)) {
         const sg = signerOf(n.unit, n.type, n.signDate || n.from, s.signers, n.companyId);
+        n.signerId = sg?.signerId || '';
         n.signerSalutation = sg?.salutation || '';
         n.signer = sg?.signer || '';
         n.signerTitle = sg?.signerTitle || '';
@@ -1578,10 +1682,11 @@ const ContractDetail: React.FC<{
       setSignerTouched(false);
     }
   };
+  const signerOpts = signersOf(d.companyId, d.signerId);
   const applySigner = () => {
     const sg = signerOf(d.unit, d.type, d.signDate || d.from, s.signers, d.companyId);
     if (!sg) return flash('Không có thiết lập người ký phù hợp với đơn vị / loại HĐ / ngày ký');
-    setD((o) => ({ ...o, signerSalutation: sg.salutation, signer: sg.signer, signerTitle: sg.signerTitle, authorization: sg.authorization }));
+    setD((o) => applyPick(o, sg));
     setSignerTouched(false);
   };
 
@@ -1738,7 +1843,6 @@ const ContractDetail: React.FC<{
     { label: 'Nơi ở hiện tại', value: wText('currentAddress') },
     { label: 'Số điện thoại', value: wText('phone', '', NE('phone')) },
     { label: 'Ngày vào làm', value: wDate('joinDate') },
-    ...(nw ? [] : [{ label: 'Tình trạng', value: w ? <Tag cls={w.working ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-slate-100 text-slate-600 border-slate-300'}>{w.working ? 'Đang làm việc' : 'Đã nghỉ việc'}</Tag> : '' }]),
   ];
 
   // ---- Thông tin hợp đồng
@@ -1778,14 +1882,32 @@ const ContractDetail: React.FC<{
     },
     { label: lb('Loại hợp đồng', true, ed), value: ed ? sel(d.type, (v) => set({ type: v as CType }), [...new Set([...typeNames(), d.type])].map((tp) => <option key={tp}>{tp}</option>), E('type')) : <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm" style={{ background: colorOf(d.type) }} />{d.type}</span> },
     {
-      label: lb('Thời hạn', !isK(d.type, 'KXD'), ed),
+      label: lb('Thời hạn', false, ed),
       value: ed
-        ? sel(d.term, (v) => set({ term: v }), <>{isK(d.type, 'KXD') ? <option value="">Không xác định</option> : <option value="">— Chọn —</option>}{termsOf(d.type).map((x) => <option key={x.label}>{x.label}</option>)}</>, E('term'), isK(d.type, 'KXD'))
-        : d.term || 'Không xác định thời hạn',
+        ? sel(d.term, (v) => set({ term: v }), <>{isK(d.type, 'KXD') ? <option value="">Không xác định</option> : <option value="">— Không chọn —</option>}{termsOf(d.type).map((x) => <option key={x.label}>{x.label}</option>)}</>, E('term'), isK(d.type, 'KXD'))
+        : d.term || (isK(d.type, 'KXD') ? 'Không xác định thời hạn' : '—'),
     },
     { label: lb('Ngày ký', true, ed), value: ed ? <><DateInput value={d.signDate} onChange={(v) => set({ signDate: v })} className={errCls(E('signDate'))} /><ErrText e={E('signDate')} /></> : dmy(d.signDate) },
     { label: lb('Ngày bắt đầu', true, ed), value: ed ? <><DateInput value={d.from} onChange={(v) => set({ from: v })} className={errCls(E('from'))} /><ErrText e={E('from')} /></> : dmy(d.from) },
-    { label: 'Ngày kết thúc', value: <span className="tabular-nums">{isK(d.type, 'KXD') ? 'Không thời hạn' : dmy(d.to)}{ed && <span className="ml-2 text-[11px] text-slate-400">(tự tính)</span>}<ErrText e={E('to')} /></span> },
+    {
+      label: 'Ngày kết thúc',
+      value:
+        ed && !isK(d.type, 'KXD') && !d.term ? (
+          <>
+            <span className="inline-flex items-center gap-2">
+              <DateInput value={d.to} onChange={(v) => set({ to: v })} className={errCls(E('to'))} />
+              <span className="text-[11px] text-slate-400 whitespace-nowrap">(nhập tay, không bắt buộc)</span>
+            </span>
+            <ErrText e={E('to')} />
+          </>
+        ) : (
+          <span className="tabular-nums" data-testid="contract-end">
+            {isK(d.type, 'KXD') ? 'Không thời hạn' : d.to ? dmy(d.to) : '—'}
+            {ed && <span className="ml-2 text-[11px] text-slate-400">(tự tính)</span>}
+            <ErrText e={E('to')} />
+          </span>
+        ),
+    },
   ];
   const infoRight = [
     { label: lb('Bộ phận công tác', true, ed), value: ed ? sel(d.unit, (v) => set({ unit: v }), <><option value="">— Chọn đơn vị —</option>{UNITS.map((u) => <option key={u}>{u}</option>)}</>, E('unit')) : d.unit },
@@ -1807,6 +1929,44 @@ const ContractDetail: React.FC<{
     { label: 'Thời gian làm việc', value: ed ? sel(d.workTime, (v) => set({ workTime: v }), WORK_TIMES.map((x) => <option key={x}>{x}</option>)) : d.workTime },
     { label: 'Nơi ký', value: ed ? <input value={d.signPlace} onChange={(e) => set({ signPlace: e.target.value })} className={INPUT} /> : d.signPlace },
     { label: 'Công việc phải làm', value: ed ? <textarea value={d.jobDesc} rows={2} onChange={(e) => set({ jobDesc: e.target.value })} className={`${INPUT} h-auto py-1.5 resize-y`} /> : <span className="whitespace-pre-wrap">{d.jobDesc}</span> },
+    {
+      label: 'Trạng thái hợp đồng',
+      value: (() => {
+        const autoSt = contractStatus({ ...d, ended: null }, s.contracts, w ? w.working : true);
+        const st = contractStatus(d, s.contracts, w ? w.working : true);
+        const tag = (x: { text: CStatus; note: string }) => (
+          <span className="flex flex-wrap items-center gap-2" data-testid="contract-status">
+            <Tag cls={CSTATUS_CLS[x.text]}>{x.text}</Tag>
+            <span className="text-[11.5px] text-slate-500">{x.note}</span>
+          </span>
+        );
+        if (!ed) return tag(st);
+        return (
+          <span className="block w-full space-y-1.5">
+            <select
+              value={d.ended ? 'ended' : 'auto'}
+              onChange={(e) => set({ ended: e.target.value === 'ended' ? { date: d.ended?.date || today(), reason: d.ended?.reason || '' } : null })}
+              className={INPUT}
+              data-testid="contract-status-select"
+            >
+              <option value="auto">{autoSt.text} — tự động theo ngày hợp đồng</option>
+              <option value="ended">Hết hiệu lực (chấm dứt / thay thế trước hạn)</option>
+            </select>
+            {d.ended ? (
+              <span className="grid grid-cols-[150px_minmax(0,1fr)] gap-2">
+                <span>
+                  <DateInput value={d.ended.date} onChange={(v) => set({ ended: { ...d.ended!, date: v } })} className={errCls(E('ended'))} />
+                </span>
+                <input value={d.ended.reason} onChange={(e) => set({ ended: { ...d.ended!, reason: e.target.value } })} placeholder="Lý do (VD: chấm dứt theo thoả thuận)" className={INPUT} />
+              </span>
+            ) : (
+              <span className="block text-[11.5px] text-slate-500">{autoSt.note}</span>
+            )}
+            <ErrText e={E('ended')} />
+          </span>
+        );
+      })(),
+    },
   ];
 
   // ---- Lương
@@ -1826,7 +1986,6 @@ const ContractDetail: React.FC<{
     </span>
   );
   const money1 = (v: number, on: (n: number) => void) => (ed ? <MoneyInput value={v} onChange={on} /> : <span className="tabular-nums">{money(v) || '0'}</span>);
-  const setSupport = (name: string, n: number) => set({ allowances: normSupports(d.allowances).map((a) => (a.name === name ? { ...a, amount: n } : a)) });
   // Tiền lương (Điều 3 của hợp đồng)
   const payLeft = [
     { label: 'Lương cơ bản gốc', value: money1(d.baseSalary, (n) => set({ baseSalary: n })) },
@@ -1839,10 +1998,35 @@ const ContractDetail: React.FC<{
     { label: 'Tổng thu nhập', value: <b className="tabular-nums text-[#1e3a5f]">{money(salaryOf(d) + allowTotal(d) + (d.perfBonus || 0)) || '0'}</b> },
   ];
   // Phụ lục hợp đồng — Phụ lục 01: các khoản hỗ trợ (theo bộ mẫu hợp đồng)
-  const appLeft = SUPPORTS.slice(0, 3).map((x) => ({ label: x.name, value: money1(supportAmt(d, x.name), (n) => setSupport(x.name, n)) }));
+  // Nhập Tổng thu nhập → tự chia: ăn trưa cố định, điện thoại, xăng xe, nhà ở (có trần), phần còn lại là HQCV tạm tính
+  const income = incomeOf(d);
+  const auto = (v: number, testid: string, hint: string) => (
+    <span className="inline-flex items-center gap-2" data-testid={testid}>
+      <span className={`tabular-nums ${v < 0 ? 'text-rose-600 font-semibold' : ''}`}>{money(v) || '0'}</span>
+      {ed && <span className="text-[11px] text-slate-400">{hint}</span>}
+    </span>
+  );
+  const capHint = (name: string) => `(tự tính, tối đa ${money(INCOME_RULE.find((x) => x.name === name)!.cap)})`;
+  const appLeft = [
+    {
+      label: lb('Tổng thu nhập', true, ed),
+      value: ed ? (
+        <>
+          <span data-testid="income-input"><MoneyInput value={income} onChange={(n) => { const x = withIncome(d, n); set({ allowances: x.allowances, perfBonus: x.perfBonus }); }} /></span>
+          <ErrText e={E('income')} />
+        </>
+      ) : (
+        <b className="tabular-nums text-[#1e3a5f]">{money(income) || '0'}</b>
+      ),
+    },
+    { label: 'Lương cơ bản', value: auto(salaryOf(d), 'inc-lcb', '(= Mức lương ở Điều 3)') },
+    { label: 'Hỗ trợ ăn trưa', value: auto(supportAmt(d, 'Hỗ trợ ăn trưa'), 'inc-lunch', '(cố định)') },
+    { label: 'Hỗ trợ điện thoại', value: auto(supportAmt(d, 'Hỗ trợ điện thoại'), 'inc-phone', capHint('Hỗ trợ điện thoại')) },
+  ];
   const appRight = [
-    ...SUPPORTS.slice(3).map((x) => ({ label: x.name, value: money1(supportAmt(d, x.name), (n) => setSupport(x.name, n)) })),
-    { label: 'Thưởng hiệu quả (tạm tính)', value: money1(d.perfBonus || 0, (n) => set({ perfBonus: n })) },
+    { label: 'Hỗ trợ xăng xe', value: auto(supportAmt(d, 'Hỗ trợ xăng xe'), 'inc-fuel', capHint('Hỗ trợ xăng xe')) },
+    { label: 'Hỗ trợ nhà ở', value: auto(supportAmt(d, 'Hỗ trợ nhà ở'), 'inc-house', capHint('Hỗ trợ nhà ở')) },
+    { label: 'HQCV tạm tính', value: auto(d.perfBonus || 0, 'inc-perf', '(phần còn lại)') },
     { label: 'Tổng hỗ trợ & thưởng', value: <b className="tabular-nums text-slate-900">{money(allowTotal(d) + (d.perfBonus || 0)) || '0'}</b> },
   ];
 
@@ -1987,6 +2171,12 @@ const ContractDetail: React.FC<{
             footer={`Đính kèm hợp đồng số ${d.no || '…'} · có hiệu lực từ ngày ${dmy(d.from) || '…'}${d.to ? ` đến ngày ${dmy(d.to)}` : ''}, theo thời hạn của hợp đồng · in cùng hợp đồng (Phụ lục 01 trong mẫu Word).`}
           >
             <InfoGrid left={appLeft} right={appRight} labelW={[150, 200]} />
+            {ed && (
+              <div className="px-3 py-2 border-t border-slate-200 bg-[#f7f9fc] text-[11.5px] text-slate-600 leading-[1.7]" data-testid="income-rule">
+                <b className="text-slate-700">Cách tính</b> (LCB = Mức lương; mỗi khoản tối thiểu 0 đ): Ăn trưa cố định <b>{money(LUNCH)}</b> · Điện thoại = TN − LCB − ăn trưa, tối đa <b>1,000,000</b> · Xăng xe = TN − LCB − ăn trưa − điện thoại, tối đa{' '}
+                <b>1,500,000</b> · Nhà ở = TN − LCB − ăn trưa − điện thoại − xăng xe, tối đa <b>2,000,000</b> · HQCV tạm tính = TN − (LCB + ăn trưa + điện thoại + xăng xe + nhà ở).
+              </div>
+            )}
           </Panel>
 
           <Panel
@@ -2000,30 +2190,48 @@ const ContractDetail: React.FC<{
                 </button>
               ) : undefined
             }
-            footer={ed && !signerTouched ? 'Tự động theo Thiết lập người ký khi đổi công ty, đơn vị, loại HĐ hoặc ngày ký (không có thiết lập → người đại diện của công ty).' : undefined}
+            footer={ed && !signerTouched ? 'Tự động theo Thiết lập người ký khi đổi công ty, đơn vị, loại HĐ hoặc ngày ký (không có thiết lập → người ký mặc định của công ty trong Danh mục người ký).' : undefined}
           >
             <InfoGrid
               left={[
                 {
-                  label: 'Người ký',
+                  label: lb('Người ký', true, ed),
                   value: ed ? (
-                    <span className="flex items-center gap-1.5 w-full">
-                      <select value={d.signerSalutation} onChange={(e) => (setSignerTouched(true), setD({ ...d, signerSalutation: e.target.value }))} className={`${INPUT} w-20`}>
-                        <option value="">—</option>
-                        <option>Ông</option>
-                        <option>Bà</option>
+                    <>
+                      <select
+                        data-testid="signer-select"
+                        value={signerOpts.some((x) => x.id === d.signerId) ? d.signerId : ''}
+                        onChange={(e) => {
+                          const sg = signerById(e.target.value);
+                          if (!sg) return;
+                          setSignerTouched(true);
+                          setD((o) => applyPick(o, pickOf(sg)));
+                        }}
+                        className={`${INPUT} ${errCls(E('signer'))}`}
+                      >
+                        {!signerOpts.some((x) => x.id === d.signerId) && <option value="">{d.signer ? `${d.signerSalutation} ${d.signer} (không có trong danh mục)` : '— Chọn người ký —'}</option>}
+                        {signerOpts.map((x) => (
+                          <option key={x.id} value={x.id}>
+                            {x.salutation} {x.name} — {x.title}
+                            {x.isDefault ? ' (mặc định)' : ''}
+                            {!x.active ? ' (ngừng sử dụng)' : ''}
+                          </option>
+                        ))}
                       </select>
-                      <input value={d.signer} onChange={(e) => (setSignerTouched(true), setD({ ...d, signer: e.target.value }))} className={INPUT} />
-                    </span>
+                      <ErrText e={E('signer')} />
+                    </>
                   ) : (
                     <b>
                       {d.signerSalutation} {d.signer}
                     </b>
                   ),
                 },
-                { label: 'Chức danh', value: ed ? <input value={d.signerTitle} onChange={(e) => (setSignerTouched(true), setD({ ...d, signerTitle: e.target.value }))} className={INPUT} /> : d.signerTitle },
+                { label: 'Chức danh', value: d.signerTitle || '—' },
               ]}
-              right={[{ label: 'Giấy uỷ quyền', value: ed ? <input value={d.authorization} placeholder="Số / ngày giấy uỷ quyền (nếu có)" onChange={(e) => (setSignerTouched(true), setD({ ...d, authorization: e.target.value }))} className={INPUT} /> : d.authorization }]}
+              right={[
+                { label: 'Giấy uỷ quyền', value: d.authorization || <span className="text-slate-400">— (người đại diện theo pháp luật)</span> },
+                ...(ed ? [{ label: 'Danh mục', value: <span className="text-[12px] text-slate-500">{signerOpts.length} người ký của {companyById(d.companyId)?.shortName || 'công ty'} · thêm / sửa tại <b>Danh mục hợp đồng › Người ký</b></span> }] : []),
+              ]}
             />
           </Panel>
 
@@ -2196,10 +2404,10 @@ const RenewPanel: React.FC<{ s: Store; rows: Row[]; onClose: () => void; onDone:
         workTime: last.workTime,
         jobDesc: last.jobDesc,
         baseSalary: last.baseSalary,
-        allowances: normSupports(last.allowances),
-        perfBonus: last.perfBonus || 0,
+        ...fitIncome({ baseSalary: last.baseSalary, rate: rateOf(k.type), allowances: last.allowances, perfBonus: last.perfBonus || 0 }, incomeOf(last)),
       };
       const sg = signerOf(c.unit, c.type, c.signDate, s.signers, c.companyId);
+      c.signerId = sg?.signerId || '';
       c.signerSalutation = sg?.salutation || '';
       c.signer = sg?.signer || '';
       c.signerTitle = sg?.signerTitle || '';
@@ -2334,13 +2542,13 @@ const RenewPanel: React.FC<{ s: Store; rows: Row[]; onClose: () => void; onDone:
 // ==========================================================================
 // Nhập từ Excel
 // ==========================================================================
-const TPL_COLS = ['Mã NLĐ', 'Số HĐ', 'Loại HĐ', 'Thời hạn', 'Ngày ký', 'Ngày có hiệu lực', 'Ngày hết hạn', 'Đơn vị ký HĐ', 'Vị trí công việc', 'Lương cơ bản gốc', 'Mức hưởng (%)', 'Ghi chú', 'Mã công ty', ...SUPPORTS.map((x) => x.name), 'Thưởng hiệu quả (tạm tính)'];
+const TPL_COLS = ['Mã NLĐ', 'Số HĐ', 'Loại HĐ', 'Thời hạn', 'Ngày ký', 'Ngày có hiệu lực', 'Ngày hết hạn', 'Đơn vị ký HĐ', 'Vị trí công việc', 'Lương cơ bản gốc', 'Mức hưởng (%)', 'Ghi chú', 'Mã công ty', 'Tổng thu nhập'];
 const downloadTemplate = () => {
   const t = today();
   const sample = STATE.workers.find((w) => w.working && !STATE.contracts.some((c) => c.workerId === w.id));
   const ws = XLSX.utils.aoa_to_sheet([
     TPL_COLS,
-    [sample?.code || 'NV1010', '', TV, '2 tháng', dmy(t), dmy(t), '', sample?.unit || UNITS[4], sample?.position || 'Kỹ sư phần mềm', 24_000_000, 85, 'Để trống Số HĐ: hệ thống tự sinh theo «Mã NV»/«ký hiệu công ty»/«ký hiệu loại HĐ»', getCatalog().companies.find((co) => co.id === defaultCompanyId())?.code || '', 730_000, 500_000, 0, 0, 0],
+    [sample?.code || 'NV1010', '', TV, '2 tháng', dmy(t), dmy(t), '', sample?.unit || UNITS[4], sample?.position || 'Kỹ sư phần mềm', 24_000_000, 85, 'Để trống Số HĐ: hệ thống tự sinh theo «Mã NV»/«ký hiệu công ty»/«ký hiệu loại HĐ»', getCatalog().companies.find((co) => co.id === defaultCompanyId())?.code || '', 25_000_000],
   ]);
   ws['!cols'] = TPL_COLS.map((c) => ({ wch: Math.max(14, c.length + 4) }));
   const ref = XLSX.utils.aoa_to_sheet([
@@ -2355,7 +2563,8 @@ const downloadTemplate = () => {
     [],
     ['Ghi chú'],
     ['Số HĐ đã tồn tại → cập nhật hợp đồng đó; để trống hoặc số mới → thêm mới.'],
-    ['Ngày dạng dd/mm/yyyy. Ngày hết hạn để trống sẽ tự tính theo loại HĐ và thời hạn.'],
+    [`Tổng thu nhập: hệ thống tự chia theo Phụ lục 01 — ăn trưa ${money(LUNCH)} cố định; điện thoại (tối đa 1,000,000), xăng xe (tối đa 1,500,000), nhà ở (tối đa 2,000,000) lần lượt lấy từ phần TN − Lương cơ bản − ăn trưa; còn lại là HQCV tạm tính. Để trống → giữ Tổng thu nhập hiện tại.`],
+    ['Ngày dạng dd/mm/yyyy. Thời hạn không bắt buộc; ngày hết hạn để trống sẽ tự tính theo loại HĐ và thời hạn (không có thời hạn → để trống = chưa xác định ngày hết hạn).'],
   ]);
   ref['!cols'] = [{ wch: 40 }, { wch: 40 }];
   const wb = XLSX.utils.book_new();
@@ -2421,7 +2630,7 @@ const ImportPanel: React.FC<{ s: Store; onClose: () => void; flash: (m: string) 
       const type = matchType(typeRaw) || (typeRaw ? undefined : old?.type);
       if (!type) return fail(typeRaw ? `Loại HĐ không hợp lệ: ${typeRaw}` : 'Loại HĐ: Bắt buộc');
       const term = isK(type, 'KXD') ? '' : gs('Thời hạn') || (old?.type === type ? old.term : '');
-      if (!isK(type, 'KXD') && !termsOf(type).some((x) => x.label === term)) return fail(term ? `Thời hạn "${term}" không hợp lệ với ${shortOf(type)}` : 'Thời hạn: Bắt buộc');
+      if (!isK(type, 'KXD') && term && !termsOf(type).some((x) => x.label === term)) return fail(`Thời hạn "${term}" không hợp lệ với ${shortOf(type)}`);
       const dates: Record<string, string> = {};
       for (const [k, label] of [
         ['signDate', 'Ngày ký'],
@@ -2447,7 +2656,7 @@ const ImportPanel: React.FC<{ s: Store; onClose: () => void; flash: (m: string) 
       const rate = rateRaw === '' ? undefined : parseRate(rateRaw);
       if (rate === null) return fail('Mức hưởng phải là số');
       const amounts: Record<string, number | undefined> = {};
-      for (const label of [...SUPPORTS.map((x) => x.name), 'Thưởng hiệu quả (tạm tính)']) {
+      for (const label of ['Tổng thu nhập', ...SUPPORTS.map((x) => x.name), 'Thưởng hiệu quả (tạm tính)']) {
         const v = g(label);
         const n = v === '' || v === undefined ? undefined : parseAmount(v);
         if (n === null) return fail(`${label} không đúng dạng số: ${v}`);
@@ -2472,10 +2681,16 @@ const ImportPanel: React.FC<{ s: Store; onClose: () => void; flash: (m: string) 
         allowances: normSupports(baseC.allowances).map((a) => ({ ...a, amount: num(a.name) ?? a.amount })),
         perfBonus: num('Thưởng hiệu quả (tạm tính)') ?? baseC.perfBonus ?? 0,
       };
+      // Phụ lục 01: chia lại theo Tổng thu nhập (cột "Tổng thu nhập"; file cũ có từng khoản hỗ trợ → lấy tổng các khoản)
+      const legacy = [...SUPPORTS.map((x) => x.name), 'Thưởng hiệu quả (tạm tính)'].some((l) => num(l) !== undefined);
+      const tn = num('Tổng thu nhập');
+      if (tn !== undefined && tn < salaryOf(c) + LUNCH) return fail(`Tổng thu nhập ${money(tn)} thấp hơn Lương cơ bản + ăn trưa (${money(salaryOf(c) + LUNCH)})`);
+      Object.assign(c, fitIncome(c, tn ?? (old && !legacy ? incomeOf(old) : incomeOf(c))));
       if (!old) {
         // HĐ mới: người ký theo thiết lập
         const sg = signerOf(c.unit, c.type, c.signDate, s.signers, c.companyId);
-        c.signerSalutation = sg?.salutation || '';
+        c.signerId = sg?.signerId || '';
+      c.signerSalutation = sg?.salutation || '';
         c.signer = sg?.signer || '';
         c.signerTitle = sg?.signerTitle || '';
         c.authorization = sg?.authorization || '';
@@ -2600,7 +2815,8 @@ const ImportPanel: React.FC<{ s: Store; onClose: () => void; flash: (m: string) 
 // Thiết lập người ký hợp đồng
 // ==========================================================================
 const SignerSetup: React.FC<{ s: Store; onBack: () => void; flash: (m: string) => void }> = ({ s, onBack, flash }) => {
-  const blank = (): SignerSetting => ({ id: uid(), unit: '', types: [...typeNames()], from: today(), salutation: 'Ông', signer: '', signerTitle: '', authorization: '' });
+  const cat = useCatalog();
+  const blank = (): SignerSetting => ({ id: uid(), signerId: '', unit: '', types: [...typeNames()], from: today(), salutation: 'Ông', signer: '', signerTitle: '', authorization: '' });
   const [form, setForm] = useState<SignerSetting | null>(null);
   const [tried, setTried] = useState(false);
   const [delId, setDelId] = useState<string | null>(null);
@@ -2609,16 +2825,17 @@ const SignerSetup: React.FC<{ s: Store; onBack: () => void; flash: (m: string) =
   if (form) {
     if (!form.types.length) errs.types = 'Chọn ít nhất 1 loại';
     if (!form.from) errs.from = 'Bắt buộc';
-    if (!form.signer.trim()) errs.signer = 'Bắt buộc';
-    if (!form.signerTitle.trim()) errs.signerTitle = 'Bắt buộc';
-    const dup = s.signers.find((x) => x.id !== form.id && x.unit === form.unit && x.from === form.from && x.types.some((tp) => form.types.includes(tp)));
+    if (!form.signerId) errs.signer = 'Chọn người ký trong Danh mục người ký';
+    const coOf = (x: SignerSetting) => signerById(x.signerId)?.companyId;
+    const dup = s.signers.find((x) => x.id !== form.id && coOf(x) === coOf(form) && x.unit === form.unit && x.from === form.from && x.types.some((tp) => form.types.includes(tp)));
     if (dup) errs.from = `Trùng thiết lập của ${dup.signer} (cùng đơn vị, ngày hiệu lực, loại HĐ)`;
   }
   const E = (k: string) => (tried ? errs[k] : undefined);
   const save = () => {
     setTried(true);
     if (!form || Object.keys(errs).length) return;
-    const v = { ...form, signer: form.signer.trim(), signerTitle: form.signerTitle.trim(), authorization: form.authorization.trim() };
+    const sg = signerById(form.signerId)!;
+    const v: SignerSetting = { ...form, salutation: sg.salutation, signer: sg.name, signerTitle: sg.title, authorization: sg.authorization };
     update((x) => ({ ...x, signers: isEdit ? x.signers.map((y) => (y.id === v.id ? v : y)) : [...x.signers, v] }));
     flash(isEdit ? 'Đã cập nhật thiết lập người ký' : 'Đã thêm thiết lập người ký');
     setForm(null);
@@ -2626,8 +2843,8 @@ const SignerSetup: React.FC<{ s: Store; onBack: () => void; flash: (m: string) =
   };
   const list = [...s.signers].sort((a, b) => a.unit.localeCompare(b.unit) || b.from.localeCompare(a.from));
   const exportX = () => {
-    const ws = XLSX.utils.aoa_to_sheet([['Đơn vị', 'Loại hợp đồng', 'Ngày hiệu lực', 'Người ký', 'Chức danh', 'Giấy uỷ quyền'], ...list.map((x) => [x.unit || 'Tất cả đơn vị', x.types.map((tp) => shortOf(tp)).join(', '), dmy(x.from), `${x.salutation} ${x.signer}`, x.signerTitle, x.authorization])]);
-    ws['!cols'] = [{ wch: 34 }, { wch: 50 }, { wch: 14 }, { wch: 24 }, { wch: 22 }, { wch: 50 }];
+    const ws = XLSX.utils.aoa_to_sheet([['Công ty', 'Đơn vị', 'Loại hợp đồng', 'Ngày hiệu lực', 'Người ký', 'Chức danh', 'Giấy uỷ quyền'], ...list.map((x) => [companyById(signerById(x.signerId)?.companyId || '')?.name || '', x.unit || 'Tất cả đơn vị', x.types.map((tp) => shortOf(tp)).join(', '), dmy(x.from), `${x.salutation} ${x.signer}`, x.signerTitle, x.authorization])]);
+    ws['!cols'] = [{ wch: 30 }, { wch: 34 }, { wch: 50 }, { wch: 14 }, { wch: 24 }, { wch: 22 }, { wch: 50 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'NguoiKy');
     XLSX.writeFile(wb, 'thiet-lap-nguoi-ky.xlsx');
@@ -2653,7 +2870,7 @@ const SignerSetup: React.FC<{ s: Store; onBack: () => void; flash: (m: string) =
         notice={
           <div className="flex items-center gap-2 px-4 py-1.5 bg-slate-50 text-[12px] text-slate-600">
             <Settings2 size={13} className="shrink-0 text-[#1f5fa8]" />
-            Khi thêm / tái ký hợp đồng, người ký mặc định lấy theo thiết lập khớp <b>đơn vị ký HĐ</b> (ưu tiên thiết lập riêng của đơn vị hơn "Tất cả đơn vị"), <b>loại HĐ</b> và có <b>ngày hiệu lực</b> gần nhất không sau ngày ký.
+            Khi thêm / tái ký hợp đồng, người ký mặc định lấy theo thiết lập khớp <b>đơn vị ký HĐ</b> (ưu tiên thiết lập riêng của đơn vị hơn "Tất cả đơn vị"), <b>loại HĐ</b> và có <b>ngày hiệu lực</b> gần nhất không sau ngày ký, và người ký thuộc <b>công ty ký HĐ</b>. Không có thiết lập phù hợp → người ký mặc định của công ty (Danh mục hợp đồng › Người ký).
           </div>
         }
       />
@@ -2718,27 +2935,27 @@ const SignerSetup: React.FC<{ s: Store; onBack: () => void; flash: (m: string) =
                 label: lb('Người ký', true, true),
                 value: (
                   <>
-                    <span className="flex items-center gap-1.5 w-full">
-                      <select value={form.salutation} onChange={(e) => setForm({ ...form, salutation: e.target.value })} className={`${INPUT} w-20`}>
-                        <option>Ông</option>
-                        <option>Bà</option>
-                      </select>
-                      <input value={form.signer} onChange={(e) => setForm({ ...form, signer: e.target.value })} className={`${INPUT} ${errCls(E('signer'))}`} />
-                    </span>
+                    <select data-testid="setup-signer" value={form.signerId} onChange={(e) => setForm({ ...form, signerId: e.target.value })} className={`${INPUT} ${errCls(E('signer'))}`}>
+                      <option value="">— Chọn người ký —</option>
+                      {cat.companies.map((co) => {
+                        const list = signersOf(co.id, form.signerId);
+                        return list.length ? (
+                          <optgroup key={co.id} label={co.shortName || co.name}>
+                            {list.map((x) => (
+                              <option key={x.id} value={x.id}>
+                                {x.salutation} {x.name} — {x.title}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ) : null;
+                      })}
+                    </select>
                     <ErrText e={E('signer')} />
                   </>
                 ),
               },
-              {
-                label: lb('Chức danh', true, true),
-                value: (
-                  <>
-                    <input value={form.signerTitle} onChange={(e) => setForm({ ...form, signerTitle: e.target.value })} className={`${INPUT} ${errCls(E('signerTitle'))}`} />
-                    <ErrText e={E('signerTitle')} />
-                  </>
-                ),
-              },
-              { label: 'Giấy uỷ quyền', value: <input value={form.authorization} placeholder="Số / ngày giấy uỷ quyền (nếu có)" onChange={(e) => setForm({ ...form, authorization: e.target.value })} className={INPUT} /> },
+              { label: 'Công ty', value: companyById(signerById(form.signerId)?.companyId || '')?.name || '—' },
+              { label: 'Giấy uỷ quyền', value: signerById(form.signerId)?.authorization || '—' },
             ]}
           />
         </Panel>
@@ -2750,7 +2967,7 @@ const SignerSetup: React.FC<{ s: Store; onBack: () => void; flash: (m: string) =
             <thead>
               <tr>
                 <th className={`${th} border-l-0 w-12 text-center`}>STT</th>
-                {['Đơn vị ký HĐ', 'Loại hợp đồng', 'Ngày hiệu lực', 'Người ký', 'Chức danh', 'Giấy uỷ quyền', 'Đang áp dụng'].map((h) => (
+                {['Công ty', 'Đơn vị ký HĐ', 'Loại hợp đồng', 'Ngày hiệu lực', 'Người ký', 'Chức danh', 'Giấy uỷ quyền', 'Đang áp dụng'].map((h) => (
                   <th key={h} className={th}>
                     {h}
                   </th>
@@ -2760,10 +2977,11 @@ const SignerSetup: React.FC<{ s: Store; onBack: () => void; flash: (m: string) =
             </thead>
             <tbody>
               {list.map((x, i) => {
-                const used = s.contracts.filter((c) => c.signer === x.signer && (!x.unit || c.unit === x.unit) && x.types.includes(c.type)).length;
+                const used = s.contracts.filter((c) => (x.signerId ? c.signerId === x.signerId : c.signer === x.signer) && (!x.unit || c.unit === x.unit) && x.types.includes(c.type)).length;
                 return (
                   <tr key={x.id} className={form?.id === x.id ? 'bg-[#dbe8f8]' : erp.tr}>
                     <td className={`${erp.td} border-l-0 text-center text-slate-500`}>{i + 1}</td>
+                    <td className={`${erp.td} whitespace-nowrap`}>{companyById(signerById(x.signerId)?.companyId || '')?.shortName || <span className="text-rose-600">Chưa chọn người ký trong danh mục</span>}</td>
                     <td className={erp.td}>{x.unit || <i className="text-slate-500">Tất cả đơn vị</i>}</td>
                     <td className={erp.td}>
                       <span className="flex flex-wrap gap-1">
@@ -2812,7 +3030,7 @@ const SignerSetup: React.FC<{ s: Store; onBack: () => void; flash: (m: string) =
               })}
               {!list.length && (
                 <tr>
-                  <td colSpan={9} className="px-3 py-10 text-center text-slate-400">
+                  <td colSpan={10} className="px-3 py-10 text-center text-slate-400">
                     Chưa có thiết lập người ký.
                   </td>
                 </tr>
