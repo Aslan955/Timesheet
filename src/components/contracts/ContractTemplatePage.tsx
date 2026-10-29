@@ -7,11 +7,12 @@
  *  In HĐ ở màn Hợp đồng: có template → tạo file Word đã trộn; chưa có → bản in mặc định.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Check, CheckCircle2, ClipboardCopy, Download, Eye, FileCog, FileSignature, FileText, History, LayoutList, Pencil, Plus, Save, Search, Table2, Trash2, Upload, X } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { AlertTriangle, FileSpreadsheet, Check, CheckCircle2, ClipboardCopy, Download, Eye, FileCog, FileSignature, FileText, History, LayoutList, Pencil, Plus, Save, Search, Table2, Trash2, Upload, X } from 'lucide-react';
 import { Btn, ErpPage, ErpTitleBar, FolderTabs, KpiBox, Panel, Segmented, Tag, erp } from '../erp/Erp';
 import { CheckBox, DateInput, InfoGrid, dmy, today } from '../EmployeePage';
 import { mergeDataOf, useContractStore, type Contract, type Worker } from '../ContractsPage';
-import { FIELDS, FIELD_GROUPS, FIELD_KEYS, SAMPLE_FILES, TPL_KIND_LABEL, getCatalog, updateCatalog, useCatalog, type TemplateDef, type TplKind } from './catalog';
+import { FIELDS, FIELD_GROUPS, FIELD_KEYS, TPL_KIND_LABEL, getCatalog, updateCatalog, useCatalog, type TemplateDef, type TplKind } from './catalog';
 import { FIELD_RE, MF_RE, downloadBytes, inspectDocx, mergeDocx, type DocLine } from './docx';
 import { ACTIVE_TAG, ErrText, INACTIVE_TAG, INPUT, LINK, ME, errCls, fileSize, fmtAt, lb, nowIso, uid, useFlash } from './ui';
 
@@ -40,6 +41,41 @@ const safe = (s: string) => s.replace(/[\\/:*?"<>|]+/g, '_');
 // ==========================================================================
 // Danh sách
 // ==========================================================================
+/** File Excel trường trộn: sheet danh sách trường + sheet 1 dòng dữ liệu mẫu (nguồn Mail Merge để soạn / thử mẫu Word) + hướng dẫn. */
+const downloadFieldsXlsx = () => {
+  const tpls = getCatalog().templates;
+  const usedBy = (k: string) => tpls.filter((t) => t.fields.some((f) => f.normalize('NFC') === k.normalize('NFC')));
+  const list = XLSX.utils.aoa_to_sheet([
+    ['STT', 'Nhóm', 'Tên trường', 'Cách gõ trong Word', 'Ý nghĩa', 'Ví dụ dữ liệu', 'Số mẫu đang dùng', 'Mẫu đang dùng'],
+    ...FIELD_GROUPS.flatMap((g) => FIELDS.filter((f) => f.group === g)).map((f, i) => {
+      const u = usedBy(f.key);
+      return [i + 1, f.group, f.key, `{{${f.key}}}`, f.label, f.sample, u.length, u.map((t) => t.code).join(', ')];
+    }),
+  ]);
+  list['!cols'] = [{ wch: 5 }, { wch: 16 }, { wch: 28 }, { wch: 30 }, { wch: 55 }, { wch: 30 }, { wch: 10 }, { wch: 40 }];
+  list['!autofilter'] = { ref: `A1:H${FIELDS.length + 1}` };
+  const data = XLSX.utils.aoa_to_sheet([FIELDS.map((f) => f.key), FIELDS.map((f) => f.sample)]);
+  data['!cols'] = FIELDS.map((f) => ({ wch: Math.max(14, f.key.length + 2, String(f.sample).length + 2) }));
+  const guide = XLSX.utils.aoa_to_sheet([
+    ['HƯỚNG DẪN SOẠN TEMPLATE HỢP ĐỒNG (FILE WORD .docx)'],
+    [],
+    ['1. Mở mẫu hợp đồng Word của công ty.'],
+    ['2. Chèn trường trộn theo 1 trong 2 cách:'],
+    ['   a) Gõ tên trường trong cặp ngoặc nhọn đôi, ví dụ {{Họ_và_tên}} (cột "Cách gõ trong Word" ở sheet Truong_tron).'],
+    ['   b) Trộn thư của Word: Mailings → Select Recipients → Use an Existing List → chọn file này → sheet Du_lieu_mau → Insert Merge Field.'],
+    ['3. Bấm "Preview Results" trong Word để xem thử với dòng dữ liệu mẫu.'],
+    ['4. Lưu file .docx và tải lên ở màn Cấu hình template hợp đồng (Thêm template / Tải file Word).'],
+    [],
+    ['Lưu ý: tên trường phải đúng chính tả và dấu như cột "Tên trường"; trường không có trong danh sách sẽ bị báo đỏ khi tải mẫu lên.'],
+  ]);
+  guide['!cols'] = [{ wch: 120 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, list, 'Truong_tron');
+  XLSX.utils.book_append_sheet(wb, data, 'Du_lieu_mau');
+  XLSX.utils.book_append_sheet(wb, guide, 'Huong_dan');
+  XLSX.writeFile(wb, 'danh-sach-truong-tron.xlsx');
+};
+
 const TemplateList: React.FC<{ setMode: (m: Mode) => void }> = ({ setMode }) => {
   const cat = useCatalog();
   const [kind, setKind] = useState<'' | TplKind>('');
@@ -58,7 +94,7 @@ const TemplateList: React.FC<{ setMode: (m: Mode) => void }> = ({ setMode }) => 
         title="Cấu hình template hợp đồng"
         actions={
           <>
-            <Btn icon={Download} onClick={() => downloadBytes(SAMPLE_FILES.allFields(), 'danh-sach-truong-tron.docx')} title="File Word liệt kê toàn bộ trường trộn — dùng làm điểm bắt đầu cho mẫu mới">
+            <Btn icon={FileSpreadsheet} onClick={downloadFieldsXlsx} title="File Excel: danh sách toàn bộ trường trộn (nhóm, tên trường, cách chèn, ý nghĩa, ví dụ, số mẫu đang dùng) + 1 dòng dữ liệu mẫu để thử trộn thư trong Word">
               Tải file mẫu (đủ trường trộn)
             </Btn>
             <Btn variant="primary" icon={Plus} onClick={() => setMode({ kind: 'new' })}>
@@ -535,10 +571,10 @@ const TemplateDetail: React.FC<{ mode: Exclude<Mode, { kind: 'list' }>; setMode:
                 <ErrText e={E('file')} />
                 <p className="mt-2 text-slate-400">
                   Chưa có mẫu?{' '}
-                  <button type="button" className={LINK} onClick={() => downloadBytes(SAMPLE_FILES.allFields(), 'danh-sach-truong-tron.docx')}>
+                  <button type="button" className={LINK} onClick={downloadFieldsXlsx}>
                     Tải file danh sách trường trộn
                   </button>{' '}
-                  rồi chèn trường vào mẫu Word của công ty và tải lên.
+                  (Excel) rồi chèn trường vào mẫu Word của công ty và tải lên.
                 </p>
               </div>
             )}
