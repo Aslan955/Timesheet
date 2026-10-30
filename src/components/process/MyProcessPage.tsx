@@ -10,7 +10,7 @@ import {
   AlertTriangle, ArrowRight, Check, CheckCircle2, CircleDot, Clock, Eye, FilePlus2, Inbox, ListChecks, Plus, RotateCcw, Save, Search, Send, Undo2, UserRound, Users, X, XCircle, Zap,
 } from 'lucide-react';
 import { Btn, ErpPage, ErpTitleBar, FolderTabs, KpiBox, Panel, Tag, erp } from '../erp/Erp';
-import { PROC_GROUPS, PROC_PEOPLE, useProcesses, type Process } from './processStore';
+import { PROC_GROUPS, PROC_PEOPLE, emailOf, personLabel, useProcesses, type Process } from './processStore';
 import {
   REQ_STATUS, UNIT_OF, approveStep, canUse, currentRun, getRequests, isOverdue, newRequest, nextReqCode, recallRequest, rejectStep, saveRequest, setUser, submitRequest, updateRequests, useRequests, useUser,
   type FieldValue, type ProcRequest,
@@ -53,7 +53,7 @@ const UserSwitch: React.FC = () => {
       Đang dùng với tài khoản
       <select value={u} onChange={(e) => setUser(e.target.value)} className={`${erp.input} h-7 w-48 font-semibold text-[#1f5fa8]`} data-testid="user-switch">
         {PROC_PEOPLE.map((p) => (
-          <option key={p}>{p}</option>
+          <option key={p} value={p}>{personLabel(p)}</option>
         ))}
       </select>
     </span>
@@ -327,7 +327,7 @@ const QuickApprove: React.FC<{ r: ProcRequest; onClose: () => void; flash: (m: s
               <select value={next} onChange={(e) => setNext(e.target.value)} className={`${sel} mt-1`}>
                 <option value="">— Chọn người xử lý —</option>
                 {PROC_PEOPLE.filter((p) => p !== user).map((p) => (
-                  <option key={p}>{p}</option>
+                  <option key={p} value={p}>{personLabel(p)}</option>
                 ))}
               </select>
             </label>
@@ -580,9 +580,10 @@ const RequestForm: React.FC<{ id: string; setMode: (m: Mode) => void; flash: (m:
                         <select value={next} onChange={(e) => setNext(e.target.value)} className={`${erp.inputFull} h-7 text-[12px] ${tried && !next ? '!border-rose-400' : ''}`} data-testid="next-assignee">
                           <option value="">— Chọn người xử lý * —</option>
                           {others.map((p) => (
-                            <option key={p}>{p}</option>
+                            <option key={p} value={p}>{personLabel(p)}</option>
                           ))}
                         </select>
+                        {next && <span className="block text-[11px] text-[#1f5fa8] mt-0.5 truncate" title={emailOf(next)}>✉ {emailOf(next)}</span>}
                       </span>
                     ) : (
                       <span className="block text-[11.5px] text-slate-400">Do người xử lý bước {i} chọn</span>
@@ -597,7 +598,7 @@ const RequestForm: React.FC<{ id: string; setMode: (m: Mode) => void; flash: (m:
           <Panel title="Người liên quan" icon={Users} footer="Người liên quan nhận thông báo và xem được đơn.">
             <div className="flex flex-wrap gap-1.5 mb-2">
               {r.related.map((p) => (
-                <span key={p} className="inline-flex items-center gap-1 rounded-full bg-[#e8f1fb] text-[#1f5fa8] text-[12px] pl-2.5 pr-1 py-0.5">
+                <span key={p} title={emailOf(p)} className="inline-flex items-center gap-1 rounded-full bg-[#e8f1fb] text-[#1f5fa8] text-[12px] pl-2.5 pr-1 py-0.5">
                   {p}
                   <button type="button" onClick={() => setR({ ...r, related: r.related.filter((x) => x !== p) })} className="p-0.5 rounded-full hover:bg-white cursor-pointer">
                     <X size={11} />
@@ -609,7 +610,7 @@ const RequestForm: React.FC<{ id: string; setMode: (m: Mode) => void; flash: (m:
             <select value={addRel} onChange={(e) => (e.target.value && setR({ ...r, related: [...r.related, e.target.value] }), setAddRel(''))} className={`${erp.inputFull} h-7 text-[12px]`}>
               <option value="">+ Thêm người liên quan</option>
               {others.filter((p) => !r.related.includes(p)).map((p) => (
-                <option key={p}>{p}</option>
+                <option key={p} value={p}>{personLabel(p)}</option>
               ))}
             </select>
           </Panel>
@@ -841,7 +842,7 @@ const RequestDetail: React.FC<{ id: string; setMode: (m: Mode) => void; flash: (
                       <select value={next} onChange={(e) => setNext(e.target.value)} className={`${erp.inputFull} max-w-[320px] ${tried === 'approve' && !next ? '!border-rose-400' : ''}`} data-testid="act-next">
                         <option value="">— Chọn người xử lý —</option>
                         {PROC_PEOPLE.filter((p) => p !== user).map((p) => (
-                          <option key={p}>{p}</option>
+                          <option key={p} value={p}>{personLabel(p)}</option>
                         ))}
                       </select>
                     </>
@@ -852,7 +853,7 @@ const RequestDetail: React.FC<{ id: string; setMode: (m: Mode) => void; flash: (
                         <select value={forward} onChange={(e) => setForward(e.target.value)} className={`${erp.inputFull} max-w-[320px]`}>
                           <option value="">Không — kết thúc quy trình khi phê duyệt</option>
                           {PROC_PEOPLE.filter((p) => p !== user).map((p) => (
-                            <option key={p}>{p}</option>
+                            <option key={p} value={p}>{personLabel(p)}</option>
                           ))}
                         </select>
                         <span className="block text-[11px] text-slate-400 mt-0.5">Quy trình không giới hạn bước</span>

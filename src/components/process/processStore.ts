@@ -284,6 +284,23 @@ export const PROC_PEOPLE = [
   'Nguyễn Văn An', 'Trần Thị Bình', 'Lê Hoàng Cường', 'Phạm Thu Dung', 'Hoàng Minh Đức', 'Vũ Thị Giang', 'Đặng Quốc Huy', 'Bùi Thanh Hương',
   'Đỗ Văn Khánh', 'Ngô Thị Lan', 'Dương Minh Long', 'Lý Thu Mai', 'Phan Văn Nam', 'Trịnh Thị Oanh',
 ];
+/** Email công việc (mẫu): tên + chữ cái đầu họ, đệm — không dấu, VD Trần Thị Bình → binhtt@congty.vn */
+export const EMAIL_DOMAIN = 'congty.vn';
+const EMAILS: Record<string, string> = (() => {
+  const used = new Map<string, number>();
+  return Object.fromEntries(
+    PROC_PEOPLE.map((n) => {
+      const w = n.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().split(/\s+/).filter(Boolean);
+      const base = `${w[w.length - 1]}${w.slice(0, -1).map((x) => x[0]).join('')}`;
+      const k = (used.get(base) || 0) + 1;
+      used.set(base, k);
+      return [n, `${base}${k > 1 ? k : ''}@${EMAIL_DOMAIN}`];
+    }),
+  );
+})();
+export const emailOf = (name: string) => EMAILS[name] || '';
+/** Nhãn chọn nhân viên: Họ tên — email */
+export const personLabel = (name: string) => (EMAILS[name] ? `${name} — ${EMAILS[name]}` : name);
 export const PERM_LABEL: Record<PermMode, string> = { all: 'Tất cả nhân viên', units: 'Theo phòng ban / khối', people: 'Theo nhân viên cụ thể' };
 
 export const PROC_ICONS: Record<string, React.ElementType> = {

@@ -40,8 +40,8 @@ export const STATUS_CLS: Record<EmpStatus, string> = {
   'Đã nghỉ việc': 'bg-slate-100 text-slate-600 border-slate-300',
 };
 export const LEVELS = ['Intern', 'Fresher', 'Junior', 'Middle', 'Senior', 'Lead', 'Manager'];
-export const POSITIONS = ['Developer', 'QC', 'BA', 'PM', 'DevOps', 'Designer', 'HR', 'Kế toán'];
-export const DEPARTMENTS = ['Staffing', 'Delivery', 'Sản xuất', 'Kinh doanh', 'Hành chính – Nhân sự', 'Tài chính – Kế toán'];
+export const POSITIONS = ['Developer', 'QC', 'BA', 'PM', 'DevOps', 'Designer', 'HR', 'Kế toán', 'Giám đốc', 'Phó Giám đốc', 'Trưởng phòng'];
+export const DEPARTMENTS = ['Ban Giám đốc', 'Staffing', 'Delivery', 'Sản xuất', 'Kinh doanh', 'Hành chính – Nhân sự', 'Tài chính – Kế toán'];
 export const COMPANIES = ['AEQUITAS', 'VTX GROUP'];
 /** Tài khoản đăng nhập hệ thống chưa gán nhân viên (UserName chọn từ danh sách tài khoản). */
 const FREE_ACCOUNTS = ['tuanna', 'huongpt', 'longnh', 'trangdt', 'quangvm', 'hainv'];
@@ -342,6 +342,11 @@ const SEED: Employee[] = [
   mk('V00588', 'BÙI NGỌC LINH', 'linhbn', 'GPDV', 'Delivery', 'Designer', 'Middle', '2025-09-29', 'Đang làm việc', { gender: 'Nữ', techStack: 'Figma, Illustrator' }),
   mk('V00602', 'ĐẶNG QUỐC BẢO', 'baodq', 'BFSI', 'Staffing', 'Developer', 'Junior', '2026-09-07', 'Thử việc', { techStack: 'React, Node.js' }),
   mk('V00610', 'NGÔ THỊ THANH', 'thanhnt', 'G1', 'Hành chính – Nhân sự', 'HR', 'Middle', '2026-09-21', 'Thử việc', { gender: 'Nữ' }),
+  // Ban Giám đốc / quản lý — là người ký hợp đồng (Danh mục hợp đồng › Người ký chọn từ danh sách nhân viên)
+  mk('V00101', 'LÊ HOÀI THANH', 'thanhlh', 'G1', 'Ban Giám đốc', 'Giám đốc', 'Manager', '2018-01-02', 'Đang làm việc', { manager: '' }),
+  mk('V00102', 'NGUYỄN THU HÀ', 'hant', 'G1', 'Ban Giám đốc', 'Phó Giám đốc', 'Manager', '2019-03-01', 'Đang làm việc', { gender: 'Nữ', manager: 'LÊ HOÀI THANH' }),
+  mk('V00118', 'PHẠM MINH TUẤN', 'tuanpm', 'G1', 'Hành chính – Nhân sự', 'Trưởng phòng', 'Manager', '2019-06-03', 'Đang làm việc', { manager: 'LÊ HOÀI THANH' }),
+  mk('V00125', 'TRẦN QUỐC BẢO', 'baotq', 'G3', 'Ban Giám đốc', 'Phó Giám đốc', 'Manager', '2020-02-10', 'Đang làm việc', { manager: 'LÊ HOÀI THANH' }),
   mk('V00377', 'TRỊNH CÔNG MINH', 'minhtc', 'G2', 'Sản xuất', 'Developer', 'Senior', '2022-05-16', 'Đã nghỉ việc', { leaveDate: '2026-06-30', techStack: 'PHP, Laravel' }),
 ];
 

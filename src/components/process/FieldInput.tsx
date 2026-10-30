@@ -5,11 +5,11 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { ChevronDown, Download, FileUp, Info, Paperclip, PenLine, Plus, RotateCcw, Search, Trash2, X } from 'lucide-react';
+import { ChevronDown, Copy, Download, FileUp, Info, Paperclip, PenLine, Plus, RotateCcw, Search, Trash2, X } from 'lucide-react';
 import { erp } from '../erp/Erp';
 import { soThanhChu } from '../contracts/docx';
 import {
-  CATALOGS, CURRENCIES, POSITIONS, PROC_PEOPLE, PROC_UNITS, PROVINCES, RUN_SOURCES, WARDS, cfgOf, fieldTypeOf, type ColType, type ProcField, type TableCol,
+  CATALOGS, CURRENCIES, POSITIONS, PROC_PEOPLE, emailOf, personLabel, PROC_UNITS, PROVINCES, RUN_SOURCES, WARDS, cfgOf, fieldTypeOf, type ColType, type ProcField, type TableCol,
 } from './processStore';
 import { evalFormula, fmtNumber, roundBy } from './formula';
 import type { FieldValue, ProcRequest } from './requestStore';
@@ -188,7 +188,7 @@ const runDataOf = (f: ProcField, ctx: FormCtx) => {
 // ==========================================================================
 // Các ô chọn dùng chung
 // ==========================================================================
-const MultiCheck: React.FC<{ options: string[]; value: string[]; onChange: (v: string[]) => void; invalid?: boolean; placeholder?: string }> = ({ options, value, onChange, invalid, placeholder = '— Chọn —' }) => {
+const MultiCheck: React.FC<{ options: string[]; value: string[]; onChange: (v: string[]) => void; invalid?: boolean; placeholder?: string; sub?: (o: string) => string }> = ({ options, value, onChange, invalid, placeholder = '— Chọn —', sub }) => {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const ref = useRef<HTMLDivElement>(null);
@@ -198,7 +198,7 @@ const MultiCheck: React.FC<{ options: string[]; value: string[]; onChange: (v: s
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, [open]);
-  const shown = options.filter((o) => !q || o.toLowerCase().includes(q.toLowerCase()));
+  const shown = options.filter((o) => !q || `${o} ${sub?.(o) || ''}`.toLowerCase().includes(q.toLowerCase()));
   return (
     <div ref={ref} className="relative">
       <button type="button" onClick={() => setOpen((o) => !o)} className={`${erp.inputFull} flex items-center gap-1 text-left cursor-pointer ${invalid ? '!border-rose-400' : ''}`}>
@@ -216,7 +216,10 @@ const MultiCheck: React.FC<{ options: string[]; value: string[]; onChange: (v: s
             {shown.map((o) => (
               <label key={o} className="flex items-center gap-2 px-3 py-1.5 text-[12.5px] hover:bg-[#eaf2fc] cursor-pointer">
                 <input type="checkbox" className="accent-[#1f5fa8]" checked={value.includes(o)} onChange={() => onChange(value.includes(o) ? value.filter((x) => x !== o) : [...value, o])} />
-                {o}
+                <span className="min-w-0">
+                  {o}
+                  {sub?.(o) && <span className="ml-1.5 text-[11.5px] text-slate-400">{sub(o)}</span>}
+                </span>
               </label>
             ))}
           </div>
@@ -225,7 +228,7 @@ const MultiCheck: React.FC<{ options: string[]; value: string[]; onChange: (v: s
     </div>
   );
 };
-const Pick: React.FC<{ options: string[]; value: FieldValue; multiple?: boolean; onChange: (v: FieldValue) => void; invalid?: boolean; placeholder?: string; radio?: boolean }> = ({ options, value, multiple, onChange, invalid, placeholder, radio }) => {
+const Pick: React.FC<{ options: string[]; value: FieldValue; multiple?: boolean; onChange: (v: FieldValue) => void; invalid?: boolean; placeholder?: string; radio?: boolean; sub?: (o: string) => string }> = ({ options, value, multiple, onChange, invalid, placeholder, radio, sub }) => {
   if (radio)
     return (
       <span className={`flex flex-wrap gap-x-4 gap-y-1.5 py-1 ${invalid ? 'outline outline-1 outline-rose-300 rounded' : ''}`}>
@@ -241,12 +244,14 @@ const Pick: React.FC<{ options: string[]; value: FieldValue; multiple?: boolean;
         })}
       </span>
     );
-  if (multiple) return <MultiCheck options={options} value={(Array.isArray(value) ? value : []) as string[]} onChange={onChange} invalid={invalid} placeholder={placeholder} />;
+  if (multiple) return <MultiCheck options={options} value={(Array.isArray(value) ? value : []) as string[]} onChange={onChange} invalid={invalid} placeholder={placeholder} sub={sub} />;
   return (
     <select value={(value as string) || ''} onChange={(e) => onChange(e.target.value)} className={`${erp.inputFull} ${invalid ? '!border-rose-400' : ''}`}>
       <option value="">{placeholder || '— Chọn —'}</option>
       {options.map((o) => (
-        <option key={o}>{o}</option>
+        <option key={o} value={o}>
+          {sub?.(o) ? `${o} — ${sub(o)}` : o}
+        </option>
       ))}
     </select>
   );
@@ -376,12 +381,12 @@ const FileCell: React.FC<{ v: string; onChange: (v: string) => void }> = ({ v, o
 };
 const CellInput: React.FC<{ col: TableCol; v: string | number | undefined; onChange: (v: string | number) => void; idx: number; computed?: number }> = ({ col, v, onChange, idx, computed }) => {
   const cls = `${erp.inputFull} h-7 border-transparent`;
-  const pick = (opts: string[], ph = '') => (
-    <select value={(v as string) || ''} onChange={(e) => onChange(e.target.value)} className={`${cls} ${v ? '' : 'text-slate-400'}`}>
+  const pick = (opts: string[], ph = '', label: (o: string) => string = (o) => o) => (
+    <select value={(v as string) || ''} onChange={(e) => onChange(e.target.value)} className={`${cls} ${v ? '' : 'text-slate-400'}`} title={(v as string) ? label(v as string) : undefined}>
       <option value="">{ph}</option>
       {opts.map((o) => (
-        <option key={o} className="text-slate-800">
-          {o}
+        <option key={o} value={o} className="text-slate-800">
+          {label(o)}
         </option>
       ))}
     </select>
@@ -398,7 +403,7 @@ const CellInput: React.FC<{ col: TableCol; v: string | number | undefined; onCha
     case 'catalog':
       return pick(CATALOGS[col.catalog || ''] || [], `- Chọn ${(col.catalog || '').toLowerCase()} -`);
     case 'employee':
-      return pick(PROC_PEOPLE, '- Chọn nhân viên -');
+      return pick(PROC_PEOPLE, '- Chọn nhân viên -', personLabel);
     case 'file':
       return <FileCell v={(v as string) || ''} onChange={onChange} />;
     case 'formula':
@@ -525,12 +530,12 @@ const TableEditor: React.FC<{ f: ProcField; v: FieldValue; onChange: (v: FieldVa
                   )}
                 </th>
               ))}
-              {canAdd && <th className={`${erp.th} w-8`} />}
+              {canAdd && <th className={`${erp.th} w-[58px] sticky right-0 z-[2] shadow-[-1px_0_0_0_#cbd5e1]`} />}
             </tr>
           </thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr key={i}>
+              <tr key={i} className="group">
                 {cols.map((col) =>
                   readOnly ? (
                     <td key={col.id} className={`${erp.td} ${col.type === 'stt' ? 'text-center' : isNumCol(col.type) ? erp.num : ''}`}>
@@ -543,10 +548,21 @@ const TableEditor: React.FC<{ f: ProcField; v: FieldValue; onChange: (v: FieldVa
                   ),
                 )}
                 {canAdd && (
-                  <td className={`${erp.td} text-center`}>
-                    <button type="button" disabled={rows.length === 1} onClick={() => onChange({ rows: rows.filter((_, k) => k !== i) })} className="p-0.5 text-rose-500 disabled:opacity-30 cursor-pointer" title="Xoá dòng">
-                      <Trash2 size={13} />
-                    </button>
+                  <td className={`${erp.td} text-center whitespace-nowrap sticky right-0 z-[1] bg-white shadow-[-1px_0_0_0_#cbd5e1]`}>
+                    <span className="inline-flex items-center gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => onChange({ rows: [...rows.slice(0, i + 1), { ...r }, ...rows.slice(i + 1)] })}
+                        className="p-1 rounded text-[#1f6fd1] hover:bg-[#eaf2fc] cursor-pointer opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                        title="Nhân bản dòng (chèn bản sao ngay bên dưới)"
+                        data-testid="row-dup"
+                      >
+                        <Copy size={13} />
+                      </button>
+                      <button type="button" disabled={rows.length === 1} onClick={() => onChange({ rows: rows.filter((_, k) => k !== i) })} className="p-1 rounded text-rose-500 hover:bg-rose-50 disabled:opacity-30 cursor-pointer" title="Xoá dòng">
+                        <Trash2 size={13} />
+                      </button>
+                    </span>
                   </td>
                 )}
               </tr>
@@ -567,7 +583,7 @@ const TableEditor: React.FC<{ f: ProcField; v: FieldValue; onChange: (v: FieldVa
                     )}
                   </td>
                 ))}
-                {canAdd && <td className={erp.td} />}
+                {canAdd && <td className={`${erp.td} sticky right-0 bg-inherit shadow-[-1px_0_0_0_#cbd5e1]`} />}
               </tr>
             )}
           </tbody>
@@ -828,7 +844,7 @@ export const FieldInput: React.FC<{ f: ProcField; v: FieldValue; onChange: (v: F
       );
     }
     case 'employee':
-      return <Pick options={PROC_PEOPLE} value={v} multiple={c.multiple} onChange={onChange} invalid={invalid} placeholder="— Chọn nhân viên —" />;
+      return <Pick options={PROC_PEOPLE} value={v} multiple={c.multiple} onChange={onChange} invalid={invalid} placeholder="— Chọn nhân viên —" sub={emailOf} />;
     case 'position':
       return <Pick options={POSITIONS} value={v} multiple={c.multiple} onChange={onChange} invalid={invalid} placeholder="— Chọn vị trí công việc —" />;
     case 'org':

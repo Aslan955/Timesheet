@@ -42,39 +42,55 @@ const safe = (s: string) => s.replace(/[\\/:*?"<>|]+/g, '_');
 // ==========================================================================
 // Danh sách
 // ==========================================================================
-/** File Excel trường trộn: sheet danh sách trường + sheet 1 dòng dữ liệu mẫu (nguồn Mail Merge để soạn / thử mẫu Word) + hướng dẫn. */
+/** File Excel trường trộn theo mẫu "DS trường trộn_v2": danh sách trường + bảng tên cũ → tên mới + 1 dòng dữ liệu mẫu (nguồn Mail Merge) + hướng dẫn. */
 const downloadFieldsXlsx = () => {
   const tpls = getCatalog().templates;
   const usedBy = (k: string) => tpls.filter((t) => t.fields.some((f) => f.normalize('NFC') === k.normalize('NFC')));
+  const isOld = (g: string) => g.startsWith('Tên cũ');
+  const main = FIELDS.filter((f) => !isOld(f.group));
   const list = XLSX.utils.aoa_to_sheet([
-    ['STT', 'Nhóm', 'Tên trường', 'Cách gõ trong Word', 'Ý nghĩa', 'Ví dụ dữ liệu', 'Số mẫu đang dùng', 'Mẫu đang dùng'],
-    ...FIELD_GROUPS.flatMap((g) => FIELDS.filter((f) => f.group === g)).map((f, i) => {
+    ['STT', 'Nhóm thông tin', 'Tên gọi chuẩn', 'Mã trường trộn', 'Diễn giải', 'Ví dụ dữ liệu', 'Định dạng dữ liệu', 'Số mẫu đang dùng', 'Mẫu đang dùng'],
+    ...main.map((f, i) => {
       const u = usedBy(f.key);
-      return [i + 1, f.group, f.key, `{{${f.key}}}`, f.label, f.sample, u.length, u.map((t) => t.code).join(', ')];
+      return [i + 1, f.group, f.label, `{{${f.key}}}`, f.desc || '', f.sample || '(trống)', f.format || '', u.length || '', u.map((t) => t.code).join(', ')];
     }),
   ]);
-  list['!cols'] = [{ wch: 5 }, { wch: 16 }, { wch: 28 }, { wch: 30 }, { wch: 55 }, { wch: 30 }, { wch: 10 }, { wch: 40 }];
-  list['!autofilter'] = { ref: `A1:H${FIELDS.length + 1}` };
-  const data = XLSX.utils.aoa_to_sheet([FIELDS.map((f) => f.key), FIELDS.map((f) => f.sample)]);
-  data['!cols'] = FIELDS.map((f) => ({ wch: Math.max(14, f.key.length + 2, String(f.sample).length + 2) }));
+  list['!cols'] = [{ wch: 5 }, { wch: 30 }, { wch: 32 }, { wch: 34 }, { wch: 55 }, { wch: 30 }, { wch: 24 }, { wch: 10 }, { wch: 40 }];
+  list['!autofilter'] = { ref: `A1:I${main.length + 1}` };
+  const olds = FIELDS.filter((f) => isOld(f.group));
+  const legacy = XLSX.utils.aoa_to_sheet([
+    ['STT', 'Mã trường cũ', 'Dùng như mã mới', 'Ghi chú', 'Số mẫu đang dùng', 'Mẫu đang dùng'],
+    ...olds.map((f, i) => {
+      const u = usedBy(f.key);
+      return [i + 1, `{{${f.key}}}`, f.legacyOf ? `{{${f.legacyOf}}}` : '', f.legacyOf ? 'Cùng dữ liệu với mã mới — nên đổi sang mã mới' : `${f.label}. ${f.desc || ''}`.trim(), u.length || '', u.map((t) => t.code).join(', ')];
+    }),
+  ]);
+  legacy['!cols'] = [{ wch: 5 }, { wch: 30 }, { wch: 34 }, { wch: 50 }, { wch: 10 }, { wch: 40 }];
+  const data = XLSX.utils.aoa_to_sheet([main.map((f) => f.key), main.map((f) => f.sample)]);
+  data['!cols'] = main.map((f) => ({ wch: Math.max(14, f.key.length + 2, String(f.sample).length + 2) }));
   const guide = XLSX.utils.aoa_to_sheet([
     ['HƯỚNG DẪN SOẠN TEMPLATE HỢP ĐỒNG (FILE WORD .docx)'],
     [],
     ['1. Mở mẫu hợp đồng Word của công ty.'],
     ['2. Chèn trường trộn theo 1 trong 2 cách:'],
-    ['   a) Gõ tên trường trong cặp ngoặc nhọn đôi, ví dụ {{Họ_và_tên}} (cột "Cách gõ trong Word" ở sheet Truong_tron).'],
+    ['   a) Gõ mã trường trong cặp ngoặc nhọn đôi, ví dụ {{HỌ_VÀ_TÊN_NLĐ_IN_HOA}} (cột "Mã trường trộn" ở sheet DS trường trộn_v2).'],
     ['   b) Trộn thư của Word: Mailings → Select Recipients → Use an Existing List → chọn file này → sheet Du_lieu_mau → Insert Merge Field.'],
     ['3. Bấm "Preview Results" trong Word để xem thử với dòng dữ liệu mẫu.'],
     ['4. Lưu file .docx và tải lên ở màn Cấu hình template hợp đồng (Thêm template / Tải file Word).'],
     [],
-    ['Lưu ý: tên trường phải đúng chính tả và dấu như cột "Tên trường"; trường không có trong danh sách sẽ bị báo đỏ khi tải mẫu lên.'],
+    ['Lưu ý:'],
+    ['- Trường kết thúc bằng _text đã có sẵn chữ "ngày … tháng … năm …" → trong Word KHÔNG gõ thêm chữ "ngày" phía trước.'],
+    ['- Tiền tệ có dấu chấm phân cách hàng nghìn (15.000.000); trường "bằng chữ" tự sinh từ số tiền.'],
+    ['- Mã trường cũ (sheet Ten_cu) vẫn trộn được để mẫu Word cũ không lỗi; mẫu mới nên dùng mã chuẩn.'],
+    ['- Mã trường phải đúng chính tả và dấu; trường không có trong danh sách sẽ bị báo đỏ khi tải mẫu lên.'],
   ]);
   guide['!cols'] = [{ wch: 120 }];
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, list, 'Truong_tron');
+  XLSX.utils.book_append_sheet(wb, list, 'DS trường trộn_v2');
+  XLSX.utils.book_append_sheet(wb, legacy, 'Ten_cu');
   XLSX.utils.book_append_sheet(wb, data, 'Du_lieu_mau');
   XLSX.utils.book_append_sheet(wb, guide, 'Huong_dan');
-  XLSX.writeFile(wb, 'danh-sach-truong-tron.xlsx');
+  XLSX.writeFile(wb, 'danh-sach-truong-tron-v2.xlsx');
 };
 
 /** Giá trị cho phễu lọc theo cột của danh sách template (đúng chữ hiển thị trong ô) */
@@ -109,7 +125,7 @@ const TemplateList: React.FC<{ setMode: (m: Mode) => void }> = ({ setMode }) => 
         title="Cấu hình template hợp đồng"
         actions={
           <>
-            <Btn icon={FileSpreadsheet} onClick={downloadFieldsXlsx} title="File Excel: danh sách toàn bộ trường trộn (nhóm, tên trường, cách chèn, ý nghĩa, ví dụ, số mẫu đang dùng) + 1 dòng dữ liệu mẫu để thử trộn thư trong Word">
+            <Btn icon={FileSpreadsheet} onClick={downloadFieldsXlsx} title="File Excel theo mẫu DS trường trộn_v2 (nhóm, tên gọi chuẩn, mã trường, diễn giải, ví dụ, định dạng) + bảng mã cũ → mã mới + 1 dòng dữ liệu mẫu để thử trộn thư trong Word">
               Tải file mẫu (đủ trường trộn)
             </Btn>
             <Btn variant="primary" icon={Plus} onClick={() => setMode({ kind: 'new' })}>
@@ -645,7 +661,7 @@ const FieldDictionary: React.FC<{ used: Set<string>; flash: (m: string) => void 
   }, [cat.templates]);
   const [q, setQ] = useState('');
   const [group, setGroup] = useState('');
-  const rows = FIELDS.filter((f) => (!group || f.group === group) && (!q || `${f.key} ${f.label}`.toLowerCase().includes(q.toLowerCase())));
+  const rows = FIELDS.filter((f) => (!group || f.group === group) && (!q || `${f.key} ${f.label} ${f.desc || ''}`.toLowerCase().includes(q.toLowerCase())));
   const copy = async (k: string) => {
     try {
       await navigator.clipboard.writeText(`{{${k}}}`);
@@ -657,12 +673,12 @@ const FieldDictionary: React.FC<{ used: Set<string>; flash: (m: string) => void 
   const th = `${erp.th} border-t-0 text-left`;
   return (
     <Panel
-      title={`Danh sách trường trộn (${FIELDS.length})`}
+      title={`Danh sách trường trộn (${FIELDS.filter((f) => !f.group.startsWith('Tên cũ')).length} trường chuẩn · ${FIELDS.filter((f) => f.group.startsWith('Tên cũ')).length} tên cũ)`}
       icon={ClipboardCopy}
       noPad
       actions={
         <>
-          <select value={group} onChange={(e) => setGroup(e.target.value)} className={`${erp.input} h-7 w-44`}>
+          <select value={group} onChange={(e) => setGroup(e.target.value)} className={`${erp.input} h-7 w-64`}>
             <option value="">Tất cả nhóm</option>
             {FIELD_GROUPS.map((g) => (
               <option key={g}>{g}</option>
@@ -674,34 +690,47 @@ const FieldDictionary: React.FC<{ used: Set<string>; flash: (m: string) => void 
           </div>
         </>
       }
-      footer="Bấm vào tên trường để sao chép dạng {{Tên_trường}} rồi dán vào file Word — hoặc chèn trường Word cùng tên (Insert → Quick Parts → Field → MergeField). Tên trường theo bộ mẫu hợp đồng AEQUITAS."
+      footer="Bấm vào tên trường để sao chép dạng {{Tên_trường}} rồi dán vào file Word — hoặc chèn trường Word cùng tên (Insert → Quick Parts → Field → MergeField). Mã trường theo danh sách trường trộn v2; mã cũ vẫn trộn được. Trường _text đã có chữ “ngày … tháng … năm …” — không gõ thêm chữ “ngày” phía trước."
     >
       <div className="overflow-auto max-h-[420px]">
-        <table className={erp.table}>
+        <table className={`${erp.table} table-fixed min-w-[1100px]`}>
           <thead className="sticky top-0 z-10">
             <tr>
-              <th className={`${th} border-l-0 w-36`}>Nhóm</th>
-              <th className={`${th} w-64`}>Trường trộn</th>
-              <th className={th}>Ý nghĩa</th>
-              <th className={th}>Ví dụ</th>
-              <th className={`${th} w-28 !text-center`}>Trong file này</th>
-              <th className={`${th} border-r-0 w-24 !text-center`}>Số mẫu dùng</th>
+              <th className={`${th} border-l-0 w-10 !text-center`}>STT</th>
+              <th className={`${th} w-44`}>Tên gọi chuẩn</th>
+              <th className={`${th} w-60`}>Mã trường trộn</th>
+              <th className={th}>Diễn giải</th>
+              <th className={`${th} w-32`}>Ví dụ dữ liệu</th>
+              <th className={`${th} w-44`}>Định dạng dữ liệu</th>
+              <th className={`${th} w-20 !text-center`} title="Trường có trong file Word của template này">Trong file</th>
+              <th className={`${th} border-r-0 w-20 !text-center`} title="Số template đang dùng trường này">Số mẫu</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((f) => (
-              <tr key={f.key} className={erp.tr}>
-                <td className={`${erp.td} border-l-0 text-slate-500`}>{f.group}</td>
+            {rows.map((f, i) => (
+              <React.Fragment key={f.key}>
+              {(i === 0 || rows[i - 1].group !== f.group) && (
+                <tr>
+                  <td colSpan={8} className={`${erp.td} border-x-0 bg-slate-50 font-semibold text-slate-700`}>
+                    {f.group}
+                  </td>
+                </tr>
+              )}
+              <tr className={erp.tr}>
+                <td className={`${erp.td} border-l-0 text-center text-slate-500`}>{i + 1}</td>
+                <td className={erp.td}>{f.label}</td>
                 <td className={erp.td}>
-                  <button type="button" className="inline-flex items-center gap-1 font-mono text-[#1f5fa8] hover:underline cursor-pointer" onClick={() => copy(f.key)} title="Bấm để sao chép">
-                    «{f.key}» <ClipboardCopy size={11} className="text-slate-400" />
+                  <button type="button" className="inline-flex items-center gap-1 font-mono text-[12px] text-[#1f5fa8] hover:underline cursor-pointer text-left break-all" onClick={() => copy(f.key)} title="Bấm để sao chép">
+                    {`{{${f.key}}}`} <ClipboardCopy size={11} className="text-slate-400 shrink-0" />
                   </button>
                 </td>
-                <td className={erp.td}>{f.label}</td>
-                <td className={`${erp.td} text-slate-500`}>{f.sample || '—'}</td>
+                <td className={`${erp.td} text-slate-600`}>{f.desc || ''}</td>
+                <td className={`${erp.td} text-slate-500`}>{f.sample || '(trống)'}</td>
+                <td className={`${erp.td} text-[11px] leading-snug text-slate-500`}>{f.format || ''}</td>
                 <td className={`${erp.td} text-center`}>{used.has(f.key) && <Check size={14} className="inline text-emerald-600" />}</td>
                 <td className={`${erp.td} border-r-0 text-center text-slate-600`}>{usage.get(f.key) || ''}</td>
               </tr>
+              </React.Fragment>
             ))}
           </tbody>
         </table>

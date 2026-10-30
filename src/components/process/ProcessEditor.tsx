@@ -13,7 +13,7 @@ import {
 import { Btn, ErpTitleBar, Panel, erp } from '../erp/Erp';
 import {
   FIELD_TYPES, ME, PERM_LABEL, PROC_COLORS, PROC_GROUPS, PROC_ICONS, PROC_PEOPLE, PROC_UNITS, blankProcess, fieldTypeOf, fmtDateTime, getProcesses, newField, newStep,
-  nextCode, nowIsoP, titleRefs, updateProcesses, useProcesses, type FieldType, type PermMode, type ProcField, type ProcStep, type Process,
+  nextCode, nowIsoP, personLabel, titleRefs, updateProcesses, useProcesses, type FieldType, type PermMode, type ProcField, type ProcStep, type Process,
 } from './processStore';
 import { ProcIcon } from './ProcIcon';
 import { FieldSettings } from './FieldSettings';
@@ -471,7 +471,7 @@ export const ProcessEditor: React.FC<{ id: string | null; onBack: () => void; fl
               )}
               {d.permMode === 'people' && (
                 <div className="mt-1.5">
-                  <MultiPick options={PROC_PEOPLE} value={d.permPeople} onChange={(v) => set({ permPeople: v })} placeholder="Chọn nhân viên được tạo đơn" error={E.perm} />
+                  <MultiPick options={PROC_PEOPLE} value={d.permPeople} onChange={(v) => set({ permPeople: v })} placeholder="Chọn nhân viên được tạo đơn" error={E.perm} labelOf={personLabel} />
                 </div>
               )}
               <Err e={E.perm} />
@@ -710,7 +710,7 @@ export const ProcessEditor: React.FC<{ id: string | null; onBack: () => void; fl
                 </span>
               ))}
               <div className="w-56">
-                <MultiPick options={PROC_PEOPLE} value={d.related} onChange={(v) => set({ related: v })} placeholder="+ Thêm người liên quan" />
+                <MultiPick options={PROC_PEOPLE} value={d.related} onChange={(v) => set({ related: v })} placeholder="+ Thêm người liên quan" labelOf={personLabel} />
               </div>
             </div>
           </div>

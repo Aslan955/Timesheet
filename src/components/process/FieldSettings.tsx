@@ -8,7 +8,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { Calculator, FileSignature, FileStack, GripVertical, Plus, Settings2, Table2, Trash2, X } from 'lucide-react';
 import { Btn, erp } from '../erp/Erp';
 import {
-  CATALOGS, COL_TYPES, PROC_PEOPLE, RUN_SOURCES, cfgOf, fieldTypeOf, uidP, type ColType, type FieldCfg, type ProcField, type Process, type TableCol,
+  CATALOGS, COL_TYPES, PROC_PEOPLE, RUN_SOURCES, personLabel, cfgOf, fieldTypeOf, uidP, type ColType, type FieldCfg, type ProcField, type Process, type TableCol,
 } from './processStore';
 import { CurrencyPick, autoCodeOf } from './FieldInput';
 import { evalFormula, fmtNumber, refsOf, roundBy } from './formula';
@@ -560,7 +560,7 @@ export const FieldSettings: React.FC<{
                         <span className="w-5 text-slate-500">{i + 1}.</span>
                         <select value={p} onChange={(e) => setC({ signers: (c.signers || []).map((x, k) => (k === i ? e.target.value : x)) })} className={`${erp.input} h-7 w-60`}>
                           {PROC_PEOPLE.map((x) => (
-                            <option key={x}>{x}</option>
+                            <option key={x} value={x}>{personLabel(x)}</option>
                           ))}
                         </select>
                         <button type="button" onClick={() => setC({ signers: (c.signers || []).filter((_, k) => k !== i) })} className="text-rose-500 cursor-pointer">

@@ -297,7 +297,8 @@ export async function mergeDocx(tpl: Uint8Array, data: Record<string, string>): 
   return zip(es.map((e) => stripMailMerge(MERGE_PARTS.test(e.name) ? { name: e.name, data: te.encode(mergeXml(td.decode(e.data), d)) } : e)));
 }
 
-export type DocLine = { text: string; center?: boolean; right?: boolean; bold?: boolean; table?: boolean };
+/** Đoạn văn để xem trước. Đoạn trong bảng có vị trí ô (tbl/row/col) để dựng lại bảng nhiều cột (VD khối chữ ký 2 cột). */
+export type DocLine = { text: string; center?: boolean; right?: boolean; bold?: boolean; table?: boolean; tbl?: number; row?: number; col?: number; border?: boolean };
 export type FieldUse = { name: string; kind: 'word' | 'text' };
 /** Đọc trường trộn (trường Word + {{...}}) và các đoạn văn để xem trước. Vị trí trường Word được đánh dấu bằng MF_RE. */
 export async function inspectDocx(bytes: Uint8Array): Promise<{ fields: string[]; uses: FieldUse[]; lines: DocLine[]; mailMerge: boolean }> {
@@ -306,6 +307,12 @@ export async function inspectDocx(bytes: Uint8Array): Promise<{ fields: string[]
   if (!main) throw new Error('File không có nội dung văn bản Word (thiếu word/document.xml)');
   const uses = new Map<string, FieldUse>();
   let lines: DocLine[] = [];
+  const tblIds = new Map<Element, number>();
+  const kids = (el: Element, name: string) => Array.from(el.childNodes).filter((n) => (n as Element).localName === name) as Element[];
+  const bordered = (tbl: Element) => {
+    const b = kids(tbl, 'tblPr').flatMap((pr) => kids(pr, 'tblBorders'))[0];
+    return !!b && Array.from(b.children).some((x) => !['nil', 'none'].includes(x.getAttributeNS(W, 'val') || ''));
+  };
   for (const e of es.filter((x) => MERGE_PARTS.test(x.name))) {
     const doc = new DOMParser().parseFromString(td.decode(e.data), 'application/xml');
     if (doc.getElementsByTagName('parsererror').length) throw new Error(`Không đọc được ${e.name}`);
@@ -317,9 +324,20 @@ export async function inspectDocx(bytes: Uint8Array): Promise<{ fields: string[]
       if (e === main) {
         const jc = Array.from(p.getElementsByTagNameNS(W, 'jc')).find((x) => ownP(x) === p)?.getAttributeNS(W, 'val');
         const b = Array.from(p.getElementsByTagNameNS(W, 'b')).some((x) => ownP(x) === p && x.getAttributeNS(W, 'val') !== '0' && x.getAttributeNS(W, 'val') !== 'false');
-        let inTbl = false;
-        for (let x = p.parentNode; x; x = x.parentNode) if ((x as Element).localName === 'tbl') inTbl = true;
-        lines.push({ text, center: jc === 'center', right: jc === 'right' || jc === 'end', bold: b, table: inTbl });
+        let tc: Element | null = null;
+        let tr: Element | null = null;
+        let tbl: Element | null = null;
+        for (let x = p.parentNode as Element | null; x && !tbl; x = x.parentNode as Element | null) {
+          if (x.localName === 'tc' && !tc) tc = x;
+          else if (x.localName === 'tr' && !tr) tr = x;
+          else if (x.localName === 'tbl') tbl = x;
+        }
+        const line: DocLine = { text, center: jc === 'center', right: jc === 'right' || jc === 'end', bold: b, table: !!tbl };
+        if (tbl && tr && tc) {
+          if (!tblIds.has(tbl)) tblIds.set(tbl, tblIds.size + 1);
+          Object.assign(line, { tbl: tblIds.get(tbl), row: kids(tbl, 'tr').indexOf(tr), col: kids(tr, 'tc').indexOf(tc), border: bordered(tbl) });
+        }
+        lines.push(line);
       }
     }
   }

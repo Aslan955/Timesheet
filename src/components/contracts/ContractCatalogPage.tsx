@@ -10,7 +10,7 @@ import React, { useMemo, useState } from 'react';
 import { AlertTriangle, Building2, Check, PenLine, FilePlus2, FileSignature, FileSpreadsheet, Plus, Save, Search, Trash2, X } from 'lucide-react';
 import { Btn, ErpPage, ErpTitleBar, FolderTabs, Panel, Tag, erp } from '../erp/Erp';
 import { ColumnFilterBar, useColumnFilters } from '../erp/ColumnFilter';
-import { CheckBox, InfoGrid, type InfoItem } from '../EmployeePage';
+import { CheckBox, InfoGrid, useEmployees, type InfoItem } from '../EmployeePage';
 import { getContractStore, renameContractType, useContractStore } from '../ContractsPage';
 import {
   APPENDIX_FIELDS, KINDS, KIND_CLS, KIND_LABEL, KIND_MAX, TERM_OPTIONS, termLabel, updateCatalog, useCatalog,
@@ -251,6 +251,7 @@ function CatalogTab<T extends Item>({ cfg, flash }: { cfg: TabCfg<T>; flash: (m:
 export const ContractCatalogPage: React.FC = () => {
   const cat = useCatalog();
   const cs = useContractStore();
+  const emps = useEmployees();
   const [tab, setTab] = useState<Tab>('types');
   const { flash, toast } = useFlash();
   const countBy = useMemo(() => {
@@ -628,7 +629,14 @@ export const ContractCatalogPage: React.FC = () => {
     remove: (x) => updateCatalog((c) => ({ ...c, appendix: c.appendix.filter((a) => a.id !== x.id), templates: c.templates.map((t) => ({ ...t, appliesTo: t.appliesTo.filter((a) => a !== x.id) })) })),
   };
 
-  // ---------------- Người ký (1 công ty có nhiều người ký)
+  // ---------------- Người ký (1 công ty có nhiều người ký) — chọn từ danh sách nhân viên (Employees)
+  const properName = (s: string) =>
+    s
+      .trim()
+      .toLocaleLowerCase('vi')
+      .split(/\s+/)
+      .map((w) => w.charAt(0).toLocaleUpperCase('vi') + w.slice(1))
+      .join(' ');
   const coName = (id: string) => cat.companies.find((c) => c.id === id)?.shortName || '—';
   const signersCfg: TabCfg<SignerDef> = {
     title: 'Danh mục người ký hợp đồng',
@@ -652,10 +660,12 @@ export const ContractCatalogPage: React.FC = () => {
               {x.salutation} {x.name}
             </b>
             {x.isDefault && <Tag cls="bg-amber-50 text-amber-700 border-amber-300">Mặc định</Tag>}
+            <span className="basis-full text-[11.5px] text-slate-500">{x.employeeCode ? `${x.employeeCode} · ${emps.find((m) => m.code === x.employeeCode)?.companyEmail || ''}` : 'Chưa liên kết nhân viên'}</span>
           </span>
         ),
         xlsx: (x) => `${x.salutation} ${x.name}`,
       },
+      { label: 'Mã NV', cls: 'hidden', cell: () => null, xlsx: (x) => x.employeeCode || '' },
       { label: 'Chức danh', cls: 'whitespace-nowrap', cell: (x) => x.title, xlsx: (x) => x.title },
       { label: 'Giấy uỷ quyền', cell: (x) => x.authorization || <i className="text-slate-500">Đại diện theo pháp luật</i>, xlsx: (x) => x.authorization || 'Đại diện theo pháp luật' },
       { label: 'Số HĐ đã ký', cls: 'w-24 text-right', cell: (x) => countBy.bySigner.get(x.id) || 0, xlsx: (x) => countBy.bySigner.get(x.id) || 0 },
@@ -686,12 +696,39 @@ export const ContractCatalogPage: React.FC = () => {
           value: (
             <>
               <span className="flex items-center gap-1.5 w-full">
-                <select value={f.salutation} onChange={(e) => set({ salutation: e.target.value })} className={`${INPUT} w-20`}>
+                <select value={f.salutation} onChange={(e) => set({ salutation: e.target.value })} className={`${INPUT} !w-[72px] shrink-0`}>
                   <option>Ông</option>
                   <option>Bà</option>
                 </select>
-                <input value={f.name} placeholder="Họ và tên" onChange={(e) => set({ name: e.target.value })} className={`${INPUT} ${errCls(E('name'))}`} />
+                <select
+                  value={f.employeeCode || ''}
+                  onChange={(e) => {
+                    const emp = emps.find((x) => x.code === e.target.value);
+                    if (!emp) return set({ employeeCode: undefined });
+                    set({ employeeCode: emp.code, name: properName(emp.fullName), salutation: emp.gender === 'Nữ' ? 'Bà' : 'Ông', title: f.title.trim() ? f.title : emp.position });
+                  }}
+                  className={`${INPUT} ${errCls(E('name'))}`}
+                  data-testid="signer-employee"
+                >
+                  <option value="">{f.name && !f.employeeCode ? `${f.name} (chưa liên kết nhân viên) — chọn lại` : '— Chọn nhân viên —'}</option>
+                  {emps
+                    .filter((x) => x.status !== 'Đã nghỉ việc' || x.code === f.employeeCode)
+                    .map((x) => (
+                      <option key={x.code} value={x.code}>
+                        {properName(x.fullName)} — {x.code} · {x.position} · {x.companyEmail}
+                      </option>
+                    ))}
+                </select>
               </span>
+              {(() => {
+                const emp = emps.find((x) => x.code === f.employeeCode);
+                return emp ? (
+                  <span className="block text-[11.5px] text-slate-500 mt-0.5" data-testid="signer-employee-info">
+                    {emp.department} · {emp.position} · {emp.companyEmail}
+                    {emp.status !== 'Đang làm việc' && <b className="text-amber-700"> · {emp.status}</b>}
+                  </span>
+                ) : null;
+              })()}
               <ErrText e={E('name')} />
             </>
           ),
@@ -717,6 +754,8 @@ export const ContractCatalogPage: React.FC = () => {
       if (!f.companyId) e.companyId = 'Bắt buộc';
       if (!f.title.trim()) e.title = 'Bắt buộc';
       if (f.name.trim() && list.some((x) => x.id !== f.id && x.companyId === f.companyId && x.name.trim().toLowerCase() === f.name.trim().toLowerCase())) e.name = 'Công ty này đã có người ký trùng tên';
+      if (!f.employeeCode) e.name = 'Chọn người ký từ danh sách nhân viên';
+      else if (list.some((x) => x.id !== f.id && x.companyId === f.companyId && x.employeeCode === f.employeeCode)) e.name = 'Nhân viên này đã là người ký của công ty';
       if (f.isDefault && !f.active) e.active = 'Người ký mặc định phải đang sử dụng';
       if (old?.isDefault && old.companyId === f.companyId && (!f.isDefault || !f.active)) e.active = 'Mỗi công ty cần 1 người ký mặc định — chọn người ký mặc định khác thay thế trước';
       if (!f.active && cs.signers.some((x) => x.signerId === f.id)) e.active = 'Đang dùng trong Thiết lập người ký — đổi thiết lập trước khi ngừng sử dụng';

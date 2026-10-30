@@ -9,7 +9,8 @@ import { AlertTriangle, Check, FileDown, FileSpreadsheet, FileText, Printer, Rot
 import { DateInput, today } from '../EmployeePage';
 import { Btn, erp } from '../erp/Erp';
 import { FIELDS, fieldLabel, typeDef, useCatalog, type AppendixTypeDef, type TemplateDef } from './catalog';
-import { FIELD_RE, MF_RE, inspectDocx, soThanhChu, type DocLine } from './docx';
+import { renderAsync } from '../../vendor/docx-preview';
+import { FIELD_RE, MF_RE, inspectDocx, mergeDocx, soThanhChu, type DocLine } from './docx';
 
 export type PrintItem = {
   id: string;
@@ -27,43 +28,50 @@ export type PrintJob = { item: PrintItem; main: TemplateDef | null; extras: Temp
 
 type Cfg = { tpl: string; app: string; appDate: string; kt: Record<string, boolean>; ov: Record<string, string>; wordsManual?: boolean };
 
-/** Các tên trường cùng một dữ liệu trong bộ mẫu — sửa 1 trường thì đổi luôn các trường còn lại. */
-const ALIASES = [
-  ['Bday', 'Ngày_sinh', 'BOD_text'],
-  ['Date_of_Issue', 'Ngày_cấp', 'Ngày_cấp_text'],
-  ['Người_đại_diện_ký', 'Người_ký'],
-  ['HQCV_tạm_tính', 'HQCV'],
-  ['Ngày_áp_dụng_text', 'Ngày_ký_Phụ_lục_điều_chỉnh'],
-  ['Họ_và_tên', 'Họ_tên_1'],
-  ['Mã_NV', 'DS_Nhân_viênMã_NV_cũ1'],
-  ['Contract_start', 'Ngày_bắt_đầu_HD'],
-];
+/** Các tên trường cùng một dữ liệu (tên chuẩn + tên cũ của bộ mẫu) — sửa 1 trường thì đổi luôn các trường còn lại. */
+const ALIASES: string[][] = (() => {
+  const m = new Map<string, string[]>();
+  FIELDS.forEach((f) => f.legacyOf && m.set(f.legacyOf, [...(m.get(f.legacyOf) || [f.legacyOf]), f.key]));
+  return [...m.values()];
+})();
 const aliasOf = (k: string) => ALIASES.find((g) => g.includes(k)) || [k];
 const titleCase = (v: string) => v.toLocaleLowerCase('vi').replace(/(^|\s)(\p{L})/gu, (_m, a: string, b: string) => a + b.toLocaleUpperCase('vi'));
 const wordsOf = (salary: string) => {
   const n = Number(salary.replace(/[^\d]/g, ''));
   return salary.trim() && n ? soThanhChu(n) : '';
 };
-/** Trường suy ra từ trường khác: họ tên IN HOA ↔ họ tên thường; mức lương → bằng chữ. */
+const dateTextOf = (v: string) => {
+  const m = v.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return '';
+  const mo = Number(m[2]);
+  return `ngày ${m[1].padStart(2, '0')} tháng ${mo <= 2 ? String(mo).padStart(2, '0') : mo} năm ${m[3]}`;
+};
+const KEYS = new Set(FIELDS.map((f) => f.key));
+/** Trường suy ra từ trường khác: họ tên IN HOA ↔ viết thường; số tiền → bằng chữ; ngày dd/mm/yyyy → "ngày … tháng … năm …". */
 const derivedOf = (name: string, v: string, wordsManual: boolean): Record<string, string> => {
-  if (name === 'Họ_và_tên' || name === 'Họ_tên_1') return { Họ_và_tên2: titleCase(v) };
-  if (name === 'Họ_và_tên2') return { Họ_và_tên: v.toLocaleUpperCase('vi') };
-  if (name === 'Lương_Cơ_bản' && !wordsManual) return { LCB_bằng_chữ: wordsOf(v) };
+  const k = aliasOf(name)[0];
+  if (k === 'HỌ_VÀ_TÊN_NLĐ_IN_HOA') return { Họ_và_tên_nlđ: titleCase(v) };
+  if (k === 'Họ_và_tên_nlđ') return { HỌ_VÀ_TÊN_NLĐ_IN_HOA: v.toLocaleUpperCase('vi') };
+  if (k === 'NGƯỜI_ĐẠI_DIỆN_KÝ_IN_HOA') return { Người_đại_diện_ký: titleCase(v) };
+  if (k === 'Người_đại_diện_ký') return { NGƯỜI_ĐẠI_DIỆN_KÝ_IN_HOA: v.toLocaleUpperCase('vi') };
+  if (k === 'Lương_Cơ_bản' && !wordsManual) return { LCB_bằng_chữ: wordsOf(v) };
+  if (k === 'Tổng_thu_nhập') return { Tổng_thu_nhập_bằng_chữ: wordsOf(v) };
+  if (KEYS.has(`${k}_text`) && dateTextOf(v)) return { [`${k}_text`]: dateTextOf(v) };
   return {};
 };
-const OPTIONAL = new Set(['Giấy_ủy_quyền', 'Ghi_chú', 'Mô_tả_công_việc', 'Contract_end', 'Số_tháng_HD', 'Điện_thoại_công_ty', 'Tên_phụ_lục', 'Nội_dung_điều_chỉnh', 'Mã_số_thuế']);
+const OPTIONAL = new Set(['Giấy_ủy_quyền', 'Ghi_chú', 'Mô_tả_công_việc', 'Contract_end', 'Contract_end_text', 'Số_tháng_HD', 'Điện_thoại_công_ty', 'Tên_phụ_lục', 'Nội_dung_điều_chỉnh', 'Mã_số_thuế', 'Email_NLĐ', 'Trình_độ_chuyên_môn', 'Số_giấy_phép_lao_động', 'Số_tài_khoản', 'Ngân_hàng', 'Cấp_bậc', 'Quản_lý_trực_tiếp']);
 const KIND_PREFIX = { HD: 'Hợp đồng', KT: 'Kèm theo', PL: 'Phụ lục' } as const;
 
 /** Trường số trong file dữ liệu trộn (ô số → mẫu Word có \\# #,##0 tự định dạng). */
-const NUM_FIELD = /^(Lương_Cơ_bản|Lương_gốc|Trợ_cấp_|HQCV|Tổng_hỗ_trợ|Tổng_thu_nhập|Mức_hưởng|Số_tháng_HD)/;
-const MONEY_FIELD = /^(Lương_Cơ_bản|Lương_gốc|Trợ_cấp_|HQCV|Tổng_hỗ_trợ|Tổng_thu_nhập)/;
+const MONEY_FIELD = /^(Lương_Cơ_bản|Lương_gốc|Lương_cũ|Trợ_cấp_|Hỗ_trợ_|Phụ_cấp_|HQCV|Tổng_hỗ_trợ|Tổng_thu_nhập)$|^(Trợ_cấp_|Hỗ_trợ_)/;
+const NUM_FIELD = /^(Lương_Cơ_bản|Lương_gốc|Lương_cũ|Trợ_cấp_|Hỗ_trợ_|Phụ_cấp_|HQCV|Tổng_hỗ_trợ|Tổng_thu_nhập|Số_tháng_HD)$|^(Trợ_cấp_|Hỗ_trợ_)/;
 /** File Excel dữ liệu trộn: sheet "Du_lieu_tron" — dòng 1 là tên trường (đúng tên MERGEFIELD trong mẫu Word), mỗi hợp đồng 1 dòng;
  *  sheet "Giai_thich" — ý nghĩa từng trường. Dùng làm nguồn dữ liệu Mail Merge trong Word. */
 export const exportMergeData = (jobs: PrintJob[]) => {
   const present = new Set(jobs.flatMap((j) => Object.keys(j.data)));
   const keys = [...FIELDS.map((f) => f.key.normalize('NFC')).filter((k) => present.has(k)), ...[...present].filter((k) => !FIELDS.some((f) => f.key.normalize('NFC') === k))];
   const cell = (k: string, v: string) => {
-    const n = Number(v.replace(/,/g, '').trim());
+    const n = Number(v.replace(/[.,\s]/g, '').trim()); // số tiền định dạng #.##0
     return NUM_FIELD.test(k) && v.trim() && isFinite(n) ? n : v;
   };
   const aoa: (string | number)[][] = [[...keys, 'Mẫu_in', 'Số_trường_đã_sửa']];
@@ -101,57 +109,154 @@ const escH = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').repla
 /** In trực tiếp (trình duyệt → máy in / lưu PDF) đúng nội dung đang xem trước, gồm phần đã sửa. Mỗi văn bản 1 trang mới.
  *  Dùng iframe ẩn nên không bị chặn cửa sổ bật lên. */
 export const printJobsDirect = async (jobs: PrintJob[]) => {
-  const re = () => new RegExp(`${MF_RE.source}|${FIELD_RE.source}`, 'gu');
-  const fill = (text: string, data: Record<string, string>) => {
-    let out = '';
-    let last = 0;
-    for (const m of text.matchAll(re())) {
-      const name = (m[1] ?? m[2]).normalize('NFC');
-      out += escH(text.slice(last, m.index)) + (data[name]?.trim() ? escH(data[name]) : '…………………');
-      last = m.index! + m[0].length;
-    }
-    return out + escH(text.slice(last));
-  };
-  const sections: string[] = [];
-  for (const j of jobs) {
-    if (!j.main) {
-      if (j.item.defaultHtml) sections.push(j.item.defaultHtml());
-      continue;
-    }
-    for (const t of [j.main, ...j.extras]) {
-      const lines = await linesOf(t);
-      sections.push(
-        `<section class="doc">${lines
-          .map((l) => (l.text.trim() ? `<p class="${l.center || l.table ? 'c' : l.right ? 'r' : 'j'}${l.bold ? ' b' : ''}">${fill(l.text, j.data)}</p>` : '<div class="gap"></div>'))
-          .join('')}</section>`,
-      );
-    }
-  }
-  if (!sections.length) return 0;
   const title = jobs.length === 1 ? `In ${jobs[0].item.sub.split(' · ')[0]}` : `In ${jobs.length} hợp đồng`;
-  const html = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${escH(title)}</title><style>
-@page{size:A4;margin:18mm 20mm}body{font-family:'Times New Roman',Times,serif;font-size:13.5pt;line-height:1.5;color:#000;margin:0}
-.doc p{margin:0 0 3pt;white-space:pre-wrap}.doc .c{text-align:center}.doc .r{text-align:right}.doc .j{text-align:justify}.doc .b{font-weight:bold}.doc .gap{height:9pt}
-${PRINT_CSS}</style></head><body>${sections.join('')}</body></html>`;
   const fr = document.createElement('iframe');
   fr.setAttribute('aria-hidden', 'true');
-  fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+  fr.style.cssText = 'position:fixed;left:-10000px;top:0;width:900px;height:1200px;border:0;visibility:hidden';
   document.body.appendChild(fr);
-  await new Promise<void>((ok) => {
-    fr.onload = () => ok();
-    fr.srcdoc = html;
-  });
-  const w = fr.contentWindow!;
-  w.focus();
-  w.print();
-  setTimeout(() => fr.remove(), 60_000);
-  return sections.length;
+  try {
+    await new Promise<void>((ok) => {
+      fr.onload = () => ok();
+      // Trang in: mỗi trang Word = 1 trang A4 (lề lấy theo mẫu Word); bản in mặc định dùng lề 18mm
+      fr.srcdoc = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${escH(title)}</title><style>
+@page{size:A4;margin:0}@page dflt{size:A4;margin:18mm 20mm}html,body{margin:0;padding:0;background:#fff}
+.docx-wrapper{background:#fff!important;padding:0!important;display:block!important}
+section.docx tr{break-inside:avoid}section.docx{box-shadow:none!important;margin:0 auto!important;break-after:page;page-break-after:always;min-height:0!important;overflow:visible!important;display:block!important;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.dflt-page{page:dflt;font-family:'Times New Roman',serif;font-size:13.5pt;line-height:1.5;color:#000;break-after:page;page-break-after:always}
+.wdoc:last-child section.docx:last-child,body>.dflt-page:last-child{break-after:auto;page-break-after:auto}
+${PRINT_CSS}</style></head><body></body></html>`;
+    });
+    const doc = fr.contentDocument!;
+    let n = 0;
+    for (const j of jobs) {
+      if (!j.main) {
+        if (!j.item.defaultHtml) continue;
+        const box = doc.createElement('div');
+        box.className = 'dflt-page';
+        box.innerHTML = j.item.defaultHtml();
+        doc.body.appendChild(box);
+        n++;
+        continue;
+      }
+      for (const t of [j.main, ...j.extras]) {
+        // trộn đúng file Word sẽ tải về rồi dựng lại bằng docx-preview → giữ nguyên định dạng (đánh số, bảng chữ ký, thụt lề, ngắt trang)
+        const bytes = await mergeDocx(t.data!, j.data);
+        // docx-preview xoá sạch vùng chứa style trước khi dựng → dùng vùng riêng, không đụng CSS in của trang
+        const css = doc.createElement('div');
+        css.hidden = true;
+        const box = doc.createElement('div');
+        box.className = 'wdoc';
+        doc.body.append(css, box);
+        await renderAsync(new Blob([bytes as BlobPart]), box, css, {
+          className: 'docx',
+          inWrapper: true,
+          ignoreWidth: false,
+          ignoreHeight: false,
+          breakPages: true,
+          ignoreLastRenderedPageBreak: true,
+          renderHeaders: false, // đầu/chân trang Word (VD "Trang 1/7") không lặp lại được theo trang in
+          renderFooters: false,
+          useBase64URL: true,
+        });
+        // Giữ khổ & lề theo mẫu Word (padding của section); nội dung dài tự sang trang sau,
+        // lề trên/dưới được lặp lại ở mỗi trang nhờ box-decoration-break: clone
+        box.querySelectorAll<HTMLElement>('section.docx').forEach((sec) => {
+          // trang trống (ngắt trang / ngắt section thừa ở cuối mẫu) → bỏ, tránh in tờ trắng
+          if (!(sec.textContent || '').replace(/[\s\u00a0\-_.…]/g, '') && !sec.querySelector('img, svg, canvas')) return sec.remove();
+          sec.style.minHeight = '0';
+          sec.style.height = 'auto';
+        });
+        // bảng nhỏ (khối chữ ký, bảng thông tin) không bị cắt đôi sang 2 trang
+        box.querySelectorAll<HTMLTableElement>('section.docx table').forEach((t) => t.rows.length <= 8 && (t.style.breakInside = 'avoid'));
+        n++;
+      }
+    }
+    if (!n) {
+      fr.remove();
+      return 0;
+    }
+    await new Promise((ok) => setTimeout(ok, 300)); // chờ ảnh / phông chữ
+    const w = fr.contentWindow!;
+    w.focus();
+    w.print();
+    setTimeout(() => fr.remove(), 60_000);
+    return n;
+  } catch (e) {
+    fr.remove();
+    throw e;
+  }
 };
 
 const linesOf = (t: TemplateDef) => {
   const key = `${t.id}:${t.size}:${t.uploadedAt}`;
   if (!LINES.has(key)) LINES.set(key, inspectDocx(t.data!).then((r) => r.lines));
   return LINES.get(key)!;
+};
+
+/** Gom các đoạn liên tiếp cùng 1 bảng thành lưới hàng × cột để xem trước đúng bố cục bảng. */
+type PreviewTable = { rows: DocLine[][][]; border: boolean };
+const blocksOf = (lines: DocLine[]): (DocLine | PreviewTable)[] => {
+  const out: (DocLine | PreviewTable)[] = [];
+  let cur: { id: number; t: PreviewTable } | null = null;
+  for (const l of lines) {
+    if (l.tbl === undefined || l.row === undefined || l.col === undefined) {
+      cur = null;
+      out.push(l);
+      continue;
+    }
+    if (!cur || cur.id !== l.tbl) {
+      cur = { id: l.tbl, t: { rows: [], border: !!l.border } };
+      out.push(cur.t);
+    }
+    const rows = cur.t.rows;
+    while (rows.length <= l.row) rows.push([]);
+    while (rows[l.row].length <= l.col) rows[l.row].push([]);
+    rows[l.row][l.col].push(l);
+  }
+  // hàng thiếu ô → đủ số cột lớn nhất để căn thẳng
+  out.forEach((b) => {
+    if (!('rows' in b)) return;
+    const n = Math.max(...b.rows.map((r) => r.length));
+    b.rows.forEach((r) => {
+      while (r.length < n) r.push([]);
+    });
+  });
+  return out;
+};
+
+/** Xem trước đúng định dạng: trộn file Word rồi dựng bằng docx-preview (chỉ xem, sửa thông tin ở chế độ "Sửa nhanh"). */
+const ExactPreview: React.FC<{ tpl: TemplateDef; data: Record<string, string> }> = ({ tpl, data }) => {
+  const host = useRef<HTMLDivElement>(null);
+  const css = useRef<HTMLDivElement>(null);
+  const [state, setState] = useState<'loading' | 'ok' | string>('loading');
+  const key = JSON.stringify(data);
+  useEffect(() => {
+    let live = true;
+    setState('loading');
+    const t = setTimeout(async () => {
+      try {
+        const bytes = await mergeDocx(tpl.data!, data);
+        if (!live || !host.current || !css.current) return;
+        await renderAsync(new Blob([bytes as BlobPart]), host.current, css.current, { className: 'docx', inWrapper: true, breakPages: true, ignoreLastRenderedPageBreak: true, renderHeaders: true, renderFooters: true, useBase64URL: true });
+        host.current.querySelectorAll<HTMLElement>('section.docx').forEach((sec) => !(sec.textContent || '').replace(/[\s\u00a0\-_.…]/g, '') && !sec.querySelector('img, svg, canvas') && sec.remove());
+        if (live) setState('ok');
+      } catch (e) {
+        if (live) setState((e as Error).message);
+      }
+    }, 150);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [tpl.id, key]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div data-testid="exact-preview">
+      <div ref={css} hidden />
+      {state === 'loading' && <p className="text-slate-500 text-center py-4">Đang dựng bản in…</p>}
+      {state !== 'loading' && state !== 'ok' && <p className="text-rose-600 text-center py-4">Không dựng được bản in: {state}</p>}
+      <div ref={host} className="[&_.docx-wrapper]:!bg-transparent [&_.docx-wrapper]:!p-0" />
+    </div>
+  );
 };
 
 /** Ô sửa trực tiếp trên bản xem trước — sửa xong bấm Enter / bấm ra ngoài; Esc huỷ. */
@@ -202,6 +307,7 @@ export const PrintDialog: React.FC<{ items: PrintItem[]; onClose: () => void; on
   const [lines, setLines] = useState<DocLine[] | null>(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [exact, setExact] = useState(false); // xem bản in đúng định dạng Word
   const paper = useRef<HTMLDivElement>(null);
 
   const it = items.find((x) => x.id === cur) || items[0];
@@ -523,6 +629,16 @@ export const PrintDialog: React.FC<{ items: PrintItem[]; onClose: () => void; on
                   <FileText size={13} className="shrink-0" /> <span className="truncate">{KIND_PREFIX[d.kind]}: {d.name}</span>
                 </button>
               ))}
+              {doc && (
+                <span className="ml-auto shrink-0 inline-flex rounded-[3px] border border-slate-300 overflow-hidden text-[12px] font-semibold" data-testid="preview-mode">
+                  <button type="button" onClick={() => setExact(false)} className={`h-7 px-2.5 cursor-pointer ${!exact ? 'bg-[#1e3a5f] text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`} title="Bấm vào chữ nền vàng để sửa thông tin">
+                    Sửa nhanh
+                  </button>
+                  <button type="button" onClick={() => setExact(true)} className={`h-7 px-2.5 cursor-pointer border-l border-slate-300 ${exact ? 'bg-[#1e3a5f] text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`} title="Xem đúng định dạng file Word sẽ in / tải về">
+                    Bản in (đúng mẫu Word)
+                  </button>
+                </span>
+              )}
             </div>
             <div className="flex-1 overflow-auto p-5">
               {!doc ? (
@@ -535,6 +651,8 @@ export const PrintDialog: React.FC<{ items: PrintItem[]; onClose: () => void; on
                 </div>
               ) : err ? (
                 <p className="text-rose-600 text-center py-10">{err}</p>
+              ) : exact ? (
+                <ExactPreview tpl={doc} data={job.data} />
               ) : !lines ? (
                 <p className="text-slate-500 text-center py-10">Đang đọc mẫu…</p>
               ) : (
@@ -544,13 +662,36 @@ export const PrintDialog: React.FC<{ items: PrintItem[]; onClose: () => void; on
                   className="mx-auto w-full max-w-[820px] min-h-[1100px] bg-white shadow-md border border-slate-300 px-16 py-14 text-[14.5px] leading-[1.65] text-slate-900"
                   style={{ fontFamily: "'Times New Roman', Times, serif" }}
                 >
-                  {lines.map((l, i) =>
-                    l.text.trim() ? (
-                      <p key={i} className={`whitespace-pre-wrap ${l.center || l.table ? 'text-center' : l.right ? 'text-right' : 'text-justify'} ${l.bold ? 'font-bold' : ''} mb-1`}>
-                        {render(l.text)}
+                  {blocksOf(lines).map((bl, bi) =>
+                    'rows' in bl ? (
+                      // bảng trong mẫu Word (VD khối chữ ký "Người lao động | Người sử dụng lao động") → giữ nhiều cột
+                      <table key={bi} className={`w-full table-fixed border-collapse my-2 ${bl.border ? '[&_td]:border [&_td]:border-slate-400' : ''}`} data-testid="preview-table">
+                        <tbody>
+                          {bl.rows.map((cells, ri) => (
+                            <tr key={ri}>
+                              {cells.map((ps, ci) => (
+                                <td key={ci} className="align-top px-2 py-0.5">
+                                  {ps.map((l, k) =>
+                                    l.text.trim() ? (
+                                      <p key={k} className={`whitespace-pre-wrap ${l.right ? 'text-right' : l.center || !bl.border ? 'text-center' : 'text-left'} ${l.bold ? 'font-bold' : ''} mb-1`}>
+                                        {render(l.text)}
+                                      </p>
+                                    ) : (
+                                      <div key={k} className="h-3" />
+                                    ),
+                                  )}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : bl.text.trim() ? (
+                      <p key={bi} className={`whitespace-pre-wrap ${bl.center || bl.table ? 'text-center' : bl.right ? 'text-right' : 'text-justify'} ${bl.bold ? 'font-bold' : ''} mb-1`}>
+                        {render(bl.text)}
                       </p>
                     ) : (
-                      <div key={i} className="h-3" />
+                      <div key={bi} className="h-3" />
                     ),
                   )}
                 </div>

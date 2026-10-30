@@ -22,7 +22,7 @@ import { CheckBox, DateInput, InfoGrid, addDays, addMonths, dmy, nowIso, norm, p
 import { Btn, ErpPage, ErpTitleBar, FieldTable, FolderTabs, KpiBox, Panel, Segmented, Tag, erp } from './erp/Erp';
 import {
   KIND_COLOR, KIND_LABEL, activeCompanies, colorOf, companyById, defaultCompanyId, defaultTerm, defaultTypeOf, getCatalog, insuranceOf, isK, kindOf, rateOf,
-  KIND_SHORT, attachmentsFor, contractNoBase, defaultSignerOf, fieldLabel, shortOf, signerById, signersOf, templateForType, termsOf, typeDef, typeNames, useCatalog, type AppendixTypeDef, type Kind,
+  KIND_SHORT, attachmentsFor, contractNoBase, defaultSignerOf, FIELDS, fieldLabel, shortOf, signerById, signersOf, templateForType, termsOf, typeDef, typeNames, useCatalog, type AppendixTypeDef, type Kind,
 } from './contracts/catalog';
 import { downloadBytes, mergeDocx, soThanhChu, zip } from './contracts/docx';
 import { ColumnFilterBar, useColumnFilters } from './erp/ColumnFilter';
@@ -205,14 +205,15 @@ const supportAmt = (c: Pick<Contract, 'allowances'>, name: string) => c.allowanc
 
 // ── Phụ lục 01: chia Tổng thu nhập thành các khoản hỗ trợ + HQCV tạm tính ──
 // Ăn trưa cố định 730.000 · Điện thoại = TN − LCB − ăn trưa (0 → 1.000.000) · Xăng xe = phần còn lại (0 → 1.500.000)
-// · Nhà ở = phần còn lại (0 → 2.000.000) · HQCV tạm tính = TN − (LCB + ăn trưa + điện thoại + xăng xe + nhà ở). LCB = Mức lương (lương gốc × mức hưởng).
+// · Nhà ở = phần còn lại (0 → 2.000.000) · HQCV tạm tính = TN − (LCB + ăn trưa + điện thoại + xăng xe + nhà ở). LCB = Lương cơ bản (mức lương khai báo đóng bảo hiểm, chưa nhân mức hưởng).
+// Tổng thu nhập = LCB + ăn trưa + điện thoại + xăng xe + nhà ở + HQCV tạm tính.
 export const LUNCH = 730_000;
 export const INCOME_RULE: { name: string; cap: number }[] = [
   { name: 'Hỗ trợ điện thoại', cap: 1_000_000 },
   { name: 'Hỗ trợ xăng xe', cap: 1_500_000 },
   { name: 'Hỗ trợ nhà ở', cap: 2_000_000 },
 ];
-const incomeOf = (c: Pick<Contract, 'baseSalary' | 'rate' | 'allowances' | 'perfBonus'>) => salaryOf(c) + c.allowances.reduce((x, a) => x + (a.amount || 0), 0) + (c.perfBonus || 0);
+const incomeOf = (c: Pick<Contract, 'baseSalary' | 'rate' | 'allowances' | 'perfBonus'>) => (c.baseSalary || 0) + c.allowances.reduce((x, a) => x + (a.amount || 0), 0) + (c.perfBonus || 0);
 export const splitIncome = (total: number, lcb: number) => {
   const out: Record<string, number> = { 'Hỗ trợ ăn trưa': LUNCH };
   let rest = total - lcb - LUNCH;
@@ -224,11 +225,11 @@ export const splitIncome = (total: number, lcb: number) => {
 };
 /** Tính lại các khoản hỗ trợ + HQCV theo Tổng thu nhập (mặc định giữ nguyên Tổng thu nhập hiện tại). */
 const withIncome = <T extends Pick<Contract, 'baseSalary' | 'rate' | 'allowances' | 'perfBonus'>>(c: T, total = incomeOf(c)): T => {
-  const p = splitIncome(total, salaryOf(c));
+  const p = splitIncome(total, c.baseSalary || 0);
   return { ...c, allowances: SUPPORTS.map((x) => ({ id: uid(), name: x.name, amount: p.supports[x.name] || 0 })), perfBonus: p.perf };
 };
 /** Dữ liệu tự sinh: Tổng thu nhập tối thiểu = LCB + ăn trưa */
-const fitIncome = <T extends Pick<Contract, 'baseSalary' | 'rate' | 'allowances' | 'perfBonus'>>(c: T, total = incomeOf(c)) => withIncome(c, Math.max(total, salaryOf(c) + LUNCH));
+const fitIncome = <T extends Pick<Contract, 'baseSalary' | 'rate' | 'allowances' | 'perfBonus'>>(c: T, total = incomeOf(c)) => withIncome(c, Math.max(total, (c.baseSalary || 0) + LUNCH));
 /** Số HĐ theo mẫu: «Mã_NV»/«ký hiệu công ty»/«ký hiệu loại HĐ» — trùng thì thêm -2, -3… */
 const nextContractNo = (empCode: string, companyId: string, type: CType, contracts: Pick<Contract, 'id' | 'no'>[], selfId = '') => {
   const base = contractNoBase(empCode || '…', companyId, type);
@@ -453,7 +454,7 @@ const validate = (c: Contract, all: Contract[]): Record<string, string> => {
   if (!c.from) e.from = 'Bắt buộc';
   if (c.to && c.from && c.to < c.from) e.to = 'Trước ngày có hiệu lực';
   if (!c.signer.trim()) e.signer = 'Chọn người ký';
-  if (incomeOf(c) < salaryOf(c) + LUNCH) e.income = `Tối thiểu ${money(salaryOf(c) + LUNCH)} (Lương cơ bản + ăn trưa ${money(LUNCH)})`;
+  if (incomeOf(c) < (c.baseSalary || 0) + LUNCH) e.income = `Tối thiểu ${money((c.baseSalary || 0) + LUNCH)} (Lương cơ bản + ăn trưa ${money(LUNCH)})`;
   if (c.ended && !c.ended.date) e.ended = 'Nhập ngày hết hiệu lực';
   else if (c.ended && c.from && c.ended.date < c.from) e.ended = 'Ngày hết hiệu lực trước ngày bắt đầu';
   else if (c.ended && c.to && c.ended.date > c.to) e.ended = 'Sau ngày kết thúc — hợp đồng sẽ tự hết hạn';
@@ -467,7 +468,7 @@ const validate = (c: Contract, all: Contract[]): Record<string, string> => {
 const LABELS: [keyof Contract, string][] = [
   ['companyId', 'Công ty ký HĐ'], ['no', 'Số hợp đồng'], ['type', 'Loại hợp đồng'], ['term', 'Thời hạn'], ['signDate', 'Ngày ký'], ['from', 'Ngày có hiệu lực'], ['to', 'Ngày hết hạn'],
   ['unit', 'Đơn vị ký HĐ'], ['position', 'Vị trí công việc'], ['workplace', 'Nơi làm việc'], ['workTime', 'Thời gian làm việc'], ['jobDesc', 'Mô tả công việc'],
-  ['baseSalary', 'Lương cơ bản gốc'], ['rate', 'Mức hưởng (%)'], ['perfBonus', 'Thưởng hiệu quả (tạm tính)'], ['signerSalutation', 'Xưng hô người ký'], ['signer', 'Người ký'], ['signerTitle', 'Chức danh người ký'], ['authorization', 'Giấy uỷ quyền'],
+  ['baseSalary', 'Lương cơ bản'], ['rate', 'Mức hưởng (%)'], ['perfBonus', 'Thưởng hiệu quả (tạm tính)'], ['signerSalutation', 'Xưng hô người ký'], ['signer', 'Người ký'], ['signerTitle', 'Chức danh người ký'], ['authorization', 'Giấy uỷ quyền'],
   ['signPlace', 'Nơi ký'], ['note', 'Ghi chú'],
 ];
 const showV = (k: keyof Contract, v: unknown) => (k === 'companyId' ? companyById(String(v))?.name || '—' : k === 'signDate' || k === 'from' || k === 'to' ? dmy(String(v || '')) || '—' : k === 'baseSalary' || k === 'perfBonus' ? money(Number(v)) || '—' : String(v ?? '') || '—');
@@ -531,7 +532,7 @@ const defaultPageHtml = ({ w, c }: { w: Worker; c: Contract }) => {
 <h2>Bên A — Người sử dụng lao động</h2><table>${row('Công ty', companyById(c.companyId)?.name || '')}${row('Địa chỉ', companyById(c.companyId)?.address || '')}${row('Mã số thuế', companyById(c.companyId)?.taxCode || '')}${row('Đơn vị', c.unit)}${row('Người đại diện', `${c.signerSalutation} ${c.signer}`.trim())}${row('Chức vụ', c.signerTitle)}${c.authorization ? row('Theo', c.authorization) : ''}</table>
 <h2>Bên B — Người lao động</h2><table>${row('Họ và tên', w.name)}${row('Mã NLĐ', w.code)}${row('Giới tính', w.gender)}${row('Ngày sinh', dmy(w.birthDate))}${row('Số CCCD / Hộ chiếu', w.idNo)}${row('Ngày cấp', dmy(w.idDate))}${row('Nơi cấp', w.idPlace)}${row('Nơi đăng ký hộ khẩu', w.address)}${row('Nơi ở hiện tại', w.currentAddress)}${row('Số điện thoại', w.phone)}</table>
 <h2>Điều 1. Thời hạn và công việc</h2><table>${row('Loại hợp đồng', c.type)}${row('Thời hạn', isK(c.type, 'KXD') ? 'Không xác định thời hạn' : `${c.term ? `${c.term} — ` : ''}từ ${dmy(c.from)}${c.to ? ` đến ${dmy(c.to)}` : ''}`)}${row('Vị trí công việc', c.position)}${row('Mô tả công việc', c.jobDesc)}${row('Nơi làm việc', c.workplace)}${row('Thời gian làm việc', c.workTime)}</table>
-<h2>Điều 2. Tiền lương và phụ cấp</h2><table>${row('Lương cơ bản gốc', `${money(c.baseSalary)} VNĐ/tháng`)}${row('Mức hưởng', `${c.rate}%`)}${row('Lương cơ bản', `${money(salaryOf(c))} VNĐ/tháng`)}${c.allowances.filter((a) => a.amount).map((a) => row(a.name, `${money(a.amount)} VNĐ/tháng`)).join('')}${c.perfBonus ? row('Thưởng hiệu quả (tạm tính)', `${money(c.perfBonus)} VNĐ/tháng`) : ''}</table>
+<h2>Điều 2. Tiền lương và phụ cấp</h2><table>${row('Lương cơ bản', `${money(c.baseSalary)} VNĐ/tháng`)}${row('Mức hưởng', `${c.rate}%`)}${row('Mức lương', `${money(salaryOf(c))} VNĐ/tháng`)}${c.allowances.filter((a) => a.amount).map((a) => row(a.name, `${money(a.amount)} VNĐ/tháng`)).join('')}${c.perfBonus ? row('Thưởng hiệu quả (tạm tính)', `${money(c.perfBonus)} VNĐ/tháng`) : ''}</table>
 <h2>Điều 3. Bảo hiểm</h2><p>Tham gia: ${[c.insurance.bhxh && 'BHXH', c.insurance.bhyt && 'BHYT', c.insurance.bhtn && 'BHTN'].filter(Boolean).join(', ') || 'Không'} theo quy định hiện hành.</p>
 ${c.note ? `<h2>Ghi chú</h2><p>${e(c.note)}</p>` : ''}
 <p style="margin-top:16px">Hợp đồng lập tại ${e(c.signPlace) || '…………'}, ngày ${dmy(c.signDate) || '…………'}, thành 02 bản có giá trị như nhau, mỗi bên giữ 01 bản.</p>
@@ -553,86 +554,135 @@ const printHtml = (items: { w: Worker; c: Contract }[]) => {
 };
 
 
-/** Dữ liệu trộn vào template Word — tên trường theo bộ mẫu hợp đồng (xem màn Template hợp đồng). */
+// ---- Định dạng dữ liệu trộn theo "DS trường trộn_v2"
+/** Số tiền #.##0 — dấu chấm phân cách hàng nghìn, không kèm đơn vị */
+const vnd = (n?: number) => String(Math.round(n || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+/** "ngày dd tháng m năm yyyy" — ngày < 10 và tháng 1, 2 thêm số 0 phía trước */
+const dateText = (iso: string) => {
+  if (!iso) return '';
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  return `ngày ${String(d).padStart(2, '0')} tháng ${m <= 2 ? String(m).padStart(2, '0') : m} năm ${y}`;
+};
+/** Số điện thoại nhóm 4-3-3 */
+const phone433 = (p: string) => {
+  const d = (p || '').replace(/\D/g, '');
+  return d.length === 10 ? `${d.slice(0, 4)} ${d.slice(4, 7)} ${d.slice(7)}` : p || '';
+};
+/** Tên doanh nghiệp viết thường: "Công ty Cổ phần Aequitas" */
+const companyProper = (name: string) => {
+  const t = titleCase(name || '');
+  return t.replace(/^Công Ty Cổ Phần/u, 'Công ty Cổ phần').replace(/^Công Ty Tnhh/u, 'Công ty TNHH').replace(/^Công Ty/u, 'Công ty');
+};
+
+/** Dữ liệu trộn vào template Word — tên trường theo "DS trường trộn_v2" (xem màn Template hợp đồng) + tên cũ của bộ mẫu trước. */
 export const mergeDataOf = (c: Contract, w: Worker, appendix?: AppendixTypeDef, appendixDate = today()): Record<string, string> => {
   const co = companyById(c.companyId);
   const sal = salaryOf(c);
   const sup = allowTotal(c);
-  const name = w.name.toLocaleUpperCase('vi');
   const months = termMonths(c.type, c.term);
+  const ins = [c.insurance.bhxh && 'bảo hiểm xã hội', c.insurance.bhyt && 'bảo hiểm y tế', c.insurance.bhtn && 'bảo hiểm thất nghiệp'].filter(Boolean).join(', ');
+  const signer = c.signer || '';
   const d: Record<string, string> = {
-    // Người lao động
+    // I. Người lao động
     Mã_NV: w.code,
-    Họ_và_tên: name,
-    Họ_và_tên2: titleCase(w.name),
-    Họ_tên_1: name,
+    HỌ_VÀ_TÊN_NLĐ_IN_HOA: w.name.toLocaleUpperCase('vi'),
+    Họ_và_tên_nlđ: titleCase(w.name),
     Xưng_hô_NLĐ: w.gender === 'Nữ' ? 'Bà' : 'Ông',
     Giới_tính: w.gender,
-    Bday: dmy(w.birthDate),
-    Số_CMNDCCCD_Hộ_chiếu: w.idNo,
-    Date_of_Issue: dmy(w.idDate),
-    Nơi_cấp: w.idPlace,
+    Ngày_sinh: dmy(w.birthDate),
+    Ngày_sinh_text: dateText(w.birthDate),
+    Quốc_tịch: 'Việt Nam',
+    CCCD_Hộ_chiếu: (w.idNo || '').replace(/\s+/g, ''),
+    Ngày_cấp_giấy_tờ_NLĐ: dmy(w.idDate),
+    Ngày_cấp_giấy_tờ_NLĐ_text: dateText(w.idDate),
+    Nơi_cấp_giấy_tờ_NLĐ: w.idPlace,
     Địa_chỉ_thường_trú: w.address,
-    Nơi_ở_hiện_tại: w.currentAddress,
-    SĐT: w.phone,
+    Nơi_ở_hiện_tại: w.currentAddress || w.address,
+    SĐT_NLĐ: phone433(w.phone),
+    Email_NLĐ: '',
+    Trình_độ_chuyên_môn: '',
+    Số_giấy_phép_lao_động: '',
+    Số_tài_khoản: '',
+    Ngân_hàng: '',
     Ngày_vào_làm: dmy(w.joinDate),
-    // Hợp đồng
+    Ngày_vào_làm_text: dateText(w.joinDate),
+    // II. Hợp đồng & công việc
     Số_hợp_đồng: c.no,
     Loại_hợp_đồng: c.type,
-    Contract_start: dmy(c.from),
-    Contract_end: c.to ? dmy(c.to) : '',
-    Số_tháng_HD: months ? String(months) : '',
-    Thời_hạn: isK(c.type, 'KXD') ? 'Không xác định thời hạn' : c.term,
     Ngày_ký: dmy(c.signDate),
-    Nơi_ký: c.signPlace,
+    Ngày_ký_text: dateText(c.signDate),
+    Nơi_ký: (c.signPlace || '').replace(/^(thành phố|tp\.?)\s+/i, ''),
+    Contract_start: dmy(c.from),
+    Contract_start_text: dateText(c.from),
+    Contract_end: c.to ? dmy(c.to) : '',
+    Contract_end_text: c.to ? dateText(c.to) : '',
+    Số_tháng_HD: months ? String(months) : '',
     Đơn_vị: c.unit,
     Vị_trí_công_việc: c.position,
+    Cấp_bậc: '',
+    Quản_lý_trực_tiếp: '',
     Nơi_làm_việc: c.workplace,
+    Hình_thức_làm_việc: /bán thời gian|không trọn/i.test(c.workTime || '') ? 'Không trọn thời gian' : 'Toàn thời gian',
     Thời_gian_làm_việc: c.workTime,
     Mô_tả_công_việc: c.jobDesc,
-    Bảo_hiểm: [c.insurance.bhxh && 'BHXH', c.insurance.bhyt && 'BHYT', c.insurance.bhtn && 'BHTN'].filter(Boolean).join(', ') || 'Không tham gia',
+    Bảo_hiểm: ins ? ins.charAt(0).toLocaleUpperCase('vi') + ins.slice(1) : 'Không tham gia',
     Ghi_chú: c.note,
-    // Lương & hỗ trợ
-    Lương_Cơ_bản: money(sal) || '0',
+    // III. Tiền lương & các khoản hỗ trợ
+    Lương_Cơ_bản: vnd(sal),
     LCB_bằng_chữ: soThanhChu(sal),
-    Lương_gốc: money(c.baseSalary) || '0',
-    Mức_hưởng: String(c.rate),
-    HQCV_tạm_tính: money(c.perfBonus) || '0',
-    Tổng_hỗ_trợ: money(sup) || '0',
-    Tổng_thu_nhập: money(sal + sup + (c.perfBonus || 0)) || '0',
-    // Người ký
+    Mức_hưởng: `${c.rate}%`,
+    Phụ_cấp_trách_nhiệm: '0',
+    Hỗ_trợ_ăn_trưa: vnd(supportAmt(c, 'Hỗ trợ ăn trưa')),
+    Hỗ_trợ_xăng_xe: vnd(supportAmt(c, 'Hỗ trợ xăng xe')),
+    Hỗ_trợ_điện_thoại: vnd(supportAmt(c, 'Hỗ trợ điện thoại')),
+    Hỗ_trợ_nhà_ở: vnd(supportAmt(c, 'Hỗ trợ nhà ở')),
+    HQCV_tạm_tính: vnd(c.perfBonus),
+    Tổng_hỗ_trợ: vnd(sup),
+    Tổng_thu_nhập: vnd(incomeOf(c)),
+    Tổng_thu_nhập_bằng_chữ: soThanhChu(incomeOf(c)),
+    Hình_thức_trả_lương: 'Chuyển khoản',
+    Kỳ_hạn_trả_lương: 'ngày 10 hằng tháng',
+    // IV. Người đại diện ký
     Xưng_hô: c.signerSalutation,
-    Người_đại_diện_ký: c.signer,
+    NGƯỜI_ĐẠI_DIỆN_KÝ_IN_HOA: signer.toLocaleUpperCase('vi'),
+    Người_đại_diện_ký: signer,
     Chức_vụ: c.signerTitle,
     Giấy_ủy_quyền: c.authorization,
-    // Phụ lục (theo hợp đồng đang áp dụng)
-    Mã_Hợp_đồng_hiện_tại: c.no,
-    DS_Nhân_viênMã_NV_cũ1: w.code,
-    Ngày_bắt_đầu_HD: dmy(c.from),
-    Ngày_ký_HD_hiện_tại_text: dmy(c.signDate),
-    Ngày_áp_dụng_text: dmy(appendixDate),
+    // V. Phụ lục (theo hợp đồng đang áp dụng)
+    Số_phụ_lục: `01/${appendixDate.slice(0, 4)}/PLHĐ-${w.code}`,
     Tên_phụ_lục: appendix?.name || '',
+    Mã_Hợp_đồng_hiện_tại: c.no,
+    Ngày_ký_HD_hiện_tại: dmy(c.signDate),
+    Ngày_ký_HD_hiện_tại_text: dateText(c.signDate),
+    Ngày_bắt_đầu_HD: dmy(c.from),
+    Ngày_bắt_đầu_HD_text: dateText(c.from),
+    Ngày_ký_Phụ_lục_điều_chỉnh: dmy(appendixDate),
+    Ngày_ký_Phụ_lục_điều_chỉnh_text: dateText(appendixDate),
+    Ngày_áp_dụng: dmy(appendixDate),
+    Ngày_áp_dụng_text: dateText(appendixDate),
     Nội_dung_điều_chỉnh: appendix?.changes.join(', ') || '',
-    // Công ty
-    Tên_công_ty: co?.name || '',
+    Lương_cũ: vnd(sal),
+    Vị_trí_công_việc_cũ: c.position,
+    Đơn_vị_cũ: c.unit,
+    // VI. Công ty
+    TÊN_CÔNG_TY_IN_HOA: (co?.name || '').toLocaleUpperCase('vi'),
+    Tên_công_ty: companyProper(co?.name || ''),
     Tên_viết_tắt: co?.shortName || '',
     Mã_số_thuế: co?.taxCode || '',
     Địa_chỉ_công_ty: co?.address || '',
     Điện_thoại_công_ty: co?.phone || '',
     Đại_diện_pháp_luật: co?.legalRep || '',
+    // VII. Khác
     Ngày_in: dmy(today()),
+    // Tên cũ của bộ mẫu trước — giữ để mẫu Word cũ vẫn trộn được
+    Thời_hạn: isK(c.type, 'KXD') ? 'Không xác định thời hạn' : c.term,
+    Lương_gốc: vnd(c.baseSalary),
   };
-  SUPPORTS.forEach((x) => (d[x.field] = money(supportAmt(c, x.name)) || '0'));
-  // các tên trường khác nhau trong bộ mẫu nhưng cùng dữ liệu
-  d.Ngày_sinh = d.BOD_text = d.Bday;
-  d.Ngày_cấp = d.Ngày_cấp_text = d.Date_of_Issue;
-  d.Người_ký = d.Người_đại_diện_ký;
-  d.HQCV = d.HQCV_tạm_tính;
-  d.Ngày_ký_Phụ_lục_điều_chỉnh = d.Ngày_áp_dụng_text;
+  FIELDS.forEach((f) => f.legacyOf && (d[f.key] = d[f.legacyOf] ?? ''));
   return d;
 };
 /** Trường được phép để trống khi in (không cảnh báo). */
-const OPTIONAL_FIELDS = new Set(['Giấy_ủy_quyền', 'Ghi_chú', 'Mô_tả_công_việc', 'Contract_end', 'Số_tháng_HD', 'Điện_thoại_công_ty', 'Tên_phụ_lục', 'Nội_dung_điều_chỉnh', 'Mã_số_thuế']);
+const OPTIONAL_FIELDS = new Set(['Giấy_ủy_quyền', 'Ghi_chú', 'Mô_tả_công_việc', 'Contract_end', 'Contract_end_text', 'Số_tháng_HD', 'Điện_thoại_công_ty', 'Tên_phụ_lục', 'Nội_dung_điều_chỉnh', 'Mã_số_thuế', 'Email_NLĐ', 'Trình_độ_chuyên_môn', 'Số_giấy_phép_lao_động', 'Số_tài_khoản', 'Ngân_hàng', 'Cấp_bậc', 'Quản_lý_trực_tiếp']);
 const safeName = (s: string) => s.replace(/[\\/:*?"<>|]+/g, '_');
 
 /** Tạo file in từ các lệnh in của popup "In hợp đồng": mẫu Word → file .docx đã trộn (+ văn bản kèm theo); nhiều file → nén .zip.
@@ -782,7 +832,7 @@ const COLS: Col[] = [
   { key: 'term', label: 'Thời hạn', width: 84, align: 'center', def: true, sort: (r) => termMonths(r.c.type, r.c.term) || 999, cell: (r) => r.c.term || '—', xlsx: (r) => r.c.term || '-' },
   { key: 'from', label: 'Ngày có hiệu lực', width: 112, align: 'center', def: true, sort: (r) => r.c.from, cell: (r) => dmy(r.c.from), xlsx: (r) => dmy(r.c.from) },
   { key: 'to', label: 'Ngày hết hạn', width: 104, align: 'center', def: true, sort: (r) => r.c.to || '9999', cell: (r) => (r.c.to ? dmy(r.c.to) : '—'), xlsx: (r) => (r.c.to ? dmy(r.c.to) : '-') },
-  { key: 'salary', label: 'Lương cơ bản', width: 116, align: 'right', def: true, sort: (r) => salaryOf(r.c), cell: (r) => money(salaryOf(r.c)) || '—', xlsx: (r) => salaryOf(r.c) || '' },
+  { key: 'salary', label: 'Mức lương', width: 116, align: 'right', def: true, sort: (r) => salaryOf(r.c), cell: (r) => money(salaryOf(r.c)) || '—', xlsx: (r) => salaryOf(r.c) || '' },
   { key: 'perf', label: 'Thưởng HQ (tạm tính)', width: 140, align: 'right', sort: (r) => r.c.perfBonus || 0, cell: (r) => money(r.c.perfBonus) || '—', xlsx: (r) => r.c.perfBonus || '' },
   { key: 'phone', label: 'Số điện thoại', width: 120, sort: (r) => r.w.phone, cell: (r) => r.w.phone || '—', xlsx: (r) => r.w.phone },
   { key: 'allow', label: 'Hỗ trợ', width: 104, align: 'right', sort: (r) => allowTotal(r.c), cell: (r) => money(allowTotal(r.c)) || '—', xlsx: (r) => allowTotal(r.c) || '' },
@@ -1541,7 +1591,7 @@ const QuickView: React.FC<{ s: Store; r: Row; soonDays: number; onOpen: (edit?: 
           { label: 'Đơn vị ký HĐ', value: c.unit },
           { label: 'Vị trí công việc', value: c.position },
           { label: 'Nơi làm việc', value: c.workplace },
-          { label: 'Lương cơ bản (VNĐ)', value: money(salaryOf(c)), num: true, strong: true },
+          { label: 'Mức lương (VNĐ)', value: money(salaryOf(c)), num: true, strong: true },
           { label: 'Hỗ trợ (VNĐ)', value: money(allowTotal(c)), num: true },
           { label: 'Thưởng HQ tạm tính (VNĐ)', value: money(c.perfBonus), num: true },
           { label: 'Người ký', value: c.signer ? `${c.signerSalutation} ${c.signer} — ${c.signerTitle}` : '' },
@@ -1988,14 +2038,14 @@ const ContractDetail: React.FC<{
   const money1 = (v: number, on: (n: number) => void) => (ed ? <MoneyInput value={v} onChange={on} /> : <span className="tabular-nums">{money(v) || '0'}</span>);
   // Tiền lương (Điều 3 của hợp đồng)
   const payLeft = [
-    { label: 'Lương cơ bản gốc', value: money1(d.baseSalary, (n) => set({ baseSalary: n })) },
+    { label: 'Lương cơ bản', value: money1(d.baseSalary, (n) => set({ baseSalary: n })) },
     { label: 'Mức hưởng (%)', value: ed ? <><input type="number" min={0} max={100} value={d.rate} onChange={(e) => set({ rate: Number(e.target.value) })} className={`${INPUT} text-right tabular-nums w-28 ${errCls(E('rate'))}`} /><ErrText e={E('rate')} /></> : `${d.rate}%` },
     { label: 'Mức lương', value: <b className="tabular-nums text-slate-900">{money(salaryOf(d)) || '0'}</b> },
   ];
   const payRight = [
     { label: 'Bằng chữ', value: <i className="text-slate-600">{soThanhChu(salaryOf(d))}</i> },
     { label: 'Tham gia bảo hiểm', value: insurance },
-    { label: 'Tổng thu nhập', value: <b className="tabular-nums text-[#1e3a5f]">{money(salaryOf(d) + allowTotal(d) + (d.perfBonus || 0)) || '0'}</b> },
+    { label: 'Tổng thu nhập', value: <b className="tabular-nums text-[#1e3a5f]">{money(incomeOf(d)) || '0'}</b> },
   ];
   // Phụ lục hợp đồng — Phụ lục 01: các khoản hỗ trợ (theo bộ mẫu hợp đồng)
   // Nhập Tổng thu nhập → tự chia: ăn trưa cố định, điện thoại, xăng xe, nhà ở (có trần), phần còn lại là HQCV tạm tính
@@ -2019,7 +2069,7 @@ const ContractDetail: React.FC<{
         <b className="tabular-nums text-[#1e3a5f]">{money(income) || '0'}</b>
       ),
     },
-    { label: 'Lương cơ bản', value: auto(salaryOf(d), 'inc-lcb', '(= Mức lương ở Điều 3)') },
+    { label: 'Lương cơ bản', value: auto(d.baseSalary || 0, 'inc-lcb', '(mức đóng bảo hiểm — Điều 3)') },
     { label: 'Hỗ trợ ăn trưa', value: auto(supportAmt(d, 'Hỗ trợ ăn trưa'), 'inc-lunch', '(cố định)') },
     { label: 'Hỗ trợ điện thoại', value: auto(supportAmt(d, 'Hỗ trợ điện thoại'), 'inc-phone', capHint('Hỗ trợ điện thoại')) },
   ];
@@ -2083,7 +2133,7 @@ const ContractDetail: React.FC<{
                 { label: 'Số HĐ', value: <span className="font-mono">{orig.no}</span> },
                 { label: 'Người lao động', value: w ? `${w.name} (${w.code})` : '' },
                 { label: 'Hiệu lực', value: `${dmy(orig.from)} → ${orig.to ? dmy(orig.to) : 'không thời hạn'}` },
-                { label: 'Lương cơ bản', value: `${money(salaryOf(orig))} VNĐ` },
+                { label: 'Mức lương', value: `${money(salaryOf(orig))} VNĐ` },
                 { label: 'Template in', value: [templateForType(orig.type, orig.companyId)?.name || 'Chưa cấu hình (bản in mặc định)', ...attachmentsFor(orig.type, orig.companyId).map((t) => `+ ${t.name}`)].join(' ') },
                 ...(lastLog ? [{ label: 'Cập nhật', value: `${fmtAt(lastLog.at)} bởi ${lastLog.by}` }] : []),
               ]
@@ -2173,7 +2223,7 @@ const ContractDetail: React.FC<{
             <InfoGrid left={appLeft} right={appRight} labelW={[150, 200]} />
             {ed && (
               <div className="px-3 py-2 border-t border-slate-200 bg-[#f7f9fc] text-[11.5px] text-slate-600 leading-[1.7]" data-testid="income-rule">
-                <b className="text-slate-700">Cách tính</b> (LCB = Mức lương; mỗi khoản tối thiểu 0 đ): Ăn trưa cố định <b>{money(LUNCH)}</b> · Điện thoại = TN − LCB − ăn trưa, tối đa <b>1,000,000</b> · Xăng xe = TN − LCB − ăn trưa − điện thoại, tối đa{' '}
+                <b className="text-slate-700">Cách tính</b> (LCB = Lương cơ bản — mức lương khai báo đóng bảo hiểm; mỗi khoản tối thiểu 0 đ): Ăn trưa cố định <b>{money(LUNCH)}</b> · Điện thoại = TN − LCB − ăn trưa, tối đa <b>1,000,000</b> · Xăng xe = TN − LCB − ăn trưa − điện thoại, tối đa{' '}
                 <b>1,500,000</b> · Nhà ở = TN − LCB − ăn trưa − điện thoại − xăng xe, tối đa <b>2,000,000</b> · HQCV tạm tính = TN − (LCB + ăn trưa + điện thoại + xăng xe + nhà ở).
               </div>
             )}
@@ -2291,8 +2341,8 @@ const ContractDetail: React.FC<{
           <table className={erp.table}>
             <thead>
               <tr>
-                {['STT', 'Số hợp đồng', 'Loại hợp đồng', 'Thời hạn', 'Ngày ký', 'Ngày có hiệu lực', 'Ngày hết hạn', 'Lương cơ bản', 'Người ký', 'Trạng thái'].map((h, i, arr) => (
-                  <th key={h} className={`${erp.th} border-t-0 ${i === 0 ? 'border-l-0 w-12 text-center' : i === arr.length - 1 ? 'border-r-0 text-left' : h === 'Lương cơ bản' ? 'text-right' : 'text-left'}`}>
+                {['STT', 'Số hợp đồng', 'Loại hợp đồng', 'Thời hạn', 'Ngày ký', 'Ngày có hiệu lực', 'Ngày hết hạn', 'Mức lương', 'Người ký', 'Trạng thái'].map((h, i, arr) => (
+                  <th key={h} className={`${erp.th} border-t-0 ${i === 0 ? 'border-l-0 w-12 text-center' : i === arr.length - 1 ? 'border-r-0 text-left' : h === 'Mức lương' ? 'text-right' : 'text-left'}`}>
                     {h}
                   </th>
                 ))}
@@ -2542,7 +2592,7 @@ const RenewPanel: React.FC<{ s: Store; rows: Row[]; onClose: () => void; onDone:
 // ==========================================================================
 // Nhập từ Excel
 // ==========================================================================
-const TPL_COLS = ['Mã NLĐ', 'Số HĐ', 'Loại HĐ', 'Thời hạn', 'Ngày ký', 'Ngày có hiệu lực', 'Ngày hết hạn', 'Đơn vị ký HĐ', 'Vị trí công việc', 'Lương cơ bản gốc', 'Mức hưởng (%)', 'Ghi chú', 'Mã công ty', 'Tổng thu nhập'];
+const TPL_COLS = ['Mã NLĐ', 'Số HĐ', 'Loại HĐ', 'Thời hạn', 'Ngày ký', 'Ngày có hiệu lực', 'Ngày hết hạn', 'Đơn vị ký HĐ', 'Vị trí công việc', 'Lương cơ bản', 'Mức hưởng (%)', 'Ghi chú', 'Mã công ty', 'Tổng thu nhập'];
 const downloadTemplate = () => {
   const t = today();
   const sample = STATE.workers.find((w) => w.working && !STATE.contracts.some((c) => c.workerId === w.id));
@@ -2649,10 +2699,10 @@ const ImportPanel: React.FC<{ s: Store; onClose: () => void; flash: (m: string) 
       if (coCode && !co) return fail(`Mã công ty không có trong danh mục: ${coCode}`);
       if (co && !co.active && co.id !== old?.companyId) return fail(`Công ty ${co.code} đã ngừng sử dụng`);
       if (!UNITS.includes(unit)) return fail(`Đơn vị không có trong danh mục: ${unit}`);
-      const baseRaw = g('Lương cơ bản gốc');
+      const baseRaw = idx('Lương cơ bản') >= 0 ? g('Lương cơ bản') : g('Lương cơ bản gốc'); // file mẫu cũ ghi "Lương cơ bản gốc"
       const rateRaw = g('Mức hưởng (%)');
       const base = baseRaw === '' ? undefined : parseAmount(baseRaw);
-      if (base === null) return fail(`Lương cơ bản gốc không đúng dạng số: ${baseRaw}`);
+      if (base === null) return fail(`Lương cơ bản không đúng dạng số: ${baseRaw}`);
       const rate = rateRaw === '' ? undefined : parseRate(rateRaw);
       if (rate === null) return fail('Mức hưởng phải là số');
       const amounts: Record<string, number | undefined> = {};
@@ -2684,7 +2734,7 @@ const ImportPanel: React.FC<{ s: Store; onClose: () => void; flash: (m: string) 
       // Phụ lục 01: chia lại theo Tổng thu nhập (cột "Tổng thu nhập"; file cũ có từng khoản hỗ trợ → lấy tổng các khoản)
       const legacy = [...SUPPORTS.map((x) => x.name), 'Thưởng hiệu quả (tạm tính)'].some((l) => num(l) !== undefined);
       const tn = num('Tổng thu nhập');
-      if (tn !== undefined && tn < salaryOf(c) + LUNCH) return fail(`Tổng thu nhập ${money(tn)} thấp hơn Lương cơ bản + ăn trưa (${money(salaryOf(c) + LUNCH)})`);
+      if (tn !== undefined && tn < (c.baseSalary || 0) + LUNCH) return fail(`Tổng thu nhập ${money(tn)} thấp hơn Lương cơ bản + ăn trưa (${money((c.baseSalary || 0) + LUNCH)})`);
       Object.assign(c, fitIncome(c, tn ?? (old && !legacy ? incomeOf(old) : incomeOf(c))));
       if (!old) {
         // HĐ mới: người ký theo thiết lập
@@ -2773,8 +2823,8 @@ const ImportPanel: React.FC<{ s: Store; onClose: () => void; flash: (m: string) 
             <table className={erp.table}>
               <thead className="sticky top-0">
                 <tr>
-                  {['Dòng', 'Kết quả', 'Mã NLĐ', 'Họ và tên', 'Số HĐ', 'Loại HĐ', 'Hiệu lực', 'Lương cơ bản', 'Chi tiết'].map((h, i, arr) => (
-                    <th key={h} className={`${th} ${i === 0 ? 'border-l-0 w-12 text-center' : ''} ${i === arr.length - 1 ? 'border-r-0' : ''} ${h === 'Lương cơ bản' ? '!text-right' : ''}`}>
+                  {['Dòng', 'Kết quả', 'Mã NLĐ', 'Họ và tên', 'Số HĐ', 'Loại HĐ', 'Hiệu lực', 'Mức lương', 'Chi tiết'].map((h, i, arr) => (
+                    <th key={h} className={`${th} ${i === 0 ? 'border-l-0 w-12 text-center' : ''} ${i === arr.length - 1 ? 'border-r-0' : ''} ${h === 'Mức lương' ? '!text-right' : ''}`}>
                       {h}
                     </th>
                   ))}
