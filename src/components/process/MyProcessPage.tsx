@@ -518,7 +518,7 @@ const RequestForm: React.FC<{ id: string; setMode: (m: Mode) => void; flash: (m:
           ) : undefined
         }
       />
-      <div className="space-y-3">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_250px] gap-3 items-start">
         <Panel title={`Bước 1: ${s1.name} — thông tin đề nghị`} icon={FilePlus2} footer="Trường có dấu * là bắt buộc. Thông tin bước 1 được chuyển cho người xử lý các bước sau.">
           {s1.def.desc && <p className="mb-3 rounded-[3px] border border-[#cfe0f5] bg-[#f5f9ff] px-3 py-2 text-[12.5px] text-slate-700">{s1.def.desc}</p>}
           <div className="grid grid-cols-[180px_minmax(0,1fr)] gap-x-3 gap-y-3 items-start" data-testid="request-form">
@@ -564,7 +564,7 @@ const RequestForm: React.FC<{ id: string; setMode: (m: Mode) => void; flash: (m:
           </div>
         </Panel>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)] gap-3 items-start">
+        <div className="space-y-3 lg:sticky lg:top-3" data-testid="req-side">
           <Panel title="Luồng phê duyệt" icon={ListChecks}>
             <ol className="relative space-y-3">
               <span className="absolute left-[11px] top-3 bottom-3 w-px bg-slate-200" />
