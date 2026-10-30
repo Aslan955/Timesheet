@@ -518,7 +518,7 @@ const RequestForm: React.FC<{ id: string; setMode: (m: Mode) => void; flash: (m:
           ) : undefined
         }
       />
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-3 items-start">
+      <div className="space-y-3">
         <Panel title={`Bước 1: ${s1.name} — thông tin đề nghị`} icon={FilePlus2} footer="Trường có dấu * là bắt buộc. Thông tin bước 1 được chuyển cho người xử lý các bước sau.">
           {s1.def.desc && <p className="mb-3 rounded-[3px] border border-[#cfe0f5] bg-[#f5f9ff] px-3 py-2 text-[12.5px] text-slate-700">{s1.def.desc}</p>}
           <div className="grid grid-cols-[180px_minmax(0,1fr)] gap-x-3 gap-y-3 items-start" data-testid="request-form">
@@ -549,10 +549,10 @@ const RequestForm: React.FC<{ id: string; setMode: (m: Mode) => void; flash: (m:
               const e = tried ? fieldError(f, s1.data[f.id] ?? '') : '';
               return (
                 <React.Fragment key={f.id}>
-                  <span className="text-[12.5px] text-slate-600 pt-1.5 leading-tight">
+                  <span className={`text-[12.5px] text-slate-600 pt-1.5 leading-tight ${f.type === 'table' ? 'col-span-2 font-semibold text-slate-700' : ''}`}>
                     {f.label} {f.required && !['formula', 'autoCode', 'runData'].includes(f.type) && <span className="text-rose-600">*</span>}
                   </span>
-                  <span className="min-w-0" data-field={f.label}>
+                  <span className={`min-w-0 ${f.type === 'table' ? 'col-span-2 -mt-1.5' : ''}`} data-field={f.label}>
                     <FieldInput f={f} v={s1.data[f.id] ?? ''} onChange={(v) => setData(f.id, v)} ctx={ctx} invalid={!!e} />
                     {e && <span className="block text-[11.5px] text-rose-600 mt-0.5">{e}</span>}
                     {f.hint && !['text', 'textarea', 'number', 'email', 'linkedData'].includes(f.type) && <span className="block text-[11px] text-slate-400 mt-0.5">{f.hint}</span>}
@@ -564,7 +564,7 @@ const RequestForm: React.FC<{ id: string; setMode: (m: Mode) => void; flash: (m:
           </div>
         </Panel>
 
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)] gap-3 items-start">
           <Panel title="Luồng phê duyệt" icon={ListChecks}>
             <ol className="relative space-y-3">
               <span className="absolute left-[11px] top-3 bottom-3 w-px bg-slate-200" />
@@ -755,7 +755,7 @@ const RequestDetail: React.FC<{ id: string; setMode: (m: Mode) => void; flash: (
         </ol>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-3 items-start">
+      <div className="space-y-3" data-testid="req-detail-layout">
         <div className="space-y-3 min-w-0">
           {!canSee && <p className="text-[12.5px] text-amber-700">Bạn không thuộc đơn này (bản demo vẫn cho xem).</p>}
           {/* Dữ liệu các bước đã có */}
@@ -783,8 +783,8 @@ const RequestDetail: React.FC<{ id: string; setMode: (m: Mode) => void; flash: (
                       .filter((f) => !hiddenByDep(f, ctxOf()))
                       .map((f) => (
                         <React.Fragment key={f.id}>
-                          <span className="text-slate-500">{f.label}</span>
-                          <span className="min-w-0">
+                          <span className={`text-slate-500 ${f.type === 'table' ? 'col-span-2 pt-1 font-semibold text-slate-700' : ''}`}>{f.label}</span>
+                          <span className={`min-w-0 ${f.type === 'table' ? 'col-span-2' : ''}`}>
                             <FieldView f={f} v={x.data[f.id] ?? ''} ctx={ctxOf()} />
                           </span>
                         </React.Fragment>
@@ -811,10 +811,10 @@ const RequestDetail: React.FC<{ id: string; setMode: (m: Mode) => void; flash: (
                       const e = tried === 'approve' ? fieldError(f, data[f.id] ?? run.data[f.id] ?? '') : '';
                       return (
                         <React.Fragment key={f.id}>
-                          <span className="text-[12.5px] text-slate-600 pt-1.5">
+                          <span className={`text-[12.5px] text-slate-600 pt-1.5 ${f.type === 'table' ? 'col-span-2 font-semibold text-slate-700' : ''}`}>
                             {f.label} {f.required && <span className="text-rose-600">*</span>}
                           </span>
-                          <span className="min-w-0">
+                          <span className={`min-w-0 ${f.type === 'table' ? 'col-span-2 -mt-1.5' : ''}`}>
                             <FieldInput f={f} v={data[f.id] ?? run.data[f.id] ?? ''} onChange={(v) => setData((d) => ({ ...d, [f.id]: v }))} ctx={actCtx} invalid={!!e} />
                             {e && <span className="block text-[11.5px] text-rose-600 mt-0.5">{e}</span>}
                           </span>
@@ -883,9 +883,9 @@ const RequestDetail: React.FC<{ id: string; setMode: (m: Mode) => void; flash: (
           )}
         </div>
 
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)] gap-3 items-start">
           <Panel title="Lịch sử xử lý" icon={Clock} noPad>
-            <ol className="px-3 py-2 space-y-2.5 max-h-[460px] overflow-auto" data-testid="req-history">
+            <ol className="px-3 py-2 space-y-2.5 max-h-[360px] overflow-auto" data-testid="req-history">
               {[...r.history].reverse().map((h, i) => (
                 <li key={i} className="flex gap-2 text-[12px]">
                   <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-[#1f5fa8] shrink-0" />
