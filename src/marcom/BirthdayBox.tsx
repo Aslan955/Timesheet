@@ -10,6 +10,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Cake, ChevronLeft, ChevronRight, PartyPopper, X, EyeOff } from 'lucide-react';
 import { useMarcom, BoxConfig, BoxTheme, HomeBanner } from './MarcomContext';
 import { Avatar } from './MarcomUi';
+import { RichHtml } from './RichText';
 import { MarcomEmployee, isBirthdayToday, fmtDayMonth } from './marcomData';
 import { useMarcomLang } from './i18n';
 
@@ -52,7 +53,7 @@ const BirthdaySlide: React.FC<{ box: BoxConfig; people: MarcomEmployee[]; previe
         <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center">
           <Cake size={20} className={theme.accent} />
         </div>
-        <div className="text-sm font-semibold text-slate-600">{box.emptyText}</div>
+        <RichHtml html={box.emptyText} className="text-sm font-semibold text-slate-600" />
       </div>
     );
   }
@@ -82,7 +83,9 @@ const BirthdaySlide: React.FC<{ box: BoxConfig; people: MarcomEmployee[]; previe
 
   const greeting = (light = false) => (
     <div className={`mt-4 rounded-xl px-4 py-3 border ${light ? 'bg-white/15 border-white/20' : 'bg-white/70 border-white'}`}>
-      <p className={`text-sm font-medium leading-relaxed ${light ? 'text-white' : 'text-slate-700'}`}>“{box.greeting}”</p>
+      <div className={`text-sm font-medium leading-relaxed ${light ? 'text-white' : 'text-slate-700'}`}>
+        “<RichHtml inline html={box.greeting} />”
+      </div>
       <p className={`mt-1 text-xs font-black text-right ${light ? 'text-white/90' : theme.accent}`}>— {box.signature}</p>
     </div>
   );

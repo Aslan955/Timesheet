@@ -12,6 +12,7 @@ import { ArrowDown, ArrowUp, GalleryHorizontal, Cake, Hand, LayoutTemplate, Hist
 import { useMarcom, MailConfig, BoxConfig, BoxTheme, HomeBanner } from '../../marcom/MarcomContext';
 import { Avatar, FilterBar, FilterCell, LangSwitch, Switch, TAG, useToast } from '../../marcom/MarcomUi';
 import { useMarcomLang } from '../../marcom/i18n';
+import { MailHtml, RichTextEditor, RichTextHandle } from '../../marcom/RichText';
 import { BirthdayBox, BOX_THEMES, useTodayBirthdays } from '../../marcom/BirthdayBox';
 import { TeamsBirthdayPost, TEAMS_PLACEHOLDERS, TEAMS_DIRECTORY, TEAMS_SENDER, SenderAvatar } from '../../marcom/TeamsBirthdayPost';
 import { Btn, ErpPage, ErpTitleBar, FieldTable, FolderTabs, FormRow, Panel, Segmented, Tag, erp } from '../erp/Erp';
@@ -74,6 +75,24 @@ export const MarcomEmailPage: React.FC = () => {
 // ---------------------------------------------------------------------------
 // Thiệp: khung (ảnh nền MarCom) + ảnh nhân sự lấy từ Employee + tên, khối
 // ---------------------------------------------------------------------------
+/** Dòng form cho ô soạn có định dạng — không dùng FormRow (<label>) vì bấm vào ô soạn sẽ thành bấm nút đầu tiên của thanh công cụ. */
+const EditorRow: React.FC<{ label: string; required?: boolean; children: React.ReactNode }> = ({ label, required, children }) => {
+  const { tr } = useMarcomLang();
+  return (
+    <div className="grid grid-cols-[150px_1fr] items-start gap-x-2">
+      <span className="text-[12px] text-slate-600 pt-1.5 leading-tight">
+        {label} {required && <span className="text-rose-600">*</span>}
+      </span>
+      <span className="min-w-0">
+        {children}
+        <span className="block mt-0.5 text-[11px] text-slate-400">
+          {tr('Bôi đen chữ rồi chọn định dạng trên thanh công cụ · Ctrl+B đậm, Ctrl+I nghiêng, Ctrl+U gạch chân', 'Select text, then pick a format on the toolbar · Ctrl+B bold, Ctrl+I italic, Ctrl+U underline')}
+        </span>
+      </span>
+    </div>
+  );
+};
+
 /** Biến {{...}} hiển thị dạng thẻ xanh trong chế độ xem template. */
 const VarText: React.FC<{ text: string }> = ({ text }) => (
   <>
@@ -122,7 +141,7 @@ const BannerMail: React.FC<{ kind: MailKind; cfg: MailConfig; e?: MarcomEmployee
             <div className="text-[11px] text-slate-500">{e ? e.division : <VarText text="{{khoi}}" />}</div>
           </div>
         </div>
-        <div className={`whitespace-pre-line ${mobile ? 'text-[12.5px]' : 'text-[13px]'} leading-relaxed text-slate-700 break-words`}>{body}</div>
+        <div className={`${mobile ? 'text-[12.5px]' : 'text-[13px]'} leading-relaxed text-slate-700 break-words`}>{body}</div>
       </div>
       {cfg.footerUrl ? (
         <img src={cfg.footerUrl} alt={tr('Banner cuối mail', 'Footer banner')} className="block w-full h-auto" />
@@ -143,7 +162,7 @@ const MailEditor: React.FC<{ kind: MailKind; toast: (m: string) => void }> = ({ 
   const saved = config[kind];
   const [draft, setDraft] = useState<MailConfig>(saved);
   const [testTo, setTestTo] = useState('marcom@aequitas.vn');
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const bodyRef = useRef<RichTextHandle>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const footerRef = useRef<HTMLInputElement>(null);
   const meta = KIND_META[kind];
@@ -171,17 +190,7 @@ const MailEditor: React.FC<{ kind: MailKind; toast: (m: string) => void }> = ({ 
     kind === 'birthday' ? employees.filter((e) => e.active && isBirthdayToday(e, nextRunDay)) : employees.filter((e) => inWelcomeBatch(e) && e.onboardDate === toKey(nextRunDay));
 
   const set = (patch: Partial<MailConfig>) => setDraft((d) => ({ ...d, ...patch }));
-  const insert = (token: string) => {
-    const el = bodyRef.current;
-    if (!el) return set({ body: draft.body + token });
-    const s = el.selectionStart ?? draft.body.length;
-    const e = el.selectionEnd ?? s;
-    set({ body: draft.body.slice(0, s) + token + draft.body.slice(e) });
-    requestAnimationFrame(() => {
-      el.focus();
-      el.setSelectionRange(s + token.length, s + token.length);
-    });
-  };
+  const insert = (token: string) => (bodyRef.current ? bodyRef.current.insertText(token) : set({ body: draft.body + token }));
   const badImage = (f: File) =>
     !f.type.startsWith('image/')
       ? (toast(tr('Chỉ nhận file ảnh (PNG/JPG)', 'Only image files are accepted (PNG/JPG)')), true)
@@ -240,9 +249,9 @@ const MailEditor: React.FC<{ kind: MailKind; toast: (m: string) => void }> = ({ 
           <div className="flex-1 overflow-auto p-6">
             <div className="mx-auto w-full bg-white border border-slate-300 rounded-[4px] shadow-md overflow-hidden transition-[max-width] duration-200" style={{ maxWidth: DEVICE_WIDTH[device], zoom: zoom / 100 }}>
               {view === 'sample' && sample ? (
-                <BannerMail kind={kind} cfg={draft} e={sample} device={device} body={fillTemplate(draft.body, sample)} />
+                <BannerMail kind={kind} cfg={draft} e={sample} device={device} body={<MailHtml body={draft.body} e={sample} />} />
               ) : (
-                <BannerMail kind={kind} cfg={draft} device={device} body={<VarText text={draft.body} />} />
+                <BannerMail kind={kind} cfg={draft} device={device} body={<MailHtml body={draft.body} />} />
               )}
             </div>
           </div>
@@ -310,15 +319,15 @@ const MailEditor: React.FC<{ kind: MailKind; toast: (m: string) => void }> = ({ 
               <FormRow label={tr('Biến chèn', 'Placeholders')} hint={tr('Bấm để chèn vào vị trí con trỏ trong nội dung', 'Click to insert at the cursor in the content')}>
                 <span className="flex flex-wrap gap-1 pt-1">
                   {placeholders.filter((p) => p.kinds.includes(kind)).map((p) => (
-                    <button key={p.key} type="button" onClick={() => insert(p.key)} title={p.desc} className="px-1.5 py-px rounded-[3px] border border-[#b9d3f0] bg-[#eaf2fc] text-[#1f5fa8] text-[11px] font-mono hover:bg-[#dbe9fa] cursor-pointer">
+                    <button key={p.key} type="button" onMouseDown={(ev) => ev.preventDefault()} onClick={() => insert(p.key)} title={p.desc} className="px-1.5 py-px rounded-[3px] border border-[#b9d3f0] bg-[#eaf2fc] text-[#1f5fa8] text-[11px] font-mono hover:bg-[#dbe9fa] cursor-pointer">
                       {p.key}
                     </button>
                   ))}
                 </span>
               </FormRow>
-              <FormRow label={tr('Nội dung', 'Content')} required>
-                <textarea ref={bodyRef} rows={10} value={draft.body} onChange={(e) => set({ body: e.target.value })} className="w-full border border-slate-300 rounded-[3px] px-2 py-1.5 text-[13px] leading-relaxed text-slate-800 outline-none focus:border-[#1f5fa8] focus:ring-2 focus:ring-[#1f5fa8]/15" />
-              </FormRow>
+              <EditorRow label={tr('Nội dung', 'Content')} required>
+                <RichTextEditor ref={bodyRef} value={draft.body} onChange={(html) => set({ body: html })} />
+              </EditorRow>
             </div>
           </Panel>
 
@@ -473,7 +482,7 @@ const MailEditor: React.FC<{ kind: MailKind; toast: (m: string) => void }> = ({ 
                 />
                 <div className="p-4 bg-[#eef1f5]">
                   <div className="mx-auto w-full bg-white border border-slate-300 rounded-[4px] overflow-hidden transition-[max-width] duration-200" style={{ maxWidth: DEVICE_WIDTH[device] }}>
-                    <BannerMail kind={kind} cfg={draft} device={device} body={<VarText text={draft.body} />} />
+                    <BannerMail kind={kind} cfg={draft} device={device} body={<MailHtml body={draft.body} />} />
                   </div>
                 </div>
                 <div className="px-3 py-1.5 border-t border-slate-200 bg-slate-50 text-[11px] text-slate-500">
@@ -492,7 +501,7 @@ const MailEditor: React.FC<{ kind: MailKind; toast: (m: string) => void }> = ({ 
                 />
                 <div className="p-4 bg-[#eef1f5]">
                   <div className="mx-auto w-full bg-white border border-slate-300 rounded-[4px] overflow-hidden transition-[max-width] duration-200" style={{ maxWidth: DEVICE_WIDTH[device] }}>
-                    <BannerMail kind={kind} cfg={draft} e={sample} device={device} body={fillTemplate(draft.body, sample)} />
+                    <BannerMail kind={kind} cfg={draft} e={sample} device={device} body={<MailHtml body={draft.body} e={sample} />} />
                   </div>
                 </div>
                 <div className={`flex items-center gap-2 px-3 py-1.5 border-t text-[11px] ${sample.photoUrl ? 'border-slate-200 bg-slate-50 text-slate-500' : 'border-amber-300 bg-amber-50 text-amber-800'}`}>
@@ -859,9 +868,9 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
                       </button>
                     </span>
                   </FormRow>
-                  <FormRow label={tr('Lời chúc chung', 'Common greeting')}>
-                    <textarea rows={3} value={draft.greeting} onChange={(e) => set({ greeting: e.target.value })} className={textarea} />
-                  </FormRow>
+                  <EditorRow label={tr('Lời chúc chung', 'Common greeting')}>
+                    <RichTextEditor compact value={draft.greeting} onChange={(html) => set({ greeting: html })} />
+                  </EditorRow>
                   <FormRow label={tr('Ký tên', 'Signature')}>
                     <input value={draft.signature} onChange={(e) => set({ signature: e.target.value })} className={erp.inputFull} />
                   </FormRow>
@@ -997,9 +1006,9 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
                 />
               </FormRow>
               {draft.emptyMode === 'default' && (
-                <FormRow label={tr('Nội dung mặc định', 'Default content')}>
-                  <textarea rows={2} value={draft.emptyText} onChange={(e) => set({ emptyText: e.target.value })} className={textarea} />
-                </FormRow>
+                <EditorRow label={tr('Nội dung mặc định', 'Default content')}>
+                  <RichTextEditor compact value={draft.emptyText} onChange={(html) => set({ emptyText: html })} />
+                </EditorRow>
               )}
             </div>
           </Panel>

@@ -56,6 +56,7 @@ const derivedOf = (name: string, v: string, wordsManual: boolean): Record<string
   if (k === 'Người_đại_diện_ký') return { NGƯỜI_ĐẠI_DIỆN_KÝ_IN_HOA: v.toLocaleUpperCase('vi') };
   if (k === 'Lương_Cơ_bản' && !wordsManual) return { LCB_bằng_chữ: wordsOf(v) };
   if (k === 'Tổng_thu_nhập') return { Tổng_thu_nhập_bằng_chữ: wordsOf(v) };
+  if (k === 'Mức_lương_hưởng') return { Mức_lương_hưởng_bằng_chữ: wordsOf(v) };
   if (KEYS.has(`${k}_text`) && dateTextOf(v)) return { [`${k}_text`]: dateTextOf(v) };
   return {};
 };
@@ -63,8 +64,8 @@ const OPTIONAL = new Set(['Giấy_ủy_quyền', 'Ghi_chú', 'Mô_tả_công_vi�
 const KIND_PREFIX = { HD: 'Hợp đồng', KT: 'Kèm theo', PL: 'Phụ lục' } as const;
 
 /** Trường số trong file dữ liệu trộn (ô số → mẫu Word có \\# #,##0 tự định dạng). */
-const MONEY_FIELD = /^(Lương_Cơ_bản|Lương_gốc|Lương_cũ|Trợ_cấp_|Hỗ_trợ_|Phụ_cấp_|HQCV|Tổng_hỗ_trợ|Tổng_thu_nhập)$|^(Trợ_cấp_|Hỗ_trợ_)/;
-const NUM_FIELD = /^(Lương_Cơ_bản|Lương_gốc|Lương_cũ|Trợ_cấp_|Hỗ_trợ_|Phụ_cấp_|HQCV|Tổng_hỗ_trợ|Tổng_thu_nhập|Số_tháng_HD)$|^(Trợ_cấp_|Hỗ_trợ_)/;
+const MONEY_FIELD = /^(Lương_Cơ_bản|Lương_gốc|Lương_cũ|Trợ_cấp_|Hỗ_trợ_|Phụ_cấp_|HQCV|Tổng_hỗ_trợ|Tổng_thu_nhập|Mức_lương_hưởng)$|^(Trợ_cấp_|Hỗ_trợ_)/;
+const NUM_FIELD = /^(Lương_Cơ_bản|Lương_gốc|Lương_cũ|Trợ_cấp_|Hỗ_trợ_|Phụ_cấp_|HQCV|Tổng_hỗ_trợ|Tổng_thu_nhập|Mức_lương_hưởng|Số_tháng_HD)$|^(Trợ_cấp_|Hỗ_trợ_)/;
 /** File Excel dữ liệu trộn: sheet "Du_lieu_tron" — dòng 1 là tên trường (đúng tên MERGEFIELD trong mẫu Word), mỗi hợp đồng 1 dòng;
  *  sheet "Giai_thich" — ý nghĩa từng trường. Dùng làm nguồn dữ liệu Mail Merge trong Word. */
 export const exportMergeData = (jobs: PrintJob[]) => {
