@@ -21,6 +21,13 @@ body {
   font-family: var(--font-sans);
 }
 
+/* Ngoại lệ duy nhất: bản xem trước văn bản Word (hợp đồng) giữ đúng phông của mẫu Word (VD Times New Roman). */
+.doc-font *,
+.doc-font *::before,
+.doc-font *::after {
+  font-family: inherit;
+}
+
 /* Form controls: trình duyệt mặc định dùng font hệ thống → ép kế thừa Inter. */
 input,
 button,

@@ -107,6 +107,136 @@ export const PRINT_CSS = `section{page-break-after:always}section:last-child{pag
 .dflt h1{text-align:center;font-size:20px;margin:6px 0 2px}.dflt .c{text-align:center}.dflt .sub{text-align:center;font-style:italic;margin-bottom:16px}.dflt table{width:100%;border-collapse:collapse;margin:4px 0 10px}
 .dflt td{padding:3px 4px;vertical-align:top}.dflt td.k{width:200px;color:#333}.dflt h2{font-size:15px;margin:14px 0 4px}.dflt .sig{display:flex;justify-content:space-between;margin-top:36px;text-align:center}.dflt .sig div{width:45%}`;
 const escH = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+/** docx-preview dựng gần đúng Word nhưng lệch vài chỗ → chỉnh lại sau khi dựng để bản in khớp file Word:
+ *  1. Giãn dòng "Multiple" (VD 1.15): Word nhân với chiều cao dòng đơn của phông (Times New Roman ≈ 1.15 em), CSS lại nhân với cỡ chữ → dòng bị sít.
+ *  0. Đoạn không khai style bị rơi về phông chủ đề (Calibri 11) thay vì style "Normal" của mẫu (VD Times New Roman 12).
+ *  2. Căn đều 2 bên: Word co khoảng trắng một chút nên 1 dòng chứa được nhiều chữ hơn trình duyệt.
+ *  3. Đoạn trống chỉ cao 1em thay vì 1 dòng.
+ *  4. Đánh số / gạch đầu dòng: ký tự Tab sau số bị trình duyệt đổi thành 1 dấu cách → chữ không thẳng hàng theo thụt lề treo. */
+export const fixDocxLayout = (root: HTMLElement, cssRoot: HTMLElement) => {
+  const doc = root.ownerDocument;
+  const win = doc.defaultView!;
+  /** Các luật CSS do docx-preview sinh cho đúng văn bản này */
+  const rulesOf = () =>
+    Array.from(cssRoot.querySelectorAll('style')).flatMap((st) => {
+      try {
+        return Array.from(st.sheet?.cssRules || []) as CSSStyleRule[];
+      } catch {
+        return [];
+      }
+    });
+  // 1 dòng đơn của từng phông (đo thật trên trình duyệt)
+  const single = new Map<string, number>();
+  const probe = doc.createElement('div');
+  probe.style.cssText = 'position:absolute;visibility:hidden;left:-9999px;top:0;font-size:100px;line-height:normal;white-space:nowrap';
+  probe.textContent = 'ÁÂg';
+  doc.body.appendChild(probe);
+  const singleOf = (font: string) => {
+    if (!single.has(font)) {
+      probe.style.fontFamily = font;
+      const k = probe.getBoundingClientRect().height / 100;
+      single.set(font, k > 0.9 && k < 1.6 ? k : 1.15);
+    }
+    return single.get(font)!;
+  };
+  /** Giãn dòng đang áp cho đoạn (inline, style của mẫu hoặc mặc định): đổi cỡ chữ thử để biết là hệ số (Multiple),
+   *  "tối thiểu" (docx-preview viết thành calc(100% + X)) hay cố định (Exactly → giữ nguyên). */
+  const lhKind = (p: HTMLElement): { mult: number } | { atLeast: number } | null => {
+    const old = p.style.fontSize;
+    p.style.fontSize = '100px';
+    const a = parseFloat(win.getComputedStyle(p).lineHeight);
+    p.style.fontSize = '200px';
+    const b = parseFloat(win.getComputedStyle(p).lineHeight);
+    p.style.fontSize = old;
+    if (Number.isNaN(a) || Number.isNaN(b)) return null; // normal = dòng đơn → trình duyệt đã đúng
+    if (Math.abs(b - 2 * a) < 0.5) return { mult: a / 100 };
+    if (Math.abs(b - a - 100) < 0.5) return { atLeast: a - 100 };
+    return null;
+  };
+  // (0) đoạn không khai style → style mặc định của mẫu (thường là "Normal": Times New Roman 12…).
+  //     docx-preview chỉ gắn phông/cỡ chữ của style mặc định cho đoạn có class style → chữ rơi về phông chủ đề (Calibri 11).
+  let normalCls = '';
+  for (const r of rulesOf()) {
+    const m = (r.selectorText || '').match(/(?:^|,)\s*\.[\w-]+ p\s*,\s*p\.([\w-]+)/);
+    if (m) normalCls = m[1];
+  }
+  // Đánh số: docx-preview đặt lại bộ đếm ở MỖI section (trang theo khổ) → Word thì đánh số liền mạch cả văn bản.
+  // Cấp trên chưa từng xuất hiện (VD cấp 1 bắt đầu từ 4, chỉ dùng cấp 2 "%1.%2") → Word hiện đúng số bắt đầu (4.1), không phải 3.1.
+  const wrapper = root.firstElementChild as HTMLElement | null;
+  for (const r of rulesOf()) {
+    const reset = r.style?.counterReset;
+    if (!reset || reset === 'none' || !wrapper) continue;
+    const toks = reset.trim().split(/\s+/);
+    const out: string[] = [];
+    for (let i = 0; i < toks.length; i++) {
+      const name = toks[i];
+      let v = 0;
+      if (i + 1 < toks.length && /^-?\d+$/.test(toks[i + 1])) v = +toks[++i];
+      const used = root.querySelector(`p.${CSS.escape(name)}`);
+      out.push(`${name} ${used ? v : v + 1}`);
+    }
+    r.style.counterReset = 'none';
+    wrapper.style.counterReset = [wrapper.style.counterReset, out.join(' ')].filter((x) => x && x !== 'none').join(' ');
+  }
+  if (normalCls) {
+    const pre = normalCls.slice(0, normalCls.indexOf('_') + 1); // VD "dx1_" — class style của docx-preview
+    root.querySelectorAll<HTMLElement>('section p').forEach((p) => !Array.from(p.classList).some((c) => c.startsWith(pre)) && p.classList.add(normalCls));
+  }
+  root.querySelectorAll<HTMLElement>('p').forEach((p) => {
+    const cs = win.getComputedStyle(p);
+    // (1) giãn dòng theo phông của chữ trong đoạn (đoạn có thể khai phông khác chữ bên trong)
+    const runs = Array.from(p.querySelectorAll<HTMLElement>('span')).filter((sp) => Array.from(sp.childNodes).some((n) => n.nodeType === 3 && (n.textContent || '').trim()));
+    const ref = runs[0] || p;
+    const k1 = singleOf(win.getComputedStyle(ref).fontFamily);
+    const kind = lhKind(p);
+    if (kind && 'mult' in kind) p.style.lineHeight = String(kind.mult * k1);
+    else if (kind && 'atLeast' in kind) {
+      // Word "At least X": cao dòng = max(X, dòng đơn của chữ lớn nhất trong đoạn)
+      const maxFs = Math.max(parseFloat(cs.fontSize) || 0, ...runs.map((sp) => parseFloat(win.getComputedStyle(sp).fontSize) || 0));
+      p.style.lineHeight = `${Math.max(kind.atLeast, maxFs * k1)}px`;
+    }
+    // (2) căn đều 2 bên: Word (2013 trở lên) được co khoảng trắng tối đa ~20% để dồn thêm chữ lên dòng → xuống dòng giống Word
+    if (cs.textAlign === 'justify') p.style.wordSpacing = '-0.05em';
+    // (3) đoạn trống (dòng trắng giữa các mục): Word vẫn giữ đủ chiều cao 1 dòng theo giãn dòng của đoạn
+    if (!p.textContent && !p.querySelector('img, svg, br, table')) {
+      const lh = win.getComputedStyle(p).lineHeight;
+      p.style.minHeight = lh.endsWith('px') ? lh : `${(parseFloat(cs.fontSize) || 16) * singleOf(cs.fontFamily)}px`;
+    }
+    // (4) số / gạch đầu dòng: khung rộng bằng thụt lề treo → chữ bắt đầu đúng vị trí Tab của Word
+    if (/-num-\d+-\d+\b/.test(p.className)) {
+      const hang = -parseFloat(cs.textIndent) || 0;
+      p.style.setProperty('--num-w', `${hang > 0 ? hang : 0}px`);
+      p.classList.add('docx-numfix');
+    }
+  });
+  // (5) hình vẽ VML (VD gạch chân dưới "Độc lập – Tự do – Hạnh phúc"): toạ độ tính từ lề trái vùng chữ & đầu đoạn chứa nó,
+  //     docx-preview không đặt left/top → hình trôi theo chữ, lệch sang phải
+  root.querySelectorAll<SVGSVGElement>('svg').forEach((svg) => {
+    const st = svg.getAttribute('style') || '';
+    if (!/position:\s*absolute/.test(st) || /(^|;)\s*(left|top)\s*:/.test(st)) return;
+    const host = svg.closest('p') as HTMLElement | null;
+    if (!host) return;
+    if (win.getComputedStyle(host).position === 'static') host.style.position = 'relative';
+    const ml = parseFloat(win.getComputedStyle(host).marginLeft) || 0;
+    svg.style.left = `${-ml}px`; // lề vùng chữ (đoạn có thể thụt vào)
+    svg.style.top = '0';
+    svg.style.overflow = 'visible';
+    svg.style.pointerEvents = 'none';
+    // đường kẻ VML không khai màu → Word vẽ nét đen 0.75pt; SVG mặc định không có nét → không hiện
+    svg.querySelectorAll('line, polyline').forEach((el) => {
+      if (!el.getAttribute('stroke')) el.setAttribute('stroke', '#000');
+      if (!el.getAttribute('stroke-width')) el.setAttribute('stroke-width', '0.75pt');
+    });
+  });
+  probe.remove();
+  if (!doc.getElementById('docx-numfix-css')) {
+    const st = doc.createElement('style');
+    st.id = 'docx-numfix-css';
+    st.textContent = 'p.docx-numfix::before{display:inline-block;min-width:var(--num-w,0);padding-right:.3em;box-sizing:border-box;text-indent:0;white-space:nowrap}';
+    doc.head.appendChild(st);
+  }
+};
+
 /** In trực tiếp (trình duyệt → máy in / lưu PDF) đúng nội dung đang xem trước, gồm phần đã sửa. Mỗi văn bản 1 trang mới.
  *  Dùng iframe ẩn nên không bị chặn cửa sổ bật lên. */
 export const printJobsDirect = async (jobs: PrintJob[]) => {
@@ -121,10 +251,10 @@ export const printJobsDirect = async (jobs: PrintJob[]) => {
       // Trang in: mỗi trang Word = 1 trang A4 (lề lấy theo mẫu Word); bản in mặc định dùng lề 18mm
       fr.srcdoc = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${escH(title)}</title><style>
 @page{size:A4;margin:0}@page dflt{size:A4;margin:18mm 20mm}html,body{margin:0;padding:0;background:#fff}
-.docx-wrapper{background:#fff!important;padding:0!important;display:block!important}
-section.docx tr{break-inside:avoid}section.docx{box-shadow:none!important;margin:0 auto!important;break-after:page;page-break-after:always;min-height:0!important;overflow:visible!important;display:block!important;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.wdoc>div{background:#fff!important;padding:0!important;display:block!important}
+section.wsec tr{break-inside:avoid}section.wsec{box-shadow:none!important;margin:0 auto!important;break-after:page;page-break-after:always;min-height:0!important;overflow:visible!important;overflow-x:clip!important;display:block!important;box-decoration-break:clone;-webkit-box-decoration-break:clone}
 .dflt-page{page:dflt;font-family:'Times New Roman',serif;font-size:13.5pt;line-height:1.5;color:#000;break-after:page;page-break-after:always}
-.wdoc:last-child section.docx:last-child,body>.dflt-page:last-child{break-after:auto;page-break-after:auto}
+.wdoc:last-child section.wsec:last-of-type,body>.dflt-page:last-child{break-after:auto;page-break-after:auto}
 ${PRINT_CSS}</style></head><body></body></html>`;
     });
     const doc = fr.contentDocument!;
@@ -149,7 +279,7 @@ ${PRINT_CSS}</style></head><body></body></html>`;
         box.className = 'wdoc';
         doc.body.append(css, box);
         await renderAsync(new Blob([bytes as BlobPart]), box, css, {
-          className: 'docx',
+          className: `dx${n}`, // mỗi văn bản 1 bộ style riêng — in kèm Phụ lục không bị style của file sau đè lên file trước
           inWrapper: true,
           ignoreWidth: false,
           ignoreHeight: false,
@@ -158,17 +288,20 @@ ${PRINT_CSS}</style></head><body></body></html>`;
           renderHeaders: false, // đầu/chân trang Word (VD "Trang 1/7") không lặp lại được theo trang in
           renderFooters: false,
           useBase64URL: true,
+          experimental: true, // tính vị trí Tab theo điểm dừng Tab của Word (căn thẳng "Mã số thuế:", "Đại diện:"…)
         });
         // Giữ khổ & lề theo mẫu Word (padding của section); nội dung dài tự sang trang sau,
         // lề trên/dưới được lặp lại ở mỗi trang nhờ box-decoration-break: clone
-        box.querySelectorAll<HTMLElement>('section.docx').forEach((sec) => {
+        box.querySelectorAll<HTMLElement>(':scope > div > section').forEach((sec) => {
+          sec.classList.add('wsec');
           // trang trống (ngắt trang / ngắt section thừa ở cuối mẫu) → bỏ, tránh in tờ trắng
           if (!(sec.textContent || '').replace(/[\s\u00a0\-_.…]/g, '') && !sec.querySelector('img, svg, canvas')) return sec.remove();
           sec.style.minHeight = '0';
           sec.style.height = 'auto';
         });
+        fixDocxLayout(box, css);
         // bảng nhỏ (khối chữ ký, bảng thông tin) không bị cắt đôi sang 2 trang
-        box.querySelectorAll<HTMLTableElement>('section.docx table').forEach((t) => t.rows.length <= 8 && (t.style.breakInside = 'avoid'));
+        box.querySelectorAll<HTMLTableElement>('section.wsec table').forEach((t) => t.rows.length <= 8 && (t.style.breakInside = 'avoid'));
         n++;
       }
     }
@@ -176,7 +309,7 @@ ${PRINT_CSS}</style></head><body></body></html>`;
       fr.remove();
       return 0;
     }
-    await new Promise((ok) => setTimeout(ok, 300)); // chờ ảnh / phông chữ
+    await new Promise((ok) => setTimeout(ok, 800)); // chờ ảnh / phông chữ + docx-preview tính vị trí Tab (sau 500ms)
     const w = fr.contentWindow!;
     w.focus();
     w.print();
@@ -226,9 +359,11 @@ const blocksOf = (lines: DocLine[]): (DocLine | PreviewTable)[] => {
 };
 
 /** Xem trước đúng định dạng: trộn file Word rồi dựng bằng docx-preview (chỉ xem, sửa thông tin ở chế độ "Sửa nhanh"). */
+let previewSeq = 0;
 const ExactPreview: React.FC<{ tpl: TemplateDef; data: Record<string, string> }> = ({ tpl, data }) => {
   const host = useRef<HTMLDivElement>(null);
   const css = useRef<HTMLDivElement>(null);
+  const cls = useMemo(() => `dxp${++previewSeq}`, []); // style riêng cho từng bản xem trước
   const [state, setState] = useState<'loading' | 'ok' | string>('loading');
   const key = JSON.stringify(data);
   useEffect(() => {
@@ -238,8 +373,9 @@ const ExactPreview: React.FC<{ tpl: TemplateDef; data: Record<string, string> }>
       try {
         const bytes = await mergeDocx(tpl.data!, data);
         if (!live || !host.current || !css.current) return;
-        await renderAsync(new Blob([bytes as BlobPart]), host.current, css.current, { className: 'docx', inWrapper: true, breakPages: true, ignoreLastRenderedPageBreak: true, renderHeaders: true, renderFooters: true, useBase64URL: true });
-        host.current.querySelectorAll<HTMLElement>('section.docx').forEach((sec) => !(sec.textContent || '').replace(/[\s\u00a0\-_.…]/g, '') && !sec.querySelector('img, svg, canvas') && sec.remove());
+        await renderAsync(new Blob([bytes as BlobPart]), host.current, css.current, { className: cls, inWrapper: true, breakPages: true, ignoreLastRenderedPageBreak: true, renderHeaders: true, renderFooters: true, useBase64URL: true, experimental: true });
+        host.current.querySelectorAll<HTMLElement>(':scope > div > section').forEach((sec) => !(sec.textContent || '').replace(/[\s\u00a0\-_.…]/g, '') && !sec.querySelector('img, svg, canvas') && sec.remove());
+        fixDocxLayout(host.current, css.current);
         if (live) setState('ok');
       } catch (e) {
         if (live) setState((e as Error).message);
@@ -255,7 +391,7 @@ const ExactPreview: React.FC<{ tpl: TemplateDef; data: Record<string, string> }>
       <div ref={css} hidden />
       {state === 'loading' && <p className="text-slate-500 text-center py-4">Đang dựng bản in…</p>}
       {state !== 'loading' && state !== 'ok' && <p className="text-rose-600 text-center py-4">Không dựng được bản in: {state}</p>}
-      <div ref={host} className="[&_.docx-wrapper]:!bg-transparent [&_.docx-wrapper]:!p-0" />
+      <div ref={host} className="doc-font [&>div]:!bg-transparent [&>div]:!p-0" />
     </div>
   );
 };
@@ -308,7 +444,7 @@ export const PrintDialog: React.FC<{ items: PrintItem[]; onClose: () => void; on
   const [lines, setLines] = useState<DocLine[] | null>(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
-  const [exact, setExact] = useState(false); // xem bản in đúng định dạng Word
+  const [exact, setExact] = useState(true); // mặc định xem bản in đúng định dạng Word (giống khi in); "Sửa nhanh" để sửa thông tin
   const paper = useRef<HTMLDivElement>(null);
 
   const it = items.find((x) => x.id === cur) || items[0];
@@ -660,7 +796,7 @@ export const PrintDialog: React.FC<{ items: PrintItem[]; onClose: () => void; on
                 <div
                   ref={paper}
                   data-testid="print-paper"
-                  className="mx-auto w-full max-w-[820px] min-h-[1100px] bg-white shadow-md border border-slate-300 px-16 py-14 text-[14.5px] leading-[1.65] text-slate-900"
+                  className="doc-font mx-auto w-full max-w-[794px] min-h-[1123px] bg-white shadow-md border border-slate-300 pl-[30mm] pr-[20mm] py-[20mm] text-[16px] leading-[1.35] text-black"
                   style={{ fontFamily: "'Times New Roman', Times, serif" }}
                 >
                   {blocksOf(lines).map((bl, bi) =>
