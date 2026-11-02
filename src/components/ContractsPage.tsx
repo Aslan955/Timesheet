@@ -2052,12 +2052,11 @@ const ContractDetail: React.FC<{
   const payLeft = [
     { label: 'Lương cơ bản', value: <span className="inline-flex items-center gap-2 w-full">{money1(d.baseSalary, (n) => set({ baseSalary: n }))}{ed && <span className="shrink-0 text-[11px] text-slate-400">(khai báo đóng BHXH)</span>}</span> },
     { label: 'Mức hưởng (%)', value: ed ? <><input type="number" min={0} max={100} value={d.rate} onChange={(e) => set({ rate: Number(e.target.value) })} className={`${INPUT} text-right tabular-nums w-28 ${errCls(E('rate'))}`} /><ErrText e={E('rate')} /></> : `${d.rate}%` },
-    { label: 'Tổng thu nhập', value: <span className="inline-flex items-center gap-2"><b className="tabular-nums text-[#1e3a5f]">{money(incomeOf(d)) || '0'}</b>{ed && <span className="text-[11px] text-slate-400">(nhập ở Phụ lục 01 bên dưới)</span>}</span> },
   ];
   const payRight = [
     { label: 'Bằng chữ', value: <i className="text-slate-600">{soThanhChu(d.baseSalary || 0)}</i> },
     { label: 'Tham gia bảo hiểm', value: insurance },
-    { label: 'Mức lương hưởng', value: <span className="inline-flex items-center gap-2" data-testid="pay-salary"><b className="tabular-nums text-slate-900">{money(salaryOf(d)) || '0'}</b><span className="text-[11px] text-slate-400">(= Tổng thu nhập × {d.rate}%)</span></span> },
+    { label: 'Tổng thu nhập', value: <span className="inline-flex items-center gap-2"><b className="tabular-nums text-[#1e3a5f]">{money(incomeOf(d)) || '0'}</b>{ed && <span className="text-[11px] text-slate-400">(nhập ở Phụ lục 01 bên dưới)</span>}</span> },
   ];
   // Phụ lục hợp đồng — Phụ lục 01: các khoản hỗ trợ (theo bộ mẫu hợp đồng)
   // Nhập Tổng thu nhập → tự chia: ăn trưa cố định, điện thoại, xăng xe, nhà ở (có trần), phần còn lại là HQCV tạm tính
