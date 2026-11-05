@@ -426,8 +426,6 @@ export const ContractCatalogPage: React.FC = () => {
       if (f.rate < 0 || f.rate > 100) e.rate = 'Từ 0 đến 100%';
       if (!f.suffix) e.suffix = 'Bắt buộc — dùng tạo số hợp đồng';
       if (old && old.kind !== f.kind && (countBy.byType.get(old.name) || 0) > 0) e.kind = 'Đang có hợp đồng dùng loại này — không đổi nhóm';
-      const others = list.filter((x) => x.id !== f.id && x.kind === f.kind && x.active);
-      if (!f.active && f.kind !== 'OTHER' && !others.length) e.active = `Phải còn ít nhất 1 loại "${KIND_LABEL[f.kind]}" đang sử dụng (dùng khi tái ký)`;
       return e;
     },
     save: (f, old) => {

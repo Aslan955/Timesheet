@@ -84,9 +84,12 @@ import { WelcomeOnboardPage } from './components/marcom/WelcomeOnboardPage';
 import { MarcomEmailPage } from './components/marcom/MarcomEmailPage';
 import { ProcessPage } from './components/process/ProcessPage';
 import { MyProcessPage } from './components/process/MyProcessPage';
+import { LoginPage, clearLogin, savedLogin, type LoginUser } from './components/LoginPage';
+import { AssignedTicketPage, MyTicketPage, QueueTicketPage, TicketConfigPage, TicketMailboxPage, TicketReportPage } from './components/ticket/TicketPages';
 
 export default function App() {
   const [activeItem, setActiveItem] = useState('Mục tiêu kinh doanh'); // màn mở mặc định khi vào hệ thống
+  const [login, setLogin] = useState<LoginUser | null>(() => savedLogin()); // màn đăng nhập iMIS
   // Chuyển màn từ bên trong một màn khác (vd hồ sơ nhân viên → Hợp đồng lao động)
   useEffect(() => {
     const go = (ev: Event) => setActiveItem((ev as CustomEvent<{ item: string }>).detail.item);
@@ -220,6 +223,19 @@ export default function App() {
         return <MyProcessPage />;
       case 'Danh sách quy trình':
         return <ProcessPage />;
+      // Ticket nội bộ
+      case 'Ticket của tôi':
+        return <MyTicketPage />;
+      case 'Được giao cho tôi':
+        return <AssignedTicketPage />;
+      case 'Hàng đợi phòng ban':
+        return <QueueTicketPage />;
+      case 'Hộp thư Outlook (mô phỏng)':
+        return <TicketMailboxPage />;
+      case 'Báo cáo Ticket':
+        return <TicketReportPage />;
+      case 'Cấu hình Ticket':
+        return <TicketConfigPage />;
       case 'Danh mục hợp đồng':
         return <ContractCatalogPage />;
       case 'Template hợp đồng':
@@ -252,6 +268,12 @@ export default function App() {
     }
   };
 
+  if (!login) return <LoginPage onLogin={setLogin} />;
+  const logout = () => {
+    clearLogin();
+    setLogin(null);
+  };
+
   return (
     <LanguageProvider>
     <RcProvider>
@@ -267,7 +289,7 @@ export default function App() {
                     <BlockPlanProvider>
                       <PmoProvider>
                         <MarcomProvider>
-                          <Layout activeItem={activeItem} onSelect={setActiveItem}>
+                          <Layout activeItem={activeItem} onSelect={setActiveItem} user={login} onLogout={logout}>
                             {renderContent()}
                           </Layout>
                         </MarcomProvider>

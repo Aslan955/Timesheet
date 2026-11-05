@@ -36,6 +36,7 @@ import {
   Hand,
   MailCheck,
   Workflow,
+  Ticket,
   MapPin,
 } from 'lucide-react';
 
@@ -142,6 +143,19 @@ export const NAVIGATION: NavItem[] = [
     children: [
       { title: 'Quy trình của tôi', icon: Inbox },
       { title: 'Danh sách quy trình', icon: Workflow },
+    ],
+  },
+  {
+    // Ticket nội bộ: các phòng ban gửi yêu cầu cho nhau (IT, HCNS, Kế toán, Hành chính), liên kết mail Outlook
+    title: 'Ticket',
+    icon: Ticket,
+    children: [
+      { title: 'Ticket của tôi', icon: Ticket },
+      { title: 'Được giao cho tôi', icon: UserCheck },
+      { title: 'Hàng đợi phòng ban', icon: Inbox },
+      { title: 'Hộp thư Outlook (mô phỏng)', label: 'Hộp thư Outlook', icon: Mail },
+      { title: 'Báo cáo Ticket', icon: BarChart3 },
+      { title: 'Cấu hình Ticket', icon: Settings },
     ],
   },
   {

@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import type { LoginUser } from './LoginPage';
 
 interface LayoutProps {
   children: React.ReactNode;
   activeItem?: string;
   onSelect?: (item: string) => void;
+  user?: LoginUser;
+  onLogout?: () => void;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children, activeItem, onSelect }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, activeItem, onSelect, user, onLogout }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   return (
@@ -20,7 +23,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeItem, onSelect }
       
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Header onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
+        <Header onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} user={user} onLogout={onLogout} />
         <main className="flex-1 overflow-y-auto overflow-x-hidden no-scrollbar-x bg-[#f4f6f8] relative">
           {/* Decorative ambient glowing blobs to enhance backdrop-blur glassmorphism */}
           <div className="absolute top-10 left-10 w-96 h-96 rounded-full bg-[#3197E5]/10 blur-[100px] pointer-events-none" />
