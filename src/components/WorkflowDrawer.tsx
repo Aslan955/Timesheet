@@ -201,7 +201,9 @@ const StepCard: React.FC<{ step: Step; state: StepState; action?: React.ReactNod
 };
 
 const PAKD_TAG: Record<PakdVersion['state'], string> = {
+  'Chờ GĐK': 'bg-amber-50 text-amber-700 border-amber-300',
   'Chờ CFO': 'bg-amber-50 text-amber-700 border-amber-300',
+  'Chờ BOD': 'bg-amber-50 text-amber-700 border-amber-300',
   'Đã duyệt': 'bg-emerald-50 text-emerald-700 border-emerald-300',
   'Từ chối': 'bg-rose-50 text-rose-700 border-rose-300',
 };

@@ -364,6 +364,7 @@ export const upsertEmployeeFromOnboarding = (
   const entry: EmpLog = { at, by: 'onboarding', action, changes: Object.keys(patch) };
   if (STORE.some((e) => e.code === code)) {
     STORE = STORE.map((e) => (e.code === code ? { ...e, ...patch, history: [...e.history, entry], updatedAt: at, updatedBy: 'onboarding' } : e));
+    SUBS.forEach((f) => f());
     return;
   }
   const emp = mk(code, p.fullName.toUpperCase(), '', p.division, p.department, p.position, p.level, p.joinDate, 'Thử việc', {
@@ -375,11 +376,13 @@ export const upsertEmployeeFromOnboarding = (
     ...patch,
   });
   STORE = [{ ...emp, history: [{ at, by: 'onboarding', action }], updatedAt: at, updatedBy: 'onboarding' }, ...STORE];
+  SUBS.forEach((f) => f());
 };
 
 /** Báo huỷ onboard khi hồ sơ chưa có tài khoản → xoá mềm hồ sơ. */
 export const removeEmployeeFromOnboarding = (code: string) => {
   STORE = STORE.filter((e) => e.code !== code);
+  SUBS.forEach((f) => f());
 };
 const SUBS = new Set<() => void>();
 export const getEmployees = () => STORE;

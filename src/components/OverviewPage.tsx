@@ -510,7 +510,7 @@ export const OverviewPage: React.FC = () => {
     const planByDiv: Record<string, number> = {};
     let source: string;
     if (yPlans.length) {
-      yPlans.forEach((p) => (planByDiv[p.division] = (planByDiv[p.division] || 0) + p.rows.reduce((s, r) => s + (r.value || 0), 0) * 1e6));
+      yPlans.forEach((p) => (planByDiv[p.division] = (planByDiv[p.division] || 0) + p.rows.reduce((s, r) => s + (r.value || 0), 0)));
       source = 'Theo hồ sơ màn Mục tiêu kinh doanh';
     } else {
       Object.entries(targets[year] || ({} as Record<string, number>)).forEach(([d, v]) => (planByDiv[d] = Number(v)));

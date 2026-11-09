@@ -26,7 +26,7 @@ export const ONB_STATUS_REAL: Record<OnbStatus, string> = {
   'HCNS từ chối': 'Rejected',
 };
 
-export type OnbRole = 'TA' | 'HCNS';
+export type OnbRole = 'TA' | 'HCNS' | 'Ứng viên' | 'IT' | 'MarCom';
 
 // ==========================================================================
 // 17 trường TA bàn giao
@@ -189,7 +189,9 @@ export interface OnbHistory {
 }
 export interface OnbMail {
   at: string;
-  kind: 'Gửi thông tin sang HCNS' | 'Cập nhật thông tin onboard' | 'Báo huỷ onboard' | 'Form onboarding cho ứng viên' | 'Nhắc điền form thông tin' | 'Mail IT cấp tài khoản';
+  kind:
+    | 'Gửi thông tin sang HCNS' | 'Cập nhật thông tin onboard' | 'Báo huỷ onboard' | 'HCNS từ chối'
+    | 'Form onboarding cho ứng viên' | 'Nhắc điền form thông tin' | 'Mail IT cấp tài khoản' | 'IT trả thông tin tài khoản' | 'Thông báo MarCom';
   subject: string;
   to: string;
   cc: string[];
@@ -203,37 +205,81 @@ export interface OnbAccount {
 }
 
 // ==========================================================================
-// Tiến độ sau khi HCNS duyệt (ĐỀ XUẤT — code thật chỉ có job tạo user + 1 mail form)
+// Luồng sau khi HCNS Accept (4 bên: HCNS · Ứng viên · IT · MarCom)
+//  1. Accept → tạo hồ sơ Employees + gửi link form thông tin cá nhân cho ứng viên
+//  2. Ứng viên submit form → đổ dữ liệu vào Employees, ĐỒNG THỜI gửi yêu cầu IT (Họ tên, Khối, Cấp trên trực tiếp, Công ty)
+//  3. IT trả thông tin tài khoản: email, tên tài khoản, mật khẩu → ghi vào hồ sơ, báo MarCom
+//  4. MarCom chuẩn bị Welcome Onboard
 // ==========================================================================
 export type TaskStatus = 'Chưa bắt đầu' | 'Đang thực hiện' | 'Đã hoàn thành';
-export type TaskKey = 'employee' | 'imisAccount' | 'personalForm' | 'itAccount';
-export const TASK_ORDER: TaskKey[] = ['employee', 'imisAccount', 'personalForm', 'itAccount'];
+export type TaskKey = 'employee' | 'personalForm' | 'itAccount' | 'marcom';
+export const TASK_ORDER: TaskKey[] = ['employee', 'personalForm', 'itAccount', 'marcom'];
 export const TASK_DEFS: Record<TaskKey, { name: string; owner: string; done: string }> = {
-  employee: { name: 'Tạo hồ sơ nhân sự (Employees)', owner: 'Hệ thống', done: 'Tạo ngay khi HCNS duyệt — trạng thái Thử việc' },
-  imisAccount: { name: 'Tạo tài khoản đăng nhập iMIS', owner: 'Hệ thống', done: 'Job tạo user iMIS chạy xong, gán vào hồ sơ' },
-  personalForm: { name: 'Form thông tin cá nhân (Microsoft Forms)', owner: 'Nhân sự mới', done: 'Nhân sự submit form — dữ liệu đổ vào hồ sơ Employees' },
-  itAccount: { name: 'Mail IT cấp tài khoản Microsoft 365 & đăng nhập', owner: 'IT', done: 'IT xác nhận đã cấp đủ các mục' },
+  employee: { name: 'Tạo nhân viên trong Employees', owner: 'Hệ thống', done: 'Tạo ngay khi HCNS Accept — trạng thái Thử việc' },
+  personalForm: { name: 'Form thông tin cá nhân trước onboard', owner: 'Ứng viên', done: 'Ứng viên submit form — dữ liệu đổ vào hồ sơ Employees' },
+  itAccount: { name: 'IT cấp tài khoản', owner: 'Phòng IT', done: 'IT trả email, tên tài khoản, mật khẩu' },
+  marcom: { name: 'Welcome Onboard', owner: 'Phòng MarCom', done: 'MarCom xác nhận đã chuẩn bị Welcome' },
 };
-/** Các mục IT phải xác nhận. */
-export const IT_ITEMS = ['Tài khoản Microsoft 365 (email công ty)', 'Tài khoản đăng nhập máy tính / domain', 'Phân quyền hệ thống (Jira, VPN, thư mục dùng chung…)'];
 export const IT_MAILBOX = 'it@company.vn';
-/** Kênh IT bàn giao thông tin đăng nhập — ngoài iMIS, iMIS KHÔNG lưu mật khẩu. */
-export const DELIVERY_CHANNELS = ['Temporary Access Pass (TAP) qua SMS tới SĐT cá nhân', 'Mật khẩu tạm qua SMS (bắt buộc đổi khi đăng nhập)', 'Bàn giao trực tiếp ngày nhận việc'];
-export const IT_STAFF = ['TuanNV (IT)', 'HoangLM (IT)', 'IT Helpdesk'];
-export const MS_FORM_LINK = 'https://forms.office.com/r/vtx-onboarding-info';
-/** Các trường nhân sự điền trên Microsoft Forms (đổ về hồ sơ Employees). */
-export const FORM_FIELDS: { key: string; label: string }[] = [
-  { key: 'birthDate', label: 'Ngày sinh' },
-  { key: 'idNo', label: 'Số CCCD' },
-  { key: 'idDate', label: 'Ngày cấp' },
-  { key: 'idPlace', label: 'Nơi cấp' },
-  { key: 'permanentAddress', label: 'Địa chỉ thường trú' },
-  { key: 'currentAddress', label: 'Địa chỉ hiện tại' },
-  { key: 'taxCode', label: 'Mã số thuế cá nhân' },
-  { key: 'socialInsNo', label: 'Số sổ BHXH' },
-  { key: 'bankAccount', label: 'Số tài khoản' },
-  { key: 'bankName', label: 'Ngân hàng' },
+export const MARCOM_MAILBOX = 'marcom@company.vn';
+export const IT_STAFF = ['Đỗ Văn Khánh (IT)', 'Hoàng Minh Long (IT)', 'IT Helpdesk'];
+export const MARCOM_STAFF = ['Vũ Thu Trang (MarCom)', 'Lê Ngọc Ánh (MarCom)'];
+export const COMPANIES = ['AEQUITAS', 'VTX GROUP'];
+export const COMPANY_DOMAIN = 'aequitas.com.vn';
+const COMPANY_DOMAINS: Record<string, string> = { AEQUITAS: 'aequitas.com.vn', 'VTX GROUP': 'vtxgroup.com.vn' };
+export const domainOf = (company: string) => COMPANY_DOMAINS[company] || COMPANY_DOMAIN;
+/** Gợi ý tên tài khoản: tên + chữ cái đầu họ đệm (Lê Quang Huy → huylq). */
+export const accountNameOf = (fullName: string) => {
+  const parts = fullName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().split(/\s+/).filter(Boolean);
+  return parts.length ? `${parts[parts.length - 1]}${parts.slice(0, -1).map((x) => x[0]).join('')}` : 'newuser';
+};
+/** Mật khẩu tạm ngẫu nhiên (bắt buộc đổi ở lần đăng nhập đầu). */
+export const genPassword = () => {
+  const pick = (set: string, n: number) => Array.from({ length: n }, () => set[Math.floor(Math.random() * set.length)]).join('');
+  return `${pick('ABCDEFGHJKLMNPQRSTUVWXYZ', 1)}${pick('abcdefghijkmnpqrstuvwxyz', 4)}#${pick('23456789', 3)}${pick('ABCDEFGHJKLMNPQRSTUVWXYZ', 1)}`;
+};
+/** Link form thông tin cá nhân gửi ứng viên (mỗi phiếu 1 mã). */
+export const formLinkOf = (id: string) => `https://imis.${COMPANY_DOMAIN}/onboard/form/${id.toLowerCase()}`;
+
+/** Các trường ứng viên điền trên form (đổ về hồ sơ Employees). */
+export type FormFieldDef = { key: string; label: string; group: string; type?: 'date' | 'select' | 'tel'; options?: string[]; required?: boolean; full?: boolean };
+export const FORM_FIELDS: FormFieldDef[] = [
+  { key: 'birthDate', label: 'Ngày sinh', group: 'Thông tin cơ bản', type: 'date', required: true },
+  { key: 'gender', label: 'Giới tính', group: 'Thông tin cơ bản', type: 'select', options: ['Nam', 'Nữ', 'Khác'], required: true },
+  { key: 'maritalStatus', label: 'Tình trạng hôn nhân', group: 'Thông tin cơ bản', type: 'select', options: ['Độc thân', 'Đã kết hôn'] },
+  { key: 'phone', label: 'Số điện thoại', group: 'Thông tin cơ bản', type: 'tel', required: true },
+  { key: 'idNo', label: 'Số CCCD', group: 'Giấy tờ & thuế', required: true },
+  { key: 'idDate', label: 'Ngày cấp', group: 'Giấy tờ & thuế', type: 'date', required: true },
+  { key: 'idPlace', label: 'Nơi cấp', group: 'Giấy tờ & thuế', required: true },
+  { key: 'taxCode', label: 'Mã số thuế cá nhân', group: 'Giấy tờ & thuế' },
+  { key: 'socialInsNo', label: 'Số sổ BHXH', group: 'Giấy tờ & thuế' },
+  { key: 'permanentAddress', label: 'Địa chỉ thường trú', group: 'Địa chỉ', required: true, full: true },
+  { key: 'currentAddress', label: 'Địa chỉ hiện tại', group: 'Địa chỉ', required: true, full: true },
+  { key: 'bankAccount', label: 'Số tài khoản', group: 'Ngân hàng nhận lương', required: true },
+  { key: 'bankName', label: 'Ngân hàng', group: 'Ngân hàng nhận lương', required: true },
+  { key: 'education', label: 'Trình độ', group: 'Học vấn', type: 'select', options: ['Trung cấp', 'Cao đẳng', 'Cử nhân', 'Kỹ sư', 'Thạc sĩ', 'Tiến sĩ'] },
+  { key: 'school', label: 'Trường', group: 'Học vấn' },
+  { key: 'major', label: 'Chuyên ngành', group: 'Học vấn' },
 ];
+export const FORM_GROUPS = [...new Set(FORM_FIELDS.map((f) => f.group))];
+
+/** Yêu cầu gửi IT (tự gửi khi ứng viên submit form). */
+export interface ItRequest {
+  fullName: string;
+  block: string;
+  manager: string;
+  company: string;
+  sentAt: string;
+}
+/** Thông tin IT trả về. */
+export interface ItReturn {
+  email: string;
+  accountName: string;
+  password: string;
+  by: string;
+  at: string;
+  note?: string;
+}
 
 export interface OnbTask {
   key: TaskKey;
@@ -244,13 +290,12 @@ export interface OnbTask {
   /** Dòng mô tả kết quả / đang chờ gì */
   detail?: string;
   reminders?: number;
-  /** IT: các mục đã xác nhận */
-  itDone?: string[];
-  /** IT: kênh + người bàn giao thông tin đăng nhập */
-  deliveryChannel?: string;
-  deliveredBy?: string;
-  /** Form: dữ liệu nhân sự đã submit */
+  /** Form: link đã gửi + dữ liệu ứng viên đã submit */
+  formLink?: string;
   formData?: Record<string, string>;
+  /** IT */
+  itReq?: ItRequest;
+  itRet?: ItReturn;
 }
 export const taskOf = (r: Pick<OnbRecord, 'tasks'>, k: TaskKey): OnbTask => r.tasks?.find((t) => t.key === k) || { key: k, status: 'Chưa bắt đầu' };
 export const tasksDone = (r: Pick<OnbRecord, 'tasks'>) => TASK_ORDER.filter((k) => taskOf(r, k).status === 'Đã hoàn thành').length;
@@ -264,6 +309,8 @@ export interface OnbRecord {
   cvFile: string;
   requestId: string;
   block: string;
+  /** Công ty ký HĐ (gửi kèm yêu cầu IT) */
+  company: string;
   taPic: string;
   taPic2: string;
   data: HandoffData;
@@ -362,294 +409,295 @@ export const missingForApprove = (r: Pick<OnbRecord, 'data' | 'contractType'>): 
 export const diffHandoff = (prev: HandoffData, next: HandoffData): FieldChange[] =>
   HANDOFF_KEYS.filter((k) => fieldText(k, prev) !== fieldText(k, next)).map((k) => ({ field: HANDOFF_LABELS[k], from: fieldText(k, prev), to: fieldText(k, next) }));
 
-/** Tiến trình 5 bước của phiếu. */
+/** Tiến trình 6 bước của phiếu. */
 export const ONB_STEPS = [
-  { code: '01', name: 'TA bàn giao', owner: 'TA' },
-  { code: '02', name: 'HCNS duyệt', owner: 'HCNS' },
-  { code: '03', name: 'Tạo hồ sơ & tài khoản', owner: 'Hệ thống' },
-  { code: '04', name: 'Chuẩn bị onboard', owner: 'Phòng ban · IT · HCTH' },
-  { code: '05', name: 'Nhận việc', owner: 'HCNS' },
+  { code: '01', name: 'Chuyển ứng viên', owner: 'Tuyển dụng' },
+  { code: '02', name: 'Accept / Reject', owner: 'HCNS' },
+  { code: '03', name: 'Điền form thông tin', owner: 'Ứng viên' },
+  { code: '04', name: 'Cấp tài khoản', owner: 'IT' },
+  { code: '05', name: 'Welcome Onboard', owner: 'MarCom' },
+  { code: '06', name: 'Nhận việc', owner: 'HCNS' },
 ];
+const ok = (r: OnbRecord, k: TaskKey) => taskOf(r, k).status === 'Đã hoàn thành';
 export const stepIndex = (r: OnbRecord): number => {
-  if (r.status === 'Đã onboard') return 5;
+  if (r.status === 'Đã onboard') return 6;
   if (r.status === 'Chờ HCNS duyệt') return 1;
-  if (r.status === 'Đang onboard') {
-    const ok = (k: TaskKey) => taskOf(r, k).status === 'Đã hoàn thành';
-    if (!ok('employee') || !ok('imisAccount')) return 2;
-    return ok('personalForm') && ok('itAccount') && r.checklist.every((c) => c.done) ? 4 : 3;
-  }
+  if (r.status === 'Đang onboard') return !ok(r, 'personalForm') ? 2 : !ok(r, 'itAccount') ? 3 : !ok(r, 'marcom') ? 4 : 5;
   return -1; // huỷ / từ chối
+};
+/** Bước đang chờ — hiện ở lưới. */
+export const waitingOf = (r: OnbRecord): { text: string; owner: string } | null => {
+  const i = stepIndex(r);
+  if (i < 1 || i > 5) return null;
+  return { 1: { text: 'Chờ HCNS Accept', owner: 'HCNS' }, 2: { text: 'Chờ ứng viên điền form', owner: 'Ứng viên' }, 3: { text: 'Chờ IT cấp tài khoản', owner: 'IT' }, 4: { text: 'Chờ MarCom Welcome', owner: 'MarCom' }, 5: { text: 'Sẵn sàng nhận việc', owner: 'HCNS' } }[i as 1];
 };
 
 // ==========================================================================
-// Dữ liệu mẫu
+// Bộ lọc ngày onboard
+// ==========================================================================
+export type DateRangeKey = '' | 'thisWeek' | 'nextWeek' | 'thisMonth' | 'lastMonth' | 'month';
+export const DATE_RANGES: { key: DateRangeKey; label: string }[] = [
+  { key: '', label: 'Tất cả' },
+  { key: 'thisWeek', label: 'Tuần này' },
+  { key: 'nextWeek', label: 'Tuần sau' },
+  { key: 'thisMonth', label: 'Tháng này' },
+  { key: 'lastMonth', label: 'Tháng trước' },
+  { key: 'month', label: 'Tháng tự chọn' },
+];
+const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+/** Khoảng [từ, đến] (yyyy-mm-dd) — tuần tính Thứ 2 → Chủ nhật. month = 'yyyy-mm' cho Tháng tự chọn. */
+export const rangeOf = (key: DateRangeKey, month = ''): [string, string] | null => {
+  const t = new Date(`${todayIso()}T00:00:00`);
+  const monday = new Date(t);
+  monday.setDate(t.getDate() - ((t.getDay() + 6) % 7));
+  const week = (n: number): [string, string] => {
+    const a = new Date(monday);
+    a.setDate(monday.getDate() + 7 * n);
+    const b = new Date(a);
+    b.setDate(a.getDate() + 6);
+    return [isoOf(a), isoOf(b)];
+  };
+  const mon = (y: number, m: number): [string, string] => [isoOf(new Date(y, m, 1)), isoOf(new Date(y, m + 1, 0))];
+  switch (key) {
+    case 'thisWeek': return week(0);
+    case 'nextWeek': return week(1);
+    case 'thisMonth': return mon(t.getFullYear(), t.getMonth());
+    case 'lastMonth': return mon(t.getFullYear(), t.getMonth() - 1);
+    case 'month': {
+      if (!/^\d{4}-\d{2}$/.test(month)) return null;
+      const [y, m] = month.split('-').map(Number);
+      return mon(y, m - 1);
+    }
+    default: return null;
+  }
+};
+export const inRange = (iso: string, r: [string, string] | null) => !r || (!!iso && iso >= r[0] && iso <= r[1]);
+
+// ==========================================================================
+// Dữ liệu mẫu (giả lập) — ngày onboard tính theo hôm nay để bộ lọc tuần / tháng luôn có dữ liệu
 // ==========================================================================
 const baseData = (p: Partial<HandoffData>): HandoffData => ({ ...emptyHandoff(), ...p });
+const dayFromToday = (n: number) => {
+  const d = new Date(`${todayIso()}T00:00:00`);
+  d.setDate(d.getDate() + n);
+  return isoOf(d);
+};
+/** Ngày trong tuần (0 = Thứ 2) của tuần hiện tại + w tuần. */
+const weekDay = (w: number, dow: number) => {
+  const d = new Date(`${todayIso()}T00:00:00`);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + w * 7 + dow);
+  return isoOf(d);
+};
+/** Ngày `day` của tháng hiện tại + m tháng. */
+const monthDay = (m: number, day: number) => {
+  const t = new Date(`${todayIso()}T00:00:00`);
+  return isoOf(new Date(t.getFullYear(), t.getMonth() + m, day));
+};
+const at = (iso: string, hm: string) => `${iso}T${hm}:00`;
+
+type SeedIn = Pick<OnbRecord, 'id' | 'candidateId' | 'candidateEmail' | 'candidatePhone' | 'candidateSource' | 'cvFile' | 'requestId' | 'block' | 'company' | 'taPic' | 'data'> &
+  Partial<OnbRecord>;
+const seed = (r: SeedIn): OnbRecord => {
+  const sentAt = r.sentAt || at(dayFromToday(-3), '09:30');
+  const subject = `[Tuyển dụng → HCNS] Bàn giao nhân sự mới: ${r.data.fullName} - ${r.data.position}`;
+  return {
+    taPic2: '',
+    lastChanges: [],
+    version: 1,
+    status: 'Chờ HCNS duyệt',
+    sentAt,
+    sentBy: r.taPic,
+    contractType: '',
+    hrNote: '',
+    account: { status: 'Chưa tạo' },
+    checklist: [],
+    mails: [{ at: sentAt, kind: 'Gửi thông tin sang HCNS', subject, to: HCNS_MAILBOX, cc: [r.taPic], attachments: r.cvFile ? [r.cvFile] : [] }],
+    history: [{ at: sentAt, by: r.taPic, role: 'TA', action: 'Gửi thông tin sang HCNS (email)', note: 'Ứng viên hiện ở màn Onboarding Request · Stage → Offer Accepted' }],
+    ...r,
+  } as OnbRecord;
+};
+
+/** Phiếu đã Accept: dựng sẵn tiến độ tới bước `upTo` (1 = vừa Accept, 2 = đã submit form, 3 = IT đã trả, 4 = MarCom xong). */
+const accepted = (r: SeedIn, code: string, upTo: 1 | 2 | 3 | 4, acc: { user: string; pass: string }, decidedAt: string): OnbRecord => {
+  const base = seed(r);
+  const link = formLinkOf(r.id);
+  const t1 = decidedAt;
+  const t2 = at(dayFromToday(-2), '20:15');
+  const t3 = at(dayFromToday(-1), '10:40');
+  const t4 = at(dayFromToday(0), '08:50');
+  const email = `${acc.user}@${domainOf(r.company)}`;
+  const itReq: ItRequest = { fullName: r.data.fullName, block: r.block, manager: r.data.manager, company: r.company, sentAt: t2 };
+  const tasks: OnbTask[] = [
+    { key: 'employee', status: 'Đã hoàn thành', startedAt: t1, doneAt: t1, doneBy: 'Hệ thống', detail: `Mã NV ${code} · Thử việc` },
+    upTo >= 2
+      ? { key: 'personalForm', status: 'Đã hoàn thành', startedAt: t1, doneAt: t2, doneBy: r.data.fullName, formLink: link, formData: { birthDate: '1997-05-20', gender: 'Nam', phone: r.candidatePhone }, detail: 'Đã nhận form — đã cập nhật hồ sơ Employees' }
+      : { key: 'personalForm', status: 'Đang thực hiện', startedAt: t1, formLink: link, reminders: 0, detail: `Đã gửi link form tới ${r.candidateEmail} — chờ ứng viên submit` },
+    upTo >= 3
+      ? { key: 'itAccount', status: 'Đã hoàn thành', startedAt: t2, doneAt: t3, doneBy: IT_STAFF[0], itReq, itRet: { email, accountName: acc.user, password: acc.pass, by: IT_STAFF[0], at: t3 }, detail: `${email} · tài khoản ${acc.user}` }
+      : upTo === 2
+        ? { key: 'itAccount', status: 'Đang thực hiện', startedAt: t2, itReq, detail: `Đã gửi yêu cầu tới ${IT_MAILBOX} — chờ IT trả thông tin tài khoản` }
+        : { key: 'itAccount', status: 'Chưa bắt đầu', detail: 'Tự gửi IT khi ứng viên submit form' },
+    upTo >= 4
+      ? { key: 'marcom', status: 'Đã hoàn thành', startedAt: t3, doneAt: t4, doneBy: MARCOM_STAFF[0], detail: 'Đã chuẩn bị Welcome Onboard' }
+      : upTo === 3
+        ? { key: 'marcom', status: 'Đang thực hiện', startedAt: t3, detail: `Đã báo ${MARCOM_MAILBOX} — chờ MarCom chuẩn bị Welcome` }
+        : { key: 'marcom', status: 'Chưa bắt đầu', detail: 'Tự báo MarCom khi IT trả tài khoản' },
+  ];
+  const mails: OnbMail[] = [
+    ...base.mails,
+    { at: t1, kind: 'Form onboarding cho ứng viên', subject: 'Chào mừng bạn gia nhập — vui lòng điền thông tin cá nhân trước ngày nhận việc', to: r.candidateEmail, cc: [HCNS_MAILBOX], attachments: [] },
+    ...(upTo >= 2 ? [{ at: t2, kind: 'Mail IT cấp tài khoản' as const, subject: `[Onboarding] Yêu cầu cấp tài khoản: ${r.data.fullName} – ${r.block} – ${r.company}`, to: IT_MAILBOX, cc: [HCNS_MAILBOX], attachments: [] }] : []),
+    ...(upTo >= 3
+      ? [
+          { at: t3, kind: 'IT trả thông tin tài khoản' as const, subject: `[IT] Đã cấp tài khoản cho ${r.data.fullName}`, to: HCNS_MAILBOX, cc: [IT_MAILBOX], attachments: [] },
+          { at: t3, kind: 'Thông báo MarCom' as const, subject: `[Onboarding] Nhân sự mới ${r.data.fullName} nhận việc ${dmy(r.data.startDate)} — chuẩn bị Welcome`, to: MARCOM_MAILBOX, cc: [HCNS_MAILBOX], attachments: [] },
+        ]
+      : []),
+  ];
+  const history: OnbHistory[] = [
+    ...base.history,
+    { at: t1, by: HCNS_NAME, role: 'HCNS', action: 'Accept ứng viên', note: `Tạo hồ sơ ${code} · gửi link form tới ${r.candidateEmail}` },
+    ...(upTo >= 2 ? [{ at: t2, by: r.data.fullName, role: 'Ứng viên' as const, action: 'Submit form thông tin cá nhân', note: `Đổ dữ liệu vào hồ sơ ${code} · gửi yêu cầu IT` }] : []),
+    ...(upTo >= 3 ? [{ at: t3, by: IT_STAFF[0], role: 'IT' as const, action: 'Trả thông tin tài khoản', note: `${email} · ${acc.user}` }] : []),
+    ...(upTo >= 4 ? [{ at: t4, by: MARCOM_STAFF[0], role: 'MarCom' as const, action: 'Đã chuẩn bị Welcome Onboard' }] : []),
+  ];
+  return {
+    ...base,
+    status: 'Đang onboard',
+    contractType: 'Thử việc',
+    decidedBy: HCNS_NAME,
+    decidedAt: t1,
+    account: upTo >= 3 ? { status: 'Đã tạo', employeeCode: code, userName: acc.user, companyEmail: email } : { status: 'Đang tạo', employeeCode: code },
+    checklist: buildChecklist(upTo >= 3 ? 4 : 0, HCNS_NAME, t3),
+    tasks,
+    mails,
+    history,
+  };
+};
+
+const HCNS_NAME = 'Nguyễn Thị Mai';
 
 export const SEED_RECORDS: OnbRecord[] = [
-  {
-    id: 'ONB-2026-038',
-    candidateId: 'c6',
-    candidateEmail: 'huy.lq@gmail.com',
-    candidatePhone: '0903 112 845',
-    candidateSource: 'ITViec',
-    cvFile: 'CV_LeQuangHuy.pdf',
-    requestId: 'rq1',
-    block: 'Khối G1',
-    taPic: 'MenTT',
-    taPic2: 'NhuPTK',
+  // ---- Chờ HCNS Accept / Reject
+  seed({
+    id: 'ONB-2026-041', candidateId: 'c6', candidateEmail: 'huy.lq@gmail.com', candidatePhone: '0903 112 845', candidateSource: 'ITViec', cvFile: 'CV_LeQuangHuy.pdf',
+    requestId: 'rq1', block: 'Khối G1', company: 'AEQUITAS', taPic: 'MenTT', taPic2: 'NhuPTK', sentAt: at(dayFromToday(-4), '09:42'),
     data: baseData({
-      startDate: '2026-11-03', fullName: 'Lê Quang Huy', position: 'Software Developer', techStack: 'Java', level: 'Senior',
+      startDate: weekDay(0, 3), fullName: 'Lê Quang Huy', position: 'Software Developer', techStack: 'Java', level: 'Senior',
       department: 'G1 · Phòng Core Banking', manager: 'Đỗ Quốc Việt', workLocation: 'HN - VCB', officialSalary: 38000000,
       probationMonths: 2, probationPercent: 85, approver: 'Trịnh Văn Hưng', evidenceFile: 'Phe_duyet_offer_LeQuangHuy.pdf', note: 'Ứng viên cần laptop cấu hình cao (dev Java).',
     }),
-    lastChanges: [],
-    version: 1,
-    status: 'Chờ HCNS duyệt',
-    sentAt: '2026-10-20T09:42:00',
-    sentBy: 'MenTT',
-    contractType: '',
-    hrNote: '',
-    account: { status: 'Chưa tạo' },
-    checklist: [],
-    mails: [{ at: '2026-10-20T09:42:00', kind: 'Gửi thông tin sang HCNS', subject: '[Tuyển dụng → HCNS] Bàn giao nhân sự mới: Lê Quang Huy - Software Developer', to: HCNS_MAILBOX, cc: ['MenTT', 'NhuPTK'], attachments: ['Phe_duyet_offer_LeQuangHuy.pdf'] }],
-    history: [
-      { at: '2026-10-20T09:42:00', by: 'MenTT', role: 'TA', action: 'Gửi thông tin sang HCNS', note: 'Stage lượt R-2026-G1-001 → Offer Accepted' },
-    ],
-  },
-  {
-    id: 'ONB-2026-039',
-    candidateId: 'c7',
-    candidateEmail: 'ha.nt@gmail.com',
-    candidatePhone: '0978 220 316',
-    candidateSource: 'Refer',
-    cvFile: '',
-    requestId: 'rq2',
-    block: 'Khối BFSI',
-    taPic: 'HungNV4',
-    taPic2: '',
+  }),
+  seed({
+    id: 'ONB-2026-042', candidateId: 'c7', candidateEmail: 'ha.nt@gmail.com', candidatePhone: '0978 220 316', candidateSource: 'Refer', cvFile: '',
+    requestId: 'rq2', block: 'Khối BFSI', company: 'AEQUITAS', taPic: 'HungNV4', sentAt: at(dayFromToday(-2), '08:15'), version: 2, contractType: 'Thử việc',
     data: baseData({
-      startDate: '2026-11-10', fullName: 'Ngô Thanh Hà', position: 'Business Analyst', techStack: 'BA', level: 'Fresher',
+      startDate: weekDay(1, 0), fullName: 'Ngô Thanh Hà', position: 'Business Analyst', techStack: 'BA', level: 'Fresher',
       department: 'BFSI · Phòng Phân tích nghiệp vụ', manager: 'Lương Minh Đức', workLocation: 'HN - BIDV', officialSalary: 14000000,
       probationMonths: 2, probationPercent: 85, approver: 'Lương Minh Đức', cvLink: 'https://drive.google.com/file/d/ngothanhha-cv', referBonus: 3000000, referRecipient: 'Hồ Tú Anh',
     }),
-    lastChanges: [
-      { field: 'Ngày bắt đầu làm việc', from: '03/11/2026', to: '10/11/2026' },
-      { field: 'Lương chính thức (Gross)', from: '13.000.000 ₫', to: '14.000.000 ₫' },
-    ],
-    version: 2,
-    status: 'Chờ HCNS duyệt',
-    sentAt: '2026-10-21T08:15:00',
-    sentBy: 'HungNV4',
-    contractType: 'Thử việc',
-    hrNote: '',
-    account: { status: 'Chưa tạo' },
-    checklist: [],
-    mails: [
-      { at: '2026-10-16T14:05:00', kind: 'Gửi thông tin sang HCNS', subject: '[Tuyển dụng → HCNS] Bàn giao nhân sự mới: Ngô Thanh Hà - Business Analyst', to: HCNS_MAILBOX, cc: ['HungNV4'], attachments: [] },
-      { at: '2026-10-21T08:15:00', kind: 'Cập nhật thông tin onboard', subject: '[Cập nhật] [Tuyển dụng → HCNS] Bàn giao nhân sự mới: Ngô Thanh Hà - Business Analyst', to: HCNS_MAILBOX, cc: ['HungNV4'], attachments: [] },
-    ],
-    history: [
-      { at: '2026-10-16T14:05:00', by: 'HungNV4', role: 'TA', action: 'Gửi thông tin sang HCNS' },
-      { at: '2026-10-17T10:20:00', by: 'Nguyễn Thị Mai', role: 'HCNS', action: 'Bổ sung Loại hợp đồng', changes: [{ field: 'Loại hợp đồng', from: '', to: 'Thử việc' }] },
-      {
-        at: '2026-10-21T08:15:00', by: 'HungNV4', role: 'TA', action: 'Gửi cập nhật thông tin onboard', note: 'Ứng viên xin lùi ngày nhận việc 1 tuần; BOD duyệt tăng lương.',
-        changes: [
-          { field: 'Ngày bắt đầu làm việc', from: '03/11/2026', to: '10/11/2026' },
-          { field: 'Lương chính thức (Gross)', from: '13.000.000 ₫', to: '14.000.000 ₫' },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'ONB-2026-035',
-    candidateId: 'c8',
-    candidateEmail: 'tuan.dm@outlook.com',
-    candidatePhone: '0936 778 901',
-    candidateSource: 'LinkedIn',
-    cvFile: 'CV_DangMinhTuan.pdf',
-    requestId: 'rq8',
-    block: 'Khối BFSI',
-    taPic: 'XuanDTT',
-    taPic2: '',
+    lastChanges: [{ field: 'Lương chính thức (Gross)', from: '13.000.000 ₫', to: '14.000.000 ₫' }],
+  }),
+  seed({
+    id: 'ONB-2026-043', candidateId: 'c2', candidateEmail: 'yen.tth@gmail.com', candidatePhone: '0912 333 444', candidateSource: 'Refer', cvFile: 'CV_TranThiHaiYen.pdf',
+    requestId: 'rq8', block: 'Khối BFSI', company: 'VTX GROUP', taPic: 'XuanDTT', sentAt: at(dayFromToday(-1), '15:05'),
     data: baseData({
-      startDate: '2026-11-02', fullName: 'Đặng Minh Tuấn', position: 'DevOps Engineer', techStack: 'DevOps', level: 'Senior',
-      department: 'BFSI · Phòng DevOps & Cloud', manager: 'Nguyễn Hải Đăng', workLocation: 'HN - HO', officialSalary: 42000000,
-      probationMonths: 2, probationPercent: 100, approver: 'Lương Minh Đức', evidenceFile: 'Offer_DangMinhTuan_ban_nhap.png',
+      startDate: weekDay(1, 2), fullName: 'Trần Thị Hải Yến', position: 'DevOps Engineer', techStack: 'DevOps', level: 'Middle',
+      department: 'BFSI · Phòng DevOps & Cloud', manager: 'Nguyễn Hải Đăng', workLocation: 'HN - HO', officialSalary: 30000000,
+      probationMonths: 2, probationPercent: 85, approver: 'Lương Minh Đức', referBonus: 5000000, referRecipient: 'Hồ Tú Anh',
     }),
-    lastChanges: [],
-    version: 1,
-    status: 'HCNS từ chối',
-    sentAt: '2026-10-14T16:30:00',
-    sentBy: 'XuanDTT',
-    contractType: '',
-    hrNote: '',
-    decidedBy: 'Nguyễn Thị Mai',
-    decidedAt: '2026-10-15T09:10:00',
-    returnReason: 'Bằng chứng phê duyệt là bản nháp, chưa có xác nhận của GĐ khối. Tỉ lệ thử việc 100% khác chính sách (85%) — cần bổ sung phê duyệt ngoại lệ.',
-    account: { status: 'Chưa tạo' },
-    checklist: [],
-    mails: [{ at: '2026-10-14T16:30:00', kind: 'Gửi thông tin sang HCNS', subject: '[Tuyển dụng → HCNS] Bàn giao nhân sự mới: Đặng Minh Tuấn - DevOps Engineer', to: HCNS_MAILBOX, cc: ['XuanDTT'], attachments: ['Offer_DangMinhTuan_ban_nhap.png', 'CV_DangMinhTuan.pdf'] }],
-    history: [
-      { at: '2026-10-14T16:30:00', by: 'XuanDTT', role: 'TA', action: 'Gửi thông tin sang HCNS' },
-      { at: '2026-10-15T09:10:00', by: 'Nguyễn Thị Mai', role: 'HCNS', action: 'Từ chối yêu cầu onboarding', note: 'Bằng chứng phê duyệt là bản nháp, chưa có xác nhận của GĐ khối. Tỉ lệ thử việc 100% khác chính sách (85%) — cần bổ sung phê duyệt ngoại lệ.' },
-    ],
-  },
-  {
-    id: 'ONB-2026-033',
-    candidateId: 'c9',
-    candidateEmail: 'ha.pt@gmail.com',
-    candidatePhone: '0965 441 207',
-    candidateSource: 'TopCV',
-    cvFile: 'CV_PhanThuHa.docx',
-    requestId: 'rq7',
-    block: 'Khối G4',
-    taPic: 'HangLT',
-    taPic2: '',
+  }),
+  seed({
+    id: 'ONB-2026-044', candidateId: 'c14', candidateEmail: 'thang.cv@gmail.com', candidatePhone: '0981 234 999', candidateSource: 'Headhunt', cvFile: '',
+    requestId: 'rq6', block: 'Khối G2', company: 'AEQUITAS', taPic: 'SenNT', sentAt: at(dayFromToday(0), '08:20'),
     data: baseData({
-      startDate: '2026-10-26', fullName: 'Phan Thu Hà', position: 'Accountant', techStack: 'Tax Accountant', level: 'Junior',
-      department: 'G4 · Phòng Tài chính - Kế toán', manager: 'Vương Thị Hạnh', workLocation: 'HN - HO', officialSalary: 16500000,
-      probationMonths: 2, probationPercent: 85, approver: 'Vương Thị Hạnh', evidenceFile: 'Duyet_offer_PhanThuHa.msg',
+      startDate: monthDay(1, 1), fullName: 'Cao Văn Thắng', position: 'Delivery Manager', techStack: 'DM', level: '',
+      department: 'G2 · Phòng Delivery', manager: 'Phạm Thị Lan', workLocation: 'HN - HO', officialSalary: 55000000,
+      probationMonths: 2, probationPercent: 100, approver: 'Tạ Quang Minh', cvLink: 'https://drive.google.com/file/d/caovanthang-cv',
     }),
-    lastChanges: [],
-    version: 1,
-    status: 'Đang onboard',
-    sentAt: '2026-10-12T10:00:00',
-    sentBy: 'HangLT',
-    contractType: 'Thử việc',
-    hrNote: 'Đã gửi form thông tin cá nhân, chờ ứng viên điền.',
-    decidedBy: 'Nguyễn Thị Mai',
-    decidedAt: '2026-10-15T15:40:00',
-    account: { status: 'Đã tạo', employeeCode: 'NV0412', userName: 'hapt', companyEmail: 'hapt@company.vn' },
-    checklist: buildChecklist(6, 'Nguyễn Thị Mai', '2026-10-19T11:00:00'),
-    tasks: [
-      { key: 'employee', status: 'Đã hoàn thành', startedAt: '2026-10-15T15:40:00', doneAt: '2026-10-15T15:40:00', doneBy: 'Hệ thống', detail: 'Mã NV NV0412 · Thử việc' },
-      { key: 'imisAccount', status: 'Đã hoàn thành', startedAt: '2026-10-15T15:40:00', doneAt: '2026-10-15T15:52:00', doneBy: 'Hệ thống', detail: 'User iMIS: hapt' },
-      { key: 'personalForm', status: 'Đang thực hiện', startedAt: '2026-10-15T15:41:00', detail: 'Đã gửi link form tới ha.pt@gmail.com — chờ nhân sự submit', reminders: 1 },
-      { key: 'itAccount', status: 'Đang thực hiện', startedAt: '2026-10-15T15:41:00', detail: 'Đã gửi mail tới it@company.vn — IT đã xác nhận 1/3 mục', itDone: ['Tài khoản Microsoft 365 (email công ty)'] },
-    ],
-    mails: [
-      { at: '2026-10-12T10:00:00', kind: 'Gửi thông tin sang HCNS', subject: '[Tuyển dụng → HCNS] Bàn giao nhân sự mới: Phan Thu Hà - Accountant', to: HCNS_MAILBOX, cc: ['HangLT'], attachments: ['Duyet_offer_PhanThuHa.msg', 'CV_PhanThuHa.docx'] },
-      { at: '2026-10-15T15:41:00', kind: 'Form onboarding cho ứng viên', subject: 'Chào mừng bạn gia nhập — vui lòng hoàn thiện thông tin onboarding', to: 'ha.pt@gmail.com', cc: [], attachments: [] },
-    ],
-    history: [
-      { at: '2026-10-12T10:00:00', by: 'HangLT', role: 'TA', action: 'Gửi thông tin sang HCNS' },
-      { at: '2026-10-15T15:40:00', by: 'Nguyễn Thị Mai', role: 'HCNS', action: 'Duyệt & tạo hồ sơ nhân sự', note: 'Loại HĐ: Thử việc' },
-      { at: '2026-10-15T15:52:00', by: 'Hệ thống', role: 'Hệ thống', action: 'Tạo tài khoản: hapt@company.vn · Mã NV NV0412' },
-    ],
-  },
+  }),
+  // ---- Đã Accept — đang chạy luồng
+  accepted(
+    seed({
+      id: 'ONB-2026-036', candidateId: 'c10', candidateEmail: 'bao.bg@gmail.com', candidatePhone: '0911 095 338', candidateSource: 'Synodus Web', cvFile: 'CV_BuiGiaBao.pdf',
+      requestId: 'rq9', block: 'Khối G4', company: 'AEQUITAS', taPic: 'NhuPTK', sentAt: at(dayFromToday(-6), '11:20'),
+      data: baseData({
+        startDate: weekDay(1, 0), fullName: 'Bùi Gia Bảo', position: 'Software Developer', techStack: 'NodeJS', level: 'Middle',
+        department: 'G4 · Phòng Phát triển phần mềm 4', manager: 'Cao Tiến Dũng', workLocation: 'HN - HO', officialSalary: 26000000,
+        probationMonths: 2, probationPercent: 85, approver: 'Cao Tiến Dũng',
+      }),
+    }),
+    'NV0420', 1, { user: 'baobg', pass: '' }, at(dayFromToday(-3), '08:30'),
+  ),
+  accepted(
+    seed({
+      id: 'ONB-2026-033', candidateId: 'c9', candidateEmail: 'ha.pt@gmail.com', candidatePhone: '0965 441 207', candidateSource: 'TopCV', cvFile: 'CV_PhanThuHa.docx',
+      requestId: 'rq7', block: 'Khối G4', company: 'AEQUITAS', taPic: 'HangLT', sentAt: at(dayFromToday(-8), '10:00'),
+      data: baseData({
+        startDate: weekDay(0, 4), fullName: 'Phan Thu Hà', position: 'Accountant', techStack: 'Tax Accountant', level: 'Junior',
+        department: 'G4 · Phòng Tài chính - Kế toán', manager: 'Vương Thị Hạnh', workLocation: 'HN - HO', officialSalary: 16000000,
+        probationMonths: 2, probationPercent: 85, approver: 'Vương Thị Hạnh',
+      }),
+    }),
+    'NV0412', 2, { user: 'hapt', pass: '' }, at(dayFromToday(-5), '15:40'),
+  ),
+  accepted(
+    seed({
+      id: 'ONB-2026-034', candidateId: 'c3', candidateEmail: 'long.pd@outlook.com', candidatePhone: '0904 556 778', candidateSource: 'ITViec', cvFile: '',
+      requestId: 'rq1', block: 'Khối G1', company: 'VTX GROUP', taPic: 'MenTT', sentAt: at(dayFromToday(-9), '14:10'),
+      data: baseData({
+        startDate: weekDay(0, 2), fullName: 'Phạm Đức Long', position: 'Software Developer', techStack: 'Java', level: 'Middle',
+        department: 'G1 · Phòng Phát triển phần mềm 1', manager: 'Trịnh Văn Hưng', workLocation: 'HN - HO', officialSalary: 28000000,
+        probationMonths: 2, probationPercent: 85, approver: 'Trịnh Văn Hưng', cvLink: 'https://drive.google.com/file/d/phamduclong-cv',
+      }),
+    }),
+    'NV0416', 3, { user: 'longpd', pass: 'Tmp#7Kq2vX' }, at(dayFromToday(-7), '09:15'),
+  ),
+  // ---- Đã onboard tháng trước
   {
-    id: 'ONB-2026-036',
-    candidateId: 'c10',
-    candidateEmail: 'bao.bg@gmail.com',
-    candidatePhone: '0911 095 338',
-    candidateSource: 'Website',
-    cvFile: 'CV_BuiGiaBao.pdf',
-    requestId: 'rq9',
-    block: 'Khối G4',
-    taPic: 'NhuPTK',
-    taPic2: 'HienNPM',
-    data: baseData({
-      startDate: '2026-11-16', fullName: 'Bùi Gia Bảo', position: 'Software Developer', techStack: 'NodeJS', level: 'Middle',
-      department: 'G4 · Phòng Phát triển phần mềm 4', manager: 'Cao Tiến Dũng', workLocation: 'HCM - HDB', officialSalary: 26000000,
-      probationMonths: 2, probationPercent: 85, approver: 'Cao Tiến Dũng',
-    }),
-    lastChanges: [],
-    version: 1,
-    status: 'Đang onboard',
-    sentAt: '2026-10-17T11:20:00',
-    sentBy: 'NhuPTK',
-    contractType: 'Thử việc',
-    hrNote: '',
-    decidedBy: 'Nguyễn Thị Mai',
-    decidedAt: '2026-10-21T08:30:00',
-    account: { status: 'Đang tạo', employeeCode: 'NV0420' },
-    checklist: buildChecklist(0),
-    tasks: [
-      { key: 'employee', status: 'Đã hoàn thành', startedAt: '2026-10-21T08:30:00', doneAt: '2026-10-21T08:30:00', doneBy: 'Hệ thống', detail: 'Mã NV NV0420 · Thử việc' },
-      { key: 'imisAccount', status: 'Đang thực hiện', startedAt: '2026-10-21T08:30:00', detail: 'Job tạo user iMIS đang chạy…' },
-      { key: 'personalForm', status: 'Đang thực hiện', startedAt: '2026-10-21T08:31:00', detail: 'Đã gửi link form tới bao.bg@gmail.com — chờ nhân sự submit', reminders: 0 },
-      { key: 'itAccount', status: 'Đang thực hiện', startedAt: '2026-10-21T08:31:00', detail: 'Đã gửi mail tới it@company.vn — chờ IT xác nhận', itDone: [] },
-    ],
-    mails: [{ at: '2026-10-17T11:20:00', kind: 'Gửi thông tin sang HCNS', subject: '[Tuyển dụng → HCNS] Bàn giao nhân sự mới: Bùi Gia Bảo - Software Developer', to: HCNS_MAILBOX, cc: ['NhuPTK', 'HienNPM'], attachments: ['CV_BuiGiaBao.pdf'] }],
-    history: [
-      { at: '2026-10-17T11:20:00', by: 'NhuPTK', role: 'TA', action: 'Gửi thông tin sang HCNS' },
-      { at: '2026-10-21T08:30:00', by: 'Nguyễn Thị Mai', role: 'HCNS', action: 'Duyệt & tạo hồ sơ nhân sự', note: 'Loại HĐ: Thử việc' },
-    ],
-  },
-  {
-    id: 'ONB-2026-031',
-    candidateId: 'c5',
-    candidateEmail: 'nam.vh@gmail.com',
-    candidatePhone: '0905 667 120',
-    candidateSource: 'Headhunt',
-    cvFile: 'CV_VuHoangNam.pdf',
-    requestId: 'rq3',
-    block: 'Khối G2',
-    taPic: 'HienNPM',
-    taPic2: '',
-    data: baseData({
-      startDate: '2026-09-07', fullName: 'Vũ Hoàng Nam', position: 'Data Analyst', techStack: 'DA', level: 'Senior',
-      department: 'G2 · Phòng Dữ liệu & Phân tích', manager: 'Phạm Thị Lan', workLocation: 'HN - HO', officialSalary: 40000000,
-      probationMonths: 2, probationPercent: 85, approver: 'Tạ Quang Minh', evidenceFile: 'BOD_duyet_offer_VuHoangNam.pdf',
-    }),
-    lastChanges: [],
-    version: 1,
+    ...accepted(
+      seed({
+        id: 'ONB-2026-031', candidateId: 'c5', candidateEmail: 'nam.vh@gmail.com', candidatePhone: '0905 667 120', candidateSource: 'Headhunt', cvFile: 'CV_VuHoangNam.pdf',
+        requestId: 'rq3', block: 'Khối G2', company: 'AEQUITAS', taPic: 'HienNPM', sentAt: at(monthDay(-1, 1), '09:00'),
+        data: baseData({
+          startDate: monthDay(-1, 12), fullName: 'Vũ Hoàng Nam', position: 'Data Analyst', techStack: 'DA', level: 'Senior',
+          department: 'G2 · Phòng Dữ liệu & Phân tích', manager: 'Phạm Thị Lan', workLocation: 'HN - VNI', officialSalary: 35000000,
+          probationMonths: 2, probationPercent: 85, approver: 'Phạm Thị Lan', evidenceFile: 'BOD_duyet_offer_VuHoangNam.pdf',
+        }),
+      }),
+      'NV0398', 4, { user: 'namvh', pass: 'Tmp#4Hd8mR' }, at(monthDay(-1, 3), '10:00'),
+    ),
     status: 'Đã onboard',
-    sentAt: '2026-08-25T09:00:00',
-    sentBy: 'HienNPM',
-    contractType: 'Thử việc',
-    hrNote: '',
-    decidedBy: 'Nguyễn Thị Mai',
-    decidedAt: '2026-08-27T10:00:00',
-    account: { status: 'Đã tạo', employeeCode: 'NV0398', userName: 'namvh', companyEmail: 'namvh@company.vn' },
-    checklist: buildChecklist(11, 'Nguyễn Thị Mai', '2026-09-04T17:00:00'),
-    tasks: [
-      { key: 'employee', status: 'Đã hoàn thành', startedAt: '2026-08-27T10:00:00', doneAt: '2026-08-27T10:00:00', doneBy: 'Hệ thống', detail: 'Mã NV NV0398 · Thử việc' },
-      { key: 'imisAccount', status: 'Đã hoàn thành', startedAt: '2026-08-27T10:00:00', doneAt: '2026-08-27T10:12:00', doneBy: 'Hệ thống', detail: 'User iMIS: namvh' },
-      { key: 'personalForm', status: 'Đã hoàn thành', startedAt: '2026-08-27T10:01:00', doneAt: '2026-08-29T20:15:00', doneBy: 'Vũ Hoàng Nam', detail: 'Đã nhận 10/10 trường — đã cập nhật hồ sơ Employees' },
-      { key: 'itAccount', status: 'Đã hoàn thành', startedAt: '2026-08-27T10:01:00', doneAt: '2026-09-03T09:30:00', doneBy: 'IT (it@company.vn)', detail: 'namvh@company.vn · đủ 3/3 mục · bàn giao: Bàn giao trực tiếp ngày nhận việc (HoangLM (IT))', itDone: [...IT_ITEMS], deliveryChannel: 'Bàn giao trực tiếp ngày nhận việc', deliveredBy: 'HoangLM (IT)' },
-    ],
-    mails: [{ at: '2026-08-25T09:00:00', kind: 'Gửi thông tin sang HCNS', subject: '[Tuyển dụng → HCNS] Bàn giao nhân sự mới: Vũ Hoàng Nam - Data Analyst', to: HCNS_MAILBOX, cc: ['HienNPM'], attachments: ['BOD_duyet_offer_VuHoangNam.pdf', 'CV_VuHoangNam.pdf'] }],
-    history: [
-      { at: '2026-08-25T09:00:00', by: 'HienNPM', role: 'TA', action: 'Gửi thông tin sang HCNS' },
-      { at: '2026-08-27T10:00:00', by: 'Nguyễn Thị Mai', role: 'HCNS', action: 'Duyệt & tạo hồ sơ nhân sự' },
-      { at: '2026-09-07T00:15:00', by: 'Hệ thống', role: 'Hệ thống', action: 'Đã tới ngày onboard → Stage Onboarded' },
-    ],
+    checklist: buildChecklist(11, HCNS_NAME, at(monthDay(-1, 11), '17:00')),
+  },
+  // ---- Đã đóng
+  {
+    ...seed({
+      id: 'ONB-2026-035', candidateId: 'c8', candidateEmail: 'tuan.dm@outlook.com', candidatePhone: '0936 778 901', candidateSource: 'LinkedIn', cvFile: 'CV_DangMinhTuan.pdf',
+      requestId: 'rq8', block: 'Khối BFSI', company: 'AEQUITAS', taPic: 'XuanDTT', sentAt: at(dayFromToday(-10), '16:30'),
+      data: baseData({
+        startDate: monthDay(0, 24), fullName: 'Đặng Minh Tuấn', position: 'DevOps Engineer', techStack: 'DevOps', level: 'Senior',
+        department: 'BFSI · Phòng DevOps & Cloud', manager: 'Nguyễn Hải Đăng', workLocation: 'HN - HO', officialSalary: 42000000,
+        probationMonths: 2, probationPercent: 85, approver: 'Lương Minh Đức',
+      }),
+    }),
+    status: 'HCNS từ chối',
+    decidedBy: HCNS_NAME,
+    decidedAt: at(dayFromToday(-9), '10:05'),
+    returnReason: 'Mức lương vượt khung đã duyệt cho vị trí — cần BOD phê duyệt lại.',
   },
   {
-    id: 'ONB-2026-029',
-    candidateId: 'c11',
-    candidateEmail: 'thu.ha@gmail.com',
-    candidatePhone: '0988 300 452',
-    candidateSource: 'Facebook',
-    cvFile: 'CV_HoangAnhThu.pdf',
-    requestId: 'rq4',
-    block: 'Khối G1',
-    taPic: 'XuanDTT',
-    taPic2: '',
-    data: baseData({
-      startDate: '2026-10-19', fullName: 'Hoàng Anh Thư', position: 'Product Designer', techStack: 'UIUX', level: 'Junior',
-      department: 'G1 · Phòng Phát triển phần mềm 1', manager: 'Trịnh Văn Hưng', workLocation: 'HN - HO', officialSalary: 15000000,
-      probationMonths: 2, probationPercent: 85, approver: 'Trịnh Văn Hưng',
+    ...seed({
+      id: 'ONB-2026-029', candidateId: 'c11', candidateEmail: 'thu.ha@gmail.com', candidatePhone: '0988 300 452', candidateSource: 'Facebook', cvFile: 'CV_HoangAnhThu.pdf',
+      requestId: 'rq4', block: 'Khối G1', company: 'AEQUITAS', taPic: 'XuanDTT', sentAt: at(monthDay(-1, 5), '10:10'),
+      data: baseData({
+        startDate: monthDay(-1, 19), fullName: 'Hoàng Anh Thư', position: 'Product Designer', techStack: 'UIUX', level: 'Junior',
+        department: 'G1 · Phòng Phát triển phần mềm 1', manager: 'Trịnh Văn Hưng', workLocation: 'HN - HO', officialSalary: 15000000,
+        probationMonths: 2, probationPercent: 85, approver: 'Trịnh Văn Hưng',
+      }),
     }),
-    lastChanges: [],
-    version: 1,
     status: 'Huỷ onboard',
-    sentAt: '2026-10-05T10:10:00',
-    sentBy: 'XuanDTT',
     contractType: 'Thử việc',
-    hrNote: '',
     cancelReason: 'Ứng viên nhận offer công ty khác, báo không nhận việc.',
-    account: { status: 'Chưa tạo' },
-    checklist: [],
-    mails: [
-      { at: '2026-10-05T10:10:00', kind: 'Gửi thông tin sang HCNS', subject: '[Tuyển dụng → HCNS] Bàn giao nhân sự mới: Hoàng Anh Thư - Product Designer', to: HCNS_MAILBOX, cc: ['XuanDTT'], attachments: ['CV_HoangAnhThu.pdf'] },
-      { at: '2026-10-13T15:00:00', kind: 'Báo huỷ onboard', subject: '[iMIS] Báo hủy Onboard - Ứng viên Hoàng Anh Thư', to: HCNS_MAILBOX, cc: ['XuanDTT'], attachments: [] },
-    ],
-    history: [
-      { at: '2026-10-05T10:10:00', by: 'XuanDTT', role: 'TA', action: 'Gửi thông tin sang HCNS' },
-      { at: '2026-10-13T15:00:00', by: 'XuanDTT', role: 'TA', action: 'Báo huỷ onboard', note: 'Ứng viên nhận offer công ty khác, báo không nhận việc. Stage → Offer Rejected.' },
-    ],
   },
 ];

@@ -137,6 +137,12 @@ export const NAVIGATION: NavItem[] = [
     ]
   },
   {
+    // Menu "Quản lý dự án" (ProjectManagement) của iMIS — màn /Projects bám code hiện tại
+    title: 'Quản lý dự án',
+    icon: Layers,
+    children: [{ title: 'QLDA · Dự án', label: 'Dự án', icon: Briefcase }],
+  },
+  {
     // Phân hệ Quy trình: Kế toán / Admin thiết lập quy trình phê duyệt (thanh toán, tạm ứng, phê duyệt dự án…)
     title: 'Quy trình',
     icon: Workflow,

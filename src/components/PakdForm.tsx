@@ -1,7 +1,7 @@
 /**
  * PakdForm — "Lập phương án kinh doanh (PAKD)" trên màn chi tiết dự án.
- * Hiện sau khi GĐK duyệt mã. AM / GĐK nhập trong PAKD_DAYS ngày kể từ ngày cấp mã,
- * lưu nháp hoặc gửi Kế toán (CFO) duyệt. Bố cục theo 2 sheet của file Excel mẫu:
+ * Hiện sau khi GĐK duyệt mã. Người lập nhập trong PAKD_DAYS ngày kể từ ngày cấp mã (PAKD bảo hành không áp hạn),
+ * lưu nháp hoặc gửi duyệt theo chuỗi GĐ khối → Kế toán → BOD; người duyệt sửa được bản đang ở chân mình. Bố cục theo 2 sheet của file Excel mẫu:
  *   1. Thông tin dự án = 1.1 Thông tin hợp đồng dự kiến (luôn hiện: thời điểm ký, giá trị, xác suất, phạm vi, rủi ro)
  *                      + 1.2 Thông tin hợp đồng thực tế (tình trạng; số HĐ, ngày ký, giá trị — mở khi "Đã ký")
  *   Tình trạng = "Đã ký"  → 2. Tiến độ thực hiện · 3. Nghiệm thu & thu tiền · 4. Chi phí theo tháng
@@ -10,7 +10,25 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, AlertTriangle, BarChart3, ClipboardList, Divide, FileText, Info, Paperclip, Pencil, Plus, Save, Send, X } from 'lucide-react';
-import { BizProject, BizRole, PAKD_DAYS, canAdjustPakd, canLapPakd, latestPakd } from '../business/BusinessProjectContext';
+import {
+  BizProject,
+  BizRole,
+  PAKD_DAYS,
+  canAdjustPakd,
+  canEditPakdVersion,
+  isApproverEdit,
+  isPakdLocked,
+  isPakdPending,
+  PAKD_LOCKED_TIP,
+  isPakdReturned,
+  latestPakd,
+  nextPakdVersion,
+  pakdStateLabel,
+  pakdSubmitTarget,
+  pakdTargetLabel,
+  pakdWaitingText,
+  workingPakd,
+} from '../business/BusinessProjectContext';
 import {
   COST_GROUPS,
   CostGroup,
@@ -511,6 +529,10 @@ export interface PakdHeaderActions {
   save: (submit: boolean) => void;
   cancel: () => void;
   cancelLabel: string;
+  /** "Lưu nháp" / "Lưu (giữ bước)". */
+  saveLabel: string;
+  /** Nhãn nút Gửi theo bước đích: "Gửi GĐ khối duyệt" / "Gửi Kế toán duyệt" / "Gửi BOD duyệt" / "Gửi & duyệt". */
+  submitLabel: string;
 }
 
 export const PakdForm: React.FC<{
@@ -518,10 +540,10 @@ export const PakdForm: React.FC<{
   role: BizRole;
   actor: string;
   onSave: (form: PakdFormData, submit: boolean) => void;
-  /** GĐK / SM sửa PAKD khi dự án đang thực hiện (bản điều chỉnh → Kế toán duyệt lại). */
+  /** Sửa PAKD khi dự án đang thực hiện (bản điều chỉnh → đi lại chuỗi duyệt). */
   onAdjust?: (form: PakdFormData, submit: boolean) => void;
   onCancelAdjust?: () => void;
-  /** Cho phép sửa PAKD đã duyệt ngay trên khung (SM / GĐK). */
+  /** Cho phép sửa PAKD đã duyệt ngay trên khung. */
   allowAdjust?: boolean;
   /** Mở sẵn chế độ sửa khi hiển thị. */
   startAdjust?: boolean;
@@ -557,7 +579,7 @@ export const PakdForm: React.FC<{
     setLastSignal(adjustSignal);
     if (allowAdjust && p.status === 'Đang thực hiện' && canAdjustPakd(role)) setAdjusting(true);
   }
-  const key = `${p.id}-${p.pakdForm?.savedAt || ''}-${p.pakdDraft?.savedAt || ''}-${p.pakd.length}-${latestPakd(p)?.state || ''}-${p.contract?.updatedAt || ''}`;
+  const key = `${p.id}-${p.pakdForm?.savedAt || ''}-${p.pakdDraft?.savedAt || ''}-${p.pakd.length}-${latestPakd(p)?.state || ''}-${latestPakd(p)?.rejectedStep || ''}-${p.status}-${p.contract?.updatedAt || ''}`;
   const [lastKey, setLastKey] = useState(key);
   if (key !== lastKey) {
     setLastKey(key);
@@ -570,40 +592,46 @@ export const PakdForm: React.FC<{
 
   const last = latestPakd(p);
   const signed = f.contractState === 'Đã ký';
-  // Luồng sửa PAKD sau khi Kế toán duyệt (dự án đang thực hiện): GĐK / SM sửa → bản điều chỉnh → Kế toán duyệt lại.
-  const pendingAdjust = !!(last?.adjust && last.state === 'Chờ CFO');
-  const rejectedAdjust = !!(last?.adjust && last.state === 'Từ chối' && p.pakdDraft);
+  // Bản đang làm của chu kỳ hiện tại (bản đầu / điều chỉnh / bảo hành) — trạng thái lấy theo bản này.
+  const w = workingPakd(p);
+  const warrantyCycle = p.status === 'Bảo hành';
+  const lapPhase = p.status === 'Chưa có PAKD' || p.status === 'PAKD chờ duyệt' || p.status === 'Reject' || warrantyCycle;
+  const inChain = !!w && (isPakdPending(w) || isPakdReturned(w));
+  const pendingAdjust = running && inChain;
+  const rejectedAdjust = running && !!w && w.state === 'Từ chối' && !isPakdReturned(w) && !!p.pakdDraft;
   const inAdjust = running && (adjusting || !!p.pakdDraft);
-  const canAdjust = allowAdjust && running && canAdjustPakd(role) && !pendingAdjust;
-  const editable = (p.status === 'Chưa có PAKD' && canLapPakd(role)) || (inAdjust && canAdjust);
-  const approvedV = [...p.pakd].reverse().find((v) => v.state === 'Đã duyệt' && v !== last)?.version;
-  const state = pendingAdjust
-    ? `Chờ duyệt V${last!.version}`
-    : rejectedAdjust
-      ? 'Điều chỉnh bị từ chối'
-      : inAdjust
+  // Người duyệt sửa ở chân mình: "Lưu" giữ bước, "Gửi" = duyệt bước đó.
+  const approverEdit = isApproverEdit(w, role);
+  const canAdjust = allowAdjust && running && canEditPakdVersion(w, role);
+  // Đã chốt 04/11: dự án Pending khoá Lưu / Gửi PAKD — mở lại trước.
+  const pakdLocked = isPakdLocked(p);
+  const editable = !pakdLocked && ((lapPhase && canEditPakdVersion(w, role)) || (inAdjust && canAdjust));
+  const target = pakdSubmitTarget(w, role);
+  const submitLabel = target === 'Đã duyệt' ? 'Gửi & duyệt (áp dụng ngay)' : `Gửi ${pakdTargetLabel(target).replace(/^Chờ /, '')}`;
+  const saveLabel = approverEdit ? 'Lưu (giữ bước)' : 'Lưu nháp';
+  const waiting = pakdWaitingText(w);
+  const approvedV = [...p.pakd].reverse().find((v) => v.state === 'Đã duyệt')?.version;
+  const stateV = running || lapPhase ? w : last;
+  const state = stateV
+    ? `V${stateV.version} · ${pakdStateLabel(stateV)}`
+    : running
+      ? inAdjust
         ? 'Đang điều chỉnh'
-        : !last
-          ? 'Chưa có PAKD'
-          : last.state === 'Chờ CFO'
-            ? 'Đã có PAKD · chờ Kế toán duyệt'
-            : last.state === 'Đã duyệt'
-              ? 'Đã duyệt'
-              : p.status === 'Chưa có PAKD'
-                ? 'Từ chối — làm lại'
-                : running
-                  ? 'Đã duyệt'
-                  : last.state;
-  const stateCls =
-    state === 'Đã duyệt'
+        : 'Đã duyệt'
+      : warrantyCycle || p.pakdForm?.savedAt
+        ? `V${nextPakdVersion(p)} · Nháp`
+        : 'Chưa có PAKD';
+  const stateCls = !stateV
+    ? state === 'Đã duyệt'
       ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
-      : state.startsWith('Chờ duyệt') || state.includes('chờ Kế toán')
-        ? 'bg-amber-50 text-amber-700 border-amber-300'
-        : state.startsWith('Từ chối') || state.includes('bị từ chối')
-          ? 'bg-rose-50 text-rose-700 border-rose-300'
-          : state === 'Đang điều chỉnh'
-            ? 'bg-[#eaf2fc] text-[#1f5fa8] border-[#bcd3f0]'
-            : 'bg-slate-100 text-slate-700 border-slate-300';
+      : state === 'Đang điều chỉnh'
+        ? 'bg-[#eaf2fc] text-[#1f5fa8] border-[#bcd3f0]'
+        : 'bg-slate-100 text-slate-700 border-slate-300'
+    : stateV.state === 'Đã duyệt'
+      ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+      : stateV.state === 'Từ chối'
+        ? 'bg-rose-50 text-rose-700 border-rose-300'
+        : 'bg-amber-50 text-amber-700 border-amber-300';
   /**
    * Đổi tình trạng HĐ: Chưa ký → Đã ký chỉ điền sẵn Giá trị HĐ (= giá trị dự kiến) và kỳ thực hiện (từ mốc kế hoạch).
    * Mục 3 (Nghiệm thu, thu tiền) và mục 4 (Kế hoạch chi phí theo tháng) để trống cho người dùng tự nhập —
@@ -651,19 +679,20 @@ export const PakdForm: React.FC<{
     onSave(f, submit);
   };
   const cancelAdjust = () => {
-    if (p.pakdDraft) onCancelAdjust?.();
+    // Người duyệt huỷ sửa ⇒ chỉ bỏ thay đổi; người lập ⇒ huỷ bản điều chỉnh nháp.
+    if (p.pakdDraft && !approverEdit) onCancelAdjust?.();
     setAdjusting(false);
     setErrors([]);
-    setF(initial(false));
+    setF(initial(approverEdit));
   };
 
-  // Nút trên đầu trang (màn chi tiết dự án): Lưu nháp · Gửi Kế toán duyệt (lập lần đầu) / Huỷ · Lưu nháp · Gửi duyệt điều chỉnh.
+  // Nút trên đầu trang (màn chi tiết dự án): Lưu · Gửi (nhãn theo bước đích) / Huỷ khi đang điều chỉnh.
   const saveRef = useRef(save);
   saveRef.current = save;
   const cancelRef = useRef(cancelAdjust);
   cancelRef.current = cancelAdjust;
   const headerMode: PakdHeaderActions['mode'] | null = !editable ? null : inAdjust ? 'adjust' : 'lap';
-  const hasDraft = !!p.pakdDraft;
+  const cancelLabel = approverEdit || !p.pakdDraft ? 'Huỷ sửa' : 'Huỷ bản điều chỉnh';
   useEffect(() => {
     if (!onHeaderActions) return;
     onHeaderActions(
@@ -672,25 +701,65 @@ export const PakdForm: React.FC<{
             mode: headerMode,
             save: (submit) => saveRef.current(submit),
             cancel: () => cancelRef.current(),
-            cancelLabel: hasDraft ? 'Huỷ bản điều chỉnh' : 'Huỷ sửa',
+            cancelLabel,
+            saveLabel,
+            submitLabel,
           }
         : null,
     );
-  }, [headerMode, hasDraft]);
+  }, [headerMode, cancelLabel, saveLabel, submitLabel]);
   useEffect(() => () => onHeaderActions?.(null), []);
   const footerButtons = !onHeaderActions;
 
-  // Hàng tiêu đề: Người lập · Hạn lập PAKD · Thời gian còn lại · Trạng thái PAKD
+  // Hàng tiêu đề: Người lập · Hạn lập PAKD · Thời gian còn lại · Trạng thái PAKD (Bảo hành: không áp hạn)
   const header: [string, React.ReactNode][] = [
-    ['Người lập', (inAdjust || pendingAdjust ? p.pakdDraft?.savedBy : p.pakdForm?.savedBy) || last?.submittedBy || actor],
-    ['Hạn lập PAKD', dmy(p.pakdDeadline)],
-    ['Thời gian còn lại', <span className={left !== null && left <= 3 && !p.pakd.length ? 'text-rose-600' : ''}>{leftText}</span>],
+    ['Người lập', w?.submittedBy || (inAdjust || pendingAdjust ? p.pakdDraft?.savedBy : p.pakdForm?.savedBy) || last?.submittedBy || actor],
+    ['Hạn lập PAKD', warrantyCycle ? 'Không áp hạn' : dmy(p.pakdDeadline)],
+    ['Thời gian còn lại', warrantyCycle ? '—' : <span className={left !== null && left <= 3 && !p.pakd.length ? 'text-rose-600' : ''}>{leftText}</span>],
     ['Trạng thái PAKD', <Tag cls={stateCls}>{state}</Tag>],
   ];
+  const approverText = `Bạn đang ở bước duyệt của PAKD V${w?.version ?? ''} — "Lưu" giữ nguyên bước, "Gửi" = duyệt bước này (${pakdTargetLabel(target)}).`;
+  const footerText =
+    editable && approverEdit
+      ? approverText
+      : inAdjust && editable
+        ? `Sửa PAKD (bản điều chỉnh) → Gửi: ${pakdTargetLabel(target)}. Số liệu dự án chỉ thay đổi khi bản điều chỉnh được duyệt bước cuối.`
+        : pendingAdjust
+          ? `Bản điều chỉnh V${w!.version} đang chờ ${waiting} — chỉ xem.`
+          : running
+            ? canAdjust
+              ? 'PAKD đã được duyệt. Bấm "Sửa PAKD" để điều chỉnh — đi lại chuỗi GĐ khối → Kế toán → BOD, duyệt xong sinh phiên bản mới.'
+              : 'PAKD đã được duyệt — chỉ xem.'
+            : editable
+              ? warrantyCycle
+                ? `Lập PAKD bảo hành (bản nháp chép từ bản áp dụng) → Gửi: ${pakdTargetLabel(target)}.`
+                : `Nhập PAKD trong ${PAKD_DAYS} ngày kể từ ngày cấp mã → Gửi: ${pakdTargetLabel(target)}. Quá hạn chưa qua bước Kế toán → dự án Pending.`
+              : pakdLocked
+                ? `${PAKD_LOCKED_TIP}: PAKD${w ? ` V${w.version} (${pakdStateLabel(w)})` : ''} bị khoá Lưu / Gửi / Duyệt — chỉ xem.`
+                : w
+                  ? `PAKD V${w.version} đang chờ ${waiting} — chỉ xem.`
+                  : lapPhase
+                    ? 'Chọn vai trò người lập (AM / SM / GĐK / Kế toán / BOD) để nhập PAKD.'
+                    : 'Chỉ xem.';
+  const footerBtns = (
+    <span className="flex items-center gap-2">
+      {inAdjust && (
+        <Btn icon={X} className="h-8" onClick={cancelAdjust}>
+          {cancelLabel}
+        </Btn>
+      )}
+      <Btn icon={Save} className="h-8" onClick={() => save(false)}>
+        {saveLabel}
+      </Btn>
+      <Btn variant="primary" icon={Send} className="h-8" onClick={() => save(true)}>
+        {submitLabel}
+      </Btn>
+    </span>
+  );
 
   return (
     <Panel
-      title={inAdjust || pendingAdjust ? 'Phương án kinh doanh (PAKD) — điều chỉnh' : 'Lập phương án kinh doanh (PAKD)'}
+      title={warrantyCycle ? `PAKD bảo hành — V${w?.version ?? nextPakdVersion(p)}` : inAdjust || pendingAdjust ? 'Phương án kinh doanh (PAKD) — điều chỉnh' : 'Lập phương án kinh doanh (PAKD)'}
       icon={ClipboardList}
       actions={
         running && canAdjust && !inAdjust ? (
@@ -702,21 +771,7 @@ export const PakdForm: React.FC<{
       footer={
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span>
-            {inAdjust && editable
-              ? 'Sửa PAKD (bản điều chỉnh) → Gửi Kế toán (CFO) duyệt lại. Số liệu dự án chỉ thay đổi khi bản điều chỉnh được duyệt.'
-              : pendingAdjust
-                ? 'Bản điều chỉnh đang chờ Kế toán (CFO) duyệt — chỉ xem.'
-                : running
-                  ? canAdjust
-                    ? 'PAKD đã được duyệt. Bấm "Sửa PAKD" để điều chỉnh — gửi Kế toán duyệt lại, duyệt xong sinh phiên bản mới.'
-                    : 'PAKD đã được duyệt — chỉ Giám đốc khối / Giám đốc kinh doanh (SM) được sửa PAKD.'
-                  : editable
-                    ? `SM / GĐK nhập PAKD trong ${PAKD_DAYS} ngày kể từ ngày GĐK duyệt → Gửi Kế toán (CFO) duyệt. Quá hạn chưa được duyệt → dự án Pending.`
-                    : p.status === 'Chưa có PAKD'
-                      ? 'Chọn vai trò SM hoặc GĐK để nhập PAKD.'
-                      : p.status === 'Pending'
-                        ? 'Dự án Pending (quá hạn PAKD) — Kế toán mở lại để tiếp tục.'
-                      : 'PAKD đã gửi duyệt — chỉ xem.'}
+            {footerText}
             {(inAdjust ? p.pakdDraft : p.pakdForm)?.savedAt && (
               <>
                 {' '}
@@ -724,29 +779,7 @@ export const PakdForm: React.FC<{
               </>
             )}
           </span>
-          {footerButtons && inAdjust && editable && (
-            <span className="flex items-center gap-2">
-              <Btn icon={X} className="h-8" onClick={cancelAdjust}>
-                {p.pakdDraft ? 'Huỷ bản điều chỉnh' : 'Huỷ sửa'}
-              </Btn>
-              <Btn icon={Save} className="h-8" onClick={() => save(false)}>
-                Lưu nháp
-              </Btn>
-              <Btn variant="primary" icon={Send} className="h-8" onClick={() => save(true)}>
-                Gửi Kế toán duyệt điều chỉnh
-              </Btn>
-            </span>
-          )}
-          {footerButtons && editable && !inAdjust && (
-            <span className="flex items-center gap-2">
-              <Btn icon={Save} className="h-8" onClick={() => save(false)}>
-                Lưu nháp
-              </Btn>
-              <Btn variant="primary" icon={Send} className="h-8" onClick={() => save(true)}>
-                Gửi Kế toán duyệt
-              </Btn>
-            </span>
-          )}
+          {footerButtons && editable && footerBtns}
         </div>
       }
     >
@@ -771,17 +804,28 @@ export const PakdForm: React.FC<{
           <span>
             {pendingAdjust ? (
               <>
-                Đang hiển thị <b>bản điều chỉnh V{last!.version}</b> chờ Kế toán (CFO) duyệt. Số liệu dự án vẫn theo bản đã duyệt{approvedV ? ` V${approvedV}` : ''} cho đến khi bản điều chỉnh được duyệt.
+                Đang hiển thị <b>bản điều chỉnh V{w!.version}</b> ({pakdStateLabel(w)}{w!.state === 'Từ chối' && w!.note ? `: ${w!.note}` : ''}) — chờ <b>{waiting}</b>
+                {approverEdit ? ' (bạn có thể sửa rồi Gửi)' : ''}. Số liệu dự án vẫn theo bản đã duyệt{approvedV ? ` V${approvedV}` : ''} cho đến khi bản điều chỉnh được duyệt bước cuối.
               </>
             ) : rejectedAdjust ? (
               <>
-                Bản điều chỉnh V{last!.version} bị Kế toán từ chối{last!.note ? <>: <b>{last!.note}</b></> : ''}. Sửa lại và gửi duyệt, hoặc huỷ bản điều chỉnh để giữ bản đang áp dụng.
+                Bản điều chỉnh V{w!.version}: {pakdStateLabel(w)}{w!.note ? <>: <b>{w!.note}</b></> : ''}. Sửa lại và gửi duyệt, hoặc huỷ bản điều chỉnh để giữ bản đang áp dụng.
               </>
             ) : (
               <>
-                <b>Đang sửa PAKD.</b> Cập nhật <b>Tình trạng dự án → Đã ký</b> khi đã ký hợp đồng, rồi nhập tiếp thông tin hợp đồng, mốc nghiệm thu và kế hoạch chi phí theo tháng. Gửi Kế toán duyệt lại để áp dụng.
+                <b>Đang sửa PAKD.</b> Cập nhật <b>Tình trạng dự án → Đã ký</b> khi đã ký hợp đồng, rồi nhập tiếp thông tin hợp đồng, mốc nghiệm thu và kế hoạch chi phí theo tháng. Gửi: <b>{pakdTargetLabel(target)}</b>.
               </>
             )}
+          </span>
+        </div>
+      )}
+
+      {!running && w?.state === 'Từ chối' && (
+        <div className="mt-3 flex items-start gap-2 px-3 py-2 rounded-[4px] border text-[12.5px] bg-rose-50 border-rose-300 text-rose-800">
+          <Info size={15} className="mt-0.5 shrink-0" />
+          <span>
+            PAKD V{w.version}: <b>{pakdStateLabel(w)}</b>
+            {w.note ? <>: {w.note}</> : ''} — đang chờ <b>{waiting}</b>.
           </span>
         </div>
       )}

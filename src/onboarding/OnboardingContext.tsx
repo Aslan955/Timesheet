@@ -8,8 +8,8 @@ import React, { createContext, useContext, useMemo, useRef, useState } from 'rea
 import { useRc } from '../recruitment/rc/RcContext';
 import { Stage, MailKind } from '../recruitment/rc/rcData';
 import {
-  OnbRecord, HandoffData, FieldChange, OnbMail, OnbTask, TaskKey, SEED_RECORDS, HCNS_MAILBOX, IT_MAILBOX, IT_ITEMS, MS_FORM_LINK, FORM_FIELDS,
-  buildChecklist, diffHandoff, todayIso,
+  OnbRecord, HandoffData, FieldChange, OnbMail, OnbTask, TaskKey, ItRequest, ItReturn, SEED_RECORDS, HCNS_MAILBOX, IT_MAILBOX, MARCOM_MAILBOX, FORM_FIELDS,
+  buildChecklist, diffHandoff, todayIso, formLinkOf, missingForApprove,
 } from './onboardingData';
 import { upsertEmployeeFromOnboarding, removeEmployeeFromOnboarding } from '../components/EmployeePage';
 
@@ -31,6 +31,8 @@ export interface SubmitInput {
   taPic: string;
   taPic2: string;
   data: HandoffData;
+  /** Công ty ký HĐ — mặc định AEQUITAS */
+  company?: string;
 }
 
 interface OnboardingContextValue {
@@ -44,23 +46,47 @@ interface OnboardingContextValue {
   submitHandoff: (input: SubmitInput, mail?: { subject: string; body: string }) => OnbRecord;
   /** mail: nội dung đã soạn / sửa ở bước Xem trước của popup Gửi mail. */
   cancelOnboard: (id: string, reason: string, note: string, mail?: { subject: string; body: string }) => void;
-  hrSave: (id: string, patch: { data?: Partial<HandoffData>; contractType?: string; hrNote?: string }) => void;
-  hrApprove: (id: string, patch: { data?: Partial<HandoffData>; contractType: string; hrNote: string }) => void;
+  hrSave: (id: string, patch: { data?: Partial<HandoffData>; contractType?: string; company?: string; hrNote?: string }) => void;
+  /** Accept → tạo nhân viên trong Employees + gửi link form cho ứng viên. */
+  hrApprove: (id: string, patch: { data?: Partial<HandoffData>; contractType?: string; company?: string; hrNote?: string }) => void;
+  /** Accept nhiều ứng viên — bỏ qua phiếu thiếu trường bắt buộc. */
+  hrApproveMany: (ids: string[]) => { done: string[]; skipped: { id: string; missing: string[] }[] };
   hrReject: (id: string, reason: string) => void;
+  hrRejectMany: (ids: string[], reason: string) => void;
   toggleChecklist: (id: string, itemId: string) => void;
-  /** Tiến độ sau duyệt */
+  /** Sau khi Accept */
   remindForm: (id: string) => void;
+  /** Ứng viên submit form → đổ vào Employees + gửi yêu cầu IT. */
   submitForm: (id: string, data: Record<string, string>) => void;
-  itConfirm: (id: string, items: string[], companyEmail: string, channel: string, deliveredBy: string) => void;
+  /** IT trả email, tên tài khoản, mật khẩu → báo MarCom. */
+  itReturn: (id: string, ret: { email: string; accountName: string; password: string; by: string; note?: string }) => void;
+  marcomDone: (id: string, by: string, note?: string) => void;
   confirmOnboarded: (id: string) => void;
 }
 
 const OnboardingContext = createContext<OnboardingContextValue | null>(null);
 
+/** Phiếu mẫu đã Accept → có sẵn nhân viên tương ứng trong Employees (chạy 1 lần). */
+let seededEmployees = false;
+const seedEmployees = () => {
+  if (seededEmployees) return;
+  seededEmployees = true;
+  SEED_RECORDS.forEach((r) => {
+    const code = r.account.employeeCode;
+    if (!code || (r.status !== 'Đang onboard' && r.status !== 'Đã onboard')) return;
+    const form = r.tasks?.find((t) => t.key === 'personalForm')?.formData || {};
+    upsertEmployeeFromOnboarding(
+      code,
+      { fullName: r.data.fullName, division: r.block, department: r.data.department, position: r.data.position, level: r.data.level, manager: r.data.manager, joinDate: r.data.startDate, personalEmail: r.candidateEmail, phone: r.candidatePhone, techStack: r.data.techStack },
+      { company: r.company, ...form, ...(r.account.companyEmail ? { companyEmail: r.account.companyEmail, userName: r.account.userName || '' } : {}) },
+    );
+  });
+};
+
 const nowIso = () => new Date().toISOString();
 
 export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [records, setRecords] = useState<OnbRecord[]>(() => SEED_RECORDS);
+  const [records, setRecords] = useState<OnbRecord[]>(() => (seedEmployees(), SEED_RECORDS));
   const recordsRef = useRef(records);
   recordsRef.current = records;
   const rc = useRc();
@@ -123,6 +149,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       result = {
         ...prev,
         ...input,
+        company: input.company || prev.company,
         lastChanges: changes,
         version: prev.version + 1,
         returnReason: undefined,
@@ -146,6 +173,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       result = {
         id: nextId(),
         ...input,
+        company: input.company || 'AEQUITAS',
         lastChanges: snap ? diffHandoff(snap.data, input.data) : [],
         version: 1,
         status: 'Chờ HCNS duyệt',
@@ -212,9 +240,10 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     logMail(r.candidateId, r.requestId, 'Báo hủy Onboard sang HCNS', subject, HCNS_MAILBOX, [r.taPic, r.taPic2].filter(Boolean), [], composed?.body || `Lý do: ${reason}${note ? `\nGhi chú: ${note}` : ''}`);
   };
 
-  const hrChanges = (r: OnbRecord, p: { data?: Partial<HandoffData>; contractType?: string }): FieldChange[] => {
+  const hrChanges = (r: OnbRecord, p: { data?: Partial<HandoffData>; contractType?: string; company?: string }): FieldChange[] => {
     const out: FieldChange[] = p.data ? diffHandoff(r.data, { ...r.data, ...p.data }) : [];
     if (p.contractType !== undefined && p.contractType !== r.contractType) out.push({ field: 'Loại hợp đồng', from: r.contractType, to: p.contractType });
+    if (p.company !== undefined && p.company !== r.company) out.push({ field: 'Công ty', from: r.company, to: p.company });
     return out;
   };
 
@@ -225,6 +254,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         ...r,
         data: { ...r.data, ...p.data },
         contractType: p.contractType ?? r.contractType,
+        company: p.company ?? r.company,
         hrNote: p.hrNote ?? r.hrNote,
         history: changes.length ? [...r.history, { at: nowIso(), by: HCNS_USER, role: 'HCNS', action: 'HCNS bổ sung thông tin', changes }] : r.history,
       };
@@ -236,35 +266,26 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     manager: r.data.manager, joinDate: r.data.startDate, personalEmail: r.candidateEmail, phone: r.candidatePhone, techStack: r.data.techStack,
   });
   const setTask = (r: OnbRecord, k: TaskKey, t: Partial<OnbTask>): OnbTask[] => (r.tasks || []).map((x) => (x.key === k ? { ...x, ...t } : x));
-  const userNameOf = (fullName: string) => {
-    const parts = fullName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().split(/\s+/).filter(Boolean);
-    return parts.length ? `${parts[parts.length - 1]}${parts.slice(0, -1).map((x) => x[0]).join('')}` : 'newuser';
-  };
-  const nextEmpCode = () => {
-    const used = recordsRef.current.map((r) => parseInt((r.account.employeeCode || '').replace(/\D/g, ''), 10) || 0);
+  const nextEmpCode = (taken: string[] = []) => {
+    const used = [...recordsRef.current.map((r) => r.account.employeeCode || ''), ...taken].map((c) => parseInt(c.replace(/\D/g, ''), 10) || 0);
     return `NV${String(Math.max(420, ...used) + 1).padStart(4, '0')}`;
   };
 
-  const hrApprove: OnboardingContextValue['hrApprove'] = (id, p) => {
-    const at = nowIso();
-    const cur = recordsRef.current.find((x) => x.id === id);
-    if (!cur) return;
+  /** Accept 1 phiếu: tạo nhân viên trong Employees + gửi link form cho ứng viên. */
+  const acceptOne = (cur: OnbRecord, p: { data?: Partial<HandoffData>; contractType?: string; company?: string; hrNote?: string }, code: string, at: string, bulk: boolean) => {
     const data = { ...cur.data, ...p.data };
-    const code = nextEmpCode();
-    // 1. Tạo hồ sơ nhân sự ngay (màn Employees)
-    upsertEmployeeFromOnboarding(code, {
-      fullName: data.fullName, division: cur.block, department: data.department, position: data.position, level: data.level,
-      manager: data.manager, joinDate: data.startDate, personalEmail: cur.candidateEmail, phone: cur.candidatePhone, techStack: data.techStack,
-    });
-    const formMail: OnbMail = { at, kind: 'Form onboarding cho ứng viên', subject: 'Chào mừng bạn gia nhập — vui lòng điền thông tin cá nhân (Microsoft Forms)', to: cur.candidateEmail, cc: [HCNS_MAILBOX], attachments: [] };
-    const itMail: OnbMail = { at, kind: 'Mail IT cấp tài khoản', subject: `[Onboarding] Cấp tài khoản cho nhân sự mới: ${data.fullName} – ${data.position} – nhận việc ${data.startDate.split('-').reverse().join('/')}`, to: IT_MAILBOX, cc: [HCNS_MAILBOX, data.manager], attachments: [] };
-    patch(id, (r) => {
+    const company = p.company || cur.company;
+    upsertEmployeeFromOnboarding(code, { ...empInfo({ ...cur, data }) }, { company });
+    const link = formLinkOf(cur.id);
+    const formMail: OnbMail = { at, kind: 'Form onboarding cho ứng viên', subject: 'Chào mừng bạn gia nhập — vui lòng điền thông tin cá nhân trước ngày nhận việc', to: cur.candidateEmail, cc: [HCNS_MAILBOX], attachments: [] };
+    patch(cur.id, (r) => {
       const changes = hrChanges(r, p);
       return {
         ...r,
         data,
-        contractType: p.contractType,
-        hrNote: p.hrNote,
+        company,
+        contractType: p.contractType ?? r.contractType,
+        hrNote: p.hrNote ?? r.hrNote,
         status: 'Đang onboard',
         decidedBy: HCNS_USER,
         decidedAt: at,
@@ -272,42 +293,66 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         account: { status: 'Đang tạo', employeeCode: code },
         checklist: buildChecklist(0),
         tasks: [
-          { key: 'employee', status: 'Đã hoàn thành', startedAt: at, doneAt: at, doneBy: 'Hệ thống', detail: `Mã NV ${code} · Thử việc` },
-          { key: 'imisAccount', status: 'Đang thực hiện', startedAt: at, detail: 'Job tạo user iMIS đang chạy…' },
-          { key: 'personalForm', status: 'Đang thực hiện', startedAt: at, detail: `Đã gửi link form tới ${r.candidateEmail} — chờ nhân sự submit`, reminders: 0 },
-          { key: 'itAccount', status: 'Đang thực hiện', startedAt: at, detail: `Đã gửi mail tới ${IT_MAILBOX} — chờ IT xác nhận`, itDone: [] },
+          { key: 'employee', status: 'Đã hoàn thành', startedAt: at, doneAt: at, doneBy: 'Hệ thống', detail: `Mã NV ${code} · Thử việc · ${company}` },
+          { key: 'personalForm', status: 'Đang thực hiện', startedAt: at, formLink: link, reminders: 0, detail: `Đã gửi link form tới ${r.candidateEmail} — chờ ứng viên submit` },
+          { key: 'itAccount', status: 'Chưa bắt đầu', detail: 'Tự gửi IT khi ứng viên submit form' },
+          { key: 'marcom', status: 'Chưa bắt đầu', detail: 'Tự báo MarCom khi IT trả tài khoản' },
         ],
-        mails: [...r.mails, formMail, itMail],
+        mails: [...r.mails, formMail],
         history: [
           ...r.history,
           ...(changes.length ? [{ at, by: HCNS_USER, role: 'HCNS' as const, action: 'HCNS bổ sung thông tin', changes }] : []),
-          { at, by: HCNS_USER, role: 'HCNS', action: 'Duyệt yêu cầu onboarding', note: [p.contractType && `Loại HĐ: ${p.contractType}`, p.hrNote].filter(Boolean).join(' · ') || undefined },
-          { at, by: 'Hệ thống', role: 'Hệ thống', action: `Tạo hồ sơ nhân sự ${code} (Thử việc)` },
-          { at, by: 'Hệ thống', role: 'Hệ thống', action: `Gửi Microsoft Forms thông tin cá nhân tới ${r.candidateEmail}` },
-          { at, by: 'Hệ thống', role: 'Hệ thống', action: `Gửi mail ${IT_MAILBOX} đề nghị cấp tài khoản Microsoft 365 & đăng nhập` },
+          { at, by: HCNS_USER, role: 'HCNS', action: bulk ? 'Accept ứng viên (chọn nhiều)' : 'Accept ứng viên', note: [p.contractType && `Loại HĐ: ${p.contractType}`, p.hrNote].filter(Boolean).join(' · ') || undefined },
+          { at, by: 'Hệ thống', role: 'Hệ thống', action: `Tạo nhân viên ${code} trong Employees (Thử việc)` },
+          { at, by: 'Hệ thống', role: 'Hệ thống', action: `Gửi link form thông tin cá nhân tới ${r.candidateEmail}`, note: link },
         ],
       };
     });
-    // 2. Job tạo user iMIS (ExternalUserCreateJob)
-    window.setTimeout(() => {
-      // Tác động phụ (Employees, hồ sơ ứng viên) chạy NGOÀI hàm cập nhật state
-      const cur2 = recordsRef.current.find((x) => x.id === id);
-      if (!cur2 || cur2.account.status !== 'Đang tạo') return;
-      const user = userNameOf(cur2.data.fullName);
-      const empCode = cur2.account.employeeCode || code;
-      upsertEmployeeFromOnboarding(empCode, empInfo(cur2), { userName: user }, 'Gán tài khoản iMIS');
-      rcRef.current.setCandidateHr(cur2.candidateId, { status: 'Probation', employeeCode: empCode, employeeName: cur2.data.fullName, startDate: cur2.data.startDate });
-      patch(id, (r) => {
-        if (r.account.status !== 'Đang tạo') return r;
-        const done = nowIso();
-        return {
-          ...r,
-          account: { ...r.account, status: 'Đã tạo', userName: user },
-          tasks: setTask(r, 'imisAccount', { status: 'Đã hoàn thành', doneAt: done, doneBy: 'Hệ thống', detail: `User iMIS: ${user}` }),
-          history: [...r.history, { at: done, by: 'Hệ thống', role: 'Hệ thống', action: `Tạo tài khoản iMIS: ${user} · gán hồ sơ ${empCode}` }],
-        };
-      });
-    }, 2500);
+  };
+
+  const hrApprove: OnboardingContextValue['hrApprove'] = (id, p) => {
+    const cur = recordsRef.current.find((x) => x.id === id);
+    if (!cur || cur.status !== 'Chờ HCNS duyệt') return;
+    acceptOne(cur, p, nextEmpCode(), nowIso(), false);
+  };
+
+  const hrApproveMany: OnboardingContextValue['hrApproveMany'] = (ids) => {
+    const at = nowIso();
+    const done: string[] = [];
+    const skipped: { id: string; missing: string[] }[] = [];
+    const codes: string[] = [];
+    ids.forEach((id) => {
+      const cur = recordsRef.current.find((x) => x.id === id);
+      if (!cur || cur.status !== 'Chờ HCNS duyệt') return;
+      const missing = missingForApprove(cur);
+      if (missing.length) return void skipped.push({ id, missing });
+      const code = nextEmpCode(codes);
+      codes.push(code);
+      acceptOne(cur, { contractType: cur.contractType || 'Thử việc' }, code, at, true);
+      done.push(id);
+    });
+    return { done, skipped };
+  };
+
+  const rejectOne = (id: string, reason: string, at: string, bulk: boolean) =>
+    patch(id, (r) =>
+      r.status !== 'Chờ HCNS duyệt'
+        ? r
+        : {
+            ...r,
+            status: 'HCNS từ chối',
+            returnReason: reason,
+            decidedBy: HCNS_USER,
+            decidedAt: at,
+            hrNote: [r.hrNote, `[Từ chối] ${HCNS_USER} lúc ${new Date(at).toLocaleString('vi-VN')}${reason ? ` – Lý do: ${reason}` : ''}`].filter(Boolean).join('\n'),
+            mails: [...r.mails, { at, kind: 'HCNS từ chối', subject: `[HCNS → Tuyển dụng] Từ chối onboard: ${r.data.fullName}`, to: r.taPic, cc: [HCNS_MAILBOX], attachments: [] }],
+            history: [...r.history, { at, by: HCNS_USER, role: 'HCNS', action: bulk ? 'Reject ứng viên (chọn nhiều)' : 'Reject ứng viên', note: reason || '(không ghi lý do)' }],
+          },
+    );
+  const hrReject: OnboardingContextValue['hrReject'] = (id, reason) => rejectOne(id, reason, nowIso(), false);
+  const hrRejectMany: OnboardingContextValue['hrRejectMany'] = (ids, reason) => {
+    const at = nowIso();
+    ids.forEach((id) => rejectOne(id, reason, at, ids.length > 1));
   };
 
   const remindForm: OnboardingContextValue['remindForm'] = (id) => {
@@ -317,66 +362,74 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const n = (t?.reminders || 0) + 1;
       return {
         ...r,
-        tasks: setTask(r, 'personalForm', { reminders: n, detail: `Đã gửi link form tới ${r.candidateEmail} — chờ nhân sự submit (đã nhắc ${n} lần)` }),
+        tasks: setTask(r, 'personalForm', { reminders: n, detail: `Đã gửi link form tới ${r.candidateEmail} — chờ ứng viên submit (đã nhắc ${n} lần)` }),
         mails: [...r.mails, { at, kind: 'Nhắc điền form thông tin', subject: `[Nhắc] Vui lòng hoàn thiện thông tin cá nhân trước ngày nhận việc`, to: r.candidateEmail, cc: [HCNS_MAILBOX], attachments: [] }],
-        history: [...r.history, { at, by: HCNS_USER, role: 'HCNS', action: `Gửi nhắc điền Microsoft Forms (lần ${n})` }],
+        history: [...r.history, { at, by: HCNS_USER, role: 'HCNS', action: `Gửi nhắc điền form (lần ${n})` }],
       };
     });
   };
 
+  /** Ứng viên submit form → đổ dữ liệu vào Employees, đồng thời gửi yêu cầu IT. */
   const submitForm: OnboardingContextValue['submitForm'] = (id, formData) => {
     const at = nowIso();
     const r = recordsRef.current.find((x) => x.id === id);
-    if (!r) return;
-    if (r.account.employeeCode) upsertEmployeeFromOnboarding(r.account.employeeCode, empInfo(r), formData, 'Cập nhật thông tin cá nhân từ Microsoft Forms');
+    if (!r || r.status !== 'Đang onboard') return;
+    if (r.account.employeeCode) upsertEmployeeFromOnboarding(r.account.employeeCode, empInfo(r), { ...formData, company: r.company }, 'Cập nhật thông tin cá nhân từ form trước onboard');
     const filled = FORM_FIELDS.filter((f) => (formData[f.key] || '').trim()).length;
+    const itReq: ItRequest = { fullName: r.data.fullName, block: r.block, manager: r.data.manager, company: r.company, sentAt: at };
     patch(id, (x) => ({
       ...x,
-      tasks: setTask(x, 'personalForm', { status: 'Đã hoàn thành', doneAt: at, doneBy: x.data.fullName, formData, detail: `Đã nhận ${filled}/${FORM_FIELDS.length} trường — đã cập nhật hồ sơ Employees` }),
-      history: [...x.history, { at, by: x.data.fullName, role: 'Hệ thống', action: 'Nhân sự đã submit Microsoft Forms thông tin cá nhân', note: `${filled}/${FORM_FIELDS.length} trường → hồ sơ ${x.account.employeeCode}` }],
-    }));
-  };
-
-  const itConfirm: OnboardingContextValue['itConfirm'] = (id, items, companyEmail, channel, deliveredBy) => {
-    const at = nowIso();
-    const r = recordsRef.current.find((x) => x.id === id);
-    if (!r) return;
-    const all = IT_ITEMS.every((i) => items.includes(i));
-    if (companyEmail && r.account.employeeCode) upsertEmployeeFromOnboarding(r.account.employeeCode, empInfo(r), { companyEmail }, 'IT cấp email công ty');
-    patch(id, (x) => ({
-      ...x,
-      account: { ...x.account, companyEmail: companyEmail || x.account.companyEmail },
-      tasks: setTask(x, 'itAccount', {
-        status: all ? 'Đã hoàn thành' : 'Đang thực hiện',
-        itDone: items,
-        deliveryChannel: channel || undefined,
-        deliveredBy: deliveredBy || undefined,
-        doneAt: all ? at : undefined,
-        doneBy: all ? `IT (${IT_MAILBOX})` : undefined,
-        detail: all
-          ? `${companyEmail || 'Đã cấp'} · đủ ${IT_ITEMS.length}/${IT_ITEMS.length} mục · bàn giao: ${channel} (${deliveredBy})`
-          : `Đã gửi mail tới ${IT_MAILBOX} — IT đã xác nhận ${items.length}/${IT_ITEMS.length} mục`,
-      }),
+      candidatePhone: formData.phone || x.candidatePhone,
+      tasks: setTask(
+        { ...x, tasks: setTask(x, 'personalForm', { status: 'Đã hoàn thành', doneAt: at, doneBy: x.data.fullName, formData, detail: `Đã nhận ${filled}/${FORM_FIELDS.length} trường — đã cập nhật hồ sơ Employees` }) },
+        'itAccount',
+        { status: 'Đang thực hiện', startedAt: at, itReq, detail: `Đã gửi yêu cầu tới ${IT_MAILBOX} — chờ IT trả thông tin tài khoản` },
+      ),
+      mails: [...x.mails, { at, kind: 'Mail IT cấp tài khoản', subject: `[Onboarding] Yêu cầu cấp tài khoản: ${x.data.fullName} – ${x.block} – ${x.company}`, to: IT_MAILBOX, cc: [HCNS_MAILBOX], attachments: [] }],
       history: [
         ...x.history,
-        {
-          at, by: deliveredBy || `IT (${IT_MAILBOX})`, role: 'Hệ thống', action: `IT xác nhận cấp tài khoản (${items.length}/${IT_ITEMS.length})`,
-          note: [companyEmail && `Email: ${companyEmail}`, items.join('; '), channel && `Bàn giao đăng nhập: ${channel}`].filter(Boolean).join(' · '),
-        },
+        { at, by: x.data.fullName, role: 'Ứng viên', action: 'Submit form thông tin cá nhân', note: `${filled}/${FORM_FIELDS.length} trường → hồ sơ ${x.account.employeeCode}` },
+        { at, by: 'Hệ thống', role: 'Hệ thống', action: `Gửi yêu cầu cấp tài khoản tới ${IT_MAILBOX}`, note: `Họ tên: ${itReq.fullName} · Khối: ${itReq.block} · Cấp trên trực tiếp: ${itReq.manager} · Công ty: ${itReq.company}` },
       ],
     }));
   };
 
-  const hrReject: OnboardingContextValue['hrReject'] = (id, reason) =>
-    patch(id, (r) => ({
-      ...r,
-      status: 'HCNS từ chối',
-      returnReason: reason,
-      decidedBy: HCNS_USER,
-      decidedAt: nowIso(),
-      hrNote: [r.hrNote, `[Từ chối] ${HCNS_USER} lúc ${new Date().toLocaleString('vi-VN')}${reason ? ` – Lý do: ${reason}` : ''}`].filter(Boolean).join('\n'),
-      history: [...r.history, { at: nowIso(), by: HCNS_USER, role: 'HCNS', action: 'Từ chối yêu cầu onboarding', note: reason || '(không ghi lý do)' }],
+  /** IT trả thông tin tài khoản → ghi hồ sơ, báo MarCom. */
+  const itReturn: OnboardingContextValue['itReturn'] = (id, ret) => {
+    const at = nowIso();
+    const r = recordsRef.current.find((x) => x.id === id);
+    if (!r) return;
+    const full: ItReturn = { ...ret, at };
+    if (r.account.employeeCode) upsertEmployeeFromOnboarding(r.account.employeeCode, empInfo(r), { companyEmail: ret.email, userName: ret.accountName }, 'IT cấp tài khoản');
+    patch(id, (x) => ({
+      ...x,
+      account: { ...x.account, status: 'Đã tạo', userName: ret.accountName, companyEmail: ret.email },
+      tasks: setTask(
+        { ...x, tasks: setTask(x, 'itAccount', { status: 'Đã hoàn thành', doneAt: at, doneBy: ret.by, itRet: full, detail: `${ret.email} · tài khoản ${ret.accountName}` }) },
+        'marcom',
+        { status: 'Đang thực hiện', startedAt: at, detail: `Đã báo ${MARCOM_MAILBOX} — chờ MarCom chuẩn bị Welcome` },
+      ),
+      mails: [
+        ...x.mails,
+        { at, kind: 'IT trả thông tin tài khoản', subject: `[IT] Đã cấp tài khoản cho ${x.data.fullName}`, to: HCNS_MAILBOX, cc: [IT_MAILBOX], attachments: [] },
+        { at, kind: 'Thông báo MarCom', subject: `[Onboarding] Nhân sự mới ${x.data.fullName} nhận việc ${x.data.startDate.split('-').reverse().join('/')} — chuẩn bị Welcome`, to: MARCOM_MAILBOX, cc: [HCNS_MAILBOX], attachments: [] },
+      ],
+      history: [
+        ...x.history,
+        { at, by: ret.by, role: 'IT', action: 'Trả thông tin tài khoản', note: [`Email: ${ret.email}`, `Tài khoản: ${ret.accountName}`, 'Mật khẩu: ••••••', ret.note].filter(Boolean).join(' · ') },
+        { at, by: 'Hệ thống', role: 'Hệ thống', action: `Cập nhật email & tài khoản vào hồ sơ ${x.account.employeeCode} · báo MarCom` },
+      ],
     }));
+  };
+
+  const marcomDone: OnboardingContextValue['marcomDone'] = (id, by, note) => {
+    const at = nowIso();
+    patch(id, (x) => ({
+      ...x,
+      tasks: setTask(x, 'marcom', { status: 'Đã hoàn thành', doneAt: at, doneBy: by, detail: note || 'Đã chuẩn bị Welcome Onboard' }),
+      history: [...x.history, { at, by, role: 'MarCom', action: 'Đã chuẩn bị Welcome Onboard', note: note || undefined }],
+    }));
+  };
 
   const toggleChecklist: OnboardingContextValue['toggleChecklist'] = (id, itemId) =>
     patch(id, (r) => ({
@@ -393,6 +446,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       history: [...x.history, { at: nowIso(), by: HCNS_USER, role: 'HCNS', action: 'Xác nhận ứng viên đã nhận việc', note: `Ngày nhận việc ${x.data.startDate <= todayIso() ? 'đã tới' : 'sớm hơn kế hoạch'} → Stage Onboarded` }],
     }));
     setStage(r.candidateId, r.requestId, 'Onboarded');
+    if (r.account.employeeCode) rcRef.current.setCandidateHr(r.candidateId, { status: 'Probation', employeeCode: r.account.employeeCode, employeeName: r.data.fullName, startDate: r.data.startDate });
   };
 
   const value = useMemo<OnboardingContextValue>(
@@ -405,11 +459,14 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       cancelOnboard,
       hrSave,
       hrApprove,
+      hrApproveMany,
       hrReject,
+      hrRejectMany,
       toggleChecklist,
       remindForm,
       submitForm,
-      itConfirm,
+      itReturn,
+      marcomDone,
       confirmOnboarded,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps

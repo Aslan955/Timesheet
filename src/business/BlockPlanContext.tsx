@@ -14,7 +14,7 @@
  * ĐVT: VNĐ (KLCV: SP).
  */
 import React, { createContext, useContext, useState } from 'react';
-import { BizHistory, BizMonthRow, BizProject, monthsBetween, useBusinessProjects } from './BusinessProjectContext';
+import { BizHistory, BizMonthRow, BizProject, isProjectClosed, monthsBetween, useBusinessProjects } from './BusinessProjectContext';
 
 export type BlockPlanStatus = 'Nháp' | 'Chờ duyệt' | 'Đã duyệt' | 'Trả lại';
 /** Ô số liệu của hồ sơ: dự án → tháng (YYYY-MM) → số liệu tháng. */
@@ -43,10 +43,10 @@ export const yearMonths = (year: string) => Array.from({ length: 12 }, (_, i) =>
 export const projectMonthsInYear = (p: Pick<BizProject, 'startDate' | 'endDate'>, year: string) =>
   monthsBetween(p.startDate, p.endDate).filter((m) => m.startsWith(year));
 
-/** Dự án thuộc khối được lập kế hoạch: đã có mã dự án, chưa kết thúc. */
+/** Dự án thuộc khối được lập kế hoạch: đã có mã dự án, chưa Đóng ("Bảo hành" tính như đang lập / chờ duyệt PAKD). */
 export const blockProjects = (projects: BizProject[], division: string) =>
   projects
-    .filter((p) => p.division === division && !!p.masterCode && p.status !== 'Kết thúc')
+    .filter((p) => p.division === division && !!p.masterCode && !isProjectClosed(p))
     .sort((a, b) => a.masterCode.localeCompare(b.masterCode));
 
 /** Ô số liệu khởi tạo từ kế hoạch hiện có của dự án (project.plan) cho các tháng trong năm. */

@@ -10,8 +10,10 @@
  * (kế toán import). Chỉ tiêu (dọc) × tháng (ngang); chỉ Chi tách SX / KD; lọc theo năm.
  *
  * Quy trình: AM tạo yêu cầu → Chờ duyệt mã (GĐK duyệt; GĐK tự tạo thì cấp mã ngay) → Chưa có PAKD
- *   → PAKD chờ duyệt (Kế toán / CFO) → Đang thực hiện → Kết thúc. Quá 30 ngày PAKD chưa được duyệt → Pending (CFO mở lại).
- *   Danh sách hiển thị Hạn lập PAKD, Phiên bản PAKD, nút thao tác theo vai trò (chọn AM / GĐK / PM / CFO),
+ *   → PAKD chờ duyệt (GĐ khối → Kế toán → BOD; từ chối ⇒ Reject) → Đang thực hiện → Đóng (Kết thúc dự án; mã KD / SX / outsource Closed)
+ *   → Bảo hành (cấp mã .3, lập PAKD bảo hành V(n+1)) → Đang thực hiện (giai đoạn bảo hành) → Đóng.
+ *   Quá 30 ngày PAKD chưa qua bước Kế toán → Pending (CFO / GĐKD / GĐ khối mở lại).
+ *   Danh sách hiển thị Hạn lập PAKD, Phiên bản PAKD, nút thao tác theo vai trò (chọn AM / SM / GĐK / CFO / BOD),
  *   và nhóm cột Thông tin về hợp đồng.
  * Đầu màn danh sách: Sổ theo dõi dự án (ProjectTracker) — lọc Năm / Khối, giá trị HĐ ký so với mục tiêu.
  * Hợp đồng: bấm vào trạng thái "Chưa ký" / "Đã ký" → ContractModal (Cập nhật ký hợp đồng);
@@ -61,11 +63,33 @@ import {
   BizProjectInput,
   BizStatus,
   BIZ_STATUSES,
+  bizStatusLabel,
+  mainCodesClosed,
+  inWarrantyPhase,
+  codeRecordStatus,
+  CodeRecordStatus,
   BizRole,
   BIZ_ROLES,
   latestPakd,
   signedDate,
   pendingRole,
+  PakdState,
+  PakdVersion,
+  workingPakd,
+  canDecidePakd,
+  canEditPakdVersion,
+  canReopen,
+  isPakdLocked,
+  PAKD_LOCKED_TIP,
+  isPakdPending,
+  isPakdReturned,
+  nextPakdVersion,
+  pakdApproveTo,
+  pakdEntryState,
+  pakdRejectStep,
+  pakdStateLabel,
+  pakdTargetLabel,
+  pakdWaitingText,
   canAdjustPakd,
   canCreateProject,
   canLapPakd,
@@ -82,6 +106,16 @@ import {
   nextMasterCode,
   codesFrom,
   MAX_OUTSOURCE,
+  BizOutsource,
+  JiraState,
+  jiraOf,
+  liveOutsource,
+  pendingOutsource,
+  nextOutsourceCode,
+  canManageSubCodes,
+  canRequestWarranty,
+  warrantyActive,
+  warrantyCodeOf,
   blankPhases,
   BizMonthRow,
   BizAttachment,
@@ -102,6 +136,7 @@ import { Btn, ErpPage, ErpTitleBar, FieldTable, FolderTabs, FormRow, Panel, Segm
 import { ActualCostTab } from './ActualCostTab';
 import { ConfigurationTab } from './ConfigurationTab';
 import { ResourcesTab } from './ResourcesTab';
+import { openProjectRecord, takePending } from '../projects/projectLinks';
 
 const CURRENT_USER = 'namnv';
 const CRUMBS = ['Quản trị dự án & Tài chính', 'Danh sách dự án'];
@@ -115,11 +150,40 @@ const STATUS_CLS: Record<BizStatus, string> = {
   'Chờ duyệt mã': 'bg-slate-100 text-slate-600 border-slate-300',
   'Chưa có PAKD': 'bg-rose-50 text-rose-700 border-rose-300',
   'PAKD chờ duyệt': 'bg-amber-50 text-amber-700 border-amber-300',
+  Reject: 'bg-rose-50 text-rose-700 border-rose-300',
   'Đang thực hiện': 'bg-blue-50 text-blue-700 border-blue-300',
   'Kết thúc': 'bg-emerald-50 text-emerald-700 border-emerald-300',
+  'Bảo hành': 'bg-violet-50 text-violet-700 border-violet-300',
   Pending: 'bg-orange-50 text-orange-700 border-orange-300',
 };
-const StatusBadge: React.FC<{ status: BizStatus }> = ({ status }) => <Tag cls={STATUS_CLS[status]}>{status}</Tag>;
+const StatusBadge: React.FC<{ status: BizStatus }> = ({ status }) => <Tag cls={STATUS_CLS[status]}>{bizStatusLabel(status)}</Tag>;
+/** Badge trạng thái + nhãn "Giai đoạn bảo hành" khi Đang thực hiện trên mã .3. */
+// Đã chốt 04/11: nhãn phụ phân biệt giai đoạn bảo hành; báo cáo không tách số.
+const showWarrantyPhase = (p: BizProject) => p.status === 'Đang thực hiện' && inWarrantyPhase(p);
+const ProjectStatus: React.FC<{ project: BizProject }> = ({ project: p }) => (
+  <span className="inline-flex flex-wrap items-center gap-1">
+    <StatusBadge status={p.status} />
+    {showWarrantyPhase(p) && <Tag cls="bg-violet-50 text-violet-700 border-violet-300">Giai đoạn bảo hành</Tag>}
+  </span>
+);
+/** Nhãn trạng thái bản ghi dự án IMIS của mã — hiện mọi trạng thái. */
+const RECORD_TAG_CLS: Record<CodeRecordStatus, string> = {
+  Open: 'bg-sky-50 text-sky-700 border-sky-300',
+  'In Progress': 'bg-blue-100 text-blue-800 border-blue-400',
+  'On-hold': 'bg-amber-50 text-amber-700 border-amber-300',
+  Closed: 'bg-slate-200 text-slate-700 border-slate-400',
+};
+/** Trạng thái bản ghi dự án IMIS của mã; có `code` ⇒ bấm mở Quản lý dự án › Dự án. */
+const RecordTag: React.FC<{ status: CodeRecordStatus; code?: string }> = ({ status, code }) =>
+  code ? (
+    <button type="button" onClick={() => openProjectRecord(code)} title={`Mở dự án ${code} ở Quản lý dự án › Dự án`} className="cursor-pointer hover:opacity-80">
+      <Tag cls={RECORD_TAG_CLS[status]}>{status}</Tag>
+    </button>
+  ) : (
+    <Tag cls={RECORD_TAG_CLS[status]}>{status}</Tag>
+  );
+const CLOSED_TIP = 'Mã đã Closed';
+const WAR_PM_LOCK_TIP = 'Đổi PM sau khi được cấp mã';
 const KeyBadge = () => (
   <Tag cls="bg-amber-50 text-amber-700 border-amber-300" icon={Star}>
     KEY
@@ -143,7 +207,11 @@ type View = { mode: 'list' } | { mode: 'detail'; id: string } | { mode: 'form'; 
 export const BusinessProjectPage: React.FC = () => {
   const { projects, createProject, updateProject, deleteProject, importMonthly, saveContract, setAttachments, approveCode, reopenProject, submitPakd, savePakdForm, savePakdAdjust, cancelPakdAdjust, decidePakd, finishProject } =
     useBusinessProjects();
-  const [view, setView] = useState<View>({ mode: 'list' });
+  // Đến từ Quản lý dự án › Dự án (link "Nguồn") ⇒ mở thẳng chi tiết
+  const [view, setView] = useState<View>(() => {
+    const id = takePending('biz');
+    return id && projects.some((p) => p.id === id) ? { mode: 'detail', id } : { mode: 'list' };
+  });
   const [role, setRole] = useState<BizRole>('CFO');
   const actor = `${CURRENT_USER} (${role})`;
   const [toast, setToast] = useState<string | null>(null);
@@ -154,12 +222,16 @@ export const BusinessProjectPage: React.FC = () => {
   };
 
   const decide = (p: BizProject, approve: boolean, note: string) => {
-    decidePakd(p.id, approve, role, actor, note);
-    const last = latestPakd(p)!;
-    const v = last.version;
-    if (last.adjust) return flash(!approve ? `Kế toán đã từ chối bản điều chỉnh PAKD V${v} — giữ bản đang áp dụng` : `Kế toán đã duyệt bản điều chỉnh PAKD V${v} — đã cập nhật số liệu dự án`);
-    flash(!approve ? `Kế toán đã từ chối PAKD V${v} — trả về GĐK lập lại` : `Kế toán đã duyệt PAKD V${v} — dự án chuyển "Đang thực hiện"`);
+    const w = workingPakd(p);
+    const next = decidePakd(p.id, approve, role, actor, note);
+    if (!w || !next) return;
+    const what = `${w.adjust ? 'bản điều chỉnh ' : w.warranty ? 'PAKD bảo hành ' : 'PAKD '}V${w.version}`;
+    if (!approve) return flash(`${role} đã từ chối ${what} — trả về: ${pakdWaitingText({ ...w, state: 'Từ chối', rejectedStep: pakdRejectStep(w) })}`);
+    flash(next === 'Đã duyệt' ? `${role} đã duyệt ${what} — ${w.adjust ? 'đã áp dụng số liệu mới' : 'dự án chuyển "Đang thực hiện"'}` : `${role} đã duyệt ${what} — ${pakdTargetLabel(next)}`);
   };
+  /** Thông báo sau khi Gửi PAKD theo trạng thái đích. */
+  const sentMsg = (kind: string, next?: PakdState) =>
+    !next ? `Đã lưu ${kind}` : next === 'Đã duyệt' ? `Đã gửi & duyệt ${kind} — áp dụng ngay` : `Đã gửi ${kind} — ${pakdTargetLabel(next)}`;
   const signContract = (p: BizProject, c: Omit<BizContract, 'updatedAt' | 'updatedBy'>) => {
     saveContract(p.id, c, CURRENT_USER);
     flash(`${p.contract ? 'Đã cập nhật hợp đồng' : 'Đã xác nhận ký hợp đồng'} ${c.number} — ${p.masterCode}`);
@@ -212,31 +284,33 @@ export const BusinessProjectPage: React.FC = () => {
             flash(`Đã duyệt — hệ thống cấp mã ${code} (KD ${code}.1 · SX ${code}.2), hạn lập PAKD ${dmy(deadline)}`);
           }}
           onReopen={() => {
+            const fromClosed = current.status === 'Kết thúc';
             const deadline = reopenProject(current.id, actor);
-            flash(`Đã mở lại dự án ${current.masterCode} — hạn lập PAKD ${dmy(deadline)}`);
+            flash(fromClosed ? `Đã mở lại dự án ${current.masterCode} — Đang thực hiện, ${inWarrantyPhase(current) ? 'chỉ mã bảo hành về In Progress (KD / SX / outsource giữ Closed)' : 'mã KD / SX / outsource về In Progress'}` : `Đã mở lại dự án ${current.masterCode} — hạn lập PAKD ${dmy(deadline)}`);
           }}
           onSubmitPakd={() => {
-            submitPakd(current.id, actor);
-            flash(`Đã nộp PAKD V${current.pakd.length + 1} — chờ Kế toán (CFO) duyệt`);
+            submitPakd(current.id, actor, role);
+            flash(sentMsg('PAKD', pakdEntryState(role)));
           }}
           onAdjustPakd={(form, submit) => {
-            savePakdAdjust(current.id, form, actor, submit);
-            flash(submit ? `Đã gửi bản điều chỉnh PAKD V${current.pakd.length + 1} — chờ Kế toán (CFO) duyệt lại` : 'Đã lưu nháp bản điều chỉnh PAKD');
+            const next = savePakdAdjust(current.id, form, actor, submit, role);
+            flash(submit ? sentMsg('bản điều chỉnh PAKD', next) : 'Đã lưu bản điều chỉnh PAKD');
           }}
           onCancelAdjust={() => {
             cancelPakdAdjust(current.id, actor);
             flash('Đã huỷ bản điều chỉnh PAKD');
           }}
           onSavePakd={(form, submit) => {
-            savePakdForm(current.id, form, actor, submit);
-            flash(submit ? `Đã gửi PAKD V${current.pakd.length + 1} — chờ Kế toán (CFO) duyệt` : 'Đã lưu nháp PAKD');
+            const next = savePakdForm(current.id, form, actor, submit, role);
+            flash(submit ? sentMsg(current.status === 'Bảo hành' ? 'PAKD bảo hành' : 'PAKD', next) : 'Đã lưu PAKD');
           }}
           actor={actor}
+          onFlash={flash}
           onDecide={(approve, note) => decide(current, approve, note)}
           onFinish={() => {
-            if (!window.confirm(`Kết thúc dự án "${current.name}"?`)) return;
+            if (!window.confirm(`Kết thúc dự án "${current.name}"?\nDự án chuyển "Đóng"; ${inWarrantyPhase(current) ? 'mã bảo hành' : 'mã KD / SX / outsource'} chuyển Closed và gửi Jira pending.`)) return;
             finishProject(current.id, actor);
-            flash('Đã kết thúc dự án');
+            flash('Đã kết thúc dự án — trạng thái Đóng, các mã đã Closed');
           }}
           onAttachments={(files, note) => setAttachments(current.id, files, CURRENT_USER, note)}
           onSaveContract={(c) => signContract(current, c)}
@@ -300,53 +374,71 @@ const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.p
 /** Cột "Hạn lập PAKD": còn bao nhiêu ngày / ngày nộp / ngày duyệt. */
 const pakdDeadlineCell = (p: BizProject): { text: string; sub?: string; cls?: string } => {
   const last = latestPakd(p);
+  const w = workingPakd(p);
+  const redo = (v: PakdVersion) => ({ text: isPakdReturned(v) ? 'Trả về' : `Làm lại V${v.version}`, sub: `${pakdStateLabel(v)} ${dmy(v.decidedAt || '')}`, cls: 'text-amber-700 font-semibold' });
   if (p.status === 'Chờ duyệt mã') return { text: '—', cls: 'text-slate-400' };
+  // Bảo hành: không áp hạn 30 ngày.
+  if (p.status === 'Bảo hành') {
+    if (isPakdPending(w)) return { text: 'Nộp', sub: dmy(w!.submittedAt) };
+    if (w?.state === 'Từ chối') return redo(w);
+    return { text: 'Lập PAKD bảo hành', sub: 'Không áp hạn', cls: 'text-slate-600' };
+  }
   if (p.status === 'Pending') return { text: 'Pending', sub: dmy(p.closedAt || p.pakdDeadline || ''), cls: 'text-slate-600 font-semibold' };
+  if (p.status === 'Reject' && w) return redo(w);
   if (p.status === 'Chưa có PAKD') {
-    const sub = last?.state === 'Từ chối' ? `V${last.version} bị từ chối ${dmy(last.decidedAt || '')}` : undefined;
-    // Bị Kế toán từ chối → trả về cập nhật lại PAKD (hạn 30 ngày chỉ áp dụng lần đầu).
-    if (last?.state === 'Từ chối') return { text: `Làm lại V${last.version + 1}`, sub, cls: 'text-amber-700 font-semibold' };
-    if (!p.pakdDeadline) return { text: 'Chưa đặt hạn', sub, cls: 'text-slate-400' };
+    if (!p.pakdDeadline) return { text: 'Chưa đặt hạn', cls: 'text-slate-400' };
     const d = daysBetween(todayIso(), p.pakdDeadline);
-    if (d > 0) return { text: `Còn ${d} ngày`, sub, cls: d <= 3 ? 'text-amber-700 font-semibold' : '' };
-    return { text: d === 0 ? 'Hết hạn hôm nay' : `Quá hạn ${-d} ngày`, sub, cls: 'text-rose-600 font-semibold' };
+    if (d > 0) return { text: `Còn ${d} ngày`, cls: d <= 3 ? 'text-amber-700 font-semibold' : '' };
+    return { text: d === 0 ? 'Hết hạn hôm nay' : `Quá hạn ${-d} ngày`, cls: 'text-rose-600 font-semibold' };
   }
   if (!last) return { text: '—', cls: 'text-slate-400' };
-  if (last.state === 'Chờ CFO')
-    return { text: last.version === 1 ? 'Nộp' : `Nộp v${last.version},`, sub: dmy(last.submittedAt) };
+  if (isPakdPending(last)) return { text: last.version === 1 ? 'Nộp' : `Nộp v${last.version},`, sub: dmy(last.submittedAt) };
   return { text: 'Duyệt', sub: dmy(last.decidedAt || '') };
 };
 
-/** Cột "Phiên bản PAKD": "V1, chờ CFO" / "V1, đã duyệt" / "V2, từ chối". */
+/** Cột "Phiên bản PAKD": "V1, chờ GĐ khối duyệt" / "V1, đã duyệt" / "V2 bảo hành, kế toán từ chối". */
 const pakdVersionText = (p: BizProject) => {
-  const last = latestPakd(p);
-  return last ? `V${last.version}, ${last.state.charAt(0).toLowerCase()}${last.state.slice(1)}` : '—';
+  const w = workingPakd(p);
+  const v = w || latestPakd(p);
+  if (!v) return p.status === 'Bảo hành' ? `V${nextPakdVersion(p)} bảo hành, nháp` : '—';
+  // Bảo hành chưa gửi: hiện bản V(n+1) đang làm, không lấy "Đã duyệt" của bản cũ.
+  if (p.status === 'Bảo hành' && !w) return `V${nextPakdVersion(p)} bảo hành, nháp`;
+  return `V${v.version}${v.warranty ? ' bảo hành' : ''}, ${pakdStateLabel(v)}`;
 };
 
 /** Năm của dự án dùng cho bộ lọc Năm: năm ký HĐ (đã ký) → năm dự kiến ký HĐ → năm tạo yêu cầu. */
 const projectYear = (p: BizProject) => (signedDate(p) || p.expectedSignDate || p.createdAt || '').slice(0, 4);
 
-/** Dự án đang chờ đúng vai trò này phê duyệt: GĐK duyệt mã · CFO duyệt PAKD hoặc bản điều chỉnh PAKD. */
-const approvalNeededBy = (p: BizProject, role: BizRole) => {
-  if (role === 'GĐK') return p.status === 'Chờ duyệt mã';
-  if (role === 'CFO') return pendingRole(latestPakd(p)) === 'CFO' && (p.status === 'PAKD chờ duyệt' || p.status === 'Đang thực hiện' || p.status === 'Pending');
-  return false;
-};
+/** Dự án đang chờ đúng vai trò này: GĐK duyệt mã + PAKD chờ GĐ khối; Kế toán / BOD theo bước — gồm bản bị trả về, không tính BOD duyệt thẳng, không tính dự án Pending. */
+const approvalNeededBy = (p: BizProject, role: BizRole) =>
+  (role === 'GĐK' && p.status === 'Chờ duyệt mã') || (!isPakdLocked(p) && !!workingPakd(p) && pendingRole(workingPakd(p)) === role);
 
-type RowAction = { label: string; kind: 'view' | 'decide' } | null;
+/** locked: nút hiện nhưng khoá, kèm tooltip lý do. */
+type RowAction = { label: string; kind: 'view' | 'decide'; locked?: string } | null;
 /** Nút thao tác theo trạng thái + vai trò đang xem. */
 const rowAction = (p: BizProject, role: BizRole): RowAction => {
+  const w = workingPakd(p);
+  // Đã chốt 04/11: lưới hiện "Duyệt" cả khi BOD duyệt thẳng bản chờ Kế toán; bản bị trả về chỉ duyệt lại ở Chi tiết.
+  const decide = isPakdPending(w) && canDecidePakd(w, role);
   switch (p.status) {
     case 'Chờ duyệt mã':
       return { label: role === 'GĐK' ? 'Duyệt mã' : 'Xem', kind: 'view' };
     case 'Chưa có PAKD':
-      return { label: canLapPakd(role) ? 'Lập PAKD' : 'Xem', kind: 'view' };
     case 'PAKD chờ duyệt':
-      return pendingRole(latestPakd(p)) === role ? { label: 'Duyệt', kind: 'decide' } : { label: 'Xem', kind: 'view' };
+    case 'Reject':
+    case 'Bảo hành': {
+      if (decide) return { label: 'Duyệt', kind: 'decide' };
+      if (isPakdReturned(w) && pendingRole(w) === role) return { label: 'Duyệt lại', kind: 'view' };
+      const lap = p.status === 'Bảo hành' ? 'Lập PAKD BH' : 'Lập PAKD';
+      return canEditPakdVersion(w, role) && !isPakdPending(w) ? { label: w ? 'Sửa PAKD' : lap, kind: 'view' } : { label: 'Xem', kind: 'view' };
+    }
     case 'Đang thực hiện':
-      return latestPakd(p)?.adjust && pendingRole(latestPakd(p)) === role ? { label: 'Duyệt điều chỉnh', kind: 'decide' } : { label: 'Cập nhật', kind: 'view' };
+      return decide ? { label: 'Duyệt điều chỉnh', kind: 'decide' } : { label: 'Cập nhật', kind: 'view' };
     case 'Pending':
-      return { label: role === 'CFO' ? 'Mở lại' : 'Xem', kind: 'view' };
+      // Đã chốt 04/11: Pending khoá duyệt PAKD — người mở lại được thấy "Mở lại", người duyệt thấy "Duyệt" bị khoá.
+      return canReopen(role) ? { label: 'Mở lại', kind: 'view' } : decide ? { label: 'Duyệt', kind: 'decide', locked: PAKD_LOCKED_TIP } : { label: 'Xem', kind: 'view' };
+    case 'Kết thúc':
+      return p.warranty?.state === 'Chờ HOD duyệt' && role === 'GĐK' ? { label: 'Duyệt mã BH', kind: 'view' } : canReopen(role) && p.warranty?.state !== 'Chờ HOD duyệt' ? { label: 'Mở lại', kind: 'view' } : null;
     default:
       return null;
   }
@@ -373,7 +465,7 @@ const RoleSelect: React.FC<{ role: BizRole; onChange: (r: BizRole) => void }> = 
   </label>
 );
 
-/** Hộp thoại GĐK / CFO duyệt hoặc từ chối PAKD. */
+/** Hộp thoại GĐ khối / Kế toán / BOD duyệt hoặc từ chối PAKD (kể cả bản bị trả về). */
 const PakdDecisionModal: React.FC<{ project: BizProject; role: BizRole; onClose: () => void; onDecide: (approve: boolean, note: string) => void }> = ({
   project: p,
   role,
@@ -382,8 +474,10 @@ const PakdDecisionModal: React.FC<{ project: BizProject; role: BizRole; onClose:
 }) => {
   const [note, setNote] = useState('');
   const [needNote, setNeedNote] = useState(false);
-  const last = latestPakd(p)!;
+  const last = (workingPakd(p) || latestPakd(p))!;
   const gp = grossProfit(p);
+  const toOk = pakdApproveTo(last, role);
+  const back = pakdWaitingText({ ...last, state: 'Từ chối', rejectedStep: pakdRejectStep(last) });
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/40" />
@@ -395,7 +489,7 @@ const PakdDecisionModal: React.FC<{ project: BizProject; role: BizRole; onClose:
       >
         <div className="flex items-center justify-between px-4 py-2.5 bg-[#1e3a5f] text-white rounded-t-[3px]">
           <h3 className="text-[14px] font-bold flex items-center gap-2">
-            <ClipboardCheck size={16} /> {role} duyệt {last.adjust ? 'bản điều chỉnh ' : ''}PAKD — V{last.version}
+            <ClipboardCheck size={16} /> {role} {isPakdReturned(last) ? 'duyệt lại' : 'duyệt'} {last.adjust ? 'bản điều chỉnh ' : last.warranty ? 'PAKD bảo hành' : 'PAKD'} — V{last.version}
           </h3>
           <button onClick={onClose} className="p-1 rounded hover:bg-white/10 cursor-pointer">
             <X size={18} />
@@ -407,6 +501,7 @@ const PakdDecisionModal: React.FC<{ project: BizProject; role: BizRole; onClose:
             rows={[
               { label: 'Dự án', value: `${p.masterCode} — ${p.name}` },
               { label: 'Người nộp / ngày nộp', value: `${last.submittedBy} · ${dmy(last.submittedAt)}` },
+              { label: 'Trạng thái', value: `${pakdStateLabel(last)}${last.state === 'Từ chối' && last.note ? ` — ${last.note}` : ''}` },
               ...(last.adjust && p.pakdDraft
                 ? (() => {
                     const t = pakdTotals(p.pakdDraft);
@@ -435,9 +530,9 @@ const PakdDecisionModal: React.FC<{ project: BizProject; role: BizRole; onClose:
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="Ý kiến phê duyệt / lý do từ chối" className={`${erp.inputFull} h-auto py-1.5`} />
           </FormRow>
           <p className="text-[11px] text-slate-500">
-            {last.adjust
-              ? 'Duyệt → áp dụng bản điều chỉnh (doanh thu, chi phí, hợp đồng, kế hoạch theo tháng). Từ chối → giữ bản đang áp dụng, bản điều chỉnh trả về GĐK / SM sửa tiếp.'
-              : 'Kế toán (CFO) duyệt → PAKD được duyệt, dự án chuyển "Đang thực hiện". Từ chối → trả về GĐK lập phiên bản mới.'}
+            Duyệt → <b>{pakdTargetLabel(toOk)}</b>
+            {toOk === 'Đã duyệt' ? (last.adjust ? ' (áp dụng bản điều chỉnh)' : ' (dự án chuyển "Đang thực hiện")') : ''}. Từ chối (bắt buộc lý do) → trả về: <b>{back}</b>
+            {last.adjust ? ' — giữ bản đang áp dụng' : ''}.{role === 'BOD' && last.state === 'Chờ CFO' ? ' BOD duyệt thẳng bản đang chờ Kế toán.' : ''}
           </p>
         </div>
         <div className="flex justify-end gap-1.5 px-3 py-2 border-t border-slate-300 bg-slate-50 rounded-b-[3px]">
@@ -461,10 +556,240 @@ const PakdDecisionModal: React.FC<{ project: BizProject; role: BizRole; onClose:
   );
 };
 
+/** Khung popup chung (tiêu đề xanh đậm, chân nút). */
+const ModalShell: React.FC<{ title: React.ReactNode; onClose: () => void; footer: React.ReactNode; children: React.ReactNode }> = ({ title, onClose, footer, children }) => (
+  <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/40" />
+    <motion.div
+      initial={{ scale: 0.97, opacity: 0, y: 12 }}
+      animate={{ scale: 1, opacity: 1, y: 0 }}
+      exit={{ scale: 0.97, opacity: 0, y: 12 }}
+      className="relative bg-white w-full max-w-xl rounded-[4px] border border-slate-400 shadow-2xl z-10"
+    >
+      <div className="flex items-center justify-between px-4 py-2.5 bg-[#1e3a5f] text-white rounded-t-[3px]">
+        <h3 className="text-[14px] font-bold flex items-center gap-2">{title}</h3>
+        <button onClick={onClose} className="p-1 rounded hover:bg-white/10 cursor-pointer">
+          <X size={18} />
+        </button>
+      </div>
+      <div className="p-3 space-y-3">{children}</div>
+      <div className="flex justify-end gap-1.5 px-3 py-2 border-t border-slate-300 bg-slate-50 rounded-b-[3px]">{footer}</div>
+    </motion.div>
+  </div>
+);
+
+/** Popup GĐK duyệt / từ chối mã con (bảo hành, outsource) — bước xác nhận; Ý kiến bắt buộc khi từ chối, áp cho mọi mã trong bảng. */
+const CodeDecisionModal: React.FC<{
+  title: string;
+  rows: { code: string; detail: React.ReactNode }[];
+  hint: string;
+  onClose: () => void;
+  onDecide: (approve: boolean, note: string) => void;
+}> = ({ title, rows, hint, onClose, onDecide }) => {
+  const [note, setNote] = useState('');
+  const [needNote, setNeedNote] = useState(false);
+  const noteErr = needNote && !note.trim();
+  return (
+    <ModalShell
+      title={
+        <>
+          <ClipboardCheck size={16} /> {title}
+        </>
+      }
+      onClose={onClose}
+      footer={
+        <>
+          <Btn onClick={onClose}>Huỷ</Btn>
+          <Btn variant="danger" icon={XCircle} onClick={() => (note.trim() ? onDecide(false, note.trim()) : setNeedNote(true))}>
+            Từ chối
+          </Btn>
+          <Btn variant="primary" icon={CheckCircle2} onClick={() => onDecide(true, note.trim())}>
+            Duyệt
+          </Btn>
+        </>
+      }
+    >
+      <table className={`${erp.table} w-full`}>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.code}>
+              <td className={`${erp.td} ${erp.code} font-bold text-[#1f5fa8] whitespace-nowrap w-[40%]`}>{r.code}</td>
+              <td className={erp.td}>{r.detail}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <FormRow label="Ý kiến" required={needNote} error={noteErr ? 'Vui lòng nhập lý do từ chối' : undefined}>
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          rows={3}
+          placeholder="Ý kiến phê duyệt / lý do từ chối"
+          className={`${erp.inputFull} h-auto py-1.5 ${noteErr ? '!border-rose-500' : ''}`}
+        />
+      </FormRow>
+      <p className="text-[11px] text-slate-500">{hint}</p>
+    </ModalShell>
+  );
+};
+
+const dtShort = (iso: string) => `${dmy(iso)} ${new Date(iso).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
+
+/** Popup duyệt mã bảo hành (1 dòng). */
+const WarrantyDecisionModal: React.FC<{ project: BizProject; onClose: () => void; onDecide: (approve: boolean, note: string) => void }> = ({ project: p, onClose, onDecide }) => {
+  const w = p.warranty;
+  const code = warrantyCodeOf(p.masterCode);
+  return (
+    <CodeDecisionModal
+      title="Duyệt mã bảo hành"
+      rows={[
+        {
+          code,
+          detail: (
+            <>
+              <span className="block">
+                PM bảo hành: <b>{w?.pm || `Mặc định GĐ khối (${p.salesDirector || '—'})`}</b>
+              </span>
+              {w?.requestedBy && w.requestedAt && <span className="block text-[11.5px] text-slate-500">Yêu cầu bởi {w.requestedBy} lúc {dtShort(w.requestedAt)}</span>}
+            </>
+          ),
+        },
+      ]}
+      hint={`Duyệt → cấp mã ${code} (Open), tạo dự án & Jira, dự án chuyển "Bảo hành". Từ chối → ô tích về trống, người yêu cầu tích lại được.`}
+      onClose={onClose}
+      onDecide={onDecide}
+    />
+  );
+};
+
+/** Popup duyệt tất cả mã outsource đang chờ của dự án. */
+const OutsourceDecisionModal: React.FC<{ project: BizProject; onClose: () => void; onDecide: (approve: boolean, note: string) => void }> = ({ project: p, onClose, onDecide }) => (
+  <CodeDecisionModal
+    title="Duyệt mã outsource"
+    rows={pendingOutsource(p).map((o) => ({
+      code: o.code,
+      detail: (
+        <>
+          <span className="block">{o.content}</span>
+          <span className="block text-[11.5px] text-slate-500">
+            PM: <b className="text-slate-700">{o.pm || '—'}</b> · Yêu cầu bởi {o.createdBy} lúc {dtShort(o.createdAt)}
+          </span>
+        </>
+      ),
+    }))}
+    hint="Duyệt / Từ chối áp cho tất cả mã trong bảng. Duyệt → mã có hiệu lực, tạo dự án & Jira. Mã bị từ chối vẫn giữ số."
+    onClose={onClose}
+    onDecide={onDecide}
+  />
+);
+
+/** Popup tạo mã outsource: Nội dung thuê ngoài (bắt buộc) + PM phụ trách (trống ⇒ GĐ khối). */
+const OutsourceCreateModal: React.FC<{ code: string; pms: string[]; defaultPm?: string; onClose: () => void; onSave: (content: string, pm: string) => void }> = ({
+  code,
+  pms,
+  defaultPm,
+  onClose,
+  onSave,
+}) => {
+  const [content, setContent] = useState('');
+  const [pm, setPm] = useState(defaultPm || '');
+  const [touched, setTouched] = useState(false);
+  const err = touched && !content.trim();
+  return (
+    <ModalShell
+      title={
+        <>
+          <Plus size={16} /> Tạo mã outsource
+        </>
+      }
+      onClose={onClose}
+      footer={
+        <>
+          <Btn onClick={onClose}>Huỷ</Btn>
+          <Btn variant="primary" icon={Save} onClick={() => (content.trim() ? onSave(content.trim(), pm) : setTouched(true))}>
+            Lưu
+          </Btn>
+        </>
+      }
+    >
+      <p className="text-[12px] text-slate-500 italic">
+        Mã tự sinh theo mã sản xuất: <span className="font-mono font-bold not-italic text-[#1f5fa8]">{code}</span>
+      </p>
+      <FormRow label="Nội dung thuê ngoài" required error={err ? 'Vui lòng nhập nội dung thuê ngoài' : undefined}>
+        <textarea
+          autoFocus
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          rows={3}
+          placeholder="Nội dung công việc thuê ngoài"
+          className={`${erp.inputFull} h-auto py-1.5 ${err ? '!border-rose-500' : ''}`}
+        />
+      </FormRow>
+      <FormRow label="PM phụ trách">
+        <select value={pm} onChange={(e) => setPm(e.target.value)} className={`${erp.inputFull} h-8`}>
+          <option value="">Mặc định: Giám đốc khối</option>
+          {pms.map((n) => (
+            <option key={n}>{n}</option>
+          ))}
+        </select>
+      </FormRow>
+    </ModalShell>
+  );
+};
+
+/** Popup xác nhận tích "Tạo mã bảo hành" + chọn PM bảo hành (trống ⇒ GĐ khối); tích rồi không bỏ được. */
+const WarrantyRequestModal: React.FC<{ code: string; issueNow: boolean; pms: string[]; defaultPm?: string; salesDirector?: string; onClose: () => void; onConfirm: (pm: string) => void }> = ({
+  code,
+  issueNow,
+  pms,
+  defaultPm,
+  salesDirector,
+  onClose,
+  onConfirm,
+}) => {
+  const [pm, setPm] = useState(defaultPm || '');
+  return (
+    <ModalShell
+      title={
+        <>
+          <Plus size={16} /> {issueNow ? 'Cấp mã bảo hành' : 'Yêu cầu mã bảo hành'}
+        </>
+      }
+      onClose={onClose}
+      footer={
+        <>
+          <Btn onClick={onClose}>Huỷ</Btn>
+          <Btn variant="primary" icon={Check} onClick={() => onConfirm(pm)}>
+            {issueNow ? 'Cấp mã' : 'Gửi yêu cầu'}
+          </Btn>
+        </>
+      }
+    >
+      <p className="text-[12.5px] text-slate-700">
+        {issueNow ? 'Cấp mã bảo hành' : 'Gửi yêu cầu mã bảo hành'} <span className="font-mono font-bold text-[#1f5fa8]">{code}</span>
+        {issueNow ? ' ngay — dự án chuyển "Bảo hành".' : ' — chờ HOD duyệt.'}
+      </p>
+      <FormRow label="PM bảo hành">
+        <select value={pm} onChange={(e) => setPm(e.target.value)} className={`${erp.inputFull} h-8`}>
+          <option value="">— Mặc định: GĐ khối —{salesDirector ? ` (${salesDirector})` : ''}</option>
+          {[...new Set([...pms, pm].filter(Boolean))].map((n) => (
+            <option key={n}>{n}</option>
+          ))}
+        </select>
+      </FormRow>
+      <p className="text-[11.5px] italic text-amber-700">
+        {issueNow ? 'Mã đã cấp không xoá được. Đổi PM sau ở chế độ Sửa.' : 'Đã tích thì không bỏ tích được; không đổi PM khi đang chờ duyệt — đổi sau khi được cấp mã.'}
+      </p>
+    </ModalShell>
+  );
+};
+
 // ==========================================================================
 // Danh sách
 // ==========================================================================
-const LIST_HEAD = ['TT', 'Mã dự án', 'Tên dự án', 'Tên khách hàng', 'Khối', 'Loại dự án', 'Thời điểm dự kiến ký HĐ', 'Giá trị hợp đồng dự kiến', 'PM Kinh doanh', 'PM sản xuất', 'Trạng thái', 'Hạn lập PAKD', 'Phiên bản PAKD', 'Thao tác'];
+/** Trạng thái dự án (duyệt mã): chờ duyệt mã dự án, còn mã outsource chờ duyệt hoặc mã bảo hành chờ GĐK duyệt. */
+const codeApprovalPending = (p: BizProject) => p.status === 'Chờ duyệt mã' || pendingOutsource(p).length > 0 || p.warranty?.state === 'Chờ HOD duyệt';
+const LIST_HEAD = ['TT', 'Mã dự án', 'Tên dự án', 'Tên khách hàng', 'Khối', 'Loại dự án', 'Thời điểm dự kiến ký HĐ', 'Giá trị hợp đồng dự kiến', 'PM Kinh doanh', 'PM sản xuất', 'Trạng thái', 'Trạng thái dự án', 'Hạn lập PAKD', 'Phiên bản PAKD', 'Thao tác'];
 
 const ProjectList: React.FC<{
   projects: BizProject[];
@@ -478,6 +803,9 @@ const ProjectList: React.FC<{
   const [q, setQ] = useState('');
   const [division, setDivision] = useState('');
   const [status, setStatus] = useState('');
+  /** Lọc "đang chờ tôi duyệt" (link của banner) — chỉ theo phạm vi xem, bỏ các bộ lọc khác. */
+  const [pendingMine, setPendingMine] = useState(false);
+  useEffect(() => setPendingMine(false), [role]);
   const { targets } = useBusinessProjects();
   const years = useMemo(() => {
     const ys = new Set([String(new Date().getFullYear())]);
@@ -500,7 +828,7 @@ const ProjectList: React.FC<{
     );
   }, [projects, q, year, division]);
   const byStatus = (p: BizProject) => !status || p.status === status;
-  const rows = useMemo(() => base.filter(byStatus), [base, status]);
+  const rows = useMemo(() => (pendingMine ? projects.filter((p) => approvalNeededBy(p, role)) : base.filter(byStatus)), [base, status, pendingMine, projects, role]);
 
   const rev = rows.reduce((s, p) => s + p.expectedRevenue, 0);
   const contractRev = rows.reduce((s, p) => s + (p.contract?.value ?? (p.contractSigned ? p.expectedRevenue : 0)), 0);
@@ -523,7 +851,8 @@ const ProjectList: React.FC<{
           p.expectedRevenue,
           p.businessPm,
           p.productionPm,
-          p.status,
+          bizStatusLabel(p.status) + (showWarrantyPhase(p) ? ' (giai đoạn bảo hành)' : ''),
+          codeApprovalPending(p) ? 'Chờ duyệt mã' : 'Đã duyệt',
           [dl.text, dl.sub].filter(Boolean).join(' '),
           pakdVersionText(p),
           p.contractSigned ? (p.contract?.value ?? p.expectedRevenue) : '',
@@ -544,7 +873,7 @@ const ProjectList: React.FC<{
 
   // Dự án đang chờ chính vai trò này phê duyệt (tính trên toàn bộ danh sách, không theo bộ lọc).
   const needApproval = useMemo(() => projects.filter((p) => approvalNeededBy(p, role)), [projects, role]);
-  const approvalStatus: BizStatus | '' = role === 'GĐK' ? 'Chờ duyệt mã' : role === 'CFO' ? 'PAKD chờ duyệt' : '';
+  const approvalWhat: Partial<Record<BizRole, string>> = { GĐK: ' (duyệt mã dự án / PAKD chờ GĐ khối)', CFO: ' (PAKD chờ Kế toán)', BOD: ' (PAKD chờ BOD)' };
 
   return (
     <>
@@ -597,7 +926,7 @@ const ProjectList: React.FC<{
               <option value="">Tất cả trạng thái</option>
               {BIZ_STATUSES.map((s) => (
                 <option key={s} value={s}>
-                  {s} ({count(s)})
+                  {bizStatusLabel(s)} ({count(s)})
                 </option>
               ))}
             </select>
@@ -608,27 +937,25 @@ const ProjectList: React.FC<{
         }
         footer={`${rows.length} / ${projects.length} dự án · Đang xem với vai trò ${role} · Bấm vào dòng để xem chi tiết, bấm "Đã ký / Chưa ký" để cập nhật hợp đồng`}
       >
-        {needApproval.length > 0 && (
+        {(needApproval.length > 0 || pendingMine) && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 bg-rose-50 border-b border-rose-200 text-[12px] text-rose-700">
             <AlertCircle size={14} className="shrink-0" />
             <span>
               Bạn có <b>{needApproval.length}</b> dự án cần phê duyệt
-              {role === 'GĐK' ? ' (duyệt mã dự án)' : role === 'CFO' ? ' (duyệt PAKD / bản điều chỉnh)' : ''}:
+              {approvalWhat[role] || ''}:
             </span>
             {needApproval.map((p) => (
               <button key={p.id} type="button" onClick={() => onView(p)} className="font-semibold underline decoration-dotted underline-offset-2 hover:text-rose-900" title={p.name}>
                 {p.masterCode || p.name}
               </button>
             ))}
-            {approvalStatus && status !== approvalStatus && (
-              <button
-                type="button"
-                onClick={() => { setStatus(approvalStatus); setYear(''); setDivision(''); setQ(''); }}
-                className="ml-auto h-6 px-2 rounded border border-rose-300 bg-white font-semibold hover:bg-rose-100"
-              >
-                Lọc danh sách
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setPendingMine((x) => !x)}
+              className="ml-auto h-6 px-2 rounded border border-rose-300 bg-white font-semibold hover:bg-rose-100"
+            >
+              {pendingMine ? 'Bỏ lọc chờ tôi duyệt' : 'Lọc danh sách'}
+            </button>
           </div>
         )}
         <div className="overflow-x-auto">
@@ -671,7 +998,10 @@ const ProjectList: React.FC<{
                     <td className={`${erp.td} whitespace-nowrap`}>{p.businessPm || '—'}</td>
                     <td className={`${erp.td} whitespace-nowrap`}>{p.productionPm || '—'}</td>
                     <td className={`${erp.td} whitespace-nowrap`}>
-                      <StatusBadge status={p.status} />
+                      <ProjectStatus project={p} />
+                    </td>
+                    <td className={`${erp.td} whitespace-nowrap`}>
+                      {codeApprovalPending(p) ? <Tag cls="bg-amber-50 text-amber-700 border-amber-300">Chờ duyệt mã</Tag> : <span className="text-slate-700">Đã duyệt</span>}
                     </td>
                     <td className={`${erp.td} whitespace-nowrap leading-tight ${dl.cls || ''}`}>
                       {dl.text}
@@ -682,11 +1012,13 @@ const ProjectList: React.FC<{
                       {act && (
                         <button
                           type="button"
+                          disabled={!!act.locked}
+                          title={act.locked}
                           onClick={(e) => {
                             e.stopPropagation();
                             act.kind === 'decide' ? setDeciding(p) : onView(p);
                           }}
-                          className={`text-[12px] underline underline-offset-2 cursor-pointer ${act.kind === 'decide' ? 'text-rose-600 font-bold' : 'text-[#1f5fa8] hover:text-[#184c88]'}`}
+                          className={`text-[12px] underline underline-offset-2 ${act.locked ? 'text-slate-400 cursor-not-allowed' : act.kind === 'decide' ? 'text-rose-600 font-bold cursor-pointer' : 'text-[#1f5fa8] hover:text-[#184c88] cursor-pointer'}`}
                         >
                           {act.label}
                         </button>
@@ -1107,7 +1439,7 @@ const FinanceSection: React.FC<{
 
 /**
  * Thẻ "Mã dự án" gọn: bên trái Mã dự án (mã tổng, không gắn PM) · bên phải từng dòng
- * MÃ KINH DOANH · MÃ SẢN XUẤT · MÃ OUTSOURCE (tối đa MAX_OUTSOURCE) kèm PM phụ trách.
+ * MÃ KINH DOANH · MÃ SẢN XUẤT · MÃ BẢO HÀNH · MÃ OUTSOURCE (tối đa MAX_OUTSOURCE) kèm PM phụ trách.
  */
 type CodeLine = { label: string; code: React.ReactNode; pm: React.ReactNode; extra?: React.ReactNode };
 const CodeCard: React.FC<{ master: React.ReactNode; lines: CodeLine[]; actions?: React.ReactNode; note?: React.ReactNode; header?: React.ReactNode }> = ({ master, lines, actions, note, header }) => (
@@ -1138,16 +1470,116 @@ const PmText: React.FC<{ name?: string }> = ({ name }) => (
 );
 const AutoCode = () => <span className="font-sans font-normal italic text-slate-400 text-[12.5px]">Tự sinh sau khi GĐK duyệt</span>;
 
-const CodeTable: React.FC<{ project: BizProject; actor: string }> = ({ project: p, actor }) => {
-  const { projects, addOutsourceCode, setOutsourcePm, removeOutsourceCode } = useBusinessProjects();
-  const outs = p.outsourceCodes || [];
+/**
+ * Ô "Mã bảo hành" ở khung Mã dự án — chỉ tạo khi dự án Đóng. Tích (SM / Kế toán ⇒ chờ HOD duyệt; GĐK ⇒ cấp ngay);
+ * đã tích thì khoá, không bỏ tích; mã đã cấp không xoá. GĐK duyệt bằng nút trên thanh tiêu đề.
+ */
+const WarrantyCell: React.FC<{ project: BizProject; role: BizRole; actor: string; onFlash?: (msg: string) => void }> = ({ project: p, role, actor, onFlash }) => {
+  const { projects, requestWarranty } = useBusinessProjects();
+  const [asking, setAsking] = useState(false);
+  // Danh sách người có vai PM (PM KD / SX / bảo hành / outsource).
+  const pms = useMemo(() => peopleOf(projects, (x) => [x.businessPm, x.productionPm, x.warranty?.pm, ...(x.outsourceCodes || []).map((o) => o.pm)]), [projects]);
+  const w = p.warranty;
+  const issued = w?.state === 'Đã cấp mã';
+  const pending = w?.state === 'Chờ HOD duyệt';
+  const code = warrantyCodeOf(p.masterCode);
+  const hint = (t: string) => <span className="text-slate-400 italic text-[12.5px]">{t}</span>;
+  if (!p.masterCode) return hint('Tạo sau khi được cấp mã');
+  if (!issued && !pending && !canRequestWarranty(p)) return hint('Chỉ tạo sau khi Kết thúc dự án');
+  const canTick = canManageSubCodes(role) && !issued && !pending;
+  const gdk = role === 'GĐK';
+  const confirm = (pm: string) => {
+    const done = requestWarranty(p.id, actor, gdk, pm);
+    setAsking(false);
+    onFlash?.(done ? `Đã cấp mã bảo hành ${done} — dự án chuyển "Bảo hành"` : `Đã gửi yêu cầu mã bảo hành ${code} — Chờ HOD duyệt`);
+  };
+  const tip = issued ? 'Mã bảo hành đã cấp — không xoá được' : pending ? 'Đã gửi yêu cầu — không bỏ tích được' : canTick ? undefined : 'Chỉ SM / GĐK / Kế toán được tạo mã bảo hành';
+  return (
+    <span className="flex flex-col gap-1 py-0.5">
+      <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+        <label className={`inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-slate-700 ${canTick ? 'cursor-pointer' : 'cursor-not-allowed'} ${!canTick && !issued && !pending ? 'opacity-60' : ''}`} title={tip}>
+          <input type="checkbox" checked={issued || pending} disabled={!canTick} onChange={() => !issued && !pending && setAsking(true)} className="h-3.5 w-3.5 accent-[#1f5fa8]" />
+          Tạo mã bảo hành
+        </label>
+        {issued && (
+          <>
+            <span className="font-mono font-bold text-[#1f5fa8]">{w!.code}</span>
+            <RecordTag status={codeRecordStatus(p, w!.code)} code={w!.code} />
+            <JiraTag state={jiraOf(p, w!.code)} />
+          </>
+        )}
+        {pending && <Tag cls="bg-amber-50 text-amber-700 border-amber-300">Chờ HOD duyệt</Tag>}
+      </span>
+      {w?.state === 'Từ chối' && <span className="text-[11.5px] text-rose-600">Yêu cầu trước bị từ chối{w.rejectReason ? `: ${w.rejectReason}` : ''} — tích lại để gửi yêu cầu mới.</span>}
+      {!issued && <span className="text-[11.5px] italic text-slate-400">Cấp mã ⇒ tạo dự án & Jira (Open), dự án chuyển "Bảo hành"</span>}
+      <AnimatePresence>
+        {asking && (
+          <WarrantyRequestModal
+            key="warranty-request"
+            code={code}
+            issueNow={gdk}
+            pms={pms}
+            defaultPm={w?.state === 'Từ chối' ? w.pm : ''}
+            salesDirector={p.salesDirector}
+            onClose={() => setAsking(false)}
+            onConfirm={confirm}
+          />
+        )}
+      </AnimatePresence>
+    </span>
+  );
+};
+
+/** Nhãn trạng thái Jira của mã có hiệu lực. */
+const JiraTag: React.FC<{ state: JiraState }> = ({ state }) => (
+  <Tag cls={state === 'Đã tạo' ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-slate-100 text-slate-500 border-slate-300'}>Jira: {state}</Tag>
+);
+
+const CodeTable: React.FC<{ project: BizProject; actor: string; role: BizRole; onFlash?: (msg: string) => void }> = ({ project: p, actor, role, onFlash }) => {
+  const { projects, addOutsourceCode, removeOutsourceCode } = useBusinessProjects();
+  const [creating, setCreating] = useState(false);
+  const outs = liveOutsource(p);
   const pms = useMemo(
-    () => peopleOf(projects, (x) => [x.businessPm, x.productionPm, ...(x.outsourceCodes || []).map((o) => o.pm)]),
+    () => peopleOf(projects, (x) => [x.businessPm, x.productionPm, x.salesDirector, x.warranty?.pm, ...(x.outsourceCodes || []).map((o) => o.pm)]),
     [projects],
   );
-  const canAdd = !!p.masterCode && outs.length < MAX_OUTSOURCE;
+  const canManage = canManageSubCodes(role);
+  const nextCode = nextOutsourceCode(p);
+  const canAdd = !!nextCode && canManage;
+  const w = p.warranty;
+  const issued = p.status !== 'Chờ duyệt mã';
+  const closed = mainCodesClosed(p);
   const auto = <span className="text-slate-400 italic text-[12.5px]">Tự sinh sau khi GĐK duyệt</span>;
-  const code = (c: string) => (c ? <span className="font-mono font-bold text-[#1f5fa8]">{c}</span> : auto);
+  const code = (c: string) =>
+    c ? (
+      <span className="flex flex-wrap items-center gap-2">
+        <span className="font-mono font-bold text-[#1f5fa8]">{c}</span>
+        {issued && <RecordTag status={codeRecordStatus(p, c)} code={c} />}
+        {issued && <JiraTag state={jiraOf(p, c)} />}
+      </span>
+    ) : (
+      auto
+    );
+  const outCode = (o: BizOutsource) => (
+    <span className="flex flex-wrap items-center gap-2">
+      <span className="font-mono font-bold text-[#1f5fa8] cursor-help" title={o.content}>
+        {o.code}
+      </span>
+      {o.state === 'Chờ HOD duyệt' && <Tag cls="bg-amber-50 text-amber-700 border-amber-300">Chờ HOD duyệt</Tag>}
+      {o.state === 'Từ chối' && (
+        <span title={`Lý do: ${o.rejectReason || '—'} · ${o.decidedBy || ''} · ${dmy(o.decidedAt || '')}`} className="cursor-help">
+          <Tag cls="bg-rose-50 text-rose-700 border-rose-300">Từ chối</Tag>
+        </span>
+      )}
+      {o.state === 'Có hiệu lực' && <RecordTag status={codeRecordStatus(p, o.code)} code={o.code} />}
+      {o.state === 'Có hiệu lực' && <JiraTag state={jiraOf(p, o.code)} />}
+    </span>
+  );
+  const remove = (o: BizOutsource) => {
+    if (!window.confirm(`Xoá mã outsource ${o.code}?`)) return;
+    removeOutsourceCode(p.id, o.code, actor);
+    onFlash?.(`Đã xoá mã outsource ${o.code}`);
+  };
   return (
     <Panel
       title="Mã dự án"
@@ -1155,7 +1587,13 @@ const CodeTable: React.FC<{ project: BizProject; actor: string }> = ({ project: 
       noPad
       actions={
         p.masterCode ? (
-          <Btn icon={Plus} className="h-7 !text-[12px]" disabled={!canAdd} onClick={() => addOutsourceCode(p.id, '', actor)} title={canAdd ? 'Tạo mã outsource' : `Tối đa ${MAX_OUTSOURCE} mã outsource`}>
+          <Btn
+            icon={Plus}
+            className="h-7 !text-[12px]"
+            disabled={!canAdd}
+            onClick={() => setCreating(true)}
+            title={closed ? `${CLOSED_TIP} — không tạo mã outsource mới` : !canManage ? 'Chỉ SM / GĐK / Kế toán được tạo mã outsource' : !issued ? 'Tạo sau khi được cấp mã' : canAdd ? 'Tạo mã outsource' : `Tối đa ${MAX_OUTSOURCE} mã outsource`}
+          >
             Tạo mã outsource ({outs.length}/{MAX_OUTSOURCE})
           </Btn>
         ) : undefined
@@ -1166,8 +1604,9 @@ const CodeTable: React.FC<{ project: BizProject; actor: string }> = ({ project: 
           { label: 'Mã dự án', value: p.masterCode ? <span className="font-mono font-bold text-[#1f5fa8] text-[15px]">{p.masterCode}</span> : <span className="text-slate-400 font-semibold">Chờ GĐK duyệt</span> },
           { label: 'Mã kinh doanh', value: code(p.businessCode) },
           { label: 'Mã sản xuất', value: code(p.productionCode) },
-          ...outs.map((o, i) => ({ label: `Mã outsource${outs.length > 1 ? ` ${i + 1}` : ''}`, value: code(o.code) })),
-          ...(!outs.length ? [{ label: 'Mã outsource', value: <span className="text-slate-400 italic text-[12.5px]">{p.masterCode ? `Chưa có (tối đa ${MAX_OUTSOURCE} mã)` : 'Tạo sau khi được cấp mã'}</span> }] : []),
+          { label: 'Mã bảo hành', value: <WarrantyCell project={p} role={role} actor={actor} onFlash={onFlash} /> },
+          ...outs.map((o, i) => ({ label: `Mã outsource${outs.length > 1 ? ` ${i + 1}` : ''}`, value: outCode(o) })),
+          ...(!outs.length ? [{ label: 'Mã outsource', value: <span className="text-slate-400 italic text-[12.5px]">{closed ? 'Chưa có — dự án đã kết thúc' : issued && p.masterCode ? `Chưa có (tối đa ${MAX_OUTSOURCE} mã)` : 'Tạo sau khi được cấp mã'}</span> }] : []),
         ]}
         right={[
           {
@@ -1180,32 +1619,58 @@ const CodeTable: React.FC<{ project: BizProject; actor: string }> = ({ project: 
           },
           { label: 'PM kinh doanh', value: p.businessPm },
           { label: 'PM sản xuất', value: p.productionPm },
+          {
+            label: 'PM bảo hành',
+            // Đổi PM bảo hành ở chế độ Sửa (Update PM) — chỉ sau khi được cấp mã.
+            value: warrantyActive(w) ? (
+              <span className={w!.state === 'Chờ HOD duyệt' ? 'cursor-help' : undefined} title={w!.state === 'Chờ HOD duyệt' ? WAR_PM_LOCK_TIP : undefined}>
+                {w!.pm || <span className="text-slate-500">Mặc định GĐ khối ({p.salesDirector || '—'})</span>}
+              </span>
+            ) : (
+              ''
+            ),
+          },
           ...(!outs.length ? [{ label: 'PM outsource', value: p.outsourcePm }] : []),
           ...outs.map((o) => ({
             label: 'PM outsource',
             value: (
               <span className="flex items-center gap-1.5 w-full">
-                <select value={o.pm} onChange={(e) => setOutsourcePm(p.id, o.code, e.target.value, actor)} className={`${erp.inputFull} h-8 flex-1`}>
-                  <option value="">— Chọn PM outsource —</option>
-                  {[...new Set([...pms, o.pm].filter(Boolean))].map((n) => (
-                    <option key={n}>{n}</option>
-                  ))}
-                </select>
-                <button type="button" onClick={() => removeOutsourceCode(p.id, o.code, actor)} className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer" title="Xoá mã outsource">
-                  <Trash2 size={14} />
-                </button>
+                {/* Đổi PM outsource ở chế độ Sửa (Update PM). */}
+                <span className={`flex-1 min-w-0 ${o.pm ? 'text-slate-800' : 'text-slate-400'}`}>{o.pm || '—'}</span>
+                {/* Như code thật: mã Từ chối không có nút xoá ⇒ giữ số vĩnh viễn (srs:OQ-9 — đã chốt). */}
+                {role === 'GĐK' && o.state !== 'Từ chối' && !closed && (
+                  <button type="button" onClick={() => remove(o)} className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer" title="Xoá mã outsource">
+                    <Trash2 size={14} />
+                  </button>
+                )}
               </span>
             ),
           })),
         ]}
       />
+      <AnimatePresence>
+        {creating && nextCode && (
+          <OutsourceCreateModal
+            key="out-create"
+            code={nextCode}
+            pms={pms}
+            defaultPm={p.outsourcePm}
+            onClose={() => setCreating(false)}
+            onSave={(content, pm) => {
+              const c = addOutsourceCode(p.id, content, pm, actor, role === 'GĐK');
+              setCreating(false);
+              onFlash?.(role === 'GĐK' ? `Đã tạo mã outsource ${c} — có hiệu lực` : `Đã tạo mã outsource ${c} — Chờ HOD duyệt`);
+            }}
+          />
+        )}
+      </AnimatePresence>
     </Panel>
   );
 };
 
 /**
  * Thanh thao tác của bước hiện tại — luôn hiện dưới thanh tiêu đề (kể cả khi đã ẩn bảng quy trình bên phải):
- * GĐK duyệt mã · SM / GĐK lập PAKD · Kế toán (CFO) duyệt PAKD · SM / GĐK sửa PAKD · Kế toán mở lại dự án Pending.
+ * GĐK duyệt mã · người lập lập / sửa PAKD · GĐ khối / Kế toán / BOD duyệt PAKD (kể cả bản bị trả về) · Kết thúc dự án · mở lại dự án Pending / Đóng.
  * Vai trò không có quyền thao tác chỉ thấy thông báo đang chờ ai.
  */
 const StepActionBar: React.FC<{
@@ -1218,92 +1683,160 @@ const StepActionBar: React.FC<{
   onFinish: () => void;
   onAdjust: () => void;
 }> = ({ project: p, role, onApproveCode, onLapPakd, onDecide, onReopen, onFinish, onAdjust }) => {
-  const last = latestPakd(p);
+  const w = workingPakd(p);
   const left = p.pakdDeadline ? Math.ceil((new Date(`${p.pakdDeadline}T00:00:00`).getTime() - new Date(new Date().toDateString()).getTime()) / 86_400_000) : null;
   let text: React.ReactNode = null;
   let action: React.ReactNode = null;
   let waitingFor = '';
+  // Đã chốt 04/11: còn mã outsource chờ duyệt ⇒ chưa kết thúc được.
+  const finishBlock = pendingOutsource(p).length ? 'Còn mã outsource chờ HOD duyệt — duyệt / từ chối trước khi kết thúc' : undefined;
+  const finishBtn = (
+    <Btn icon={Flag} onClick={onFinish} disabled={!!finishBlock} title={finishBlock || `Dự án chuyển Đóng; ${inWarrantyPhase(p) ? 'mã bảo hành' : 'mã KD / SX / outsource'} Closed + gửi Jira pending`}>
+      Kết thúc dự án
+    </Btn>
+  );
+  const decideBtn = (label = 'Duyệt / Từ chối PAKD') => (
+    <Btn variant="primary" icon={ClipboardCheck} onClick={onDecide}>
+      {label}
+    </Btn>
+  );
+  /** Bản đang trong chuỗi duyệt: người quyết định thấy Duyệt / Từ chối; người sửa được thấy hướng dẫn; còn lại thấy đang chờ ai. */
+  const chainStep = (v: PakdVersion) => {
+    const desc = (
+      <>
+        {v.adjust ? 'Bản điều chỉnh ' : v.warranty ? 'PAKD bảo hành ' : 'PAKD '}
+        <b>V{v.version}</b> — {pakdStateLabel(v)}
+        {v.state === 'Từ chối' && v.note ? ` (${v.note})` : ''}
+      </>
+    );
+    if (canDecidePakd(v, role)) {
+      const how = isPakdReturned(v) ? 'bị trả về, bạn duyệt lại' : role === 'BOD' && v.state === 'Chờ CFO' ? 'BOD có thể duyệt thẳng' : 'đang chờ bạn duyệt';
+      text = (
+        <>
+          {desc} — {how}. Duyệt ⇒ <b>{pakdTargetLabel(pakdApproveTo(v, role))}</b>
+          {canEditPakdVersion(v, role) ? '; hoặc sửa PAKD bên dưới rồi bấm Gửi (= duyệt bước này)' : ''}.
+        </>
+      );
+      action = decideBtn(v.adjust ? 'Duyệt / Từ chối điều chỉnh' : undefined);
+    } else if (canEditPakdVersion(v, role))
+      text = (
+        <>
+          {desc} — sửa PAKD bên dưới rồi bấm <b>Gửi</b> ({pakdTargetLabel(pakdEntryState(role))}).
+        </>
+      );
+    else waitingFor = `${pakdWaitingText(v)} ${v.adjust ? 'bản điều chỉnh' : 'PAKD'} V${v.version}`;
+  };
+  const inLapPhase = p.status === 'Chưa có PAKD' || p.status === 'PAKD chờ duyệt' || p.status === 'Reject' || p.status === 'Bảo hành';
   if (p.status === 'Chờ duyệt mã') {
     if (role === 'GĐK') {
       // Nút "Duyệt mã dự án" nằm trên thanh tiêu đề (cạnh nút Sửa).
       text = <>Yêu cầu mở mã dự án đang chờ <b>Giám đốc khối</b> duyệt — bấm <b>Duyệt mã dự án</b> ở góc phải. Duyệt xong hệ thống sinh Mã dự án / Mã KD / Mã SX và bắt đầu đếm {PAKD_DAYS} ngày lập PAKD.</>;
     } else waitingFor = 'Giám đốc khối duyệt mã dự án';
-  } else if (p.status === 'Chưa có PAKD') {
-    if (canLapPakd(role)) {
+  } else if (inLapPhase) {
+    // Bảo hành: luồng như bản đầu nhưng không áp hạn; không Kết thúc / Mở lại ở trạng thái này.
+    const wb = p.status === 'Bảo hành';
+    const head = wb ? <>Dự án <b>Bảo hành</b> — </> : null;
+    const codeNote = wb ? <> Mã <b>{p.warranty?.code}</b> Open; KD / SX / outsource Closed.</> : null;
+    if (w) {
+      chainStep(w);
+      if (text) text = <>{head}{text}{codeNote}</>;
+    } else if (canLapPakd(role)) {
       text = (
         <>
-          {last?.state === 'Từ chối' ? <>PAKD V{last.version} bị từ chối{last.note ? ` (${last.note})` : ''} — cần lập lại. </> : 'Dự án cần lập phương án kinh doanh (PAKD). '}
-          Hạn lập: <b>{dmy(p.pakdDeadline || '')}</b>
-          {left !== null && <> ({left >= 0 ? `còn ${left} ngày` : `quá hạn ${-left} ngày`})</>}
-          {' '}— nhập PAKD bên dưới rồi bấm <b>Gửi Kế toán duyệt</b> ở góc phải.
+          {head}
+          {wb ? (
+            <>lập <b>PAKD bảo hành V{nextPakdVersion(p)}</b> (bản nháp chép từ bản áp dụng). </>
+          ) : (
+            <>
+              Dự án cần lập phương án kinh doanh (PAKD). Hạn lập: <b>{dmy(p.pakdDeadline || '')}</b>
+              {left !== null && <> ({left >= 0 ? `còn ${left} ngày` : `quá hạn ${-left} ngày`})</>}.{' '}
+            </>
+          )}
+          Nhập PAKD bên dưới rồi bấm <b>Gửi</b> — {pakdTargetLabel(pakdEntryState(role))}.{codeNote}
         </>
       );
-      // Nút "Lập PAKD" nằm trên thanh tiêu đề (cạnh nút Sửa).
-    } else waitingFor = `SM / Giám đốc khối lập PAKD (hạn ${dmy(p.pakdDeadline || '')})`;
-  } else if (p.status === 'PAKD chờ duyệt') {
-    if (role === 'CFO') {
-      text = <>PAKD V{last?.version} đang chờ <b>Kế toán (CFO)</b> duyệt.</>;
-      action = (
-        <Btn variant="primary" icon={ClipboardCheck} onClick={onDecide}>
-          Duyệt / Từ chối PAKD
-        </Btn>
-      );
-    } else waitingFor = `Kế toán (CFO) duyệt PAKD V${last?.version ?? ''}`;
+    } else waitingFor = wb ? 'người lập PAKD bảo hành' : `người lập PAKD (hạn ${dmy(p.pakdDeadline || '')})`;
   } else if (p.status === 'Đang thực hiện') {
-    const pending = last?.adjust && last.state === 'Chờ CFO';
-    if (pending && role === 'CFO') {
-      text = <>Bản điều chỉnh <b>PAKD V{last!.version}</b> đang chờ <b>Kế toán (CFO)</b> duyệt lại.</>;
-      action = (
-        <Btn variant="primary" icon={ClipboardCheck} onClick={onDecide}>
-          Duyệt / Từ chối điều chỉnh
-        </Btn>
-      );
-    } else if (pending) waitingFor = `Kế toán (CFO) duyệt bản điều chỉnh PAKD V${last!.version}`;
+    // Bản điều chỉnh đang trong chuỗi duyệt ⇒ thao tác duyệt; GĐ khối từ chối ⇒ SM / AM sửa tiếp.
+    if (w && (isPakdPending(w) || isPakdReturned(w) || !canEditPakdVersion(w, role))) chainStep(w);
     else if (canAdjustPakd(role)) {
       text = p.pakdDraft ? (
-        <>Có bản điều chỉnh PAKD {last?.adjust && last.state === 'Từ chối' ? <b>bị Kế toán từ chối</b> : 'đang soạn'} — sửa tiếp và gửi Kế toán duyệt lại.</>
+        <>Có bản điều chỉnh PAKD {w?.state === 'Từ chối' ? <b>bị {pakdStateLabel(w)}</b> : 'đang soạn'} — sửa tiếp và gửi duyệt lại ({pakdTargetLabel(pakdEntryState(role))}).</>
       ) : (
-        <>Dự án đang thực hiện. Giám đốc khối / Giám đốc kinh doanh (SM) có thể <b>sửa PAKD</b> (cập nhật đã ký hợp đồng, thông tin HĐ, chi phí) — Kế toán duyệt lại.</>
+        <>
+          Dự án đang thực hiện{inWarrantyPhase(p) ? ' (giai đoạn bảo hành)' : ''}. Có thể <b>sửa PAKD</b> (bản điều chỉnh) — gửi ⇒ {pakdTargetLabel(pakdEntryState(role))}, duyệt bước cuối mới áp dụng.
+        </>
       );
       action = (
         <span className="flex gap-2">
           <Btn variant="primary" icon={Pencil} onClick={onAdjust} title="Sửa PAKD ngay trên khung Phương án kinh doanh">
             {p.pakdDraft ? 'Tiếp tục sửa PAKD' : 'Sửa PAKD'}
           </Btn>
-          <Btn icon={Flag} onClick={onFinish}>
-            Kết thúc dự án
-          </Btn>
+          {finishBtn}
         </span>
       );
-    } else return (
-      <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-2 bg-slate-50">
-        <Btn icon={Flag} onClick={onFinish}>
-          Kết thúc dự án
-        </Btn>
-      </div>
-    );
+    } else
+      return (
+        <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-2 bg-slate-50">
+          {finishBtn}
+        </div>
+      );
   } else if (p.status === 'Pending') {
-    const waitingPakd = last?.state === 'Chờ CFO';
-    if (role === 'CFO') {
+    // Đã chốt 04/11: Pending khoá duyệt / từ chối / sửa / gửi PAKD — mở lại trước.
+    const dec = canDecidePakd(w, role);
+    const reopenOk = canReopen(role);
+    if (dec || reopenOk) {
       text = (
         <>
-          Dự án <b>Pending</b>: quá {PAKD_DAYS} ngày (hạn {dmy(p.pakdDeadline || '')}) {waitingPakd ? `PAKD V${last!.version} chưa được duyệt` : 'chưa có PAKD được duyệt'}. Kế toán mở lại để có thêm {PAKD_DAYS} ngày
-          {waitingPakd ? ', hoặc duyệt PAKD đang chờ' : ''}.
+          Dự án <b>Pending</b>: quá {PAKD_DAYS} ngày (hạn {dmy(p.pakdDeadline || '')}) {w ? `PAKD V${w.version} chưa qua bước Kế toán (${pakdStateLabel(w)})` : 'chưa có PAKD qua bước Kế toán'}.
+          {reopenOk ? ` Mở lại để có thêm ${PAKD_DAYS} ngày và tiếp tục duyệt / sửa PAKD.` : ' PAKD bị khoá cho đến khi CFO / GĐKD / GĐ khối mở lại dự án.'}
         </>
       );
       action = (
         <span className="flex gap-2">
-          {waitingPakd && (
-            <Btn variant="primary" icon={ClipboardCheck} onClick={onDecide}>
+          {dec && (
+            <Btn variant="primary" icon={ClipboardCheck} disabled title={PAKD_LOCKED_TIP}>
               Duyệt / Từ chối PAKD
             </Btn>
           )}
-          <Btn icon={RotateCcw} onClick={onReopen}>
-            Mở lại dự án
-          </Btn>
+          {reopenOk && (
+            <Btn icon={RotateCcw} onClick={onReopen}>
+              Mở lại dự án
+            </Btn>
+          )}
         </span>
       );
-    } else waitingFor = `Kế toán (CFO) mở lại dự án Pending (quá hạn PAKD ${dmy(p.pakdDeadline || '')})`;
+    } else waitingFor = `CFO / GĐKD / GĐ khối mở lại dự án Pending (quá hạn PAKD ${dmy(p.pakdDeadline || '')})`;
+  } else if (p.status === 'Kết thúc') {
+    // Đã chốt 04/11: CFO / GĐKD (SM) / GĐ khối mở lại; đang chờ duyệt mã bảo hành ⇒ khoá.
+    const wWait = p.warranty?.state === 'Chờ HOD duyệt';
+    text = (
+      <>
+        Dự án đã <b>Đóng</b> — {inWarrantyPhase(p) ? <>mã bảo hành <b>{p.warranty!.code}</b> và </> : null}mã KD / SX / outsource đã <b>Closed</b> (không đổi PM, không tạo / duyệt / xoá mã outsource).
+        {canManageSubCodes(role) && !wWait && !inWarrantyPhase(p) && <> Cần bảo hành: tích <b>Tạo mã bảo hành</b> ở khung Mã dự án.</>}
+      </>
+    );
+    if (canReopen(role))
+      action = (
+        <Btn icon={RotateCcw} onClick={onReopen} disabled={wWait} title={wWait ? 'Đang có yêu cầu mã bảo hành chờ HOD duyệt — không mở lại được' : inWarrantyPhase(p) ? 'Đang thực hiện; chỉ mã bảo hành về In Progress + gửi Jira reopen (KD / SX / outsource vẫn Closed)' : 'Đang thực hiện; mã KD / SX / outsource về In Progress + gửi Jira reopen'}>
+          Mở lại dự án
+        </Btn>
+      );
+  }
+  const wPending = p.warranty?.state === 'Chờ HOD duyệt';
+  const nOut = mainCodesClosed(p) ? 0 : pendingOutsource(p).length;
+  if (role === 'GĐK' && (wPending || nOut > 0)) {
+    const wNote = (
+      <>
+        Có {wPending && <b>mã bảo hành {warrantyCodeOf(p.masterCode)}</b>}
+        {wPending && nOut > 0 && ' và '}
+        {nOut > 0 && <b>{nOut} mã outsource</b>} đang chờ bạn duyệt — bấm{' '}
+        {wPending && <b>Duyệt mã bảo hành</b>}
+        {wPending && nOut > 0 && ' / '}
+        {nOut > 0 && <b>Duyệt mã outsource</b>} ở góc phải.
+      </>
+    );
+    text = text ? <>{text} {wNote}</> : <>{wNote}{waitingFor && <> Bước chính đang chờ {waitingFor}.</>}</>;
   }
   if (!text && !waitingFor) return null;
   if (!text)
@@ -1363,6 +1896,17 @@ const InfoGrid: React.FC<{ left: InfoItem[]; right: InfoItem[] }> = ({ left, rig
 // ==========================================================================
 // Chi tiết
 // ==========================================================================
+/** Nút vàng (warning) trên thanh tiêu đề — GĐK duyệt mã con đang chờ. */
+const WarnBtn: React.FC<{ onClick: () => void; children: React.ReactNode }> = ({ onClick, children }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[3px] border text-[12px] font-semibold whitespace-nowrap cursor-pointer bg-amber-500 border-amber-600 text-white hover:bg-amber-600"
+  >
+    <ClipboardCheck size={14} /> {children}
+  </button>
+);
+
 const ProjectDetail: React.FC<{
   project: BizProject;
   onBack: () => void;
@@ -1382,10 +1926,13 @@ const ProjectDetail: React.FC<{
   actor: string;
   onDecide: (approve: boolean, note: string) => void;
   onFinish: () => void;
-}> = ({ project: p, onBack, onUpdateBasic, onDelete, onImport, onSaveContract, onAttachments, role, onRoleChange, onApproveCode, onReopen, onSubmitPakd, onSavePakd, onAdjustPakd, onCancelAdjust, actor, onDecide, onFinish }) => {
+  onFlash?: (msg: string) => void;
+}> = ({ project: p, onBack, onUpdateBasic, onDelete, onImport, onSaveContract, onAttachments, role, onRoleChange, onApproveCode, onReopen, onSubmitPakd, onSavePakd, onAdjustPakd, onCancelAdjust, actor, onDecide, onFinish, onFlash }) => {
   const files = p.attachments || [];
-  const { projects } = useBusinessProjects();
+  const { projects, decideWarranty, decideOutsource } = useBusinessProjects();
   const [deciding, setDeciding] = useState(false);
+  const [decidingWarranty, setDecidingWarranty] = useState(false);
+  const [decidingOutsource, setDecidingOutsource] = useState(false);
   const [tab, setTab] = useState<DetailTab>('overview');
   const [showContract, setShowContract] = useState(false);
   /** "Sửa": sửa trực tiếp thông tin cơ bản trên màn chi tiết (AM / SM / GĐK). */
@@ -1433,6 +1980,8 @@ const ProjectDetail: React.FC<{
                 Duyệt mã dự án
               </Btn>
             )}
+            {p.warranty?.state === 'Chờ HOD duyệt' && role === 'GĐK' && <WarnBtn onClick={() => setDecidingWarranty(true)}>Duyệt mã bảo hành</WarnBtn>}
+            {pendingOutsource(p).length > 0 && role === 'GĐK' && !mainCodesClosed(p) && <WarnBtn onClick={() => setDecidingOutsource(true)}>Duyệt mã outsource ({pendingOutsource(p).length})</WarnBtn>}
             {pakdActions && (
               <>
                 {pakdActions.mode === 'adjust' && (
@@ -1441,10 +1990,10 @@ const ProjectDetail: React.FC<{
                   </Btn>
                 )}
                 <Btn icon={Save} onClick={() => pakdActions.save(false)}>
-                  Lưu nháp
+                  {pakdActions.saveLabel}
                 </Btn>
                 <Btn variant="primary" icon={Send} onClick={() => pakdActions.save(true)}>
-                  {pakdActions.mode === 'adjust' ? 'Gửi Kế toán duyệt điều chỉnh' : 'Gửi Kế toán duyệt'}
+                  {pakdActions.submitLabel}
                 </Btn>
               </>
             )}
@@ -1468,7 +2017,7 @@ const ProjectDetail: React.FC<{
         }
         meta={[
           { label: 'Version', value: `v${p.version}` },
-          { label: 'Trạng thái', value: <StatusBadge status={p.status} /> },
+          { label: 'Trạng thái', value: <ProjectStatus project={p} /> },
           ...(showPakd ? [{ label: 'PAKD', value: pakdVersionText(p) }] : []),
           { label: 'Cập nhật', value: dt(p.updatedAt) },
         ]}
@@ -1514,7 +2063,7 @@ const ProjectDetail: React.FC<{
         </>
       ) : (
         <>
-          <CodeTable project={p} actor={actor} />
+          <CodeTable project={p} actor={actor} role={role} onFlash={onFlash} />
 
           <FolderTabs
             tabs={[
@@ -1613,7 +2162,7 @@ const ProjectDetail: React.FC<{
           </div>
           )}
 
-          {/* PAKD: hiện sau khi GĐK duyệt mã. Chỉ SM / GĐK (lập, sửa) và Kế toán (duyệt) xem được — AM không xem PAKD. */}
+          {/* PAKD: hiện sau khi GĐK duyệt mã — người lập (AM / SM / GĐK) và người duyệt (GĐK / Kế toán / BOD). */}
           {p.status !== 'Chờ duyệt mã' &&
             (showPakd ? (
               <PakdForm
@@ -1633,7 +2182,7 @@ const ProjectDetail: React.FC<{
                 <div className="flex items-center justify-center gap-2.5 py-3 text-[12.5px] text-slate-500 text-center">
                   <Lock size={15} className="text-slate-400 shrink-0" />
                   <span>
-                    PAKD của dự án chỉ hiển thị với <b>Giám đốc kinh doanh (SM)</b>, <b>Giám đốc khối</b> và Kế toán duyệt.
+                    PAKD của dự án chỉ hiển thị với người lập (<b>AM</b>, <b>SM</b>, <b>Giám đốc khối</b>) và người duyệt (Kế toán, BOD).
                   </span>
                 </div>
               </Panel>
@@ -1644,6 +2193,31 @@ const ProjectDetail: React.FC<{
 
 
       <AnimatePresence>
+        {decidingOutsource && (
+          <OutsourceDecisionModal
+            key="outsource"
+            project={p}
+            onClose={() => setDecidingOutsource(false)}
+            onDecide={(approve, note) => {
+              const n = pendingOutsource(p).length;
+              decideOutsource(p.id, approve, actor, note);
+              setDecidingOutsource(false);
+              onFlash?.(`Đã ${approve ? 'duyệt' : 'từ chối'} ${n} mã outsource`);
+            }}
+          />
+        )}
+        {decidingWarranty && (
+          <WarrantyDecisionModal
+            key="warranty"
+            project={p}
+            onClose={() => setDecidingWarranty(false)}
+            onDecide={(approve, note) => {
+              const code = decideWarranty(p.id, approve, actor, note);
+              setDecidingWarranty(false);
+              onFlash?.(approve ? `Đã cấp mã bảo hành ${code}` : `Đã từ chối yêu cầu mã bảo hành ${warrantyCodeOf(p.masterCode)}`);
+            }}
+          />
+        )}
         {deciding && (
           <PakdDecisionModal
             key="decide"
@@ -1715,6 +2289,9 @@ const ProjectDetail: React.FC<{
 // Form tạo / sửa
 // ==========================================================================
 const inputCls = erp.inputFull;
+/** Tóm tắt mã bảo hành (chỉ xem) trong form sửa. */
+const warrantyText = (p: BizProject) =>
+  p.warranty?.state === 'Đã cấp mã' ? `${p.warranty.code}${p.warranty.pm ? ` · PM ${p.warranty.pm}` : ''}` : p.warranty?.state === 'Chờ HOD duyệt' ? 'Chờ HOD duyệt' : 'Chưa có';
 /** Ô nhập trong bảng (kiểu bảng tính): không viền, nền đổi khi focus. */
 
 
@@ -1894,18 +2471,19 @@ const ProjectForm: React.FC<{
       ))}
     </select>
   );
-  /** Sửa dự án: PM hiện tại + nút "Update PM" (bấm mới hiện ô chọn PM khác); tạo mới thì chọn trực tiếp. */
+  /** Sửa dự án: PM hiện tại + nút "Update PM" (bấm mới hiện ô chọn PM khác); tạo mới thì chọn trực tiếp. `locked` ⇒ nút khoá (mã Closed). */
   const [pmEditing, setPmEditing] = useState<Record<string, boolean>>({});
-  const pmField = (k: 'businessPm' | 'productionPm' | 'outsourcePm', select: React.ReactNode) => {
-    if (!isEdit || pmEditing[k])
+  const codesClosed = isEdit && mainCodesClosed(initial!);
+  const pmBox = (key: string, value: string, reset: () => void, select: React.ReactNode, locked = false, lockTip = CLOSED_TIP) => {
+    if (!isEdit || (pmEditing[key] && !locked))
       return isEdit ? (
         <span className="flex items-center gap-1.5 w-full">
           <span className="flex-1 min-w-0">{select}</span>
           <button
             type="button"
             onClick={() => {
-              set(k, (initial![k] as string) || '');
-              setPmEditing((x) => ({ ...x, [k]: false }));
+              reset();
+              setPmEditing((x) => ({ ...x, [key]: false }));
             }}
             className="shrink-0 p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
             title="Huỷ đổi PM"
@@ -1918,13 +2496,66 @@ const ProjectForm: React.FC<{
       );
     return (
       <span className="flex items-center justify-between gap-2 w-full">
-        <span className={f[k] ? 'text-slate-800' : 'text-slate-400'}>{(f[k] as string) || '—'}</span>
-        <Btn icon={UserCog} className="h-7 !text-[12px] shrink-0" onClick={() => setPmEditing((x) => ({ ...x, [k]: true }))}>
+        <span className={value ? 'text-slate-800' : 'text-slate-400'}>{value || '—'}</span>
+        <Btn icon={UserCog} className="h-7 !text-[12px] shrink-0" disabled={locked} title={locked ? lockTip : undefined} onClick={() => setPmEditing((x) => ({ ...x, [key]: true }))}>
           Update PM
         </Btn>
       </span>
     );
   };
+  const pmField = (k: 'businessPm' | 'productionPm' | 'outsourcePm', select: React.ReactNode) => pmBox(k, (f[k] as string) || '', () => set(k, (initial![k] as string) || ''), select, codesClosed);
+  /** Sửa dự án: PM của mã con — mã outsource chưa xoá & chưa bị từ chối, mã bảo hành đã cấp (chờ duyệt ⇒ khoá). */
+  const subPms = useMemo(() => peopleOf(projects, (p) => [p.businessPm, p.productionPm, p.salesDirector, p.warranty?.pm, ...(p.outsourceCodes || []).map((o) => o.pm)]), [projects]);
+  const pmSelect = (value: string, onChange: (v: string) => void, ph: string) => (
+    <select value={value} onChange={(e) => onChange(e.target.value)} className={`${erp.inputFull} h-8`}>
+      <option value="">{ph}</option>
+      {[...new Set([...subPms, value].filter(Boolean))].map((n) => (
+        <option key={n} value={n}>
+          {n}
+        </option>
+      ))}
+    </select>
+  );
+  const setOutPm = (code: string, pm: string) =>
+    setF((prev) => ({ ...prev, outsourceCodes: (prev.outsourceCodes || []).map((o) => (!o.deletedAt && o.code === code ? { ...o, pm } : o)) }));
+  const setWarPm = (pm: string) => setF((prev) => (prev.warranty ? { ...prev, warranty: { ...prev.warranty, pm } } : prev));
+  const subPmRows: InfoItem[] = !isEdit
+    ? []
+    : [
+        ...(warrantyActive(f.warranty)
+          ? [
+              {
+                label: 'PM bảo hành',
+                value: pmBox(
+                  'warranty',
+                  f.warranty!.pm || `Mặc định GĐ khối (${f.salesDirector || '—'})`,
+                  () => setWarPm(initial!.warranty?.pm || ''),
+                  pmSelect(f.warranty!.pm, setWarPm, '— Mặc định GĐ khối —'),
+                  // Chờ HOD duyệt ⇒ khoá đổi PM.
+                  f.warranty!.state === 'Chờ HOD duyệt' || (!!f.warranty!.code && codeRecordStatus(initial!, f.warranty!.code) === 'Closed'),
+                  f.warranty!.state === 'Chờ HOD duyệt' ? WAR_PM_LOCK_TIP : CLOSED_TIP,
+                ),
+              },
+            ]
+          : []),
+        ...liveOutsource(f).map((o) => ({
+          label: `PM ${o.code}`,
+          value:
+            o.state === 'Từ chối' ? (
+              <span className="text-slate-500" title="Mã đã bị từ chối — chỉ xem">
+                {o.pm || '—'} <span className="text-[11.5px] text-rose-600">(Từ chối)</span>
+              </span>
+            ) : (
+              pmBox(
+                `out:${o.code}`,
+                o.pm,
+                () => setOutPm(o.code, liveOutsource(initial!).find((x) => x.code === o.code)?.pm || ''),
+                pmSelect(o.pm, (v) => setOutPm(o.code, v), '— Chọn PM outsource —'),
+                codesClosed,
+              )
+            ),
+        })),
+      ];
   const td = `${erp.td} bg-[#f3f6fa] text-slate-600 w-[30%] border-l-0`;
   const auto = <span className="text-slate-400 italic font-sans font-normal text-[12.5px]">Tự sinh sau khi GĐK duyệt</span>;
 
@@ -1947,7 +2578,7 @@ const ProjectForm: React.FC<{
         }
         meta={[
           { label: 'Version', value: isEdit ? `v${initial!.version} → v${initial!.version + 1}` : 'Mới' },
-          { label: 'Trạng thái', value: isEdit ? <StatusBadge status={initial!.status} /> : <Tag cls="bg-slate-100 text-slate-600 border-slate-300">Đang soạn</Tag> },
+          { label: 'Trạng thái', value: isEdit ? <ProjectStatus project={initial!} /> : <Tag cls="bg-slate-100 text-slate-600 border-slate-300">Đang soạn</Tag> },
           { label: 'Người tạo', value: f.creator || actor },
         ]}
       />
@@ -1961,7 +2592,7 @@ const ProjectForm: React.FC<{
             {willIssue
               ? 'Giám đốc khối tạo → hệ thống cấp mã ngay (bỏ bước duyệt mã)'
               : 'AM / SM gửi yêu cầu → Giám đốc khối duyệt → hệ thống cấp Mã dự án / Mã KD / Mã SX'}
-            {` → SM / GĐK lập PAKD trong ${PAKD_DAYS} ngày → Kế toán (CFO) duyệt; quá hạn chưa được duyệt → dự án Pending.`}
+            {` → lập PAKD trong ${PAKD_DAYS} ngày → GĐ khối → Kế toán → BOD duyệt; quá hạn chưa qua bước Kế toán → dự án Pending.`}
           </span>
         </div>
       )}
@@ -1980,13 +2611,21 @@ const ProjectForm: React.FC<{
         <InfoGrid
           left={[
             { label: 'Mã dự án', value: f.masterCode ? <span className="font-mono font-bold text-[#1f5fa8] text-[15px]">{f.masterCode}</span> : auto },
-            { label: 'Mã kinh doanh', value: f.businessCode ? <span className="font-mono font-bold text-[#1f5fa8]">{f.businessCode}</span> : auto },
-            { label: 'Mã sản xuất', value: f.productionCode ? <span className="font-mono font-bold text-[#1f5fa8]">{f.productionCode}</span> : auto },
+            { label: 'Mã kinh doanh', value: f.businessCode ? <span className="flex items-center gap-2"><span className="font-mono font-bold text-[#1f5fa8]">{f.businessCode}</span>{isEdit && <RecordTag status={codeRecordStatus(initial!, f.businessCode)} />}</span> : auto },
+            { label: 'Mã sản xuất', value: f.productionCode ? <span className="flex items-center gap-2"><span className="font-mono font-bold text-[#1f5fa8]">{f.productionCode}</span>{isEdit && <RecordTag status={codeRecordStatus(initial!, f.productionCode)} />}</span> : auto },
+            {
+              label: 'Mã bảo hành',
+              value: (
+                <span className="text-slate-400 italic text-[12.5px]">
+                  {isEdit ? `${warrantyText(initial!)} — tạo ở khối Mã dự án (chỉ khi dự án Đóng)` : 'Tạo sau khi Kết thúc dự án'}
+                </span>
+              ),
+            },
             {
               label: 'Mã outsource',
               value: (
                 <span className="text-slate-400 italic text-[12.5px]">
-                  {isEdit ? `${(initial!.outsourceCodes || []).map((o) => o.code).join(', ') || 'Chưa có'} — tạo / sửa ở khối Mã dự án sau khi lưu` : `Tạo sau khi được cấp mã (tối đa ${MAX_OUTSOURCE} mã)`}
+                  {isEdit ? `${liveOutsource(initial!).map((o) => o.code).join(', ') || 'Chưa có'} — tạo / sửa ở khối Mã dự án sau khi lưu` : `Tạo sau khi được cấp mã (tối đa ${MAX_OUTSOURCE} mã)`}
                 </span>
               ),
             },
@@ -2035,6 +2674,7 @@ const ProjectForm: React.FC<{
                 </select>,
               ),
             },
+            ...subPmRows,
           ]}
         />
       </Panel>

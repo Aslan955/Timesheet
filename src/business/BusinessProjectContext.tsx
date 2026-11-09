@@ -26,54 +26,130 @@ export const PROJECT_TYPES = ['Fixed Cost', 'Time & Material', 'ODC', 'Cho thuê
  * Vòng đời dự án:
  *   AM / SM (Giám đốc kinh doanh) / GĐK tạo dự án → Chờ duyệt mã → (GĐK duyệt → hệ thống sinh Mã dự án / KD / SX) → Chưa có PAKD
  *   (GĐK tự tạo → mã được cấp ngay, bỏ bước duyệt)
- *   → (SM / GĐK lập & nộp PAKD trong PAKD_DAYS ngày) → PAKD chờ duyệt → (Kế toán / CFO duyệt → V1) → Đang thực hiện → Kết thúc.
- * Hết PAKD_DAYS ngày mà PAKD chưa có hoặc chưa được Kế toán duyệt → tự động "Pending".
- *   Kế toán (CFO) có thể mở lại → hạn PAKD_DAYS ngày mới.
- * Dự án đã duyệt: bấm "Sửa" → sửa trực tiếp thông tin cơ bản trên màn chi tiết (AM / SM / GĐK); "Sửa PAKD" ngay trên khung PAKD (SM / GĐK) → gửi Kế toán duyệt lại;
- *   mỗi lần Kế toán duyệt sinh phiên bản mới V2, V3…
+ *   → (lập & nộp PAKD trong PAKD_DAYS ngày) → PAKD chờ duyệt → (GĐ khối → Kế toán (CFO) → BOD duyệt → V1) → Đang thực hiện → Đóng (Kết thúc dự án)
+ *   → (cấp mã bảo hành .3) → Bảo hành (lập PAKD bảo hành V(n+1), duyệt như bản đầu, không hạn 30 ngày) → Đang thực hiện (giai đoạn bảo hành) → Đóng.
+ *   Bản ghi dự án IMIS của mã đang hoạt động theo trạng thái dự án (recordStatusOf); Đóng ⇒ Closed + Jira pending; mở lại ⇒ Jira reopen.
+ * Chuỗi duyệt PAKD (mọi bản: đầu, điều chỉnh, bảo hành): Chờ GĐ khối → Chờ Kế toán → Chờ BOD → Đã duyệt.
+ *   Lập = duyệt luôn bước của vai cao nhất (BOD ⇒ Đã duyệt; CFO ⇒ chờ BOD; GĐK ⇒ chờ CFO; SM / AM ⇒ chờ GĐ khối).
+ *   Người duyệt sửa được bản đang ở chân mình ("Gửi" = duyệt bước đó). Từ chối (bắt buộc lý do) ⇒ cấp liền trước duyệt lại;
+ *   GĐ khối từ chối ⇒ SM / AM sửa và gửi lại. BOD duyệt thẳng được bản đang chờ Kế toán.
+ * Hết PAKD_DAYS ngày mà PAKD chưa qua bước Kế toán → tự động "Pending" (mở lại → hạn PAKD_DAYS ngày mới).
+ * Dự án đã duyệt: bấm "Sửa" → sửa trực tiếp thông tin cơ bản trên màn chi tiết (AM / SM / GĐK); "Sửa PAKD" ngay trên khung PAKD → bản điều chỉnh đi lại chuỗi duyệt;
+ *   mỗi lần BOD duyệt sinh phiên bản mới V2, V3…
+ * Mã con: KD .1 · SX .2 · bảo hành [Mã tổng].3 (tối đa 1, chỉ khi Đóng, GĐK duyệt, không xoá) · outsource [Mã SX].1…5 (GĐK duyệt; số đã xoá được dùng lại).
  */
-export type BizStatus = 'Chờ duyệt mã' | 'Chưa có PAKD' | 'PAKD chờ duyệt' | 'Đang thực hiện' | 'Kết thúc' | 'Pending';
-export const BIZ_STATUSES: BizStatus[] = ['Chờ duyệt mã', 'Chưa có PAKD', 'PAKD chờ duyệt', 'Đang thực hiện', 'Kết thúc', 'Pending'];
+export type BizStatus = 'Chờ duyệt mã' | 'Chưa có PAKD' | 'PAKD chờ duyệt' | 'Reject' | 'Đang thực hiện' | 'Kết thúc' | 'Bảo hành' | 'Pending';
+export const BIZ_STATUSES: BizStatus[] = ['Chờ duyệt mã', 'Chưa có PAKD', 'PAKD chờ duyệt', 'Reject', 'Đang thực hiện', 'Kết thúc', 'Bảo hành', 'Pending'];
+/** Nhãn hiển thị — khoá 'Kết thúc' hiện là "Đóng" (giữ khoá cũ vì WorkflowDrawer / ProjectTracker so sánh literal). */
+export const bizStatusLabel = (s: BizStatus) => (s === 'Kết thúc' ? 'Đóng' : s);
+/** Dự án đã Đóng (không tính "Bảo hành" — đang lập / duyệt PAKD bảo hành). */
+export const isProjectClosed = (p: Pick<BizProject, 'status'>) => p.status === 'Kết thúc';
+/** Đã cấp mã bảo hành ⇒ dự án ở giai đoạn bảo hành (chạy trên mã .3). */
+export const inWarrantyPhase = (p: Pick<BizProject, 'warranty'>) => p.warranty?.state === 'Đã cấp mã';
+/** Bản ghi dự án KD / SX / outsource Closed: dự án Đóng / Bảo hành, hoặc đã sang giai đoạn bảo hành. */
+export const mainCodesClosed = (p: Pick<BizProject, 'status' | 'warranty'>) => p.status === 'Kết thúc' || p.status === 'Bảo hành' || inWarrantyPhase(p);
 /** Vai trò được tạo dự án / sửa thông tin cơ bản. */
 export const canCreateProject = (role: BizRole) => role === 'AM' || role === 'SM' || role === 'GĐK';
-/** Vai trò được lập PAKD lần đầu (trong hạn PAKD_DAYS ngày). */
-export const canLapPakd = (role: BizRole) => role === 'SM' || role === 'GĐK';
-/** Vai trò được xem PAKD của dự án: SM / GĐK (lập, sửa) và Kế toán (duyệt). AM không xem được PAKD. */
-export const canViewPakd = (role: BizRole) => role === 'SM' || role === 'GĐK' || role === 'CFO';
-/** Số phiên bản PAKD kế tiếp = số bản đã được Kế toán duyệt + 1 (V1, V2, V3… sinh khi duyệt). */
+/** Vai trò được lập PAKD (bản đầu, điều chỉnh, bảo hành) — trạng thái sau khi gửi theo vai cao nhất. */
+export const canLapPakd = (role: BizRole) => role === 'AM' || role === 'SM' || role === 'GĐK' || role === 'CFO' || role === 'BOD';
+/** Vai trò xem được khối PAKD: người lập + người duyệt. */
+export const canViewPakd = canLapPakd;
+/** Đã chốt 04/11: mở lại dự án Pending / Đóng như CanReopen — CFO, GĐKD (SM), GĐ khối (quản trị không có trong bộ chọn vai). */
+export const canReopen = (role: BizRole) => role === 'CFO' || role === 'SM' || role === 'GĐK';
+/** Đã chốt 04/11: dự án Pending khoá duyệt / từ chối / sửa / gửi PAKD — phải Mở lại trước. */
+export const isPakdLocked = (p: Pick<BizProject, 'status'>) => p.status === 'Pending';
+export const PAKD_LOCKED_TIP = 'Dự án đang Pending — Mở lại trước';
+/** Số phiên bản PAKD kế tiếp = số bản đã được duyệt + 1 (V1, V2, V3… sinh khi BOD duyệt). */
 export const nextPakdVersion = (p: Pick<BizProject, 'pakd'>) => p.pakd.filter((v) => v.state === 'Đã duyệt').length + 1;
-/** Số ngày (kể từ ngày cấp mã / mở lại) để có PAKD được Kế toán duyệt, quá hạn → Pending. */
+/** Số ngày (kể từ ngày cấp mã / mở lại) để PAKD qua bước Kế toán, quá hạn → Pending. */
 export const PAKD_DAYS = 30;
 /** Chỉ xoá được dự án khi Giám đốc khối chưa duyệt (trạng thái "Chờ duyệt mã"). Đã duyệt / đã cấp mã thì không xoá được. */
 export const canDeleteProject = (p: Pick<BizProject, 'status'>) => p.status === 'Chờ duyệt mã';
 
 /** Vai trò trong quy trình (chưa có đăng nhập — chọn trên màn để thao tác thử). */
-export type BizRole = 'AM' | 'GĐK' | 'SM' | 'PM' | 'CFO';
+export type BizRole = 'AM' | 'GĐK' | 'SM' | 'PM' | 'CFO' | 'BOD';
 export const BIZ_ROLES: { key: BizRole; label: string }[] = [
-  { key: 'AM', label: 'AM (tạo yêu cầu cấp mã)' },
-  { key: 'GĐK', label: 'GĐK (duyệt mã, lập PAKD)' },
+  { key: 'AM', label: 'AM (tạo yêu cầu cấp mã, lập PAKD)' },
   { key: 'SM', label: 'Giám đốc kinh doanh (SM)' },
+  { key: 'GĐK', label: 'GĐK (duyệt mã, duyệt PAKD bước 1)' },
   { key: 'CFO', label: 'Kế toán (CFO)' },
+  { key: 'BOD', label: 'BOD (duyệt PAKD bước cuối)' },
 ];
 
-/** 1 phiên bản PAKD nộp duyệt. Người duyệt: Kế toán (CFO). */
-export type PakdState = 'Chờ CFO' | 'Đã duyệt' | 'Từ chối';
+/** Bước duyệt PAKD: GĐ khối → Kế toán (CFO) → BOD. */
+export type PakdStep = 'GĐK' | 'CFO' | 'BOD';
+export const PAKD_STEP_LABEL: Record<PakdStep, string> = { GĐK: 'GĐ khối', CFO: 'Kế toán', BOD: 'BOD' };
+/** 1 phiên bản PAKD nộp duyệt. */
+export type PakdState = 'Chờ GĐK' | 'Chờ CFO' | 'Chờ BOD' | 'Đã duyệt' | 'Từ chối';
 export interface PakdVersion {
   version: number;
   submittedAt: string; // YYYY-MM-DD
   submittedBy: string;
   state: PakdState;
+  /** Bước đã từ chối (state = 'Từ chối'); thiếu ⇒ coi như GĐ khối từ chối. */
+  rejectedStep?: PakdStep;
   decidedAt?: string; // ngày duyệt / từ chối cuối cùng
   decidedBy?: string;
   note?: string;
-  /** Bản điều chỉnh PAKD sau khi dự án đã được duyệt (GĐK / SM sửa → Kế toán duyệt lại). */
+  /** Bản điều chỉnh PAKD sau khi dự án đã được duyệt. */
   adjust?: boolean;
+  /** PAKD bảo hành — lập ở trạng thái "Bảo hành" sau khi cấp mã .3. */
+  warranty?: boolean;
 }
-/** Vai trò được sửa (điều chỉnh) PAKD khi dự án đang thực hiện. */
-export const canAdjustPakd = (role: BizRole) => role === 'GĐK' || role === 'SM';
-/** Vai trò đang phải duyệt phiên bản này (nếu còn chờ). */
-export const pendingRole = (v?: PakdVersion): BizRole | null => (v?.state === 'Chờ CFO' ? 'CFO' : null);
+/** Vai trò được lập bản điều chỉnh PAKD khi dự án đang thực hiện. */
+export const canAdjustPakd = canLapPakd;
 export const latestPakd = (p: Pick<BizProject, 'pakd'>) => p.pakd[p.pakd.length - 1] as PakdVersion | undefined;
+export const isPakdPending = (v?: PakdVersion) => v?.state === 'Chờ GĐK' || v?.state === 'Chờ CFO' || v?.state === 'Chờ BOD';
+/** Bước đang chờ duyệt. */
+const WAIT: Record<PakdStep, PakdState> = { GĐK: 'Chờ GĐK', CFO: 'Chờ CFO', BOD: 'Chờ BOD' };
+export const pendingStep = (v?: PakdVersion): PakdStep | null => (v?.state === 'Chờ GĐK' ? 'GĐK' : v?.state === 'Chờ CFO' ? 'CFO' : v?.state === 'Chờ BOD' ? 'BOD' : null);
+const rejectedStepOf = (v: PakdVersion): PakdStep => v.rejectedStep || 'GĐK';
+const PREV_STEP: Record<PakdStep, PakdStep | null> = { GĐK: null, CFO: 'GĐK', BOD: 'CFO' };
+/** Vai trò phải quyết định bản này: chờ bước X ⇒ X; bị trả về ⇒ cấp liền trước duyệt lại; GĐ khối từ chối ⇒ không ai (SM / AM sửa). */
+export const pendingRole = (v?: PakdVersion): BizRole | null =>
+  !v ? null : isPakdPending(v) ? pendingStep(v) : v.state === 'Từ chối' ? PREV_STEP[rejectedStepOf(v)] : null;
+/** Bản bị trả về chờ cấp liền trước duyệt lại (BOD / Kế toán từ chối). */
+export const isPakdReturned = (v?: PakdVersion) => v?.state === 'Từ chối' && !!PREV_STEP[rejectedStepOf(v)];
+/** Được Duyệt / Từ chối: đúng vai đang chờ, hoặc BOD duyệt thẳng bản chờ Kế toán. */
+export const canDecidePakd = (v: PakdVersion | undefined, role: BizRole) => !!v && (pendingRole(v) === role || (role === 'BOD' && v.state === 'Chờ CFO'));
+/** Duyệt ⇒ trạng thái kế tiếp (bị trả về ⇒ quay lại chờ bước đã từ chối). */
+export const pakdApproveTo = (v: PakdVersion, role: BizRole): PakdState =>
+  v.state === 'Từ chối' ? WAIT[rejectedStepOf(v)] : v.state === 'Chờ GĐK' ? 'Chờ CFO' : v.state === 'Chờ CFO' && role !== 'BOD' ? 'Chờ BOD' : 'Đã duyệt';
+/** Từ chối ⇒ bước ghi nhận từ chối (BOD từ chối bản chờ Kế toán tính là bước Kế toán). */
+export const pakdRejectStep = (v: PakdVersion): PakdStep => (v.state === 'Từ chối' ? PREV_STEP[rejectedStepOf(v)] || 'GĐK' : pendingStep(v) || 'GĐK');
+/** Lập / gửi lại = duyệt luôn bước của vai cao nhất. */
+export const pakdEntryState = (role: BizRole): PakdState => (role === 'BOD' ? 'Đã duyệt' : role === 'CFO' ? 'Chờ BOD' : role === 'GĐK' ? 'Chờ CFO' : 'Chờ GĐK');
+/** Sửa bản đang làm: chưa có ⇒ người lập; chờ bước X ⇒ vai X; bị trả về ⇒ cấp liền trước; GĐ khối từ chối ⇒ SM / AM. */
+export const canEditPakdVersion = (v: PakdVersion | undefined, role: BizRole) =>
+  !v ? canLapPakd(role) : v.state === 'Từ chối' && !isPakdReturned(v) ? role === 'SM' || role === 'AM' : (isPakdPending(v) || isPakdReturned(v)) && pendingRole(v) === role;
+/** Người duyệt sửa ở chân mình ⇒ "Gửi" = duyệt bước đó (giữ bản, không thêm bản mới). */
+export const isApproverEdit = (v: PakdVersion | undefined, role: BizRole) => !!v && (isPakdPending(v) || isPakdReturned(v)) && canEditPakdVersion(v, role);
+/** Trạng thái sau khi bấm "Gửi". */
+export const pakdSubmitTarget = (v: PakdVersion | undefined, role: BizRole): PakdState => (isApproverEdit(v, role) ? pakdApproveTo(v!, role) : pakdEntryState(role));
+/** Nhãn trạng thái bản PAKD: "Chờ GĐ khối duyệt" / "Kế toán từ chối"… */
+export const pakdStateLabel = (v?: PakdVersion) =>
+  !v ? 'Chưa có PAKD' : isPakdPending(v) ? `Chờ ${PAKD_STEP_LABEL[pendingStep(v)!]} duyệt` : v.state === 'Từ chối' ? `${PAKD_STEP_LABEL[rejectedStepOf(v)]} từ chối` : v.state;
+/** Nhãn đích sau khi gửi / duyệt. */
+export const pakdTargetLabel = (s: PakdState) => pakdStateLabel({ state: s } as PakdVersion);
+/** Bản đang chờ ai: "GĐ khối duyệt" / "Kế toán duyệt lại" / "SM / AM sửa và gửi lại". */
+export const pakdWaitingText = (v?: PakdVersion) =>
+  !v ? '' : isPakdPending(v) ? `${PAKD_STEP_LABEL[pendingStep(v)!]} duyệt` : isPakdReturned(v) ? `${PAKD_STEP_LABEL[pendingRole(v) as PakdStep]} duyệt lại` : v.state === 'Từ chối' ? 'SM / AM sửa và gửi lại' : '';
+/** Bản PAKD đang làm của chu kỳ hiện tại (bản đầu / điều chỉnh / bảo hành chưa duyệt xong); không có ⇒ undefined. */
+export const workingPakd = (p: Pick<BizProject, 'pakd' | 'status'>): PakdVersion | undefined => {
+  const last = latestPakd(p);
+  if (!last || last.state === 'Đã duyệt') return undefined;
+  if (p.status === 'Bảo hành') return last.warranty ? last : undefined;
+  if (p.status === 'Đang thực hiện') return last.adjust ? last : undefined;
+  return p.status === 'Kết thúc' ? undefined : last;
+};
+/** Trạng thái dự án theo bản PAKD: đã duyệt ⇒ Đang thực hiện; bảo hành ⇒ Bảo hành; điều chỉnh ⇒ giữ Đang thực hiện; bản đầu ⇒ PAKD chờ duyệt / Reject. */
+export const statusAfterPakd = (p: Pick<BizProject, 'status'>, v: PakdVersion): BizStatus =>
+  v.state === 'Đã duyệt' || v.adjust ? 'Đang thực hiện' : v.warranty ? 'Bảo hành' : p.status === 'Pending' ? 'Pending' : v.state === 'Từ chối' ? 'Reject' : 'PAKD chờ duyệt';
+/** Đã qua bước Kế toán: có bản đã duyệt, bản đang chờ BOD hoặc BOD từ chối. */
+export const passedAccountant = (p: Pick<BizProject, 'pakd'>) => {
+  const last = latestPakd(p);
+  return p.pakd.some((v) => v.state === 'Đã duyệt') || last?.state === 'Chờ BOD' || (last?.state === 'Từ chối' && last.rejectedStep === 'BOD');
+};
 
 // ==========================================================================
 // Sổ theo dõi dự án — giá trị hợp đồng ký so với mục tiêu năm của từng khối
@@ -229,9 +305,16 @@ export interface Ledger {
   imports: LedgerImportLog[];
 }
 
-/** Các mã nhận diện 1 dự án trong sổ kế toán: Mã tổng, Mã PAKD (.1), Mã SX (.2). */
-export const projectCodes = (p: Pick<BizProject, 'masterCode' | 'businessCode' | 'productionCode'>) =>
-  [p.masterCode, p.businessCode, p.productionCode].map((c) => c.trim().toLowerCase()).filter(Boolean);
+/** Các mã nhận diện 1 dự án trong sổ kế toán: Mã tổng, Mã PAKD (.1), Mã SX (.2), Mã bảo hành (.3, khi đã được cấp). */
+// Mã ghép sổ kế toán: KD / SX / bảo hành + mã outsource đã có hiệu lực (kể cả đã xoá mềm — như code thật).
+export const projectCodes = (p: Pick<BizProject, 'masterCode' | 'businessCode' | 'productionCode' | 'warranty' | 'outsourceCodes'>) =>
+  [
+    p.masterCode,
+    p.businessCode,
+    p.productionCode,
+    p.warranty?.code || '',
+    ...(p.outsourceCodes || []).filter((o) => o.state === 'Có hiệu lực').map((o) => o.code),
+  ].map((c) => (c || '').trim().toLowerCase()).filter(Boolean);
 export const matchProject = (projects: BizProject[], code: string) => {
   const c = code.trim().toLowerCase();
   return c ? projects.find((p) => projectCodes(p).includes(c)) : undefined;
@@ -273,10 +356,14 @@ export interface BizProject {
   productionCode: string;
   businessPm: string;
   productionPm: string;
-  /** Mã outsource (tối đa MAX_OUTSOURCE): Mã tổng.3, .4 — mỗi mã có PM phụ trách. */
+  /** Mã outsource (tối đa MAX_OUTSOURCE mã chưa xoá): Mã SX.1…5 — mỗi mã có nội dung thuê ngoài + PM phụ trách. */
   outsourceCodes?: BizOutsource[];
+  /** Trạng thái đẩy Jira theo mã (mã có hiệu lực ⇒ sinh dự án + Jira); thiếu ⇒ "Đã tạo". */
+  jira?: Record<string, JiraState>;
   /** PM outsource (chọn khi tạo dự án) — gán mặc định cho mã outsource khi được tạo. */
   outsourcePm?: string;
+  /** Mã bảo hành (tối đa 1, Mã tổng.3) — yêu cầu → GĐK duyệt cấp mã. */
+  warranty?: BizWarranty;
 
   division: string;
   projectType: string;
@@ -296,7 +383,7 @@ export interface BizProject {
   expectedSignDate?: string; // Thời điểm dự kiến ký HĐ
   codeIssuedAt?: string; // YYYY-MM-DD — ngày cấp mã (GĐK duyệt / GĐK tự tạo)
   pakdDeadline?: string; // Hạn lập PAKD = ngày cấp mã (hoặc mở lại) + PAKD_DAYS
-  closedAt?: string; // YYYY-MM-DD — ngày dự án chuyển Pending
+  closedAt?: string; // YYYY-MM-DD — ngày dự án chuyển Pending / Đóng
   pakdForm?: PakdFormData; // Nội dung PAKD lập trên hệ thống (AM / GĐK nhập trong hạn PAKD_DAYS ngày)
   pakdDraft?: PakdFormData; // Bản điều chỉnh PAKD (GĐK / SM sửa khi dự án đang thực hiện) — nháp / chờ Kế toán duyệt
   pakd: PakdVersion[]; // các phiên bản PAKD đã nộp
@@ -360,22 +447,86 @@ export const grossMargin = (p: Pick<BizProject, 'expectedRevenue' | 'plannedBusi
   p.expectedRevenue ? (grossProfit(p) / p.expectedRevenue) * 100 : 0;
 
 /** Gợi ý mã Master tiếp theo cho mã khách hàng (số thứ tự lớn nhất + 1). */
-/** Mã KD = Master.1, Mã SX = Master.2. */
+/** Mã KD = Master.1, Mã SX = Master.2, Mã bảo hành = Master.3, Mã outsource = Mã SX.1…5. */
+export type JiraState = 'Đã tạo' | 'Đang gửi';
+export const jiraOf = (p: Pick<BizProject, 'jira'>, code: string): JiraState => p.jira?.[code] || 'Đã tạo';
+/** Trạng thái mã outsource: GĐK tạo ⇒ có hiệu lực ngay; vai khác tạo ⇒ chờ GĐK duyệt. */
+export type OutsourceState = 'Chờ HOD duyệt' | 'Có hiệu lực' | 'Từ chối';
 export interface BizOutsource {
   code: string;
+  /** Nội dung thuê ngoài (bắt buộc). */
+  content: string;
   pm: string;
+  state: OutsourceState;
   createdAt: string;
   createdBy: string;
+  decidedAt?: string;
+  decidedBy?: string;
+  rejectReason?: string;
+  /** Xoá mềm — số được trả lại cho mã mới. */
+  deletedAt?: string;
+  deletedBy?: string;
 }
-/** Số mã outsource tối đa của một dự án. */
-export const MAX_OUTSOURCE = 2;
-/** Mã outsource kế tiếp còn trống: Mã tổng.3, Mã tổng.4. */
-export const nextOutsourceCode = (p: Pick<BizProject, 'masterCode' | 'outsourceCodes'>) => {
-  if (!p.masterCode) return '';
-  const used = new Set((p.outsourceCodes || []).map((o) => o.code));
-  for (let i = 3; i < 3 + MAX_OUTSOURCE; i++) if (!used.has(`${p.masterCode}.${i}`)) return `${p.masterCode}.${i}`;
+/** Số mã outsource tối đa (chưa xoá, kể cả chờ duyệt / từ chối) của một dự án. */
+export const MAX_OUTSOURCE = 5;
+/** Mã outsource chưa xoá (gồm Chờ duyệt / Từ chối). */
+export const liveOutsource = (p: Pick<BizProject, 'outsourceCodes'>) => (p.outsourceCodes || []).filter((o) => !o.deletedAt);
+export const pendingOutsource = (p: Pick<BizProject, 'outsourceCodes'>) => liveOutsource(p).filter((o) => o.state === 'Chờ HOD duyệt');
+/** Điều kiện tạo mã outsource: dự án đã có mã, mã KD / SX chưa Closed. */
+export const canRequestOutsource = (p: Pick<BizProject, 'productionCode' | 'status' | 'warranty'>) => !!p.productionCode && p.status !== 'Chờ duyệt mã' && !mainCodesClosed(p);
+/** Mã outsource kế tiếp = Mã SX.N, N nhỏ nhất còn trống trong 1..MAX_OUTSOURCE (mã từ chối vẫn chiếm số, mã đã xoá trả số). */
+export const nextOutsourceCode = (p: Pick<BizProject, 'productionCode' | 'status' | 'warranty' | 'outsourceCodes'>) => {
+  if (!canRequestOutsource(p)) return '';
+  const used = new Set(liveOutsource(p).map((o) => o.code));
+  for (let i = 1; i <= MAX_OUTSOURCE; i++) if (!used.has(`${p.productionCode}.${i}`)) return `${p.productionCode}.${i}`;
   return '';
 };
+
+/** Trạng thái mã bảo hành: chờ GĐK duyệt → đã cấp mã (không xoá được); bị từ chối thì ô tích về trống. */
+export type WarrantyState = 'Chờ HOD duyệt' | 'Đã cấp mã' | 'Từ chối';
+export interface BizWarranty {
+  state: WarrantyState;
+  /** Mã đã cấp (Mã tổng.3); rỗng khi chưa cấp. */
+  code: string;
+  /** PM bảo hành — trống ⇒ mặc định Giám đốc khối của dự án. */
+  pm: string;
+  requestedAt: string;
+  requestedBy: string;
+  decidedAt?: string;
+  decidedBy?: string;
+  rejectReason?: string;
+  /** Ngày KD / SX / outsource Closed (lần Kết thúc trước khi cấp .3) — Projects.ClosedDate của các mã đó, giữ khi .3 đóng / mở lại. */
+  mainClosedAt?: string;
+}
+/** Mã bảo hành cố định = Mã tổng.3. */
+export const warrantyCodeOf = (master: string) => (master ? `${master}.3` : '');
+/** Ô "Tạo mã bảo hành" đang tích (khoá, không bỏ tích): có yêu cầu chờ duyệt hoặc đã cấp mã. */
+export const warrantyActive = (w?: BizWarranty) => w?.state === 'Chờ HOD duyệt' || w?.state === 'Đã cấp mã';
+/** Điều kiện tạo mã bảo hành: dự án đã có mã và đang Đóng (KD / SX / outsource đã Closed). */
+export const canRequestWarranty = (p: Pick<BizProject, 'masterCode' | 'status'>) => !!p.masterCode && p.status === 'Kết thúc';
+
+/** Trạng thái bản ghi dự án (IMIS project) của 1 mã. */
+export type CodeRecordStatus = 'Open' | 'In Progress' | 'On-hold' | 'Closed';
+/** Đã chốt 04/11: ánh xạ trạng thái dự án kinh doanh ⇒ trạng thái bản ghi dự án IMIS của mã đang hoạt động. */
+export const recordStatusOf = (s: BizStatus): CodeRecordStatus => (s === 'Đang thực hiện' ? 'In Progress' : s === 'Kết thúc' ? 'Closed' : s === 'Pending' ? 'On-hold' : 'Open');
+/** Mã đang hoạt động (xem lifecycleCodes) theo recordStatusOf; giai đoạn bảo hành ⇒ KD / SX / outsource giữ Closed. */
+export const codeRecordStatus = (p: Pick<BizProject, 'status' | 'warranty'>, code: string): CodeRecordStatus =>
+  inWarrantyPhase(p) && code !== p.warranty!.code ? 'Closed' : recordStatusOf(p.status);
+/** Projects.ClosedDate của 1 mã (D39): mã Closed ⇒ ngày đóng; KD / SX / outsource giai đoạn bảo hành ⇒ ngày Kết thúc trước khi cấp .3. */
+export const codeClosedDate = (p: Pick<BizProject, 'status' | 'warranty' | 'closedAt'>, code: string) =>
+  codeRecordStatus(p, code) !== 'Closed' ? undefined : inWarrantyPhase(p) && code !== p.warranty!.code ? p.warranty!.mainClosedAt ?? p.closedAt : p.closedAt;
+/** Ghi chú lịch sử "Mã IMIS: {mã} ⇒ {trạng thái}" khi đổi trạng thái dự án làm đổi bản ghi mã; không đổi ⇒ ''. */
+export const recordChangeNote = (before: BizProject, after: BizProject) => {
+  const codes = lifecycleCodes(after);
+  if (!codes.length || before.status === after.status) return '';
+  const st = recordStatusOf(after.status);
+  return lifecycleCodes(before).join() === codes.join() && recordStatusOf(before.status) === st ? '' : `Mã IMIS: ${codes.join(', ')} ⇒ ${st}`;
+};
+/** Mã đóng / mở lại cùng dự án: giai đoạn bảo hành ⇒ chỉ mã .3; còn lại KD, SX, outsource có hiệu lực. */
+export const lifecycleCodes = (p: Pick<BizProject, 'businessCode' | 'productionCode' | 'outsourceCodes' | 'warranty'>) =>
+  inWarrantyPhase(p) ? [p.warranty!.code] : [p.businessCode, p.productionCode, ...liveOutsource(p).filter((o) => o.state === 'Có hiệu lực').map((o) => o.code)].filter(Boolean);
+/** Vai trò được tạo / xoá mã con (outsource, bảo hành): SM / GĐK / Kế toán; AM chỉ xem. */
+export const canManageSubCodes = (role: BizRole) => role === 'SM' || role === 'GĐK' || role === 'CFO';
 
 export const codesFrom = (master: string) => ({ masterCode: master, businessCode: master ? `${master}.1` : '', productionCode: master ? `${master}.2` : '' });
 
@@ -471,7 +622,7 @@ const seedProject = (
     version: 3,
     status: 'Đang thực hiện',
     expectedSignDate: start,
-    pakd: [{ version: 1, submittedAt: addDays(start, -20), submittedBy: pm[0], state: 'Đã duyệt', decidedAt: addDays(start, -12), decidedBy: 'CFO' }],
+    pakd: [{ version: 1, submittedAt: addDays(start, -20), submittedBy: pm[0], state: 'Đã duyệt', decidedAt: addDays(start, -12), decidedBy: 'BOD' }],
     masterCode,
     businessCode: `${masterCode}.1`,
     productionCode: `${masterCode}.2`,
@@ -524,6 +675,21 @@ const seedProject = (
     ],
   };
 };
+
+// Dự án seed + ghi đè trường + lịch sử bổ sung.
+const seedWith = (p: BizProject, extra: Partial<BizProject>, more: BizHistory[] = []): BizProject => ({ ...p, ...extra, history: [...p.history, ...more] });
+
+// Lịch sử Kết thúc dự án: Đóng + Closed các mã + Jira pending.
+const closeHistory = (at: string, by: string, codes: string[]): BizHistory[] => [
+  { at, by, action: 'Kết thúc dự án', note: `Dự án ⇒ Đóng · Mã IMIS: ${codes.join(', ')} ⇒ Closed` },
+  { at, by: 'Hệ thống', action: 'Đồng bộ Jira', note: `Đã gửi Jira pending: mã ${codes.join(', ')}` },
+];
+// Lịch sử cấp mã bảo hành: .3 Open + Jira create + dự án chuyển Bảo hành + nháp PAKD bảo hành V(n+1).
+const issueHistory = (at: string, by: string, code: string, pm: string, v: number): BizHistory[] => [
+  { at, by, action: 'Duyệt mã bảo hành', note: `${code} · PM ${pm || '—'} · Dự án ⇒ Bảo hành · Mã IMIS: ${code} ⇒ Open` },
+  { at, by: 'Hệ thống', action: 'Đồng bộ Jira', note: `Đã gửi Jira create: mã ${code}` },
+  { at, by: 'Hệ thống', action: 'Tạo PAKD bảo hành', note: `V${v} Nháp — chép từ bản áp dụng V${v - 1} · không áp hạn ${PAKD_DAYS} ngày` },
+];
 
 const SEED: BizProject[] = [
   {
@@ -579,7 +745,7 @@ const SEED: BizProject[] = [
     version: 1,
     status: 'Đang thực hiện',
     expectedSignDate: '2026-02-25',
-    pakd: [{ version: 1, submittedAt: '2026-02-10', submittedBy: 'Trần Minh Đức', state: 'Đã duyệt', decidedAt: '2026-02-18', decidedBy: 'CFO' }],
+    pakd: [{ version: 1, submittedAt: '2026-02-10', submittedBy: 'Trần Minh Đức', state: 'Đã duyệt', decidedAt: '2026-02-18', decidedBy: 'BOD' }],
     masterCode: '038.360',
     businessCode: '038.360.1',
     productionCode: '038.360.2',
@@ -682,12 +848,41 @@ const SEED: BizProject[] = [
   },
   // prettier-ignore
   ...[
-    seedProject('BP-4', 'Nền tảng chuyển đổi số quốc gia', '022.061', 'G1', 'Bộ 022', '2026-01-01', '2027-12-31', [1_000_000_000_000, 520_000_000_000, 90_000_000_000, 2_400_000_000], { revenue: 1.02, cashIn: 0.97, cost: 0.92, workload: 1 }, ['Nguyễn Đằng Giang', 'Phạm Hữu Trường']),
+    seedWith(
+      seedProject('BP-4', 'Nền tảng chuyển đổi số quốc gia', '022.061', 'G1', 'Bộ 022', '2026-01-01', '2027-12-31', [1_000_000_000_000, 520_000_000_000, 90_000_000_000, 2_400_000_000], { revenue: 1.02, cashIn: 0.97, cost: 0.92, workload: 1 }, ['Nguyễn Đằng Giang', 'Phạm Hữu Trường']),
+      {
+        outsourceCodes: [{ code: '022.061.2.1', content: 'Thuê ngoài kiểm thử hiệu năng', pm: 'Phạm Hữu Trường', state: 'Có hiệu lực', createdAt: '2026-03-10T08:00:00.000Z', createdBy: 'Nguyễn Đằng Giang (GĐK)', decidedAt: '2026-03-10T08:00:00.000Z', decidedBy: 'Nguyễn Đằng Giang (GĐK)' }],
+        jira: { '022.061.2.1': 'Đang gửi' },
+      },
+      [{ at: '2026-03-10T08:00:00.000Z', by: 'Nguyễn Đằng Giang (GĐK)', action: 'Tạo mã outsource', note: '022.061.2.1 · PM Phạm Hữu Trường · Nội dung: Thuê ngoài kiểm thử hiệu năng · Có hiệu lực' }],
+    ),
     seedProject('BP-5', 'ERP Tập đoàn 022', '022.070', 'G1', 'Tập đoàn 022', '2026-01-01', '2027-06-30', [250_000_000_000, 150_000_000_000, 25_000_000_000, 600_000_000], { revenue: 0.78, cashIn: 0.6, cost: 1.12, workload: 0.85 }, ['Lê Hoài Thanh', 'Nguyễn Thị Huyền']),
     seedProject('BP-6', 'Hệ thống bán lẻ đa kênh', '045.112', 'G2', 'Bán lẻ 045', '2026-02-01', '2026-12-31', [48_000_000_000, 27_500_000_000, 5_100_000_000, 110_000_000], { revenue: 0.9, cashIn: 0.8, cost: 1.05, workload: 0.92 }, ['Bùi Quang Minh', 'Đặng Thu Trang']),
-    seedProject('BP-7', 'Data Lake phân tích khách hàng', '045.118', 'G2', 'Bán lẻ 045', '2026-01-01', '2026-10-31', [6_500_000_000, 3_400_000_000, 650_000_000, 15_000_000], { revenue: 0.98, cashIn: 0.96, cost: 0.95, workload: 1 }, ['Bùi Quang Minh', 'Hoàng Gia Bảo']),
+    // Demo: dự án Đóng, yêu cầu mã bảo hành đang chờ GĐK duyệt
+    seedWith(
+      seedProject('BP-7', 'Data Lake phân tích khách hàng', '045.118', 'G2', 'Bán lẻ 045', '2026-01-01', '2026-10-31', [6_500_000_000, 3_400_000_000, 650_000_000, 15_000_000], { revenue: 0.98, cashIn: 0.96, cost: 0.95, workload: 1 }, ['Bùi Quang Minh', 'Hoàng Gia Bảo']),
+      { status: 'Kết thúc', closedAt: '2026-10-27', warranty: { state: 'Chờ HOD duyệt', code: '', pm: 'Hoàng Gia Bảo', requestedAt: '2026-10-28T09:00:00.000Z', requestedBy: 'namnv (SM)' } },
+      [
+        ...closeHistory('2026-10-27T16:00:00.000Z', 'namnv (SM)', ['045.118.1', '045.118.2']),
+        { at: '2026-10-28T09:00:00.000Z', by: 'namnv (SM)', action: 'Yêu cầu mã bảo hành', note: '045.118.3 · Chờ HOD duyệt' },
+      ],
+    ),
     seedProject('BP-8', 'Nền tảng IoT nhà máy', '061.020', 'G4', 'Sản xuất 061', '2026-01-01', '2027-03-31', [120_000_000_000, 68_000_000_000, 10_000_000_000, 280_000_000], { revenue: 0.92, cashIn: 0.9, cost: 1.35, workload: 1.1 }, ['Trịnh Văn Long', 'Phí Thị Mai']),
-    seedProject('BP-9', 'Hệ thống chấm điểm tín dụng', '010.530', 'BFSI', 'Ngân hàng 010', '2026-01-01', '2026-12-31', [520_000_000_000, 280_000_000_000, 48_000_000_000, 1_100_000_000], { revenue: 1, cashIn: 0.99, cost: 0.9, workload: 0.98 }, ['Lý Thu Hà', 'Ngô Bá Khá']),
+    // Demo: 1 mã outsource chờ GĐK duyệt + 1 mã bị từ chối
+    seedWith(
+      seedProject('BP-9', 'Hệ thống chấm điểm tín dụng', '010.530', 'BFSI', 'Ngân hàng 010', '2026-01-01', '2026-12-31', [520_000_000_000, 280_000_000_000, 48_000_000_000, 1_100_000_000], { revenue: 1, cashIn: 0.99, cost: 0.9, workload: 0.98 }, ['Lý Thu Hà', 'Ngô Bá Khá']),
+      {
+        outsourceCodes: [
+          { code: '010.530.2.1', content: 'Thuê ngoài phát triển module eKYC', pm: 'Ngô Bá Khá', state: 'Từ chối', createdAt: '2026-09-02T08:00:00.000Z', createdBy: 'namnv (SM)', decidedAt: '2026-09-03T09:00:00.000Z', decidedBy: 'Lý Thu Hà (GĐK)', rejectReason: 'Nhân sự nội bộ đáp ứng được' },
+          { code: '010.530.2.2', content: 'Thuê ngoài tích hợp CIC', pm: 'Lý Thu Hà', state: 'Chờ HOD duyệt', createdAt: '2026-10-30T10:00:00.000Z', createdBy: 'namnv (CFO)' },
+        ],
+      },
+      [
+        { at: '2026-09-02T08:00:00.000Z', by: 'namnv (SM)', action: 'Tạo mã outsource', note: '010.530.2.1 · PM Ngô Bá Khá · Nội dung: Thuê ngoài phát triển module eKYC · Chờ HOD duyệt' },
+        { at: '2026-09-03T09:00:00.000Z', by: 'Lý Thu Hà (GĐK)', action: 'Từ chối mã outsource', note: '010.530.2.1 · Nhân sự nội bộ đáp ứng được' },
+        { at: '2026-10-30T10:00:00.000Z', by: 'namnv (CFO)', action: 'Tạo mã outsource', note: '010.530.2.2 · PM Lý Thu Hà · Nội dung: Thuê ngoài tích hợp CIC · Chờ HOD duyệt' },
+      ],
+    ),
     // Mã khớp với file mẫu của kế toán (Mẫu dòng tiền thu / Chi thực tế 02.2026)
     seedProject('BP-11', 'HDBank Staffing', '818.111', 'BFSI', 'CÔNG TY CỔ PHẦN GALAXY TECHNOLOGY SERVICES', '2026-01-01', '2026-12-31', [4_800_000_000, 3_600_000_000, 240_000_000, 24_000_000], { revenue: 0.97, cashIn: 0.93, cost: 0.98, workload: 1 }, ['Lý Thu Hà', 'Ngô Bá Khá']),
     seedProject('BP-12', 'LPB Staffing', '868.222', 'BFSI', 'CÔNG TY CỔ PHẦN ATOMI DIGITAL', '2026-01-01', '2026-12-31', [1_200_000_000, 850_000_000, 60_000_000, 9_600_000], { revenue: 1, cashIn: 0.96, cost: 0.95, workload: 1 }, ['Lý Thu Hà', 'Mai Văn Tùng']),
@@ -711,16 +906,118 @@ const SEED: BizProject[] = [
       expectedSignDate: '2026-11-20',
       pakdDeadline: '2026-09-18',
       pakd: [
-        { version: 1, submittedAt: '2026-09-15', submittedBy: 'Bùi Quang Minh', state: 'Từ chối', decidedAt: '2026-09-20', decidedBy: 'CFO', note: 'Biên LN gộp thấp, rà soát lại chi phí thuê ngoài' },
+        { version: 1, submittedAt: '2026-09-15', submittedBy: 'Bùi Quang Minh', state: 'Từ chối', rejectedStep: 'CFO', decidedAt: '2026-09-20', decidedBy: 'CFO', note: 'Biên LN gộp thấp, rà soát lại chi phí thuê ngoài' },
         { version: 2, submittedAt: '2026-09-26', submittedBy: 'Bùi Quang Minh', state: 'Chờ CFO' },
       ] as PakdVersion[],
       actual: [],
       actualImport: undefined,
       contractSigned: false,
     },
+    // Demo: dự án Bảo hành — mã .3 Open, KD / SX Closed; PAKD bảo hành V2 (SM lập, GĐK đã duyệt) chờ Kế toán duyệt
+    seedWith(
+      seedProject('BP-16', 'Triển khai ERP giai đoạn 1', '061.015', 'G4', 'Sản xuất 061', '2025-10-01', '2026-06-30', [4_500_000_000, 2_600_000_000, 400_000_000, 12_000_000], { revenue: 1, cashIn: 1, cost: 0.97, workload: 1 }, ['Trịnh Văn Long', 'Phí Thị Mai']),
+      {
+        status: 'Bảo hành',
+        closedAt: '2026-10-05',
+        warranty: { state: 'Đã cấp mã', code: '061.015.3', pm: 'Phí Thị Mai', requestedAt: '2026-10-06T08:00:00.000Z', requestedBy: 'namnv (SM)', decidedAt: '2026-10-07T10:00:00.000Z', decidedBy: 'Trịnh Văn Long (GĐK)', mainClosedAt: '2026-10-05' },
+        pakd: [
+          { version: 1, submittedAt: '2025-09-11', submittedBy: 'Trịnh Văn Long', state: 'Đã duyệt', decidedAt: '2025-09-19', decidedBy: 'BOD' },
+          { version: 2, submittedAt: '2026-10-20', submittedBy: 'namnv (SM)', state: 'Chờ CFO', decidedAt: '2026-10-22', decidedBy: 'GĐK', warranty: true },
+        ],
+      },
+      [
+        ...closeHistory('2026-10-05T16:00:00.000Z', 'namnv (SM)', ['061.015.1', '061.015.2']),
+        { at: '2026-10-06T08:00:00.000Z', by: 'namnv (SM)', action: 'Yêu cầu mã bảo hành', note: '061.015.3 · Chờ HOD duyệt' },
+        ...issueHistory('2026-10-07T10:00:00.000Z', 'Trịnh Văn Long (GĐK)', '061.015.3', 'Phí Thị Mai', 2),
+        { at: '2026-10-20T09:00:00.000Z', by: 'namnv (SM)', action: 'Nộp PAKD bảo hành', note: 'V2 · Chờ GĐ khối duyệt' },
+        { at: '2026-10-22T09:00:00.000Z', by: 'Trịnh Văn Long (GĐK)', action: 'GĐK duyệt bảo hành PAKD', note: 'V2 · Chờ Kế toán duyệt' },
+      ],
+    ),
+    // Demo: Đang thực hiện — giai đoạn bảo hành (PAKD bảo hành V2 đã duyệt; .3 Open, KD / SX Closed)
+    seedWith(
+      seedProject('BP-18', 'Hệ thống quản lý văn bản điện tử', '077.010', 'GPDV', 'Tổng công ty 077', '2025-06-01', '2026-03-31', [900_000_000, 520_000_000, 80_000_000, 2_400_000], { revenue: 1, cashIn: 0.95, cost: 0.98, workload: 1 }, ['Vương Đình Khôi', 'Tạ Minh Châu']),
+      {
+        warranty: { state: 'Đã cấp mã', code: '077.010.3', pm: 'Tạ Minh Châu', requestedAt: '2026-04-02T08:00:00.000Z', requestedBy: 'Vương Đình Khôi (GĐK)', decidedAt: '2026-04-02T08:00:00.000Z', decidedBy: 'Vương Đình Khôi (GĐK)', mainClosedAt: '2026-04-01' },
+        pakd: [
+          { version: 1, submittedAt: '2025-05-12', submittedBy: 'Vương Đình Khôi', state: 'Đã duyệt', decidedAt: '2025-05-20', decidedBy: 'BOD' },
+          { version: 2, submittedAt: '2026-04-10', submittedBy: 'Vương Đình Khôi (GĐK)', state: 'Đã duyệt', decidedAt: '2026-04-15', decidedBy: 'BOD', warranty: true },
+        ],
+      },
+      [
+        ...closeHistory('2026-04-01T16:00:00.000Z', 'Vương Đình Khôi (GĐK)', ['077.010.1', '077.010.2']),
+        ...issueHistory('2026-04-02T08:00:00.000Z', 'Vương Đình Khôi (GĐK)', '077.010.3', 'Tạ Minh Châu', 2),
+        { at: '2026-04-10T09:00:00.000Z', by: 'Vương Đình Khôi (GĐK)', action: 'Nộp PAKD bảo hành', note: 'V2 · Chờ Kế toán duyệt' },
+        { at: '2026-04-13T10:00:00.000Z', by: 'ketoan (CFO)', action: 'CFO duyệt bảo hành PAKD', note: 'V2 · Chờ BOD duyệt' },
+        { at: '2026-04-15T10:00:00.000Z', by: 'bod (BOD)', action: 'BOD duyệt bảo hành PAKD', note: 'V2 · Đã duyệt · Dự án ⇒ Đang thực hiện (giai đoạn bảo hành)' },
+      ],
+    ),
+    // Demo: dự án Đóng chưa có yêu cầu bảo hành (KD / SX / outsource Closed) — tích để thử
+    seedWith(
+      seedProject('BP-17', 'Cổng dịch vụ công trực tuyến', '038.355', 'G3', 'Tổng công ty 038', '2025-10-01', '2026-09-30', [3_200_000_000, 1_900_000_000, 300_000_000, 8_000_000], { revenue: 1, cashIn: 0.97, cost: 0.96, workload: 1 }, ['Trần Minh Đức', 'Vũ Thị Lan']),
+      {
+        status: 'Kết thúc',
+        closedAt: '2026-10-15',
+        outsourceCodes: [{ code: '038.355.2.1', content: 'Thuê ngoài kiểm thử bảo mật', pm: 'Vũ Thị Lan', state: 'Có hiệu lực', createdAt: '2026-03-02T08:00:00.000Z', createdBy: 'Đỗ Quang Huy (GĐK)', decidedAt: '2026-03-02T08:00:00.000Z', decidedBy: 'Đỗ Quang Huy (GĐK)' }],
+      },
+      [
+        { at: '2026-03-02T08:00:00.000Z', by: 'Đỗ Quang Huy (GĐK)', action: 'Tạo mã outsource', note: '038.355.2.1 · PM Vũ Thị Lan · Nội dung: Thuê ngoài kiểm thử bảo mật · Có hiệu lực' },
+        ...closeHistory('2026-10-15T16:00:00.000Z', 'namnv (SM)', ['038.355.1', '038.355.2', '038.355.2.1']),
+      ],
+    ),
+    // Demo chuỗi duyệt PAKD: SM lập ⇒ chờ GĐ khối duyệt
     {
-      ...seedProject('BP-16', 'Triển khai ERP giai đoạn 1', '061.015', 'G4', 'Sản xuất 061', '2025-10-01', '2026-06-30', [4_500_000_000, 2_600_000_000, 400_000_000, 12_000_000], { revenue: 1, cashIn: 1, cost: 0.97, workload: 1 }, ['Trịnh Văn Long', 'Phí Thị Mai']),
-      status: 'Kết thúc' as BizStatus,
+      ...seedProject('BP-19', 'Cổng chăm sóc khách hàng đa kênh', '045.125', 'G2', 'Bán lẻ 045', '2027-01-01', '2027-12-31', [18_000_000_000, 9_800_000_000, 1_700_000_000, 40_000_000], { revenue: 1, cashIn: 1, cost: 1, workload: 1 }, ['Bùi Quang Minh', 'Đặng Thu Trang']),
+      status: 'PAKD chờ duyệt' as BizStatus,
+      expectedSignDate: '2026-12-10',
+      codeIssuedAt: '2026-10-20',
+      pakdDeadline: '2026-11-19',
+      pakd: [{ version: 1, submittedAt: '2026-10-30', submittedBy: 'namnv (SM)', state: 'Chờ GĐK' }] as PakdVersion[],
+      actual: [],
+      actualImport: undefined,
+      contractSigned: false,
+      history: [
+        { at: '2026-10-20T08:00:00.000Z', by: 'namnv (SM)', action: 'Tạo dự án', note: 'Version 1' },
+        { at: '2026-10-20T10:00:00.000Z', by: 'Bùi Quang Minh (GĐK)', action: 'Duyệt mã dự án', note: 'Cấp mã 045.125 · Hạn lập PAKD: 19/11/2026' },
+        { at: '2026-10-30T09:00:00.000Z', by: 'namnv (SM)', action: 'Nộp PAKD', note: 'V1 · Chờ GĐ khối duyệt' },
+      ],
+    },
+    // Demo chuỗi duyệt PAKD: GĐK lập (⇒ chờ Kế toán), Kế toán duyệt ⇒ chờ BOD
+    {
+      ...seedProject('BP-20', 'Hệ thống quản trị rủi ro tín dụng', '010.545', 'BFSI', 'Ngân hàng 010', '2027-01-01', '2027-12-31', [62_000_000_000, 33_000_000_000, 5_500_000_000, 150_000_000], { revenue: 1, cashIn: 1, cost: 1, workload: 1 }, ['Lý Thu Hà', 'Ngô Bá Khá']),
+      status: 'PAKD chờ duyệt' as BizStatus,
+      expectedSignDate: '2026-12-20',
+      codeIssuedAt: '2026-10-12',
+      pakdDeadline: '2026-11-11',
+      pakd: [{ version: 1, submittedAt: '2026-10-25', submittedBy: 'Lý Thu Hà (GĐK)', state: 'Chờ BOD', decidedAt: '2026-10-28', decidedBy: 'CFO' }] as PakdVersion[],
+      actual: [],
+      actualImport: undefined,
+      contractSigned: false,
+      history: [
+        { at: '2026-10-12T08:00:00.000Z', by: 'Lý Thu Hà (GĐK)', action: 'Tạo dự án', note: 'Version 1 · GĐK tạo ⇒ cấp mã 010.545' },
+        { at: '2026-10-25T09:00:00.000Z', by: 'Lý Thu Hà (GĐK)', action: 'Nộp PAKD', note: 'V1 · GĐK lập ⇒ Chờ Kế toán duyệt' },
+        { at: '2026-10-28T15:00:00.000Z', by: 'ketoan (CFO)', action: 'CFO duyệt PAKD', note: 'V1 · Chờ BOD duyệt' },
+      ],
+    },
+    // Demo chuỗi duyệt PAKD: Kế toán từ chối ⇒ trả về GĐ khối duyệt lại (Duyệt ⇒ chờ Kế toán / Từ chối ⇒ SM sửa)
+    {
+      ...seedProject('BP-21', 'Số hoá hồ sơ bệnh án', '022.075', 'G1', 'Sở Y tế 022', '2027-02-01', '2027-11-30', [9_500_000_000, 5_600_000_000, 900_000_000, 22_000_000], { revenue: 1, cashIn: 1, cost: 1, workload: 1 }, ['Nguyễn Đằng Giang', 'Phạm Hữu Trường']),
+      status: 'Reject' as BizStatus,
+      expectedSignDate: '2026-12-15',
+      codeIssuedAt: '2026-10-15',
+      pakdDeadline: '2026-11-14',
+      pakd: [
+        { version: 1, submittedAt: '2026-10-22', submittedBy: 'namnv (SM)', state: 'Từ chối', rejectedStep: 'CFO', decidedAt: '2026-10-29', decidedBy: 'CFO', note: 'Chi phí thuê ngoài chưa có báo giá, bổ sung trước khi trình BOD' },
+      ] as PakdVersion[],
+      actual: [],
+      actualImport: undefined,
+      contractSigned: false,
+      history: [
+        { at: '2026-10-15T08:00:00.000Z', by: 'namnv (SM)', action: 'Tạo dự án', note: 'Version 1' },
+        { at: '2026-10-15T11:00:00.000Z', by: 'Nguyễn Đằng Giang (GĐK)', action: 'Duyệt mã dự án', note: 'Cấp mã 022.075 · Hạn lập PAKD: 14/11/2026' },
+        { at: '2026-10-22T09:00:00.000Z', by: 'namnv (SM)', action: 'Nộp PAKD', note: 'V1 · Chờ GĐ khối duyệt' },
+        { at: '2026-10-24T10:00:00.000Z', by: 'Nguyễn Đằng Giang (GĐK)', action: 'GĐK duyệt PAKD', note: 'V1 · Chờ Kế toán duyệt' },
+        { at: '2026-10-29T16:00:00.000Z', by: 'ketoan (CFO)', action: 'CFO từ chối PAKD', note: 'V1 · trả về: GĐ khối duyệt lại · Chi phí thuê ngoài chưa có báo giá, bổ sung trước khi trình BOD' },
+      ],
     },
     seedProject('BP-10', 'Dịch vụ vận hành hạ tầng', '077.004', 'GPDV', 'Tổng công ty 077', '2026-01-01', '2026-12-31', [500_000_000, 300_000_000, 50_000_000, 1_200_000], { revenue: 0.88, cashIn: 0.75, cost: 1, workload: 0.9 }, ['Vương Đình Khôi', 'Tạ Minh Châu']),
   ],
@@ -833,25 +1130,33 @@ interface Ctx {
   /** Quy trình: duyệt mã / nộp PAKD / duyệt – từ chối PAKD / kết thúc dự án. */
   /** GĐK duyệt mã → hệ thống sinh Mã dự án / KD / SX, hạn PAKD = hôm nay + PAKD_DAYS. */
   approveCode: (id: string, by: string) => { deadline: string; code: string };
-  /** Kế toán mở lại dự án Pending → hạn PAKD mới. Trả về hạn PAKD. */
+  /** Mở lại dự án Pending → hạn PAKD mới (trả về hạn); Đóng → Đang thực hiện + Jira reopen (chưa có .3: KD / SX / outsource; có .3: chỉ .3) (trả về ''). Mã IMIS đặt theo recordStatusOf. */
   reopenProject: (id: string, by: string) => string;
-  submitPakd: (id: string, by: string) => void;
-  /** Lưu nháp / gửi duyệt PAKD lập trên hệ thống. Gửi duyệt → cập nhật số liệu dự án + kế hoạch theo tháng. */
-  savePakdForm: (id: string, form: PakdFormData, by: string, submit: boolean) => void;
-  decidePakd: (id: string, approve: boolean, role: BizRole, by: string, note: string) => void;
-  /** GĐK / SM sửa PAKD khi dự án đang thực hiện: lưu nháp hoặc gửi Kế toán duyệt lại (bản điều chỉnh). */
-  savePakdAdjust: (id: string, form: PakdFormData, by: string, submit: boolean) => void;
+  submitPakd: (id: string, by: string, role: BizRole) => void;
+  /** Lưu / gửi PAKD (bản đầu, bảo hành). Gửi: người lập ⇒ bản mới theo vai; người duyệt ở chân mình ⇒ duyệt bước đó. Trả về trạng thái sau khi gửi. */
+  savePakdForm: (id: string, form: PakdFormData, by: string, submit: boolean, role: BizRole) => PakdState | undefined;
+  /** Duyệt / từ chối theo chuỗi GĐ khối → Kế toán → BOD. Trả về trạng thái mới. */
+  decidePakd: (id: string, approve: boolean, role: BizRole, by: string, note: string) => PakdState | undefined;
+  /** Bản điều chỉnh khi dự án đang thực hiện — cùng luật với savePakdForm. */
+  savePakdAdjust: (id: string, form: PakdFormData, by: string, submit: boolean, role: BizRole) => PakdState | undefined;
   /** Huỷ bản điều chỉnh đang soạn (chưa gửi). */
   cancelPakdAdjust: (id: string, by: string) => void;
+  /** Kết thúc dự án Đang thực hiện ⇒ Đóng; KD / SX / outsource có hiệu lực Closed + Jira pending. */
   finishProject: (id: string, by: string) => void;
   /** Thêm / xoá tài liệu đính kèm của dự án (ghi lịch sử, không tăng version). */
   setAttachments: (id: string, files: BizAttachment[], by: string, note: string) => void;
-  /** Tạo mã outsource (tối đa MAX_OUTSOURCE). Trả về mã mới hoặc '' nếu đã đủ / chưa có mã tổng. */
-  addOutsourceCode: (id: string, pm: string, by: string) => string;
-  /** Đổi PM phụ trách mã outsource. */
-  setOutsourcePm: (id: string, code: string, pm: string, by: string) => void;
-  /** Xoá mã outsource. */
+  /** Tạo mã outsource (tối đa MAX_OUTSOURCE): `issueNow` (GĐK tạo) ⇒ có hiệu lực ngay, còn lại chờ GĐK duyệt. Trả về mã mới hoặc ''. */
+  addOutsourceCode: (id: string, content: string, pm: string, by: string, issueNow: boolean) => string;
+  /** GĐK duyệt / từ chối (bắt buộc lý do) TẤT CẢ mã outsource đang chờ. */
+  decideOutsource: (id: string, approve: boolean, by: string, note?: string) => void;
+  /** Xoá mềm mã outsource (GĐK) — số được dùng lại. */
   removeOutsourceCode: (id: string, code: string, by: string) => void;
+  /** Tích "Tạo mã bảo hành" (chỉ khi Đóng, không bỏ tích được) kèm PM bảo hành (trống ⇒ GĐ khối): chờ GĐK duyệt; `issueNow` (GĐK tự tích) ⇒ cấp mã ngay. Trả về mã nếu đã cấp. */
+  requestWarranty: (id: string, by: string, issueNow: boolean, pm: string) => string;
+  /** GĐK duyệt (sinh Mã tổng.3 Open + Jira create, dự án ⇒ Bảo hành) / từ chối (bắt buộc lý do, tích lại được). */
+  decideWarranty: (id: string, approve: boolean, by: string, note?: string) => string;
+  /** Đổi PM 1 mã từ /projects (D49, D53): ghi PM về dự án kinh doanh + lịch sử + Jira update_pm; mã Closed ⇒ bỏ qua. */
+  setCodePm: (id: string, code: string, pm: string, by: string) => void;
   /** Mục tiêu giá trị hợp đồng ký theo năm / khối. */
   targets: SignTargets;
   setYearTargets: (year: string, byDivision: Record<string, number>) => void;
@@ -885,17 +1190,38 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
   const updateProject = (id: string, data: BizProjectInput, by: string, note?: string) => {
     const at = now();
     setProjects((prev) =>
-      prev.map((p) =>
-        p.id === id
-          ? {
-              ...p,
-              ...data,
-              version: p.version + 1,
-              updatedAt: at,
-              history: [...p.history, { at, by, action: 'Cập nhật', note: note || `Version ${p.version + 1}` }],
-            }
-          : p,
-      ),
+      prev.map((p) => {
+        if (p.id !== id) return p;
+        // Form sửa chỉ đổi PM của mã con (outsource chưa bị từ chối, bảo hành đã cấp mã); trạng thái mã giữ theo bản hiện tại.
+        const extra: BizHistory[] = [];
+        const pmOf = (code: string) => (data.outsourceCodes || []).find((o) => !o.deletedAt && o.code === code)?.pm;
+        const closed = mainCodesClosed(p);
+        const outsourceCodes = p.outsourceCodes?.map((o) => {
+          const pm = pmOf(o.code);
+          if (closed || o.deletedAt || o.state === 'Từ chối' || pm === undefined || pm === o.pm) return o;
+          extra.push({ at, by, action: 'Cập nhật PM outsource', note: `${o.code} · ${pm || 'bỏ PM'}` });
+          return { ...o, pm };
+        });
+        let warranty = p.warranty;
+        const wPm = data.warranty?.pm;
+        const warClosed = !!warranty?.code && codeRecordStatus(p, warranty.code) === 'Closed';
+        // Chờ HOD duyệt ⇒ không đổi PM bảo hành (đổi sau khi được cấp mã).
+        if (warranty?.state === 'Đã cấp mã' && !warClosed && wPm !== undefined && wPm !== warranty.pm) {
+          extra.push({ at, by, action: 'Cập nhật PM bảo hành', note: `${warranty.code || warrantyCodeOf(p.masterCode)} · ${wPm || 'bỏ PM'}` });
+          warranty = { ...warranty, pm: wPm };
+        }
+        return {
+          ...p,
+          ...data,
+          // Mã Closed: giữ nguyên PM KD / SX / outsource.
+          ...(closed ? { businessPm: p.businessPm, productionPm: p.productionPm, outsourcePm: p.outsourcePm } : {}),
+          outsourceCodes,
+          warranty,
+          version: p.version + 1,
+          updatedAt: at,
+          history: [...p.history, { at, by, action: 'Cập nhật', note: note || `Version ${p.version + 1}` }, ...extra],
+        };
+      }),
     );
   };
 
@@ -903,9 +1229,20 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
 
   const today = () => now().slice(0, 10);
   /** Cập nhật 1 dự án + ghi lịch sử. */
-  const patch = (id: string, fn: (p: BizProject) => Partial<BizProject>, by: string, action: string, note?: string) => {
+  const patch = (id: string, fn: (p: BizProject) => Partial<BizProject>, by: string, action: string, note?: string) => patchLog(id, fn, [{ by, action, note }]);
+  /** Cập nhật 1 dự án + ghi nhiều dòng lịch sử. */
+  const patchLog = (id: string, fn: (p: BizProject) => Partial<BizProject>, logs: Omit<BizHistory, 'at'>[]) => {
     const at = now();
-    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...fn(p), updatedAt: at, history: [...p.history, { at, by, action, note }] } : p)));
+    setProjects((prev) =>
+      prev.map((p) => {
+        if (p.id !== id) return p;
+        const next = { ...p, ...fn(p), updatedAt: at };
+        // Đổi trạng thái dự án ⇒ ghi kèm "Mã IMIS: … ⇒ …" vào dòng lịch sử đầu.
+        const rec = recordChangeNote(p, next);
+        const rows = logs.map((l, i) => ({ at, ...l, ...(i === 0 && rec ? { note: l.note ? `${l.note} · ${rec}` : rec } : {}) }));
+        return { ...next, history: [...p.history, ...rows] };
+      }),
+    );
   };
 
   const dmyOf = (d: string) => d.split('-').reverse().join('/');
@@ -924,10 +1261,26 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
   };
 
   const reopenProject = (id: string, by: string) => {
+    const p0 = projects.find((p) => p.id === id);
+    if (p0?.status === 'Kết thúc') {
+      // Đã chốt 04/11: đang có yêu cầu bảo hành chờ duyệt ⇒ không mở lại.
+      if (p0.warranty?.state === 'Chờ HOD duyệt') return '';
+      // Đã chốt 04/11: có .3 ⇒ chỉ mở lại .3 (KD / SX / outsource giữ Closed); chưa có ⇒ mở lại KD / SX / outsource.
+      const codes = lifecycleCodes(p0);
+      patchLog(id, () => ({ status: 'Đang thực hiện', closedAt: undefined }), [
+        { by, action: 'Mở lại dự án', note: `Đóng ⇒ Đang thực hiện${inWarrantyPhase(p0) ? ' (KD / SX / outsource vẫn Closed)' : ''}` },
+        { by: 'Hệ thống', action: 'Đồng bộ Jira', note: `Đã gửi Jira reopen: mã ${codes.join(', ')}` },
+      ]);
+      return '';
+    }
+    if (p0?.status !== 'Pending') return '';
     const pakdDeadline = addDays(today(), PAKD_DAYS);
     patch(
       id,
-      (p) => ({ status: latestPakd(p)?.state === 'Chờ CFO' ? 'PAKD chờ duyệt' : 'Chưa có PAKD', pakdDeadline, closedAt: undefined }),
+      (p) => {
+        const w = workingPakd(p);
+        return { status: w ? statusAfterPakd({ status: 'Chưa có PAKD' }, w) : 'Chưa có PAKD', pakdDeadline, closedAt: undefined };
+      },
       by,
       'Mở lại dự án',
       `Hạn PAKD mới: ${dmyOf(pakdDeadline)}`,
@@ -935,11 +1288,11 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
     return pakdDeadline;
   };
 
-  /** Hết hạn PAKD_DAYS ngày mà PAKD chưa có / chưa được Kế toán duyệt → tự động chuyển Pending. */
+  /** Hết hạn PAKD_DAYS ngày mà PAKD chưa qua bước Kế toán → tự động chuyển Pending. */
   useEffect(() => {
     const t = today();
-    const waiting = (p: BizProject) => p.status === 'Chưa có PAKD' || p.status === 'PAKD chờ duyệt';
-    const overdue = projects.filter((p) => waiting(p) && !p.pakd.some((v) => v.state === 'Đã duyệt') && p.pakdDeadline && p.pakdDeadline < t);
+    const waiting = (p: BizProject) => p.status === 'Chưa có PAKD' || p.status === 'PAKD chờ duyệt' || p.status === 'Reject';
+    const overdue = projects.filter((p) => waiting(p) && !passedAccountant(p) && p.pakdDeadline && p.pakdDeadline < t);
     if (!overdue.length) return;
     const at = now();
     const ids = new Set(overdue.map((p) => p.id));
@@ -957,7 +1310,7 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
                   at,
                   by: 'Hệ thống',
                   action: 'Tự động chuyển Pending',
-                  note: `Quá ${PAKD_DAYS} ngày (hạn ${dmyOf(p.pakdDeadline!)}) ${p.pakd.length ? 'PAKD chưa được Kế toán duyệt' : 'chưa có PAKD'}`,
+                  note: `Quá ${PAKD_DAYS} ngày (hạn ${dmyOf(p.pakdDeadline!)}) ${p.pakd.length ? 'PAKD chưa qua bước Kế toán' : 'chưa có PAKD'}${lifecycleCodes(p).length ? ` · Mã IMIS: ${lifecycleCodes(p).join(', ')} ⇒ On-hold` : ''}`,
                 },
               ],
             }
@@ -966,14 +1319,27 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
     );
   }, [projects]);
 
-  const submitPakd = (id: string, by: string) =>
+  /** Bản mới do người lập gửi: trạng thái theo vai cao nhất; BOD lập ⇒ Đã duyệt ngay. */
+  const newVersion = (p: BizProject, by: string, role: BizRole, extra: Partial<PakdVersion>): PakdVersion => {
+    const state = pakdEntryState(role);
+    return { version: nextPakdVersion(p), submittedAt: today(), submittedBy: by, state, ...(state === 'Đã duyệt' ? { decidedAt: today(), decidedBy: role } : {}), ...extra };
+  };
+  const kindOf = (p: BizProject): Partial<PakdVersion> => (p.status === 'Bảo hành' ? { warranty: true } : {});
+
+  const submitPakd = (id: string, by: string, role: BizRole) => {
+    const p0 = projects.find((x) => x.id === id);
+    if (!p0 || isPakdLocked(p0)) return;
     patch(
       id,
-      (p) => ({ status: 'PAKD chờ duyệt', pakd: [...p.pakd, { version: p.pakd.length + 1, submittedAt: today(), submittedBy: by, state: 'Chờ CFO' }] }),
+      (p) => {
+        const v = newVersion(p, by, role, kindOf(p));
+        return { status: statusAfterPakd(p, v), pakd: [...p.pakd, v] };
+      },
       by,
       'Nộp PAKD',
-      'Chờ Kế toán (CFO) duyệt',
+      pakdTargetLabel(pakdEntryState(role)),
     );
+  };
 
   /** Áp số liệu PAKD vào dự án: doanh thu, chi phí, hợp đồng, thời gian, kế hoạch theo tháng. */
   const applyPakd = (p: BizProject, f: PakdFormData, by: string): Partial<BizProject> => {
@@ -1010,82 +1376,194 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
     return `${f.contractState} · Doanh thu ${Math.round(t.revenue).toLocaleString('en-US')} · Chi phí ${Math.round(t.cost).toLocaleString('en-US')}`;
   };
 
-  const savePakdForm = (id: string, form: PakdFormData, by: string, submit: boolean) => {
+  /** Duyệt / từ chối 1 bản: duyệt ⇒ bước kế tiếp; từ chối ⇒ ghi bước từ chối (cấp liền trước duyệt lại). */
+  const decideVersion = (v: PakdVersion, approve: boolean, role: BizRole, note: string): PakdVersion =>
+    approve
+      ? { ...v, state: pakdApproveTo(v, role), rejectedStep: undefined, decidedAt: today(), decidedBy: role, note: note || (v.state === 'Từ chối' ? undefined : v.note) }
+      : { ...v, state: 'Từ chối', rejectedStep: pakdRejectStep(v), decidedAt: today(), decidedBy: role, note };
+  const kindText = (v: Pick<PakdVersion, 'adjust' | 'warranty'>) => (v.adjust ? 'điều chỉnh ' : v.warranty ? 'bảo hành ' : '');
+
+  const savePakdForm = (id: string, form: PakdFormData, by: string, submit: boolean, role: BizRole) => {
+    const p0 = projects.find((x) => x.id === id);
+    if (!p0 || isPakdLocked(p0)) return undefined;
     const f: PakdFormData = { ...form, savedAt: now(), savedBy: by };
-    if (!submit) return patch(id, () => ({ pakdForm: f }), by, 'Lưu nháp PAKD');
+    const w = workingPakd(p0);
+    const kind = kindText(kindOf(p0));
+    // "Lưu" giữ nguyên bước duyệt.
+    if (!submit) {
+      patch(id, () => ({ pakdForm: f }), by, `Lưu PAKD ${kind}`.trim(), w ? `V${w.version} · giữ bước: ${pakdStateLabel(w)}` : 'Nháp');
+      return w?.state;
+    }
+    // Người duyệt sửa ở chân mình ⇒ "Gửi" = duyệt bước đó, giữ bản và người nộp gốc.
+    const edit = isApproverEdit(w, role);
+    const v = edit ? decideVersion(w!, true, role, '') : newVersion(p0, by, role, kindOf(p0));
     patch(
       id,
-      (p) => ({
-        ...applyPakd(p, f, by),
-        pakdForm: f,
-        status: 'PAKD chờ duyệt',
-        pakd: [...p.pakd, { version: nextPakdVersion(p), submittedAt: today(), submittedBy: by, state: 'Chờ CFO' }],
-      }),
+      (p) => ({ ...applyPakd(p, f, by), pakdForm: f, status: statusAfterPakd(p, v), pakd: edit ? [...p.pakd.slice(0, -1), v] : [...p.pakd, v] }),
       by,
-      'Nộp PAKD',
-      `${pakdSummary(f)} · Chờ Kế toán (CFO) duyệt`,
+      edit ? `${role} sửa & duyệt PAKD ${kind}`.trim() : `Nộp PAKD ${kind}`.trim(),
+      `V${v.version} · ${pakdSummary(f)} · ${pakdTargetLabel(v.state)}`,
     );
+    return v.state;
   };
 
-  const savePakdAdjust = (id: string, form: PakdFormData, by: string, submit: boolean) => {
+  const savePakdAdjust = (id: string, form: PakdFormData, by: string, submit: boolean, role: BizRole) => {
+    const p0 = projects.find((x) => x.id === id);
+    if (!p0) return undefined;
     const f: PakdFormData = { ...form, savedAt: now(), savedBy: by };
-    if (!submit) return patch(id, () => ({ pakdDraft: f }), by, 'Lưu nháp điều chỉnh PAKD');
+    const w = workingPakd(p0);
+    if (!submit) {
+      patch(id, () => ({ pakdDraft: f }), by, 'Lưu điều chỉnh PAKD', w ? `V${w.version} · giữ bước: ${pakdStateLabel(w)}` : 'Nháp');
+      return w?.state;
+    }
+    const edit = isApproverEdit(w, role);
+    const v = edit ? decideVersion(w!, true, role, '') : newVersion(p0, by, role, { adjust: true });
+    // BOD lập / duyệt bước cuối ⇒ áp dụng bản điều chỉnh ngay.
+    const done = v.state === 'Đã duyệt';
     patch(
       id,
       (p) => ({
-        pakdDraft: f,
-        pakd: [...p.pakd, { version: nextPakdVersion(p), submittedAt: today(), submittedBy: by, state: 'Chờ CFO', adjust: true }],
+        ...(done ? { ...applyPakd(p, f, by), pakdForm: f, pakdDraft: undefined } : { pakdDraft: f }),
+        pakd: edit ? [...p.pakd.slice(0, -1), v] : [...p.pakd, v],
       }),
       by,
-      'Gửi điều chỉnh PAKD',
-      `${pakdSummary(f)} · Chờ Kế toán (CFO) duyệt lại`,
+      edit ? `${role} sửa & duyệt điều chỉnh PAKD` : 'Gửi điều chỉnh PAKD',
+      `V${v.version} · ${pakdSummary(f)} · ${pakdTargetLabel(v.state)}`,
     );
+    return v.state;
   };
   const cancelPakdAdjust = (id: string, by: string) => patch(id, () => ({ pakdDraft: undefined }), by, 'Huỷ bản điều chỉnh PAKD');
 
-  const decidePakd = (id: string, approve: boolean, role: BizRole, by: string, note: string) =>
+  const decidePakd = (id: string, approve: boolean, role: BizRole, by: string, note: string) => {
+    const p0 = projects.find((x) => x.id === id);
+    const w = p0 && !isPakdLocked(p0) ? workingPakd(p0) : undefined;
+    note = note.trim();
+    if (!w || !canDecidePakd(w, role) || (!approve && !note)) return undefined;
+    const v = decideVersion(w, approve, role, note);
     patch(
       id,
-      (p) => {
-        const last = latestPakd(p)!;
-        const next: PakdVersion = !approve
-          ? { ...last, state: 'Từ chối', decidedAt: today(), decidedBy: role, note }
-          : { ...last, state: 'Đã duyệt', decidedAt: today(), decidedBy: role, note: note || last.note };
-        // Bản điều chỉnh: duyệt → áp số liệu mới; từ chối → giữ bản đang áp dụng, bản điều chỉnh trả về GĐK / SM sửa tiếp.
-        if (last.adjust)
-          return approve && p.pakdDraft
-            ? { ...applyPakd(p, p.pakdDraft, by), pakd: [...p.pakd.slice(0, -1), next], pakdForm: p.pakdDraft, pakdDraft: undefined }
-            : { pakd: [...p.pakd.slice(0, -1), next] };
-        return {
-          pakd: [...p.pakd.slice(0, -1), next],
-          status: !approve ? 'Chưa có PAKD' : 'Đang thực hiện',
-        };
-      },
+      (p) => ({
+        // Bản điều chỉnh: duyệt bước cuối ⇒ áp số liệu mới; còn lại giữ bản đang áp dụng.
+        ...(v.state === 'Đã duyệt' && v.adjust && p.pakdDraft ? { ...applyPakd(p, p.pakdDraft, by), pakdForm: p.pakdDraft, pakdDraft: undefined } : {}),
+        pakd: [...p.pakd.slice(0, -1), v],
+        status: statusAfterPakd(p, v),
+      }),
       by,
-      `${role} ${approve ? 'duyệt' : 'từ chối'} ${projects.find((x) => x.id === id) && latestPakd(projects.find((x) => x.id === id)!)?.adjust ? 'điều chỉnh ' : ''}PAKD`,
-      note || undefined,
+      `${role} ${approve ? 'duyệt' : 'từ chối'} ${kindText(w)}PAKD`,
+      `V${v.version} · ${approve ? pakdTargetLabel(v.state) : `trả về: ${pakdWaitingText(v)}`}${note ? ` · ${note}` : ''}`,
     );
+    return v.state;
+  };
 
-  const finishProject = (id: string, by: string) => patch(id, () => ({ status: 'Kết thúc' }), by, 'Kết thúc dự án');
-
-  const addOutsourceCode = (id: string, pm: string, by: string) => {
+  const finishProject = (id: string, by: string) => {
     const p0 = projects.find((p) => p.id === id);
-    const code = p0 && (p0.outsourceCodes || []).length < MAX_OUTSOURCE ? nextOutsourceCode(p0) : '';
-    if (!code) return '';
-    pm = pm || p0?.outsourcePm || '';
+    // Đã chốt 04/11: còn mã outsource chờ duyệt ⇒ chưa cho kết thúc.
+    if (p0?.status !== 'Đang thực hiện' || pendingOutsource(p0).length) return;
+    const codes = lifecycleCodes(p0);
+    patchLog(id, () => ({ status: 'Kết thúc', closedAt: today() }), [
+      { by, action: 'Kết thúc dự án', note: 'Dự án ⇒ Đóng' },
+      { by: 'Hệ thống', action: 'Đồng bộ Jira', note: `Đã gửi Jira pending: mã ${codes.join(', ')}` },
+    ]);
+  };
+
+  const live = (o: BizOutsource) => !o.deletedAt;
+  const addOutsourceCode = (id: string, content: string, pm: string, by: string, issueNow: boolean) => {
+    const p0 = projects.find((p) => p.id === id);
+    const code = p0 ? nextOutsourceCode(p0) : '';
+    content = content.trim();
+    if (!p0 || !code || !content) return '';
+    pm = pm || p0.salesDirector || '';
+    const state: OutsourceState = issueNow ? 'Có hiệu lực' : 'Chờ HOD duyệt';
+    const item: BizOutsource = { code, content, pm, state, createdAt: now(), createdBy: by, ...(issueNow ? { decidedAt: now(), decidedBy: by } : {}) };
     patch(
       id,
-      (p) => ({ outsourceCodes: [...(p.outsourceCodes || []), { code, pm, createdAt: now(), createdBy: by }].sort((a, b) => a.code.localeCompare(b.code)) }),
+      (p) => ({ outsourceCodes: [...(p.outsourceCodes || []), item] }),
       by,
       'Tạo mã outsource',
-      `${code}${pm ? ` · PM ${pm}` : ''}`,
+      `${code} · PM ${pm || '—'} · Nội dung: ${content} · ${issueNow ? 'Có hiệu lực' : 'Chờ HOD duyệt'}`,
     );
     return code;
   };
-  const setOutsourcePm = (id: string, code: string, pm: string, by: string) =>
-    patch(id, (p) => ({ outsourceCodes: (p.outsourceCodes || []).map((o) => (o.code === code ? { ...o, pm } : o)) }), by, 'Cập nhật PM outsource', `${code} · ${pm || 'bỏ PM'}`);
-  const removeOutsourceCode = (id: string, code: string, by: string) =>
-    patch(id, (p) => ({ outsourceCodes: (p.outsourceCodes || []).filter((o) => o.code !== code) }), by, 'Xoá mã outsource', code);
+  const decideOutsource = (id: string, approve: boolean, by: string, note = '') => {
+    note = note.trim();
+    const p0 = projects.find((p) => p.id === id);
+    if (!p0 || mainCodesClosed(p0) || (!approve && !note)) return;
+    const at = now();
+    setProjects((prev) =>
+      prev.map((p) => {
+        if (p.id !== id) return p;
+        const codes = (p.outsourceCodes || []).filter((o) => live(o) && o.state === 'Chờ HOD duyệt').map((o) => o.code);
+        if (!codes.length) return p;
+        return {
+          ...p,
+          outsourceCodes: (p.outsourceCodes || []).map((o) =>
+            live(o) && o.state === 'Chờ HOD duyệt' ? { ...o, state: approve ? 'Có hiệu lực' : 'Từ chối', decidedAt: at, decidedBy: by, rejectReason: approve ? undefined : note } : o,
+          ),
+          updatedAt: at,
+          history: [...p.history, ...codes.map((c) => ({ at, by, action: approve ? 'Duyệt mã outsource' : 'Từ chối mã outsource', note: note ? `${c} · ${note}` : c }))],
+        };
+      }),
+    );
+  };
+  const removeOutsourceCode = (id: string, code: string, by: string) => {
+    const p0 = projects.find((p) => p.id === id);
+    if (!p0 || mainCodesClosed(p0)) return;
+    patch(id, (p) => ({ outsourceCodes: (p.outsourceCodes || []).map((o) => (live(o) && o.code === code ? { ...o, deletedAt: now(), deletedBy: by } : o)) }), by, 'Xoá mã outsource', code);
+  };
+
+  // Mã bảo hành — ghi lịch sử, không tăng version; đã tích / đã cấp thì không huỷ / xoá.
+  const issueWarranty = (p0: BizProject, w: BizWarranty, by: string, note = '') => {
+    const code = warrantyCodeOf(p0.masterCode);
+    const pm = w.pm || p0.salesDirector;
+    const v = nextPakdVersion(p0);
+    // Đã chốt 04/11: tạo sẵn PAKD bảo hành V(n+1) Nháp chép từ bản áp dụng.
+    const draft = p0.pakdForm ? { ...p0.pakdForm, savedAt: now(), savedBy: 'Hệ thống' } : undefined;
+    patchLog(p0.id, () => ({ status: 'Bảo hành', pakdForm: draft, pakdDraft: undefined, pakdDeadline: undefined, warranty: { ...w, state: 'Đã cấp mã', code, pm, decidedAt: now(), decidedBy: by, rejectReason: undefined, mainClosedAt: p0.closedAt } }), [
+      { by, action: 'Duyệt mã bảo hành', note: `${code} · PM ${pm || '—'} · Dự án ⇒ Bảo hành${note ? ` · ${note}` : ''}` },
+      { by: 'Hệ thống', action: 'Đồng bộ Jira', note: `Đã gửi Jira create: mã ${code}` },
+      { by: 'Hệ thống', action: 'Tạo PAKD bảo hành', note: `V${v} Nháp — chép từ bản áp dụng V${v - 1} · không áp hạn ${PAKD_DAYS} ngày` },
+    ]);
+    return code;
+  };
+  const requestWarranty = (id: string, by: string, issueNow: boolean, pm: string) => {
+    const p0 = projects.find((p) => p.id === id);
+    if (!p0 || !canRequestWarranty(p0) || warrantyActive(p0.warranty)) return '';
+    const base: BizWarranty = { state: 'Chờ HOD duyệt', code: '', pm: pm.trim(), requestedAt: now(), requestedBy: by };
+    if (issueNow) return issueWarranty(p0, base, by);
+    patch(id, () => ({ warranty: base }), by, 'Yêu cầu mã bảo hành', `${warrantyCodeOf(p0.masterCode)} · PM ${base.pm || `mặc định GĐ khối (${p0.salesDirector || '—'})`} · Chờ HOD duyệt`);
+    return '';
+  };
+  const decideWarranty = (id: string, approve: boolean, by: string, note = '') => {
+    const p0 = projects.find((p) => p.id === id);
+    const w = p0?.warranty;
+    note = note.trim();
+    if (!p0 || w?.state !== 'Chờ HOD duyệt' || (!approve && !note)) return '';
+    if (approve) return issueWarranty(p0, w, by, note);
+    patch(id, () => ({ warranty: { ...w, state: 'Từ chối', decidedAt: now(), decidedBy: by, rejectReason: note } }), by, 'Từ chối mã bảo hành', note);
+    return '';
+  };
+
+  const setCodePm = (id: string, code: string, pm: string, by: string) => {
+    const p0 = projects.find((p) => p.id === id);
+    if (!p0 || codeRecordStatus(p0, code) === 'Closed') return;
+    const kind = code === p0.businessCode || code === p0.productionCode ? 'main' : p0.warranty?.code === code ? 'warranty' : 'outsource';
+    const action = kind === 'main' ? 'Cập nhật PM' : kind === 'warranty' ? 'Cập nhật PM bảo hành' : 'Cập nhật PM outsource';
+    patchLog(
+      id,
+      (p) =>
+        code === p.businessCode
+          ? { businessPm: pm }
+          : code === p.productionCode
+            ? { productionPm: pm }
+            : kind === 'warranty'
+              ? { warranty: { ...p.warranty!, pm } }
+              : { outsourceCodes: p.outsourceCodes?.map((o) => (o.code === code ? { ...o, pm } : o)) },
+      [
+        { by, action, note: `${code} · ${pm} (từ /projects)` },
+        ...(jiraOf(p0, code) === 'Đã tạo' ? [{ by: 'Hệ thống', action: 'Đồng bộ Jira', note: `Đã gửi Jira update_pm: mã ${code}` }] : []),
+      ],
+    );
+  };
 
   const setAttachments = (id: string, files: BizAttachment[], by: string, note: string) => {
     const at = now();
@@ -1244,7 +1722,7 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
   };
 
   return (
-    <BusinessProjectContext.Provider value={{ projects, ledger, importLedger, removeLedgerEntry, removeLedgerVersion, nextLedgerVer, createProject, updateProject, deleteProject, importMonthly, savePlanMonths, saveContract, setAttachments, addOutsourceCode, setOutsourcePm, removeOutsourceCode, approveCode, reopenProject, submitPakd, savePakdForm, savePakdAdjust, cancelPakdAdjust, decidePakd, finishProject, targets, setYearTargets }}>
+    <BusinessProjectContext.Provider value={{ projects, ledger, importLedger, removeLedgerEntry, removeLedgerVersion, nextLedgerVer, createProject, updateProject, deleteProject, importMonthly, savePlanMonths, saveContract, setAttachments, addOutsourceCode, decideOutsource, removeOutsourceCode, requestWarranty, decideWarranty, setCodePm, approveCode, reopenProject, submitPakd, savePakdForm, savePakdAdjust, cancelPakdAdjust, decidePakd, finishProject, targets, setYearTargets }}>
       {children}
     </BusinessProjectContext.Provider>
   );

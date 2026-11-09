@@ -86,6 +86,7 @@ import { ProcessPage } from './components/process/ProcessPage';
 import { MyProcessPage } from './components/process/MyProcessPage';
 import { LoginPage, clearLogin, savedLogin, type LoginUser } from './components/LoginPage';
 import { AssignedTicketPage, MyTicketPage, QueueTicketPage, TicketConfigPage, TicketMailboxPage, TicketReportPage } from './components/ticket/TicketPages';
+import { ProjectsModulePage } from './components/projects/ProjectsModulePage';
 
 export default function App() {
   const [activeItem, setActiveItem] = useState('Mục tiêu kinh doanh'); // màn mở mặc định khi vào hệ thống
@@ -158,6 +159,8 @@ export default function App() {
         return <DashboardPage onNavigate={setActiveItem} />;
       case 'Projects':
         return <ProjectsPage />;
+      case 'QLDA · Dự án':
+        return <ProjectsModulePage />;
       case 'Dự án kinh doanh':
         return <BusinessProjectPage />;
       case 'PM · Tổng quan':
