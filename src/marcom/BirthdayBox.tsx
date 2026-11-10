@@ -41,7 +41,10 @@ const subLine = (cfg: BoxConfig, e: MarcomEmployee) => [cfg.showPosition ? e.pos
 
 /** Nội dung box sinh nhật (1 mục của slide). onClose = hiện nút ẩn ở góc. */
 /** Chiều cao cố định của box ở chế độ gọn (trang chủ) — mọi slide cùng cao để không giật khi chuyển. */
-export const COMPACT_H = 'h-[132px]';
+export const COMPACT_H = 'h-[150px]';
+/** Trên số người này thì danh sách trên banner chạy ngang; mỗi người ~3 giây. */
+export const MARQUEE_FROM = 5;
+const marqueeSeconds = (n: number) => Math.max(12, n * 3);
 
 const BirthdaySlide: React.FC<{ box: BoxConfig; people: MarcomEmployee[]; preview: boolean; onClose?: () => void; compact?: boolean }> = ({ box, people, preview, onClose, compact }) => {
   const { tr, wdLong } = useMarcomLang();
@@ -52,50 +55,112 @@ const BirthdaySlide: React.FC<{ box: BoxConfig; people: MarcomEmployee[]; previe
 
   if (compact && people.length > 0) {
     const light = box.layout === 'banner';
+    const marquee = people.length > MARQUEE_FROM;
+    const card = (e: MarcomEmployee) => (
+      <div
+        className={`shrink-0 w-[128px] rounded-2xl px-2 pt-2.5 pb-2 text-center ${light ? 'bg-white/15 ring-1 ring-white/25 backdrop-blur' : 'bg-white/75 ring-1 ring-white backdrop-blur shadow-[0_6px_16px_-8px_rgba(15,23,42,.35)]'}`}
+      >
+        <div className="relative mx-auto w-[50px] h-[50px]">
+          <span className="absolute -inset-[3px] rounded-full" style={{ background: `conic-gradient(${theme.hex}, #fbbf24, #34d399, ${theme.hex})` }} />
+          <span className="absolute inset-0 rounded-full bg-white" />
+          <Avatar e={e} size={50} rounded="rounded-full" className="relative" />
+          <span className="absolute -bottom-1 -right-1.5 w-5 h-5 rounded-full bg-white shadow flex items-center justify-center text-[13px]">🎂</span>
+        </div>
+        <div className={`mt-1.5 text-[13px] font-semibold leading-tight truncate ${light ? 'text-white' : 'text-slate-800'}`} title={e.name}>
+          {e.name}
+        </div>
+        {subLine(box, e) && <div className={`text-[13px] truncate ${light ? 'text-white/75' : 'text-slate-400 font-medium'}`}>{subLine(box, e)}</div>}
+      </div>
+    );
     return (
-      <div className={`relative ${COMPACT_H} overflow-hidden rounded-2xl border ${light ? 'border-transparent' : `bg-gradient-to-r ${theme.bg}`} shadow-sm`} data-testid="bday-compact">
-        {light &&
-          (box.bgUrl ? (
+      <div
+        className={`relative ${COMPACT_H} overflow-hidden rounded-2xl ${light ? '' : `border border-white bg-gradient-to-r ${theme.bg}`} shadow-[0_1px_2px_rgba(15,23,42,.06),0_8px_24px_-12px_rgba(15,23,42,.18)]`}
+        data-testid="bday-compact"
+      >
+        {light ? (
+          box.bgUrl ? (
             <>
               <img src={box.bgUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-slate-900/40" />
+              <div className="absolute inset-0 bg-gradient-to-r from-slate-900/70 via-slate-900/40 to-slate-900/10" />
             </>
           ) : (
             <div className={`absolute inset-0 bg-gradient-to-br ${theme.icon}`} />
-          ))}
-        <div className="relative h-full flex items-center gap-5 pl-5 pr-11">
-          <div className="min-w-0 flex-1 max-w-[46%]">
-            <div className="flex items-center gap-2.5">
-              <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${theme.icon} flex items-center justify-center shadow shrink-0 ${light ? 'ring-2 ring-white/40' : ''}`}>
-                <Cake size={18} className="text-white" />
-              </div>
-              <div className="min-w-0">
-                <div className={`text-[10px] font-black uppercase tracking-wider ${light ? 'text-white/80' : theme.accent}`}>
-                  {tr('Sinh nhật hôm nay', "Today's birthdays")} · {wdLong[today.getDay()]}, {fmtDayMonth(today)}
-                </div>
-                <div className={`text-[15px] font-black flex items-center gap-1.5 truncate ${light ? 'text-white' : 'text-slate-800'}`}>
-                  {boxTitle(box, people.length)} <PartyPopper size={15} className="text-amber-400 shrink-0" />
-                </div>
-              </div>
+          )
+        ) : (
+          <>
+            {/* mảng màu mờ + hoa giấy */}
+            <div className="pointer-events-none absolute -top-24 -left-16 w-72 h-72 rounded-full blur-3xl opacity-30" style={{ background: theme.hex }} />
+            <div className="pointer-events-none absolute -bottom-28 left-[38%] w-80 h-80 rounded-full blur-3xl opacity-25 bg-amber-300" />
+            <div className="pointer-events-none absolute -top-20 right-10 w-64 h-64 rounded-full blur-3xl opacity-20 bg-sky-300" />
+            <div className="pointer-events-none absolute inset-0">
+              {Array.from({ length: 22 }).map((_, k) => (
+                <span
+                  key={k}
+                  className="absolute rounded-[2px]"
+                  style={{
+                    left: `${(k * 47 + 13) % 100}%`,
+                    top: `${(k * 29 + 7) % 100}%`,
+                    width: k % 3 ? 5 : 7,
+                    height: k % 3 ? 9 : 7,
+                    borderRadius: k % 3 ? 2 : 999,
+                    transform: `rotate(${k * 37}deg)`,
+                    background: [theme.hex, '#fbbf24', '#34d399', '#60a5fa', '#a78bfa', '#fb7185'][k % 6],
+                    opacity: 0.35,
+                  }}
+                />
+              ))}
             </div>
-            <div className={`mt-2 text-[12.5px] leading-snug line-clamp-2 ${light ? 'text-white/90' : 'text-slate-600'}`}>
-              “<RichHtml inline html={box.greeting} />” <span className={`font-black whitespace-nowrap ${light ? 'text-white' : theme.accent}`}>— {box.signature}</span>
+            {/* bóng bay góc phải */}
+            <svg className="pointer-events-none absolute right-3 -bottom-2 h-[120px] opacity-60" viewBox="0 0 90 140" aria-hidden>
+              <path d="M28 70 C26 95 36 110 30 140" stroke="#94a3b8" strokeWidth="1" fill="none" />
+              <path d="M62 60 C64 90 54 110 60 140" stroke="#94a3b8" strokeWidth="1" fill="none" />
+              <ellipse cx="28" cy="44" rx="20" ry="25" fill={theme.hex} opacity=".55" />
+              <ellipse cx="62" cy="34" rx="18" ry="23" fill="#fbbf24" opacity=".6" />
+              <ellipse cx="22" cy="36" rx="5" ry="8" fill="#fff" opacity=".45" />
+              <ellipse cx="57" cy="26" rx="4" ry="7" fill="#fff" opacity=".45" />
+            </svg>
+          </>
+        )}
+
+        <div className="relative h-full flex items-center gap-6 pl-16 pr-16">
+          {/* Lời chúc */}
+          <div className="min-w-0 flex-1 max-w-[520px]">
+            <div className={`inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full text-[13px] font-semibold ${light ? 'bg-white/15 text-white ring-1 ring-white/25' : `bg-white/80 ${theme.accent} ring-1 ring-white shadow-sm`}`}>
+              <Cake size={12} /> {tr('Sinh nhật hôm nay', "Today's birthdays")} · {wdLong[today.getDay()]}, {fmtDayMonth(today)}
+            </div>
+            <div className={`mt-1.5 text-[19px] font-semibold tracking-tight flex items-center gap-1.5 truncate ${light ? 'text-white' : 'text-slate-800'}`}>
+              {boxTitle(box, people.length)} <PartyPopper size={18} className="text-amber-400 shrink-0" />
+            </div>
+            <div className={`mt-1 text-[13px] italic leading-snug line-clamp-2 ${light ? 'text-white/85' : 'text-slate-600'}`}>
+              “<RichHtml inline html={box.greeting} />”{' '}
+              <span className={`not-italic font-semibold whitespace-nowrap ${light ? 'text-white' : theme.accent}`}>— {box.signature}</span>
             </div>
           </div>
-          <div className="flex-1 min-w-0 flex gap-2.5 overflow-x-auto py-1 justify-end">
-            {people.map((e) => (
-              <div key={e.id} className={`shrink-0 flex items-center gap-2.5 rounded-xl pl-1.5 pr-3 py-1.5 ${light ? 'bg-white/15 border border-white/25' : 'bg-white/85 border border-white shadow-sm'}`}>
-                <span className="relative shrink-0">
-                  <Avatar e={e} size={40} rounded={rounded} className={`ring-2 ${light ? 'ring-white/40' : theme.ring}`} />
-                  <span className="absolute -bottom-0.5 -right-0.5 text-[10px]">🎂</span>
-                </span>
-                <div className="min-w-0 max-w-[140px]">
-                  <div className={`text-[12.5px] font-black truncate ${light ? 'text-white' : 'text-slate-800'}`}>{e.name}</div>
-                  {subLine(box, e) && <div className={`text-[11px] truncate ${light ? 'text-white/75' : 'text-slate-400 font-semibold'}`}>{subLine(box, e)}</div>}
-                </div>
+
+          {/* Người có sinh nhật — trên 5 người thì chạy ngang liên tục (di chuột vào để dừng) */}
+          {marquee ? (
+            <div
+              className="flex-1 min-w-0 overflow-hidden motion-reduce:overflow-x-auto group/mq [mask-image:linear-gradient(to_right,transparent,#000_7%,#000_93%,transparent)]"
+              data-testid="bday-marquee"
+            >
+              <div
+                className="bday-marquee flex w-max py-2 group-hover/mq:[animation-play-state:paused]"
+                style={{ animationName: 'bday-marquee', animationDuration: `${marqueeSeconds(people.length)}s`, animationTimingFunction: 'linear', animationIterationCount: 'infinite' }}
+              >
+                {[...people, ...people].map((e, k) => (
+                  <div key={`${e.id}-${k}`} className="shrink-0 pr-2.5" aria-hidden={k >= people.length || undefined}>
+                    {card(e)}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <div className="flex-1 min-w-0 flex gap-2.5 overflow-x-auto py-2 justify-end [scrollbar-width:none]">
+              {people.map((e) => (
+                <React.Fragment key={e.id}>{card(e)}</React.Fragment>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -229,8 +294,16 @@ const BirthdaySlide: React.FC<{ box: BoxConfig; people: MarcomEmployee[]; previe
 /** 1 banner MarCom trong slide — có link thì bấm mở trang mới. */
 const BannerSlide: React.FC<{ b: HomeBanner; compact?: boolean }> = ({ b, compact }) => {
   const img = (
-    <div className={`relative overflow-hidden rounded-2xl shadow-sm bg-slate-100 ${compact ? COMPACT_H : 'h-full min-h-[200px]'}`}>
-      <img src={b.url} alt={b.name} className="absolute inset-0 w-full h-full object-cover" draggable={false} />
+    <div
+      className={`group/bn relative overflow-hidden rounded-2xl bg-slate-100 ${compact ? `${COMPACT_H} shadow-[0_1px_2px_rgba(15,23,42,.06),0_8px_24px_-12px_rgba(15,23,42,.25)]` : 'h-full min-h-[200px] shadow-sm'}`}
+    >
+      <img src={b.url} alt={b.name} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover/bn:scale-[1.02]" draggable={false} />
+      <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-inset ring-black/5" />
+      {b.link && (
+        <span className="absolute right-4 bottom-4 inline-flex items-center gap-1 h-7 px-3 rounded-full bg-white/90 text-[11.5px] font-bold text-slate-700 shadow opacity-0 group-hover/bn:opacity-100 transition-opacity">
+          Xem chi tiết <ChevronRight size={13} />
+        </span>
+      )}
     </div>
   );
   return b.link ? (
@@ -263,11 +336,13 @@ export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean;
     ...banners.map((b) => ({ kind: 'banner' as const, id: b.id, b })),
   ];
   const n = slides.length;
-  const dur = Math.max(2, box.slideSeconds || 5) * 1000;
+  const baseDur = Math.max(2, box.slideSeconds || 5) * 1000;
   const [idx, setIdx] = useState(0);
   const [paused, setPaused] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const cur = n ? idx % n : 0;
+  // Slide sinh nhật đang chạy danh sách → giữ đủ 1 vòng rồi mới sang slide sau
+  const dur = compact && slides[cur]?.kind === 'bday' && people.length > MARQUEE_FROM ? Math.max(baseDur, marqueeSeconds(people.length) * 1000) : baseDur;
   useEffect(() => {
     if (n < 2 || paused) return;
     const t = window.setInterval(() => setElapsed((e) => e + 100), 100);
@@ -311,13 +386,13 @@ export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean;
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
-      <div className="grid">
+      <div className="grid grid-cols-[minmax(0,1fr)]">
         {slides.map((x, i) => (
           <div
             key={x.id}
             aria-hidden={i !== cur}
             data-slide={x.kind === 'bday' ? 'birthday' : x.b.name}
-            className={`[grid-area:1/1] transition-opacity duration-500 ${i === cur ? 'opacity-100 z-[1]' : 'opacity-0 pointer-events-none'}`}
+            className={`[grid-area:1/1] min-w-0 transition-opacity duration-500 ${i === cur ? 'opacity-100 z-[1]' : 'opacity-0 pointer-events-none'}`}
           >
             {x.kind === 'bday' ? <BirthdaySlide box={box} people={people} preview={preview} compact={compact} /> : <BannerSlide b={x.b} compact={compact} />}
           </div>
@@ -338,7 +413,7 @@ export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean;
           <button
             type="button"
             onClick={() => go(cur - 1)}
-            className="absolute left-2 top-1/2 -translate-y-1/2 z-[2] w-8 h-8 rounded-full bg-white/80 shadow flex items-center justify-center text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-white"
+            className="absolute left-3 top-1/2 -translate-y-1/2 z-[2] w-9 h-9 rounded-full bg-white/75 backdrop-blur ring-1 ring-white shadow-md flex items-center justify-center text-slate-700 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-white"
             title={tr('Mục trước', 'Previous')}
           >
             <ChevronLeft size={16} />
@@ -346,12 +421,12 @@ export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean;
           <button
             type="button"
             onClick={() => go(cur + 1)}
-            className="absolute right-2 top-1/2 -translate-y-1/2 z-[2] w-8 h-8 rounded-full bg-white/80 shadow flex items-center justify-center text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-white"
+            className="absolute right-3 top-1/2 -translate-y-1/2 z-[2] w-9 h-9 rounded-full bg-white/75 backdrop-blur ring-1 ring-white shadow-md flex items-center justify-center text-slate-700 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-white"
             title={tr('Mục sau', 'Next')}
           >
             <ChevronRight size={16} />
           </button>
-          <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 z-[2] flex items-center gap-1.5 rounded-full bg-slate-900/20 px-2 py-1 backdrop-blur-sm">
+          <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-[2] flex items-center gap-1.5 rounded-full bg-slate-900/25 px-2 py-1 backdrop-blur-sm">
             {slides.map((x, i) => (
               <button
                 key={x.id}

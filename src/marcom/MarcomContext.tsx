@@ -78,14 +78,49 @@ export interface MarcomConfig {
   box: BoxConfig;
 }
 
-/** Banner mẫu (ảnh vẽ sẵn) — MarCom thay bằng banner thật ở Cấu hình › Box sinh nhật. */
-const sampleBanner = (title: string, sub: string, c1: string, c2: string) =>
-  `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="400" viewBox="0 0 1600 400"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs><rect width="1600" height="400" fill="url(#g)"/><circle cx="1380" cy="80" r="190" fill="#fff" opacity=".08"/><circle cx="1250" cy="380" r="140" fill="#fff" opacity=".07"/><text x="90" y="185" font-family="Segoe UI, Arial, sans-serif" font-size="64" font-weight="800" fill="#fff">${title}</text><text x="92" y="250" font-family="Segoe UI, Arial, sans-serif" font-size="30" fill="#fff" opacity=".9">${sub}</text></svg>`,
+/** Banner mẫu (ảnh vẽ sẵn, 2000×230 — tỉ lệ khung trang chủ) — MarCom thay bằng banner thật ở Cấu hình › Box sinh nhật.
+ *  Chữ đặt trong vùng an toàn giữa (x 400–1600) vì khung hẹp sẽ cắt bớt hai bên. */
+const sampleBanner = (tag: string, title: string, sub: string, cta: string, c1: string, c2: string, c3: string) => {
+  const dots = Array.from({ length: 48 }, (_, i) => `<circle cx="${1380 + (i % 12) * 22}" cy="${40 + Math.floor(i / 12) * 22}" r="2.2" fill="#fff" opacity=".22"/>`).join('');
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="230" viewBox="0 0 2000 230">
+<defs>
+<linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset=".55" stop-color="${c2}"/><stop offset="1" stop-color="${c3}"/></linearGradient>
+<radialGradient id="glow" cx=".75" cy=".2" r=".6"><stop offset="0" stop-color="#fff" stop-opacity=".35"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+<linearGradient id="w" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity=".18"/></linearGradient>
+</defs>
+<rect width="2000" height="230" fill="url(#g)"/>
+<rect width="2000" height="230" fill="url(#glow)"/>
+<path d="M0 190 C380 130 700 250 1100 180 S1700 110 2000 160 V230 H0 Z" fill="#fff" opacity=".07"/>
+<path d="M0 215 C420 170 820 240 1240 205 S1780 170 2000 195 V230 H0 Z" fill="#fff" opacity=".09"/>
+<path d="M1180 0 L1420 0 L1240 230 L1000 230 Z" fill="url(#w)"/>
+<path d="M1460 0 L1560 0 L1380 230 L1280 230 Z" fill="url(#w)" opacity=".7"/>
+<circle cx="1640" cy="40" r="120" fill="#fff" opacity=".06"/>
+${dots}
+<rect x="400" y="44" rx="15" ry="15" width="${tag.length * 11 + 36}" height="30" fill="#fff" opacity=".2"/>
+<text x="418" y="65" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15" font-weight="800" letter-spacing="2" fill="#fff">${tag}</text>
+<text x="398" y="132" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="50" font-weight="800" fill="#fff">${title}</text>
+<text x="400" y="174" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="22" fill="#fff" opacity=".88">${sub}</text>
+<rect x="1430" y="100" rx="24" ry="24" width="${cta.length * 12 + 64}" height="48" fill="#fff"/>
+<text x="${1430 + (cta.length * 12 + 64) / 2}" y="131" text-anchor="middle" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" font-weight="800" fill="${c1}">${cta} →</text>
+</svg>`,
   )}`;
+};
 const SAMPLE_BANNERS: HomeBanner[] = [
-  { id: 'bn-1', name: 'Town hall quý IV', url: sampleBanner('Town hall quý IV/2026', 'Thứ Sáu 30/10 · 15:00 · Hội trường tầng 15 &amp; trực tuyến Teams', '#1f5fa8', '#0ea5e9'), link: '', active: true },
-  { id: 'bn-2', name: 'Chương trình đào tạo', url: sampleBanner('Tuần lễ học tập VTX', 'Đăng ký các khoá kỹ năng mềm &amp; công nghệ trước 05/11', '#0f8f6c', '#84cc16'), link: '', active: true },
+  {
+    id: 'bn-1',
+    name: 'Town hall quý IV',
+    url: sampleBanner('SỰ KIỆN', 'Town hall quý IV/2026', 'Thứ Sáu 30/10 · 15:00 · Hội trường tầng 15 &amp; trực tuyến Teams', 'Xem lịch', '#011b64', '#1f5fa8', '#0ea5e9'),
+    link: '',
+    active: true,
+  },
+  {
+    id: 'bn-2',
+    name: 'Chương trình đào tạo',
+    url: sampleBanner('ĐÀO TẠO', 'Tuần lễ học tập VTX', 'Đăng ký các khoá kỹ năng mềm &amp; công nghệ trước 05/11', 'Đăng ký', '#065f46', '#0f8f6c', '#65a30d'),
+    link: '',
+    active: true,
+  },
 ];
 
 const DEFAULT_CONFIG: MarcomConfig = {

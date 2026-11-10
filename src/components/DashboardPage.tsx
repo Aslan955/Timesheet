@@ -104,11 +104,11 @@ const StatTile: React.FC<{ icon: React.ElementType; tone: Tone; label: string; v
       <Icon size={18} />
     </div>
     <div className="min-w-0 flex-1">
-      <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider truncate">{label}</p>
+      <p className="text-[13px] font-semibold text-slate-600 uppercase truncate" title={label}>{label}</p>
       <div className="flex items-baseline gap-1 mt-0.5">
-        <span className="text-[20px] font-black text-slate-800 font-mono leading-none">{value}</span>
-        <span className="text-[11px] font-bold text-slate-400 truncate">{unit}</span>
-        <span className="ml-auto pl-1 text-[10.5px] font-semibold text-slate-400 whitespace-nowrap hidden min-[1440px]:inline">{note}</span>
+        <span className="text-[20px] font-bold text-slate-900 font-mono leading-none">{value}</span>
+        <span className="text-[13px] font-semibold text-slate-500 truncate">{unit}</span>
+        <span className="ml-auto pl-1 text-[13px] font-semibold text-slate-500 whitespace-nowrap hidden min-[1440px]:inline">{note}</span>
       </div>
       <div className="h-1 bg-slate-100 rounded-full mt-2 overflow-hidden">
         <div className={`h-full rounded-full ${TONE[tone].bar} transition-all duration-500`} style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
@@ -126,8 +126,8 @@ const Card: React.FC<{ icon: React.ElementType; tone: Tone; title: string; sub?:
           <Icon size={15} />
         </div>
         <div className="min-w-0">
-          <h3 className="text-[13.5px] font-bold text-slate-800 leading-tight">{title}</h3>
-          {sub && <p className="text-[10.5px] text-slate-400 font-semibold">{sub}</p>}
+          <h3 className="text-[16px] font-bold text-slate-900 leading-tight">{title}</h3>
+          {sub && <p className="text-[13px] text-slate-500 font-semibold">{sub}</p>}
         </div>
       </div>
       {action}
@@ -142,7 +142,7 @@ const StatusPill: React.FC<{ status: MyRequest['status'] }> = ({ status }) => {
     Approved: ['Đã duyệt', 'bg-emerald-50 text-emerald-600 border-emerald-100'],
     Rejected: ['Từ chối', 'bg-rose-50 text-rose-500 border-rose-100'],
   }[status];
-  return <span className={`px-2.5 py-0.5 text-[9.5px] font-bold rounded-full border whitespace-nowrap ${m[1]}`}>{m[0]}</span>;
+  return <span className={`px-2.5 py-0.5 text-[13px] font-medium rounded-full border whitespace-nowrap ${m[1]}`}>{m[0]}</span>;
 };
 
 const NOTICES = [
@@ -317,7 +317,7 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
     : myRequests.filter(r => r.module === requestModule);
 
   // Khung cứng: luôn chừa chỗ cho 6 dòng, thiếu thì chèn hàng trống, dư thì scroll
-  const REQUEST_VISIBLE_ROWS = 6;
+  const REQUEST_VISIBLE_ROWS = 5;
   const requestFillerCount = Math.max(0, REQUEST_VISIBLE_ROWS - filteredMyRequests.length);
 
   // Computed Counts
@@ -335,7 +335,7 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
             initial={{ opacity: 0, y: -20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -20, scale: 0.95 }}
-            className="fixed top-6 right-6 z-50 bg-[#0f172a]/95 backdrop-blur-md text-white px-5 py-3 rounded-2xl shadow-xl border border-slate-700/50 flex items-center space-x-3 text-xs font-bold pointer-events-auto"
+            className="fixed top-6 right-6 z-50 bg-[#0f172a]/95 backdrop-blur-md text-white px-5 py-3 rounded-2xl shadow-xl border border-slate-700/50 flex items-center space-x-3 text-[13px] font-medium pointer-events-auto"
           >
             <div className="w-2 h-2 rounded-full bg-[#0fa57c] animate-ping" />
             <span>{toastMessage}</span>
@@ -346,13 +346,13 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
       {/* Thanh chào + đồng hồ + chuyển chế độ xem */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-[19px] font-black text-slate-800 leading-tight">
+          <h1 className="text-[19px] font-semibold text-slate-800 leading-tight">
             {greetingOf(currentTime)}, {CURRENT_USER.name.split(' ').slice(-2).join(' ')}
           </h1>
-          <p className="text-[12px] text-slate-500 font-medium">Tổng quan phép, chấm công và đơn từ của bạn</p>
+          <p className="text-[13px] text-slate-500 font-medium">Tổng quan phép, chấm công và đơn từ của bạn</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="h-8 px-3 bg-white border border-slate-200 rounded-lg flex items-center gap-2 text-[11.5px] font-bold text-slate-600 font-mono">
+          <div className="h-8 px-3 bg-white border border-slate-200 rounded-lg flex items-center gap-2 text-[13px] font-bold text-slate-700 font-mono">
             <Clock size={13} className="text-[#0fa57c]" />
             <span>{getVietnameseDateTimeString(currentTime)}</span>
           </div>
@@ -364,7 +364,7 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
               <button
                 key={t.key}
                 onClick={() => setActiveTab(t.key)}
-                className={`h-full px-3 rounded-md text-[11.5px] font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                className={`h-full px-3 rounded-md text-[13px] font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                   activeTab === t.key ? 'bg-white text-[#0fa57c] shadow-xs' : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
@@ -428,11 +428,11 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                 <Wrench size={18} />
               </div>
               <div className="relative min-w-0">
-                <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider truncate">Đơn từ đang chờ</p>
-                <p className="flex items-center gap-1.5 text-[15px] font-black text-slate-800 leading-tight mt-0.5">
+                <p className="text-[13px] font-semibold text-slate-600 uppercase tracking-wide truncate">Đơn từ đang chờ</p>
+                <p className="flex items-center gap-1.5 text-[15px] font-bold text-slate-900 leading-tight mt-0.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Đang bảo trì
                 </p>
-                <p className="text-[10.5px] font-semibold text-amber-600 truncate mt-0.5">Đang nâng cấp, sẽ sớm hoạt động lại</p>
+                <p className="text-[13px] font-semibold text-amber-600 truncate mt-0.5">Đang nâng cấp, sẽ sớm hoạt động lại</p>
               </div>
             </div>
           </div>
@@ -447,7 +447,7 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                 title="Đơn từ & yêu cầu của tôi"
                 sub="Onsite · Leaves · OT"
                 action={
-                  <button onClick={() => onNavigate && onNavigate('Leaves')} className="text-[11.5px] font-bold text-[#0fa57c] hover:underline flex items-center gap-0.5 cursor-pointer">
+                  <button onClick={() => onNavigate && onNavigate('Leaves')} className="text-[13px] font-medium text-[#0fa57c] hover:underline flex items-center gap-0.5 cursor-pointer">
                     Xem tất cả <ChevronRight size={14} />
                   </button>
                 }
@@ -462,7 +462,7 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                     <button
                       key={tab.key}
                       onClick={() => setRequestModule(tab.key)}
-                      className={`h-6 px-2.5 text-[11px] font-bold rounded-full border transition-all cursor-pointer ${
+                      className={`h-6 px-2.5 text-[13px] font-medium rounded-full border transition-all cursor-pointer ${
                         requestModule === tab.key ? 'bg-[#0fa57c] text-white border-[#0fa57c]' : 'bg-white text-slate-500 border-slate-200 hover:border-[#0fa57c]/40 hover:text-slate-700'
                       }`}
                     >
@@ -470,20 +470,18 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                     </button>
                   ))}
                 </div>
-                {/* Khung cao cố định = tiêu đề + 6 dòng; dư thì cuộn, thiếu thì chèn hàng trống */}
-                <div className="overflow-auto h-[350px] rounded-lg border border-slate-100">
-                  <table className="w-full text-left text-xs table-fixed">
+                {/* Khung cao cố định = tiêu đề + 5 dòng; dư thì cuộn, thiếu thì chèn hàng trống */}
+                <div className="overflow-auto h-[258px] rounded-lg border border-slate-100">
+                  <table className="w-full text-left text-[13px] table-fixed">
                     <colgroup>
-                      <col className="w-[76px]" />
+                      <col className="w-[96px]" />
                       <col />
-                      <col className="w-[160px]" />
-                      <col className="w-[64px]" />
-                      <col className="w-[92px]" />
+                      <col className="w-[86px]" />
+                      <col className="w-[120px]" />
                     </colgroup>
                     <thead className="sticky top-0 z-[1]">
-                      <tr className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider bg-slate-50 h-9">
+                      <tr className="text-[13px] font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap bg-slate-50 h-9">
                         <th className="px-3">Module</th>
-                        <th className="px-3">Loại đơn</th>
                         <th className="px-3">Thời gian</th>
                         <th className="px-3 text-center">Số giờ</th>
                         <th className="px-3 text-center">Trạng thái</th>
@@ -491,25 +489,21 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {filteredMyRequests.map((item) => (
-                        <tr key={item.id} className="h-[52px] hover:bg-slate-50/60 transition-colors">
+                        <tr key={item.id} className="h-11 hover:bg-slate-50/60 transition-colors">
                           <td className="px-3">
-                            <span className={`px-2 py-0.5 text-[9.5px] font-bold rounded-md border ${MODULE_META[item.module].className}`}>{MODULE_META[item.module].label}</span>
+                            <span className={`px-2 py-0.5 text-[13px] font-medium rounded-md border ${MODULE_META[item.module].className}`}>{MODULE_META[item.module].label}</span>
                           </td>
-                          <td className="px-3">
-                            <span className="font-bold text-slate-800 block truncate">{item.type}</span>
-                            <span className="block text-[10.5px] text-slate-400 font-medium truncate">Tạo ngày {item.createdAt}</span>
-                          </td>
-                          <td className="px-3 font-medium text-slate-600 whitespace-nowrap text-[11.5px]">{item.period}</td>
-                          <td className="px-3 text-center font-bold text-slate-800 font-mono">{item.hours}h</td>
+                          <td className="px-3 font-medium text-slate-700 whitespace-nowrap text-[13px] truncate" title={`${item.type} · tạo ngày ${item.createdAt}`}>{item.period}</td>
+                          <td className="px-3 text-center font-medium text-slate-800 font-mono">{item.hours}h</td>
                           <td className="px-3 text-center">
                             <StatusPill status={item.status} />
                           </td>
                         </tr>
                       ))}
                       {Array.from({ length: requestFillerCount }).map((_, i) => (
-                        <tr key={`filler-${i}`} className="h-[52px]">
-                          <td className="px-3" colSpan={5}>
-                            {filteredMyRequests.length === 0 && i === 0 && <span className="text-slate-300 font-semibold text-[11px]">Không có đơn từ nào thuộc module này.</span>}
+                        <tr key={`filler-${i}`} className="h-11">
+                          <td className="px-3" colSpan={4}>
+                            {filteredMyRequests.length === 0 && i === 0 && <span className="text-slate-300 font-medium text-[13px]">Không có đơn từ nào thuộc module này.</span>}
                           </td>
                         </tr>
                       ))}
@@ -525,15 +519,15 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                 title="Lịch sử điểm danh"
                 sub="Giờ chấm công gần đây"
                 action={
-                  <button onClick={() => onNavigate && onNavigate('Chấm công')} className="text-[11.5px] font-bold text-[#0fa57c] hover:underline flex items-center gap-0.5 cursor-pointer">
+                  <button onClick={() => onNavigate && onNavigate('Chấm công')} className="text-[13px] font-medium text-[#0fa57c] hover:underline flex items-center gap-0.5 cursor-pointer">
                     Xem tất cả <ChevronRight size={14} />
                   </button>
                 }
               >
                 <div className="overflow-x-auto rounded-lg border border-slate-100">
-                  <table className="w-full text-left text-xs">
+                  <table className="w-full text-left text-[13px]">
                     <thead>
-                      <tr className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider bg-slate-50 h-9">
+                      <tr className="text-[13px] font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap bg-slate-50 h-9">
                         <th className="px-3 w-10">STT</th>
                         <th className="px-3">Ngày</th>
                         <th className="px-3">Check-in</th>
@@ -544,12 +538,12 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                     <tbody className="divide-y divide-slate-100">
                       {attendanceLogs.map((log, idx) => (
                         <tr key={log.id} className="h-10 hover:bg-slate-50/60 transition-colors">
-                          <td className="px-3 font-bold text-slate-400 font-mono">{idx + 1}</td>
-                          <td className="px-3 font-semibold text-slate-700 font-mono">{log.date}</td>
-                          <td className="px-3 font-bold text-slate-800 font-mono">{log.checkIn}</td>
-                          <td className={`px-3 font-bold font-mono ${log.checkOut === '—' ? 'text-slate-300' : 'text-slate-800'}`}>{log.checkOut}</td>
+                          <td className="px-3 font-medium text-slate-400 font-mono">{idx + 1}</td>
+                          <td className="px-3 font-medium text-slate-700 font-mono">{log.date}</td>
+                          <td className="px-3 font-medium text-slate-800 font-mono">{log.checkIn}</td>
+                          <td className={`px-3 font-medium font-mono ${log.checkOut === '—' ? 'text-slate-300' : 'text-slate-800'}`}>{log.checkOut}</td>
                           <td className="px-3">
-                            <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[9.5px] font-bold rounded-md border border-blue-100 whitespace-nowrap">{log.type}</span>
+                            <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[13px] font-medium rounded-md border border-blue-100 whitespace-nowrap">{log.type}</span>
                           </td>
                         </tr>
                       ))}
@@ -572,18 +566,18 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                         <img src={person.avatar} alt="" className="w-8 h-8 rounded-full shrink-0" />
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5">
-                            <span className="text-[12.5px] font-bold text-slate-800 truncate">{person.name}</span>
-                            {person.isToday && <span className="px-1.5 py-px bg-rose-100 text-rose-600 text-[9px] font-black uppercase tracking-wider rounded">Hôm nay</span>}
+                            <span className="text-[13px] font-medium text-slate-800 truncate">{person.name}</span>
+                            {person.isToday && <span className="px-1.5 py-px bg-rose-100 text-rose-600 text-[13px] font-semibold rounded">Hôm nay</span>}
                           </div>
-                          <p className="text-[10.5px] text-slate-400 font-semibold truncate">
-                            {person.role} · <span className="font-bold text-slate-600">{person.date}</span>
+                          <p className="text-[13px] text-slate-400 font-medium truncate">
+                            {person.role} · <span className="font-medium text-slate-600">{person.date}</span>
                           </p>
                         </div>
                       </div>
                       <button
                         onClick={() => openWishCompose({ id: person.id, name: person.name, avatar: person.avatar })}
                         disabled={wishesSent[person.id]}
-                        className={`shrink-0 h-7 px-3 text-[11px] font-bold rounded-lg transition-all ${
+                        className={`shrink-0 h-7 px-3 text-[13px] font-medium rounded-lg transition-all ${
                           wishesSent[person.id] ? 'bg-emerald-50 text-emerald-600 border border-emerald-100 cursor-not-allowed' : 'bg-rose-500 hover:bg-rose-600 text-white active:scale-95 cursor-pointer'
                         }`}
                       >
@@ -602,11 +596,11 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                       <span className={`w-1 rounded-full shrink-0 ${n.bar}`} />
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className={`text-[9.5px] font-black uppercase tracking-wider ${n.tagCls}`}>{n.tag}</span>
-                          <span className="text-[10.5px] text-slate-400 font-semibold">{n.date}</span>
+                          <span className={`text-[13px] font-semibold ${n.tagCls}`}>{n.tag}</span>
+                          <span className="text-[13px] text-slate-400 font-medium">{n.date}</span>
                         </div>
-                        <h4 className="text-[12.5px] font-bold text-slate-800 mt-0.5 leading-snug">{n.title}</h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5 leading-snug line-clamp-2">{n.body}</p>
+                        <h4 className="text-[13px] font-medium text-slate-800 mt-0.5 leading-snug">{n.title}</h4>
+                        <p className="text-[13px] text-slate-500 mt-0.5 leading-snug line-clamp-2">{n.body}</p>
                       </div>
                     </div>
                   ))}
@@ -630,12 +624,12 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
               className="bg-white border border-slate-200/60 p-5 rounded-2xl flex items-center justify-between shadow-xs hover:shadow-sm hover:border-[#0fa57c]/40 transition-all duration-200 relative overflow-hidden group cursor-pointer"
             >
               <div className="space-y-1.5 z-10">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Quỹ phép cá nhân</p>
+                <p className="text-[13px] font-medium text-slate-400">Quỹ phép cá nhân</p>
                 <div className="flex items-baseline space-x-1">
-                  <span className="text-2xl font-black text-slate-800 tracking-tight font-mono">{personalLeave.remaining}</span>
-                  <span className="text-xs font-semibold text-slate-400">/ {personalLeave.totalEntitlement} ngày</span>
+                  <span className="text-2xl font-semibold text-slate-800 tracking-tight font-mono">{personalLeave.remaining}</span>
+                  <span className="text-[13px] font-medium text-slate-400">/ {personalLeave.totalEntitlement} ngày</span>
                 </div>
-                <p className="text-[10px] font-bold text-[#0fa57c] flex items-center gap-1">
+                <p className="text-[13px] font-medium text-[#0fa57c] flex items-center gap-1">
                   <TrendingUp size={11} /> Đã sử dụng {personalLeave.used} ngày
                 </p>
               </div>
@@ -650,12 +644,12 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
               className="bg-white border border-slate-200/60 p-5 rounded-2xl flex items-center justify-between shadow-xs hover:shadow-sm hover:border-[#0fa57c]/40 transition-all duration-200 relative overflow-hidden group cursor-pointer"
             >
               <div className="space-y-1.5 z-10">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Đơn phép chờ duyệt</p>
+                <p className="text-[13px] font-medium text-slate-400">Đơn phép chờ duyệt</p>
                 <div className="flex items-baseline space-x-1">
-                  <span className="text-2xl font-black text-slate-800 tracking-tight font-mono">{pendingLeavesCount}</span>
-                  <span className="text-xs font-semibold text-slate-400">yêu cầu</span>
+                  <span className="text-2xl font-semibold text-slate-800 tracking-tight font-mono">{pendingLeavesCount}</span>
+                  <span className="text-[13px] font-medium text-slate-400">yêu cầu</span>
                 </div>
-                <p className="text-[10px] font-bold text-slate-400">Đang cần bạn xem xét</p>
+                <p className="text-[13px] font-medium text-slate-400">Đang cần bạn xem xét</p>
               </div>
               <div className={`p-3.5 rounded-xl ${pendingLeavesCount > 0 ? 'bg-amber-50 text-amber-600' : 'bg-slate-50 text-slate-400'} group-hover:scale-110 transition-transform duration-300`}>
                 <Inbox size={20} />
@@ -668,12 +662,12 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
               className="bg-white border border-slate-200/60 p-5 rounded-2xl flex items-center justify-between shadow-xs hover:shadow-sm hover:border-[#0fa57c]/40 transition-all duration-200 relative overflow-hidden group cursor-pointer"
             >
               <div className="space-y-1.5 z-10">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Timesheet chờ duyệt</p>
+                <p className="text-[13px] font-medium text-slate-400">Timesheet chờ duyệt</p>
                 <div className="flex items-baseline space-x-1">
-                  <span className="text-2xl font-black text-slate-800 tracking-tight font-mono">{pendingTimesheetsCount}</span>
-                  <span className="text-xs font-semibold text-slate-400">bảng công</span>
+                  <span className="text-2xl font-semibold text-slate-800 tracking-tight font-mono">{pendingTimesheetsCount}</span>
+                  <span className="text-[13px] font-medium text-slate-400">bảng công</span>
                 </div>
-                <p className="text-[10px] font-bold text-slate-400">Yêu cầu xác nhận tuần</p>
+                <p className="text-[13px] font-medium text-slate-400">Yêu cầu xác nhận tuần</p>
               </div>
               <div className={`p-3.5 rounded-xl ${pendingTimesheetsCount > 0 ? 'bg-blue-50 text-blue-600' : 'bg-slate-50 text-slate-400'} group-hover:scale-110 transition-transform duration-300`}>
                 <FileText size={20} />
@@ -690,13 +684,13 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                 <div className="flex items-center space-x-2">
                   <div className="p-2 bg-amber-50 text-amber-600 rounded-xl"><Inbox size={16} /></div>
                   <div>
-                    <h3 className="text-sm font-bold text-slate-800">Yêu Cầu Nghỉ Phép Mới Nhất</h3>
-                    <p className="text-[10px] text-slate-400 font-semibold uppercase">Đơn gửi từ nhân sự đang chờ xử lý</p>
+                    <h3 className="text-[13px] font-medium text-slate-800">Yêu Cầu Nghỉ Phép Mới Nhất</h3>
+                    <p className="text-[13px] text-slate-400 font-medium">Đơn gửi từ nhân sự đang chờ xử lý</p>
                   </div>
                 </div>
                 <button 
                   onClick={() => onNavigate && onNavigate('Leaves')}
-                  className="text-xs font-bold text-[#0fa57c] hover:underline flex items-center space-x-1"
+                  className="text-[13px] font-medium text-[#0fa57c] hover:underline flex items-center space-x-1"
                 >
                   <span>Tất cả đơn</span>
                   <ChevronRight size={14} />
@@ -706,7 +700,7 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse min-w-[500px]">
                   <thead>
-                    <tr className="border-b border-slate-100 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider bg-slate-50/50">
+                    <tr className="border-b border-slate-100 text-[13px] font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap bg-slate-50/50">
                       <th className="py-2.5 px-3">Họ và tên</th>
                       <th className="py-2.5 px-3">Loại phép</th>
                       <th className="py-2.5 px-3 text-center">Tổng giờ</th>
@@ -715,27 +709,27 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                       <th className="py-2.5 px-3 text-right">Hành động</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 text-xs">
+                  <tbody className="divide-y divide-slate-100 text-[13px]">
                     {filteredLeaves.slice(0, 5).map((item) => (
                       <tr key={item.id} className="hover:bg-slate-50/40 transition-colors group">
-                        <td className="py-3 px-3 font-bold text-slate-700">
+                        <td className="py-3 px-3 font-medium text-slate-700">
                           <div>{item.fullName}</div>
-                          <div className="text-[9px] text-slate-400 font-medium tracking-tight mt-0.5">{item.project}</div>
+                          <div className="text-[13px] text-slate-400 font-medium tracking-tight mt-0.5">{item.project}</div>
                         </td>
-                        <td className="py-3 px-3 font-semibold text-slate-500">{item.leaveType}</td>
-                        <td className="py-3 px-3 text-center font-bold text-slate-700 font-mono">{item.totalHours}h</td>
+                        <td className="py-3 px-3 font-medium text-slate-500">{item.leaveType}</td>
+                        <td className="py-3 px-3 text-center font-medium text-slate-700 font-mono">{item.totalHours}h</td>
                         <td className="py-3 px-3 text-slate-500 font-medium">
-                          <div className="text-[10px] font-mono">{item.startDate}</div>
-                          <div className="text-[10px] font-mono text-slate-400">{item.endDate}</div>
+                          <div className="text-[13px] font-mono">{item.startDate}</div>
+                          <div className="text-[13px] font-mono text-slate-400">{item.endDate}</div>
                         </td>
                         <td className="py-3 px-3">
                           <div className="flex justify-center">
                             {item.status === 'Requested' ? (
-                              <span className="px-2 py-0.5 bg-amber-50 text-amber-600 text-[9px] font-bold rounded-md border border-amber-100">Chờ duyệt</span>
+                              <span className="px-2 py-0.5 bg-amber-50 text-amber-600 text-[13px] font-medium rounded-md border border-amber-100">Chờ duyệt</span>
                             ) : item.status === 'Approved' ? (
-                              <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-[9px] font-bold rounded-md border border-emerald-100">Đã duyệt</span>
+                              <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-[13px] font-medium rounded-md border border-emerald-100">Đã duyệt</span>
                             ) : (
-                              <span className="px-2 py-0.5 bg-rose-50 text-rose-500 text-[9px] font-bold rounded-md border border-rose-100">Từ chối</span>
+                              <span className="px-2 py-0.5 bg-rose-50 text-rose-500 text-[13px] font-medium rounded-md border border-rose-100">Từ chối</span>
                             )}
                           </div>
                         </td>
@@ -759,7 +753,7 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                                 </button>
                               </>
                             ) : (
-                              <span className="text-[10px] text-slate-400 font-medium">Đã xử lý</span>
+                              <span className="text-[13px] text-slate-400 font-medium">Đã xử lý</span>
                             )}
                           </div>
                         </td>
@@ -776,13 +770,13 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                 <div className="flex items-center space-x-2">
                   <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><FileText size={16} /></div>
                   <div>
-                    <h3 className="text-sm font-bold text-slate-800">Timesheet Cần Phê Duyệt</h3>
-                    <p className="text-[10px] text-slate-400 font-semibold uppercase">Hồ sơ xác nhận bảng công hàng tuần</p>
+                    <h3 className="text-[13px] font-medium text-slate-800">Timesheet Cần Phê Duyệt</h3>
+                    <p className="text-[13px] text-slate-400 font-medium">Hồ sơ xác nhận bảng công hàng tuần</p>
                   </div>
                 </div>
                 <button 
                   onClick={() => onNavigate && onNavigate('Timesheet')}
-                  className="text-xs font-bold text-[#0fa57c] hover:underline flex items-center space-x-1"
+                  className="text-[13px] font-medium text-[#0fa57c] hover:underline flex items-center space-x-1"
                 >
                   <span>Xem bảng công</span>
                   <ChevronRight size={14} />
@@ -792,30 +786,30 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
               <div className="overflow-x-auto flex-1">
                 <table className="w-full text-left border-collapse min-w-[350px]">
                   <thead>
-                    <tr className="border-b border-slate-100 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider bg-slate-50/50">
+                    <tr className="border-b border-slate-100 text-[13px] font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap bg-slate-50/50">
                       <th className="py-2.5 px-3">Nhân sự</th>
                       <th className="py-2.5 px-3">Dự án</th>
                       <th className="py-2.5 px-3 text-center">Trạng thái</th>
                       <th className="py-2.5 px-3 text-right">Duyệt nhanh</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 text-xs">
+                  <tbody className="divide-y divide-slate-100 text-[13px]">
                     {filteredTimesheets.slice(0, 5).map((item) => (
                       <tr key={item.id} className="hover:bg-slate-50/40 transition-colors group">
-                        <td className="py-3.5 px-3 font-bold text-slate-700">{item.authorName}</td>
+                        <td className="py-3.5 px-3 font-medium text-slate-700">{item.authorName}</td>
                         <td className="py-3.5 px-3 font-medium text-slate-500 truncate max-w-[120px]" title={item.projectName}>
                           {item.projectName}
                         </td>
                         <td className="py-3.5 px-3 text-center">
                           <div className="flex justify-center">
                             {item.status === 'Requested' ? (
-                              <span className="px-2 py-0.5 bg-orange-50 text-orange-600 text-[9px] font-bold rounded-md border border-orange-100">Cần duyệt</span>
+                              <span className="px-2 py-0.5 bg-orange-50 text-orange-600 text-[13px] font-medium rounded-md border border-orange-100">Cần duyệt</span>
                             ) : item.status === 'Approved' ? (
-                              <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-[9px] font-bold rounded-md border border-emerald-100">Đã duyệt</span>
+                              <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-[13px] font-medium rounded-md border border-emerald-100">Đã duyệt</span>
                             ) : item.status === 'Draft' ? (
-                              <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[9px] font-bold rounded-md border border-slate-200">Nháp</span>
+                              <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[13px] font-medium rounded-md border border-slate-200">Nháp</span>
                             ) : (
-                              <span className="px-2 py-0.5 bg-rose-50 text-rose-500 text-[9px] font-bold rounded-md border border-rose-100">Từ chối</span>
+                              <span className="px-2 py-0.5 bg-rose-50 text-rose-500 text-[13px] font-medium rounded-md border border-rose-100">Từ chối</span>
                             )}
                           </div>
                         </td>
@@ -839,7 +833,7 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                                 </button>
                               </>
                             ) : (
-                              <span className="text-[10px] text-slate-400 font-medium">Khóa</span>
+                              <span className="text-[13px] text-slate-400 font-medium">Khóa</span>
                             )}
                           </div>
                         </td>
@@ -870,8 +864,8 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                 <div className="flex items-center gap-3">
                   <img src={wishingPerson.avatar} alt={wishingPerson.name} className="w-11 h-11 rounded-full border border-slate-100" referrerPolicy="no-referrer" />
                   <div>
-                    <h4 className="font-black text-slate-900 text-sm">Gửi lời chúc mừng sinh nhật</h4>
-                    <p className="text-[11px] text-slate-400 font-semibold">Tới {wishingPerson.name}</p>
+                    <h4 className="font-semibold text-slate-900 text-[13px]">Gửi lời chúc mừng sinh nhật</h4>
+                    <p className="text-[13px] text-slate-400 font-medium">Tới {wishingPerson.name}</p>
                   </div>
                 </div>
                 <button onClick={() => setWishingPerson(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
@@ -880,7 +874,7 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
               </div>
 
               <div>
-                <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Mẫu thiệp</p>
+                <p className="text-[13px] font-semibold text-slate-500 mb-1.5">Mẫu thiệp</p>
                 <div className="grid grid-cols-4 gap-2" data-testid="wish-themes">
                   {(Object.keys(WISH_THEMES) as WishTheme[]).map((k) => (
                     <button
@@ -890,7 +884,7 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                       className={`rounded-xl bg-gradient-to-br ${WISH_THEMES[k].bg} py-2 text-center cursor-pointer border transition-all ${wishTheme === k ? 'border-rose-400 ring-2 ring-rose-200' : 'border-slate-100 hover:border-slate-300'}`}
                     >
                       <span className="block text-xl leading-none">{WISH_THEMES[k].emoji}</span>
-                      <span className="block text-[10px] font-bold text-slate-600 mt-1">{WISH_THEMES[k].label}</span>
+                      <span className="block text-[13px] font-medium text-slate-600 mt-1">{WISH_THEMES[k].label}</span>
                     </button>
                   ))}
                 </div>
@@ -899,7 +893,7 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
               <div>
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   {WISH_SUGGESTIONS.map((t, i) => (
-                    <button key={i} type="button" onClick={() => setWishText(t)} className="px-2 py-1 rounded-lg bg-rose-50 text-rose-600 text-[10px] font-bold hover:bg-rose-100 cursor-pointer" title={t}>
+                    <button key={i} type="button" onClick={() => setWishText(t)} className="px-2 py-1 rounded-lg bg-rose-50 text-rose-600 text-[13px] font-medium hover:bg-rose-100 cursor-pointer" title={t}>
                       Gợi ý {i + 1}
                     </button>
                   ))}
@@ -910,35 +904,35 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                   onChange={(e) => setWishText(e.target.value.slice(0, WISH_MAX_LENGTH))}
                   maxLength={WISH_MAX_LENGTH}
                   placeholder="Nhập lời chúc của bạn (tối đa 500 ký tự)..."
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-medium text-slate-700 outline-none focus:border-rose-400 focus:bg-white transition-all h-32 resize-none"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-[13px] font-medium text-slate-700 outline-none focus:border-rose-400 focus:bg-white transition-all h-32 resize-none"
                 />
                 <div className="flex justify-end mt-1">
-                  <span className={`text-[10px] font-bold ${wishText.length >= WISH_MAX_LENGTH ? 'text-rose-500' : 'text-slate-400'}`}>
+                  <span className={`text-[13px] font-medium ${wishText.length >= WISH_MAX_LENGTH ? 'text-rose-500' : 'text-slate-400'}`}>
                     {wishText.length}/{WISH_MAX_LENGTH} ký tự
                   </span>
                 </div>
                 <div className="flex items-center gap-2 mt-2">
-                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider whitespace-nowrap">Ký tên</span>
+                  <span className="text-[13px] font-semibold text-slate-500 whitespace-nowrap">Ký tên</span>
                   <input
                     value={wishSign}
                     onChange={(e) => setWishSign(e.target.value.slice(0, 60))}
                     placeholder="Tên hiển thị cuối thiệp"
-                    className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:border-rose-400 focus:bg-white"
+                    className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[13px] font-medium text-slate-700 outline-none focus:border-rose-400 focus:bg-white"
                   />
                 </div>
-                <p className="text-[10px] text-slate-400 mt-2">{wishingPerson.name} sẽ nhận thông báo ở chuông trên thanh đầu trang; bấm vào thông báo sẽ mở thiệp chúc của bạn.</p>
+                <p className="text-[13px] text-slate-400 mt-2">{wishingPerson.name} sẽ nhận thông báo ở chuông trên thanh đầu trang; bấm vào thông báo sẽ mở thiệp chúc của bạn.</p>
               </div>
 
               <div className="flex space-x-3">
                 <button
                   onClick={() => setWishingPerson(null)}
-                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold uppercase tracking-wider transition-all"
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-[13px] font-medium transition-all"
                 >
                   Hủy
                 </button>
                 <button
                   onClick={handleSubmitWish}
-                  className="flex-1 py-2.5 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg shadow-rose-500/20 transition-all active:scale-[0.98] flex items-center justify-center gap-1.5"
+                  className="flex-1 py-2.5 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-[13px] font-medium shadow-lg shadow-rose-500/20 transition-all active:scale-[0.98] flex items-center justify-center gap-1.5"
                 >
                   <Send size={14} /> Gửi lời chúc
                 </button>

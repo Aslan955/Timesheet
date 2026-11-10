@@ -218,10 +218,10 @@ export const buildEmployees = (ref = new Date()): MarcomEmployee[] => {
   const daysInMonth = new Date(y, m + 1, 0).getDate();
   const list: MarcomEmployee[] = [];
 
-  // Ngày-tháng sinh: 3 người đúng hôm nay, ~10 người trong tháng này, còn lại rải đều cả năm
+  // Ngày-tháng sinh: 7 người đúng hôm nay (đủ để banner chạy danh sách), ~6 người khác trong tháng này, còn lại rải đều cả năm
   const dobFor = (i: number): string => {
     const year = 1984 + ((i * 7) % 17);
-    if (i < 3) return toKey(new Date(year, m, today.getDate()));
+    if (i < 7) return toKey(new Date(year, m, today.getDate()));
     if (i < 13) {
       const day = ((i * 5 + 2) % daysInMonth) + 1;
       return toKey(new Date(year, m, day === today.getDate() ? Math.min(day + 1, daysInMonth) : day));
