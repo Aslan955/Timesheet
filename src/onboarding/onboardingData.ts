@@ -13,15 +13,16 @@
  *  - Checklist onboard + trạng thái tạo tài khoản hiển thị ngay trên phiếu.
  */
 
-export type OnbStatus = 'Chờ HCNS duyệt' | 'Đang onboard' | 'Đã onboard' | 'Huỷ onboard' | 'HCNS từ chối';
+export type OnbStatus = 'Chờ HCNS duyệt' | 'Đang onboard' | 'Đã onboard' | 'Cancel offer' | 'Huỷ onboard' | 'HCNS từ chối';
 
-export const ONB_STATUSES: OnbStatus[] = ['Chờ HCNS duyệt', 'Đang onboard', 'Đã onboard', 'Huỷ onboard', 'HCNS từ chối'];
+export const ONB_STATUSES: OnbStatus[] = ['Chờ HCNS duyệt', 'Đang onboard', 'Đã onboard', 'Cancel offer', 'Huỷ onboard', 'HCNS từ chối'];
 
 /** Ánh xạ sang trạng thái Onboarding Request trong code thật (hiện cạnh nhãn để BA đối chiếu). */
 export const ONB_STATUS_REAL: Record<OnbStatus, string> = {
   'Chờ HCNS duyệt': 'Pending',
   'Đang onboard': 'Approved',
   'Đã onboard': 'Approved · Stage Onboarded',
+  'Cancel offer': 'Rejected (HCNS cancel offer)',
   'Huỷ onboard': 'Rejected (TA báo huỷ)',
   'HCNS từ chối': 'Rejected',
 };
@@ -191,7 +192,8 @@ export interface OnbMail {
   at: string;
   kind:
     | 'Gửi thông tin sang HCNS' | 'Cập nhật thông tin onboard' | 'Báo huỷ onboard' | 'HCNS từ chối'
-    | 'Form onboarding cho ứng viên' | 'Nhắc điền form thông tin' | 'Mail IT cấp tài khoản' | 'IT trả thông tin tài khoản' | 'Thông báo MarCom';
+    | 'Form onboarding cho ứng viên' | 'Nhắc điền form thông tin' | 'Mail IT cấp tài khoản' | 'IT trả thông tin tài khoản' | 'Thông báo MarCom'
+    | 'Email onboard cho ứng viên' | 'Cancel offer';
   subject: string;
   to: string;
   cc: string[];
@@ -212,13 +214,17 @@ export interface OnbAccount {
 //  4. MarCom chuẩn bị Welcome Onboard
 // ==========================================================================
 export type TaskStatus = 'Chưa bắt đầu' | 'Đang thực hiện' | 'Đã hoàn thành';
-export type TaskKey = 'employee' | 'personalForm' | 'itAccount' | 'marcom';
-export const TASK_ORDER: TaskKey[] = ['employee', 'personalForm', 'itAccount', 'marcom'];
+export type TaskKey = 'employee' | 'personalForm' | 'itAccount' | 'marcom' | 'onboardMail';
+export const TASK_ORDER: TaskKey[] = ['employee', 'personalForm', 'itAccount', 'marcom', 'onboardMail'];
+/** Giờ gửi email onboard tới ứng viên vào ngày onboard. */
+export const ONBOARD_MAIL_HOUR = '08';
+export const onboardMailAt = (startDate: string) => `${startDate}T${ONBOARD_MAIL_HOUR}:00:00`;
 export const TASK_DEFS: Record<TaskKey, { name: string; owner: string; done: string }> = {
   employee: { name: 'Tạo nhân viên trong Employees', owner: 'Hệ thống', done: 'Tạo ngay khi HCNS Accept — trạng thái Thử việc' },
   personalForm: { name: 'Form thông tin cá nhân trước onboard', owner: 'Ứng viên', done: 'Ứng viên submit form — dữ liệu đổ vào hồ sơ Employees' },
   itAccount: { name: 'IT cấp tài khoản', owner: 'Phòng IT', done: 'IT trả email, tên tài khoản, mật khẩu' },
   marcom: { name: 'Welcome Onboard', owner: 'Phòng MarCom', done: 'MarCom xác nhận đã chuẩn bị Welcome' },
+  onboardMail: { name: `Email onboard gửi ứng viên ${ONBOARD_MAIL_HOUR}:00 ngày onboard`, owner: 'Hệ thống', done: 'Gửi xong → phiếu chuyển Đã onboard' },
 };
 export const IT_MAILBOX = 'it@company.vn';
 export const MARCOM_MAILBOX = 'marcom@company.vn';
@@ -327,6 +333,9 @@ export interface OnbRecord {
   decidedAt?: string;
   returnReason?: string;
   cancelReason?: string;
+  /** HCNS Cancel offer (ứng viên báo không nhận việc) */
+  cancelledBy?: string;
+  cancelledAt?: string;
   account: OnbAccount;
   checklist: ChecklistItem[];
   /** Tiến độ sau khi duyệt (rỗng khi chưa duyệt) */
@@ -409,27 +418,27 @@ export const missingForApprove = (r: Pick<OnbRecord, 'data' | 'contractType'>): 
 export const diffHandoff = (prev: HandoffData, next: HandoffData): FieldChange[] =>
   HANDOFF_KEYS.filter((k) => fieldText(k, prev) !== fieldText(k, next)).map((k) => ({ field: HANDOFF_LABELS[k], from: fieldText(k, prev), to: fieldText(k, next) }));
 
-/** Tiến trình 6 bước của phiếu. */
+/** Tiến trình 5 bước của phiếu. */
 export const ONB_STEPS = [
   { code: '01', name: 'Chuyển ứng viên', owner: 'Tuyển dụng' },
   { code: '02', name: 'Accept / Reject', owner: 'HCNS' },
   { code: '03', name: 'Điền form thông tin', owner: 'Ứng viên' },
   { code: '04', name: 'Cấp tài khoản', owner: 'IT' },
-  { code: '05', name: 'Welcome Onboard', owner: 'MarCom' },
-  { code: '06', name: 'Nhận việc', owner: 'HCNS' },
+  { code: '05', name: `Welcome & email onboard ${ONBOARD_MAIL_HOUR}:00`, owner: 'MarCom · Hệ thống' },
 ];
 const ok = (r: OnbRecord, k: TaskKey) => taskOf(r, k).status === 'Đã hoàn thành';
 export const stepIndex = (r: OnbRecord): number => {
-  if (r.status === 'Đã onboard') return 6;
+  if (r.status === 'Đã onboard') return 5;
   if (r.status === 'Chờ HCNS duyệt') return 1;
-  if (r.status === 'Đang onboard') return !ok(r, 'personalForm') ? 2 : !ok(r, 'itAccount') ? 3 : !ok(r, 'marcom') ? 4 : 5;
-  return -1; // huỷ / từ chối
+  if (r.status === 'Đang onboard') return !ok(r, 'personalForm') ? 2 : !ok(r, 'itAccount') ? 3 : 4;
+  return -1; // huỷ / từ chối / cancel offer
 };
 /** Bước đang chờ — hiện ở lưới. */
 export const waitingOf = (r: OnbRecord): { text: string; owner: string } | null => {
   const i = stepIndex(r);
-  if (i < 1 || i > 5) return null;
-  return { 1: { text: 'Chờ HCNS Accept', owner: 'HCNS' }, 2: { text: 'Chờ ứng viên điền form', owner: 'Ứng viên' }, 3: { text: 'Chờ IT cấp tài khoản', owner: 'IT' }, 4: { text: 'Chờ MarCom Welcome', owner: 'MarCom' }, 5: { text: 'Sẵn sàng nhận việc', owner: 'HCNS' } }[i as 1];
+  if (i < 1 || i > 4) return null;
+  if (i === 4) return ok(r, 'marcom') ? { text: `Chờ email onboard ${ONBOARD_MAIL_HOUR}:00`, owner: 'Hệ thống' } : { text: 'Chờ MarCom Welcome', owner: 'MarCom' };
+  return { 1: { text: 'Chờ HCNS Accept', owner: 'HCNS' }, 2: { text: 'Chờ ứng viên điền form', owner: 'Ứng viên' }, 3: { text: 'Chờ IT cấp tài khoản', owner: 'IT' } }[i as 1];
 };
 
 // ==========================================================================
@@ -517,8 +526,8 @@ const seed = (r: SeedIn): OnbRecord => {
   } as OnbRecord;
 };
 
-/** Phiếu đã Accept: dựng sẵn tiến độ tới bước `upTo` (1 = vừa Accept, 2 = đã submit form, 3 = IT đã trả, 4 = MarCom xong). */
-const accepted = (r: SeedIn, code: string, upTo: 1 | 2 | 3 | 4, acc: { user: string; pass: string }, decidedAt: string): OnbRecord => {
+/** Phiếu đã Accept: dựng sẵn tiến độ tới bước `upTo` (1 = vừa Accept, 2 = đã submit form, 3 = IT đã trả, 4 = MarCom xong, 5 = đã gửi email onboard). */
+const accepted = (r: SeedIn, code: string, upTo: 1 | 2 | 3 | 4 | 5, acc: { user: string; pass: string }, decidedAt: string): OnbRecord => {
   const base = seed(r);
   const link = formLinkOf(r.id);
   const t1 = decidedAt;
@@ -542,6 +551,9 @@ const accepted = (r: SeedIn, code: string, upTo: 1 | 2 | 3 | 4, acc: { user: str
       : upTo === 3
         ? { key: 'marcom', status: 'Đang thực hiện', startedAt: t3, detail: `Đã báo ${MARCOM_MAILBOX} — chờ MarCom chuẩn bị Welcome` }
         : { key: 'marcom', status: 'Chưa bắt đầu', detail: 'Tự báo MarCom khi IT trả tài khoản' },
+    upTo >= 5
+      ? { key: 'onboardMail', status: 'Đã hoàn thành', startedAt: t1, doneAt: onboardMailAt(r.data.startDate), doneBy: 'Hệ thống', detail: `Đã gửi tới ${r.candidateEmail}` }
+      : { key: 'onboardMail', status: 'Đang thực hiện', startedAt: t1, detail: `Lên lịch ${ONBOARD_MAIL_HOUR}:00 ${dmy(r.data.startDate)} tới ${r.candidateEmail}` },
   ];
   const mails: OnbMail[] = [
     ...base.mails,
@@ -553,6 +565,7 @@ const accepted = (r: SeedIn, code: string, upTo: 1 | 2 | 3 | 4, acc: { user: str
           { at: t3, kind: 'Thông báo MarCom' as const, subject: `[Onboarding] Nhân sự mới ${r.data.fullName} nhận việc ${dmy(r.data.startDate)} — chuẩn bị Welcome`, to: MARCOM_MAILBOX, cc: [HCNS_MAILBOX], attachments: [] },
         ]
       : []),
+    ...(upTo >= 5 ? [{ at: onboardMailAt(r.data.startDate), kind: 'Email onboard cho ứng viên' as const, subject: `Chào mừng ${r.data.fullName} — hôm nay là ngày đầu tiên của bạn`, to: r.candidateEmail, cc: [HCNS_MAILBOX], attachments: [] }] : []),
   ];
   const history: OnbHistory[] = [
     ...base.history,
@@ -560,6 +573,7 @@ const accepted = (r: SeedIn, code: string, upTo: 1 | 2 | 3 | 4, acc: { user: str
     ...(upTo >= 2 ? [{ at: t2, by: r.data.fullName, role: 'Ứng viên' as const, action: 'Submit form thông tin cá nhân', note: `Đổ dữ liệu vào hồ sơ ${code} · gửi yêu cầu IT` }] : []),
     ...(upTo >= 3 ? [{ at: t3, by: IT_STAFF[0], role: 'IT' as const, action: 'Trả thông tin tài khoản', note: `${email} · ${acc.user}` }] : []),
     ...(upTo >= 4 ? [{ at: t4, by: MARCOM_STAFF[0], role: 'MarCom' as const, action: 'Đã chuẩn bị Welcome Onboard' }] : []),
+    ...(upTo >= 5 ? [{ at: onboardMailAt(r.data.startDate), by: 'Hệ thống', role: 'Hệ thống' as const, action: `Gửi email onboard tới ${r.candidateEmail} → Đã onboard` }] : []),
   ];
   return {
     ...base,
@@ -665,7 +679,7 @@ export const SEED_RECORDS: OnbRecord[] = [
           probationMonths: 2, probationPercent: 85, approver: 'Phạm Thị Lan', evidenceFile: 'BOD_duyet_offer_VuHoangNam.pdf',
         }),
       }),
-      'NV0398', 4, { user: 'namvh', pass: 'Tmp#4Hd8mR' }, at(monthDay(-1, 3), '10:00'),
+      'NV0398', 5, { user: 'namvh', pass: 'Tmp#4Hd8mR' }, at(monthDay(-1, 3), '10:00'),
     ),
     status: 'Đã onboard',
     checklist: buildChecklist(11, HCNS_NAME, at(monthDay(-1, 11), '17:00')),
@@ -687,17 +701,21 @@ export const SEED_RECORDS: OnbRecord[] = [
     returnReason: 'Mức lương vượt khung đã duyệt cho vị trí — cần BOD phê duyệt lại.',
   },
   {
-    ...seed({
-      id: 'ONB-2026-029', candidateId: 'c11', candidateEmail: 'thu.ha@gmail.com', candidatePhone: '0988 300 452', candidateSource: 'Facebook', cvFile: 'CV_HoangAnhThu.pdf',
-      requestId: 'rq4', block: 'Khối G1', company: 'AEQUITAS', taPic: 'XuanDTT', sentAt: at(monthDay(-1, 5), '10:10'),
-      data: baseData({
-        startDate: monthDay(-1, 19), fullName: 'Hoàng Anh Thư', position: 'Product Designer', techStack: 'UIUX', level: 'Junior',
-        department: 'G1 · Phòng Phát triển phần mềm 1', manager: 'Trịnh Văn Hưng', workLocation: 'HN - HO', officialSalary: 15000000,
-        probationMonths: 2, probationPercent: 85, approver: 'Trịnh Văn Hưng',
+    ...accepted(
+      seed({
+        id: 'ONB-2026-029', candidateId: 'c11', candidateEmail: 'thu.ha@gmail.com', candidatePhone: '0988 300 452', candidateSource: 'Facebook', cvFile: 'CV_HoangAnhThu.pdf',
+        requestId: 'rq4', block: 'Khối G1', company: 'AEQUITAS', taPic: 'XuanDTT', sentAt: at(monthDay(-1, 5), '10:10'),
+        data: baseData({
+          startDate: monthDay(-1, 19), fullName: 'Hoàng Anh Thư', position: 'Product Designer', techStack: 'UIUX', level: 'Junior',
+          department: 'G1 · Phòng Phát triển phần mềm 1', manager: 'Trịnh Văn Hưng', workLocation: 'HN - HO', officialSalary: 15000000,
+          probationMonths: 2, probationPercent: 85, approver: 'Trịnh Văn Hưng',
+        }),
       }),
-    }),
-    status: 'Huỷ onboard',
-    contractType: 'Thử việc',
-    cancelReason: 'Ứng viên nhận offer công ty khác, báo không nhận việc.',
+      'NV0405', 1, { user: 'thuha', pass: '' }, at(monthDay(-1, 7), '09:00'),
+    ),
+    status: 'Cancel offer',
+    cancelReason: 'Ứng viên báo không nhận việc (nhận offer công ty khác).',
+    cancelledBy: HCNS_NAME,
+    cancelledAt: at(monthDay(-1, 13), '15:00'),
   },
 ];

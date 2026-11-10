@@ -12,7 +12,7 @@ import { Modal, TAG } from '../../marcom/MarcomUi';
 import { useOnboarding } from '../../onboarding/OnboardingContext';
 import {
   OnbRecord, OnbTask, TaskKey, TaskStatus, TASK_ORDER, TASK_DEFS, IT_MAILBOX, MARCOM_MAILBOX, IT_STAFF, MARCOM_STAFF, FORM_FIELDS, FORM_GROUPS,
-  taskOf, tasksDone, dmy, dmyhm, accountNameOf, domainOf, genPassword, waitingOf,
+  taskOf, tasksDone, dmy, dmyhm, accountNameOf, domainOf, genPassword, waitingOf, ONBOARD_MAIL_HOUR,
 } from '../../onboarding/onboardingData';
 
 export const TASK_STATUS_CLS: Record<TaskStatus, string> = {
@@ -31,8 +31,8 @@ export const ProgressTag: React.FC<{ record: OnbRecord }> = ({ record }) => {
 export const WaitTag: React.FC<{ record: OnbRecord }> = ({ record }) => {
   const w = waitingOf(record);
   if (!w) return <span className="text-slate-400">—</span>;
-  const cls = { HCNS: TAG.violet, 'Ứng viên': TAG.blue, IT: TAG.amber, MarCom: TAG.rose }[w.owner] || TAG.slate;
-  return <Tag cls={w.text === 'Sẵn sàng nhận việc' ? TAG.green : cls}>{w.text}</Tag>;
+  const cls = { HCNS: TAG.violet, 'Ứng viên': TAG.blue, IT: TAG.amber, MarCom: TAG.rose, 'Hệ thống': TAG.green }[w.owner] || TAG.slate;
+  return <Tag cls={cls}>{w.text}</Tag>;
 };
 
 /** Việc còn dở (để hiện ở dải thông báo). */
@@ -73,10 +73,10 @@ export const OnbProgressPanel: React.FC<{
   onOpenWelcome?: () => void;
   toast: (m: string) => void;
 }> = ({ record: r, onOpenEmployee, onOpenForm, onOpenWelcome, toast }) => {
-  const { remindForm } = useOnboarding();
+  const { remindForm, sendOnboardMail } = useOnboarding();
   const [modal, setModal] = useState<'' | 'formData' | 'it' | 'marcom'>('');
   const started = (r.tasks || []).length > 0;
-  const stopped = r.status === 'Huỷ onboard';
+  const stopped = r.status === 'Huỷ onboard' || r.status === 'Cancel offer';
   const n = tasksDone(r);
   const link = 'text-[#1f5fa8] underline cursor-pointer whitespace-nowrap inline-flex items-center gap-1';
   const act = 'text-emerald-700 font-semibold underline cursor-pointer whitespace-nowrap';
@@ -135,6 +135,20 @@ export const OnbProgressPanel: React.FC<{
             )}
           </span>
         ) : null;
+      case 'onboardMail':
+        return t.status === 'Đang thực hiện' ? (
+          <button
+            type="button"
+            className={act}
+            onClick={() => {
+              sendOnboardMail(r.id, true);
+              toast(`Đã gửi email onboard tới ${r.candidateEmail} — ${r.data.fullName} Đã onboard`);
+            }}
+            data-testid="send-onboard-mail"
+          >
+            Gửi ngay (mô phỏng)
+          </button>
+        ) : null;
     }
   };
 
@@ -158,7 +172,7 @@ export const OnbProgressPanel: React.FC<{
             <span className="text-[12px] text-slate-500">Bắt đầu khi HCNS Accept</span>
           )
         }
-        footer="Các việc nối tiếp: ứng viên submit form → tự gửi yêu cầu IT (Họ và tên, Khối, Cấp trên trực tiếp, Công ty) → IT trả tài khoản → tự báo MarCom."
+        footer={`Các việc nối tiếp: ứng viên submit form → tự gửi yêu cầu IT (Họ và tên, Khối, Cấp trên trực tiếp, Công ty) → IT trả tài khoản → tự báo MarCom → ${ONBOARD_MAIL_HOUR}:00 ngày onboard tự gửi email onboard cho ứng viên.`}
       >
         <div className="overflow-x-auto">
           <table className={erp.table}>
@@ -183,7 +197,7 @@ export const OnbProgressPanel: React.FC<{
                     </td>
                     <td className={`${erp.td} whitespace-nowrap`}>{TASK_DEFS[k].owner}</td>
                     <td className={erp.td}>
-                      <Tag cls={TASK_STATUS_CLS[t.status]}>{t.status}</Tag>
+                      {stopped && t.status !== 'Đã hoàn thành' ? <Tag cls={TAG.rose}>Đã dừng</Tag> : <Tag cls={TASK_STATUS_CLS[t.status]}>{t.status}</Tag>}
                     </td>
                     <td className={`${erp.td} text-[12px] text-slate-600 max-w-[320px]`}>{t.detail || <span className="text-slate-400">—</span>}</td>
                     <td className={`${erp.td} whitespace-nowrap text-[12px]`}>{t.startedAt ? dmyhm(t.startedAt) : <span className="text-slate-400">—</span>}</td>

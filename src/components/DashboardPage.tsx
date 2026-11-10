@@ -34,6 +34,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { CURRENT_USER, WISH_SUGGESTIONS, WISH_THEMES, sendWish, useWishes, type WishTheme } from '../marcom/wishStore';
 import { BirthdayBox } from '../marcom/BirthdayBox';
+import { initialsAvatar } from '../utils/avatar';
 import { 
   MOCK_LEAVES, 
   MOCK_TIMESHEETS, 
@@ -78,6 +79,76 @@ const MODULE_META: Record<Exclude<RequestModule, 'all'>, { label: string; classN
 // Giới hạn ký tự lời chúc sinh nhật
 const WISH_MAX_LENGTH = 500;
 
+
+type Tone = 'emerald' | 'blue' | 'violet' | 'rose' | 'amber';
+const TONE: Record<Tone, { soft: string; bar: string }> = {
+  emerald: { soft: 'bg-emerald-50 text-[#0fa57c]', bar: 'bg-[#0fa57c]' },
+  blue: { soft: 'bg-blue-50 text-blue-600', bar: 'bg-blue-600' },
+  violet: { soft: 'bg-violet-50 text-violet-600', bar: 'bg-violet-600' },
+  rose: { soft: 'bg-rose-50 text-rose-500', bar: 'bg-rose-500' },
+  amber: { soft: 'bg-amber-50 text-amber-600', bar: 'bg-amber-500' },
+};
+
+const greetingOf = (d: Date) => (d.getHours() < 11 ? 'Chào buổi sáng' : d.getHours() < 14 ? 'Chào buổi trưa' : d.getHours() < 18 ? 'Chào buổi chiều' : 'Chào buổi tối');
+
+/** Ô thông tin nhanh — bản gọn (1 hàng: biểu tượng | nhãn, số, thanh tiến độ). */
+const StatTile: React.FC<{ icon: React.ElementType; tone: Tone; label: string; value: string; unit: string; note: string; pct: number; onClick?: () => void }> = ({
+  icon: Icon, tone, label, value, unit, note, pct, onClick,
+}) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="group text-left bg-white border border-slate-200/80 rounded-xl px-3.5 py-3 flex items-center gap-3 hover:border-[#0fa57c]/50 hover:shadow-sm transition-all cursor-pointer"
+  >
+    <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${TONE[tone].soft}`}>
+      <Icon size={18} />
+    </div>
+    <div className="min-w-0 flex-1">
+      <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider truncate">{label}</p>
+      <div className="flex items-baseline gap-1 mt-0.5">
+        <span className="text-[20px] font-black text-slate-800 font-mono leading-none">{value}</span>
+        <span className="text-[11px] font-bold text-slate-400 truncate">{unit}</span>
+        <span className="ml-auto pl-1 text-[10.5px] font-semibold text-slate-400 whitespace-nowrap hidden min-[1440px]:inline">{note}</span>
+      </div>
+      <div className="h-1 bg-slate-100 rounded-full mt-2 overflow-hidden">
+        <div className={`h-full rounded-full ${TONE[tone].bar} transition-all duration-500`} style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+      </div>
+    </div>
+  </button>
+);
+
+/** Khung thẻ có tiêu đề. */
+const Card: React.FC<{ icon: React.ElementType; tone: Tone; title: string; sub?: string; action?: React.ReactNode; children: React.ReactNode }> = ({ icon: Icon, tone, title, sub, action, children }) => (
+  <section className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-xs">
+    <header className="flex items-center justify-between gap-2 mb-3">
+      <div className="flex items-center gap-2.5 min-w-0">
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${TONE[tone].soft}`}>
+          <Icon size={15} />
+        </div>
+        <div className="min-w-0">
+          <h3 className="text-[13.5px] font-bold text-slate-800 leading-tight">{title}</h3>
+          {sub && <p className="text-[10.5px] text-slate-400 font-semibold">{sub}</p>}
+        </div>
+      </div>
+      {action}
+    </header>
+    {children}
+  </section>
+);
+
+const StatusPill: React.FC<{ status: MyRequest['status'] }> = ({ status }) => {
+  const m = {
+    Requested: ['Chờ duyệt', 'bg-amber-50 text-amber-600 border-amber-100'],
+    Approved: ['Đã duyệt', 'bg-emerald-50 text-emerald-600 border-emerald-100'],
+    Rejected: ['Từ chối', 'bg-rose-50 text-rose-500 border-rose-100'],
+  }[status];
+  return <span className={`px-2.5 py-0.5 text-[9.5px] font-bold rounded-full border whitespace-nowrap ${m[1]}`}>{m[0]}</span>;
+};
+
+const NOTICES = [
+  { tag: 'Lịch nghỉ lễ', tagCls: 'text-emerald-600', bar: 'bg-emerald-400', date: '02/09/2026', title: 'Nghỉ Lễ Quốc Khánh 02/09/2026', body: 'Toàn thể CBNV được nghỉ 02 ngày (02/09 và 03/09). Vui lòng đăng ký Timesheet đúng hạn trước khi nghỉ lễ.' },
+  { tag: 'Khảo sát HR', tagCls: 'text-blue-600', bar: 'bg-blue-400', date: 'Quý 2/2026', title: 'Khảo sát môi trường làm việc Quý 2', body: 'HR kính mời CBNV tham gia đánh giá mức độ hài lòng về đãi ngộ & hạ tầng công nghệ.' },
+];
 
 export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
   // Current time state
@@ -134,12 +205,12 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
   };
 
   // Birthday list combining original IMIS birthdays and others
-  const birthdays = [
-    { id: 'b-1', name: 'Bùi Thu Hiền', role: 'Merchandise', date: 'Hôm nay', isToday: true, avatar: 'https://ui-avatars.com/api/?name=Bui+Hien&background=ffeedd&color=e67e22&bold=true' },
-    { id: 'b-2', name: 'Nguyễn Khắc Hiển', role: 'MB Infrastructure', date: 'Hôm nay', isToday: true, avatar: 'https://ui-avatars.com/api/?name=Khac+Hien&background=e3f2fd&color=0d47a1&bold=true' },
-    { id: 'b-3', name: 'Ánh Dương', role: 'SEO Specialist', date: '03/07', isToday: false, avatar: 'https://ui-avatars.com/api/?name=Anh+Duong&background=0fa57c&color=fff&bold=true' },
-    { id: 'b-4', name: 'Nguyễn Văn Nam', role: 'Marketing Manager', date: '18/06', isToday: false, avatar: 'https://ui-avatars.com/api/?name=Nguyen+Nam&background=4f46e5&color=fff&bold=true' },
-  ];
+  const birthdays = ([
+    { id: 'b-1', name: 'Bùi Thu Hiền', role: 'Merchandise', date: 'Hôm nay', isToday: true, avatar: '' },
+    { id: 'b-2', name: 'Nguyễn Khắc Hiển', role: 'MB Infrastructure', date: 'Hôm nay', isToday: true, avatar: '' },
+    { id: 'b-3', name: 'Ánh Dương', role: 'SEO Specialist', date: '03/07', isToday: false, avatar: '' },
+    { id: 'b-4', name: 'Nguyễn Văn Nam', role: 'Marketing Manager', date: '18/06', isToday: false, avatar: '' },
+  ]).map((b) => ({ ...b, avatar: initialsAvatar(b.name) }));
 
   // Lịch sử điểm danh (gộp theo ngày: giờ vào / giờ ra từ máy chấm công)
   const attendanceLogs = [
@@ -255,7 +326,7 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
   const pendingTicketsCount = hrTickets.filter(t => t.status === 'Pending HR').length;
 
   return (
-    <div className="p-6 bg-transparent min-h-full space-y-6 relative select-none font-sans">
+    <div className="p-5 bg-transparent min-h-full space-y-4 relative select-none font-sans">
       
       {/* Toast Notification */}
       <AnimatePresence>
@@ -272,382 +343,248 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
         )}
       </AnimatePresence>
 
-      {/* Box sinh nhật hôm nay (MarCom) — hiển thị cho toàn thể CBNV */}
-      <BirthdayBox />
-
-      {/* Top Header & Dashboard Navigation Tabs */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-end gap-4 pb-2 border-b border-slate-200/60">
-        {/* Live Clock Pill & Tab Switcher */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="px-3.5 py-1.5 bg-white border border-slate-200/80 rounded-full shadow-xs flex items-center space-x-2 text-xs font-bold text-slate-600 font-mono">
-            <Clock size={13} className="text-[#0fa57c] animate-pulse" />
+      {/* Thanh chào + đồng hồ + chuyển chế độ xem */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-[19px] font-black text-slate-800 leading-tight">
+            {greetingOf(currentTime)}, {CURRENT_USER.name.split(' ').slice(-2).join(' ')}
+          </h1>
+          <p className="text-[12px] text-slate-500 font-medium">Tổng quan phép, chấm công và đơn từ của bạn</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="h-8 px-3 bg-white border border-slate-200 rounded-lg flex items-center gap-2 text-[11.5px] font-bold text-slate-600 font-mono">
+            <Clock size={13} className="text-[#0fa57c]" />
             <span>{getVietnameseDateTimeString(currentTime)}</span>
           </div>
-
-          <div className="bg-slate-100 p-1 rounded-xl flex items-center space-x-1 border border-slate-200/60">
-            <button
-              onClick={() => setActiveTab('personal')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 ${
-                activeTab === 'personal'
-                  ? 'bg-white text-[#0fa57c] shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <User size={13} />
-              <span>Trang cá nhân</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('management')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 ${
-                activeTab === 'management'
-                  ? 'bg-white text-[#0fa57c] shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <FolderKanban size={13} />
-              <span>Quản lý & Phê duyệt</span>
-              {(pendingLeavesCount > 0 || pendingTimesheetsCount > 0) && (
-                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
-              )}
-            </button>
+          <div className="h-8 bg-slate-100 p-0.5 rounded-lg flex items-center border border-slate-200/70">
+            {([
+              { key: 'personal', label: 'Trang cá nhân', icon: User },
+              { key: 'management', label: 'Quản lý & Phê duyệt', icon: FolderKanban },
+            ] as const).map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setActiveTab(t.key)}
+                className={`h-full px-3 rounded-md text-[11.5px] font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === t.key ? 'bg-white text-[#0fa57c] shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <t.icon size={13} />
+                <span>{t.label}</span>
+                {t.key === 'management' && (pendingLeavesCount > 0 || pendingTimesheetsCount > 0) && <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />}
+              </button>
+            ))}
           </div>
         </div>
       </div>
+
+      {/* Banner MarCom / sinh nhật hôm nay — bản gọn */}
+      <BirthdayBox compact />
 
       {/* =========================================
           TAB 1: TRANG CÁ NHÂN (PERSONAL DASHBOARD)
          ========================================= */}
       {activeTab === 'personal' && (
-        <div className="space-y-6">
-          {/* 2. Personal Key Stats Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {/* Stat 1: Quỹ phép cá nhân */}
-            <div 
+        <div className="space-y-4">
+          {/* 4 thông tin nhanh — bản gọn */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            <StatTile
+              icon={Wallet}
+              tone="emerald"
+              label="Phép cá nhân 2026"
+              value={String(personalLeave.remaining)}
+              unit={`/ ${personalLeave.totalEntitlement} ngày`}
+              note={`Đã dùng ${personalLeave.used}`}
+              pct={(personalLeave.remaining / personalLeave.totalEntitlement) * 100}
               onClick={() => onNavigate && onNavigate('Phép cá nhân')}
-              className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-xs hover:shadow-md hover:border-[#0fa57c]/50 transition-all duration-200 group cursor-pointer flex flex-col justify-between"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Phép cá nhân (2026)</span>
-                <div className="p-2.5 rounded-xl bg-emerald-50 text-[#0fa57c] group-hover:scale-110 transition-transform">
-                  <Wallet size={18} />
-                </div>
-              </div>
-              <div>
-                <div className="flex items-baseline space-x-1.5">
-                  <span className="text-2xl font-black text-slate-800 font-mono">{personalLeave.remaining}</span>
-                  <span className="text-xs font-bold text-slate-400">/ {personalLeave.totalEntitlement} ngày</span>
-                </div>
-                <div className="w-full bg-slate-100 rounded-full h-1.5 mt-2.5 overflow-hidden">
-                  <div 
-                    className="bg-[#0fa57c] h-full rounded-full transition-all duration-500"
-                    style={{ width: `${(personalLeave.remaining / personalLeave.totalEntitlement) * 100}%` }}
-                  />
-                </div>
-                <p className="text-[10px] font-bold text-slate-400 mt-2 flex items-center justify-between">
-                  <span>Đã dùng: {personalLeave.used}d</span>
-                  <span className="text-[#0fa57c] hover:underline">Xem chi tiết &rarr;</span>
-                </p>
-              </div>
-            </div>
-
-            {/* Stat 2: Chấm công tháng này */}
-            <div 
+            />
+            <StatTile
+              icon={Clock}
+              tone="blue"
+              label={`Chấm công tháng ${currentTime.getMonth() + 1}`}
+              value="21.0"
+              unit="/ 22 công"
+              note="Trễ 0"
+              pct={95}
               onClick={() => onNavigate && onNavigate('Chấm công')}
-              className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-xs hover:shadow-md hover:border-[#0fa57c]/50 transition-all duration-200 group cursor-pointer flex flex-col justify-between"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Chấm công tháng 5</span>
-                <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600 group-hover:scale-110 transition-transform">
-                  <Clock size={18} />
-                </div>
-              </div>
-              <div>
-                <div className="flex items-baseline space-x-1.5">
-                  <span className="text-2xl font-black text-slate-800 font-mono">21.0</span>
-                  <span className="text-xs font-bold text-slate-400">/ 22 công</span>
-                </div>
-                <div className="w-full bg-slate-100 rounded-full h-1.5 mt-2.5 overflow-hidden">
-                  <div className="bg-blue-600 h-full rounded-full w-[95%]" />
-                </div>
-                <p className="text-[10px] font-bold text-slate-400 mt-2 flex items-center justify-between">
-                  <span className="text-emerald-600">Đúng giờ: 21d</span>
-                  <span className="text-slate-400">Trễ: 0</span>
-                </p>
-              </div>
-            </div>
-
-            {/* Stat 3: Timesheet tuần này */}
-            <div 
+            />
+            <StatTile
+              icon={FileText}
+              tone="violet"
+              label="Timesheet cần duyệt"
+              value={String(pendingTimesheetsCount)}
+              unit="bảng công"
+              note={pendingTimesheetsCount > 0 ? 'Chờ bạn duyệt' : 'Đã duyệt hết'}
+              pct={timesheets.length ? (pendingTimesheetsCount / timesheets.length) * 100 : 0}
               onClick={() => onNavigate && onNavigate('Timesheet')}
-              className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-xs hover:shadow-md hover:border-[#0fa57c]/50 transition-all duration-200 group cursor-pointer flex flex-col justify-between"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Timesheet cần duyệt</span>
-                <div className="p-2.5 rounded-xl bg-purple-50 text-purple-600 group-hover:scale-110 transition-transform">
-                  <FileText size={18} />
-                </div>
-              </div>
-              <div>
-                <div className="flex items-baseline space-x-1.5">
-                  <span className="text-2xl font-black text-slate-800 font-mono">{pendingTimesheetsCount}</span>
-                  <span className="text-xs font-bold text-slate-400">bảng công</span>
-                </div>
-                <div className="w-full bg-slate-100 rounded-full h-1.5 mt-2.5 overflow-hidden">
-                  <div className="bg-purple-600 h-full rounded-full transition-all duration-500" style={{ width: `${timesheets.length ? (pendingTimesheetsCount / timesheets.length) * 100 : 0}%` }} />
-                </div>
-                <p className="text-[10px] font-bold text-purple-600 mt-2 flex items-center justify-between">
-                  <span>{pendingTimesheetsCount > 0 ? 'Đang chờ bạn phê duyệt' : 'Đã duyệt hết ✅'}</span>
-                </p>
-              </div>
-            </div>
-
-            {/* Stat 4: Đơn từ đang chờ — tạm bảo trì, đang phát triển */}
+            />
+            {/* Đơn từ đang chờ — tạm bảo trì */}
             <div
-              className="relative overflow-hidden bg-white border border-dashed border-amber-300 p-5 rounded-2xl shadow-xs flex flex-col justify-between cursor-default"
+              className="relative overflow-hidden bg-white border border-dashed border-amber-300 rounded-xl px-3.5 py-3 flex items-center gap-3 cursor-default"
               title="Chức năng đang được bảo trì / phát triển"
               data-testid="pending-requests-maintenance"
             >
-              <div
-                className="pointer-events-none absolute inset-0 opacity-[0.06]"
-                style={{ backgroundImage: 'repeating-linear-gradient(45deg, #f59e0b 0 10px, transparent 10px 20px)' }}
-              />
-              <div className="relative flex items-center justify-between mb-3">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Đơn từ đang chờ</span>
-                <div className="p-2.5 rounded-xl bg-amber-50 text-amber-600">
-                  <Wrench size={18} />
-                </div>
+              <div className="pointer-events-none absolute inset-0 opacity-[0.05]" style={{ backgroundImage: 'repeating-linear-gradient(45deg, #f59e0b 0 10px, transparent 10px 20px)' }} />
+              <div className="relative w-10 h-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                <Wrench size={18} />
               </div>
-              <div className="relative">
-                <div className="flex items-center gap-2">
-                  <span className="relative flex h-2 w-2">
-                    <span className="absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75 animate-ping" />
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
-                  </span>
-                  <span className="text-[15px] font-black text-slate-800">Đang bảo trì</span>
-                </div>
-                <p className="text-[11px] font-medium text-slate-500 mt-1.5 leading-snug">
-                  Chức năng đang được nâng cấp &amp; phát triển, sẽ sớm hoạt động trở lại.
+              <div className="relative min-w-0">
+                <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider truncate">Đơn từ đang chờ</p>
+                <p className="flex items-center gap-1.5 text-[15px] font-black text-slate-800 leading-tight mt-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Đang bảo trì
                 </p>
-                <p className="text-[10px] font-bold text-amber-600 mt-2">Tạm thời chưa xem được đơn từ đang chờ</p>
+                <p className="text-[10.5px] font-semibold text-amber-600 truncate mt-0.5">Đang nâng cấp, sẽ sớm hoạt động lại</p>
               </div>
             </div>
           </div>
 
-          {/* 3. Main Split Grid (My Requests & Birthdays) */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            
-            {/* Left Side: My Recent Requests & Leave History */}
-            <div className="lg:col-span-7 space-y-6">
-              {/* Card 1: Đơn từ cá nhân gần đây */}
-              <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-                  <div className="flex items-center space-x-2">
-                    <div className="p-2 bg-emerald-50 text-[#0fa57c] rounded-xl">
-                      <FileText size={16} />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-800">Đơn Từ & Yêu Cầu Của Tôi</h3>
-                      <p className="text-[10px] text-slate-400 font-semibold uppercase">Phân loại theo module: Onsite / Leaves / OT</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => onNavigate && onNavigate('Leaves')}
-                    className="text-xs font-bold text-[#0fa57c] hover:underline flex items-center space-x-1 cursor-pointer"
-                  >
-                    <span>Xem tất cả</span>
-                    <ChevronRight size={14} />
+          {/* Lưới chính */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <div className="lg:col-span-7 space-y-4">
+              {/* Đơn từ & yêu cầu của tôi */}
+              <Card
+                icon={FileText}
+                tone="emerald"
+                title="Đơn từ & yêu cầu của tôi"
+                sub="Onsite · Leaves · OT"
+                action={
+                  <button onClick={() => onNavigate && onNavigate('Leaves')} className="text-[11.5px] font-bold text-[#0fa57c] hover:underline flex items-center gap-0.5 cursor-pointer">
+                    Xem tất cả <ChevronRight size={14} />
                   </button>
-                </div>
-
-                {/* Bộ lọc phân loại theo module */}
-                <div className="flex items-center flex-wrap gap-1.5 mb-3">
+                }
+              >
+                <div className="flex items-center flex-wrap gap-1.5 mb-2.5">
                   {([
-                    { key: 'all', label: `Tất cả (${myRequests.length})` },
-                    { key: 'Onsite', label: `Onsite (${myRequests.filter(r => r.module === 'Onsite').length})` },
-                    { key: 'Leaves', label: `Leaves (${myRequests.filter(r => r.module === 'Leaves').length})` },
-                    { key: 'OT', label: `OT (${myRequests.filter(r => r.module === 'OT').length})` },
-                  ] as { key: RequestModule; label: string }[]).map(tab => (
+                    { key: 'all', label: 'Tất cả', n: myRequests.length },
+                    { key: 'Onsite', label: 'Onsite', n: myRequests.filter((r) => r.module === 'Onsite').length },
+                    { key: 'Leaves', label: 'Leaves', n: myRequests.filter((r) => r.module === 'Leaves').length },
+                    { key: 'OT', label: 'OT', n: myRequests.filter((r) => r.module === 'OT').length },
+                  ] as { key: RequestModule; label: string; n: number }[]).map((tab) => (
                     <button
                       key={tab.key}
                       onClick={() => setRequestModule(tab.key)}
-                      className={`px-2.5 py-1 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${
-                        requestModule === tab.key
-                          ? 'bg-[#0fa57c] text-white border-[#0fa57c] shadow-xs'
-                          : 'bg-white text-slate-500 border-slate-200 hover:border-[#0fa57c]/40 hover:text-slate-700'
+                      className={`h-6 px-2.5 text-[11px] font-bold rounded-full border transition-all cursor-pointer ${
+                        requestModule === tab.key ? 'bg-[#0fa57c] text-white border-[#0fa57c]' : 'bg-white text-slate-500 border-slate-200 hover:border-[#0fa57c]/40 hover:text-slate-700'
                       }`}
                     >
-                      {tab.label}
+                      {tab.label} <span className={requestModule === tab.key ? 'text-white/80' : 'text-slate-400'}>{tab.n}</span>
                     </button>
                   ))}
                 </div>
-
-                {/* Khung cứng cao cố định = header + 6 dòng (mỗi dòng 84px).
-                    Dư 6 đơn -> scroll dọc; thiếu -> chèn hàng trống giữ layout. */}
-                <div className="overflow-x-auto overflow-y-auto h-[551px]">
+                {/* Khung cao cố định = tiêu đề + 6 dòng; dư thì cuộn, thiếu thì chèn hàng trống */}
+                <div className="overflow-auto h-[350px] rounded-lg border border-slate-100">
                   <table className="w-full text-left text-xs table-fixed">
                     <colgroup>
-                      <col className="w-[80px]" />
+                      <col className="w-[76px]" />
                       <col />
-                      <col className="w-[180px]" />
-                      <col className="w-[70px]" />
-                      <col className="w-[100px]" />
+                      <col className="w-[160px]" />
+                      <col className="w-[64px]" />
+                      <col className="w-[92px]" />
                     </colgroup>
-                    <thead>
-                      <tr className="border-b border-slate-100 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider bg-slate-50">
-                        <th className="py-2.5 px-3">Module</th>
-                        <th className="py-2.5 px-3">Loại đơn</th>
-                        <th className="py-2.5 px-3">Thời gian</th>
-                        <th className="py-2.5 px-3 text-center">Số giờ</th>
-                        <th className="py-2.5 px-3 text-center">Trạng thái</th>
+                    <thead className="sticky top-0 z-[1]">
+                      <tr className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider bg-slate-50 h-9">
+                        <th className="px-3">Module</th>
+                        <th className="px-3">Loại đơn</th>
+                        <th className="px-3">Thời gian</th>
+                        <th className="px-3 text-center">Số giờ</th>
+                        <th className="px-3 text-center">Trạng thái</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {filteredMyRequests.map((item) => (
-                        <tr key={item.id} className="h-[84px] hover:bg-slate-50/40 transition-colors align-middle">
+                        <tr key={item.id} className="h-[52px] hover:bg-slate-50/60 transition-colors">
                           <td className="px-3">
-                            <span className={`px-2 py-0.5 text-[9px] font-bold rounded-md border ${MODULE_META[item.module].className}`}>
-                              {MODULE_META[item.module].label}
-                            </span>
+                            <span className={`px-2 py-0.5 text-[9.5px] font-bold rounded-md border ${MODULE_META[item.module].className}`}>{MODULE_META[item.module].label}</span>
                           </td>
                           <td className="px-3">
                             <span className="font-bold text-slate-800 block truncate">{item.type}</span>
-                            <span className="block text-[10px] text-slate-400 font-medium">Tạo ngày {item.createdAt}</span>
+                            <span className="block text-[10.5px] text-slate-400 font-medium truncate">Tạo ngày {item.createdAt}</span>
                           </td>
-                          <td className="px-3 font-medium text-slate-600 whitespace-nowrap">
-                            {item.period}
-                          </td>
-                          <td className="px-3 text-center font-bold text-slate-800 font-mono">
-                            {item.hours}h
-                          </td>
+                          <td className="px-3 font-medium text-slate-600 whitespace-nowrap text-[11.5px]">{item.period}</td>
+                          <td className="px-3 text-center font-bold text-slate-800 font-mono">{item.hours}h</td>
                           <td className="px-3 text-center">
-                            {item.status === 'Requested' ? (
-                              <span className="px-2.5 py-0.5 bg-amber-50 text-amber-600 text-[9px] font-bold rounded-full border border-amber-100 whitespace-nowrap">Chờ duyệt</span>
-                            ) : item.status === 'Approved' ? (
-                              <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-600 text-[9px] font-bold rounded-full border border-emerald-100 whitespace-nowrap">Đã duyệt</span>
-                            ) : (
-                              <span className="px-2.5 py-0.5 bg-rose-50 text-rose-500 text-[9px] font-bold rounded-full border border-rose-100 whitespace-nowrap">Từ chối</span>
-                            )}
+                            <StatusPill status={item.status} />
                           </td>
                         </tr>
                       ))}
-
-                      {/* Hàng trống lấp đầy khung khi số đơn < 8 */}
                       {Array.from({ length: requestFillerCount }).map((_, i) => (
-                        <tr key={`filler-${i}`} className="h-[84px] align-middle">
+                        <tr key={`filler-${i}`} className="h-[52px]">
                           <td className="px-3" colSpan={5}>
-                            {filteredMyRequests.length === 0 && i === 0 && (
-                              <span className="text-slate-300 font-semibold text-[11px]">Không có đơn từ nào thuộc module này.</span>
-                            )}
+                            {filteredMyRequests.length === 0 && i === 0 && <span className="text-slate-300 font-semibold text-[11px]">Không có đơn từ nào thuộc module này.</span>}
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-              </div>
+              </Card>
 
-              {/* Lịch sử điểm danh (giờ chấm công) */}
-              <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-4">
-                  <div className="flex items-center space-x-2">
-                    <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
-                      <Clock size={16} />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-800">Lịch sử điểm danh</h3>
-                      <p className="text-[10px] text-slate-400 font-semibold uppercase">Giờ chấm công gần đây</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => onNavigate && onNavigate('Chấm công')}
-                    className="text-xs font-bold text-[#0fa57c] hover:underline flex items-center space-x-1 cursor-pointer"
-                  >
-                    <span>Xem tất cả</span>
-                    <ChevronRight size={14} />
+              {/* Lịch sử điểm danh */}
+              <Card
+                icon={Clock}
+                tone="blue"
+                title="Lịch sử điểm danh"
+                sub="Giờ chấm công gần đây"
+                action={
+                  <button onClick={() => onNavigate && onNavigate('Chấm công')} className="text-[11.5px] font-bold text-[#0fa57c] hover:underline flex items-center gap-0.5 cursor-pointer">
+                    Xem tất cả <ChevronRight size={14} />
                   </button>
-                </div>
-
-                <div className="overflow-x-auto">
+                }
+              >
+                <div className="overflow-x-auto rounded-lg border border-slate-100">
                   <table className="w-full text-left text-xs">
                     <thead>
-                      <tr className="border-b border-slate-100 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider bg-slate-50/50">
-                        <th className="py-2.5 px-3 w-10">STT</th>
-                        <th className="py-2.5 px-3">Ngày</th>
-                        <th className="py-2.5 px-3">Check-in</th>
-                        <th className="py-2.5 px-3">Check-out</th>
-                        <th className="py-2.5 px-3">Loại điểm danh</th>
+                      <tr className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider bg-slate-50 h-9">
+                        <th className="px-3 w-10">STT</th>
+                        <th className="px-3">Ngày</th>
+                        <th className="px-3">Check-in</th>
+                        <th className="px-3">Check-out</th>
+                        <th className="px-3">Loại điểm danh</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-50">
+                    <tbody className="divide-y divide-slate-100">
                       {attendanceLogs.map((log, idx) => (
-                        <tr key={log.id} className="hover:bg-slate-50/40 transition-colors">
-                          <td className="py-2.5 px-3 font-bold text-slate-400 font-mono">{idx + 1}</td>
-                          <td className="py-2.5 px-3 font-semibold text-slate-700 font-mono">{log.date}</td>
-                          <td className="py-2.5 px-3 font-bold text-slate-800 font-mono">{log.checkIn}</td>
-                          <td className="py-2.5 px-3 font-bold text-slate-800 font-mono">{log.checkOut}</td>
-                          <td className="py-2.5 px-3">
-                            <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[9px] font-bold rounded-md border border-blue-100 whitespace-nowrap">{log.type}</span>
+                        <tr key={log.id} className="h-10 hover:bg-slate-50/60 transition-colors">
+                          <td className="px-3 font-bold text-slate-400 font-mono">{idx + 1}</td>
+                          <td className="px-3 font-semibold text-slate-700 font-mono">{log.date}</td>
+                          <td className="px-3 font-bold text-slate-800 font-mono">{log.checkIn}</td>
+                          <td className={`px-3 font-bold font-mono ${log.checkOut === '—' ? 'text-slate-300' : 'text-slate-800'}`}>{log.checkOut}</td>
+                          <td className="px-3">
+                            <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[9.5px] font-bold rounded-md border border-blue-100 whitespace-nowrap">{log.type}</span>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-              </div>
+              </Card>
             </div>
 
-            {/* Right Side: Birthdays & Corporate Announcements */}
-            <div className="lg:col-span-5 space-y-6">
-              {/* Birthdays Card */}
-              <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-4">
-                  <div className="flex items-center space-x-2">
-                    <div className="p-2 bg-rose-50 text-rose-500 rounded-xl">
-                      <Gift size={16} />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-800">Sinh Nhật Đồng Nghiệp</h3>
-                      <p className="text-[10px] text-slate-400 font-semibold uppercase">Tháng 5/2026</p>
-                    </div>
-                  </div>
-
-                </div>
-
-                <div className="space-y-3">
+            <div className="lg:col-span-5 space-y-4">
+              {/* Sinh nhật đồng nghiệp */}
+              <Card icon={Gift} tone="rose" title="Sinh nhật đồng nghiệp" sub="Hôm nay & sắp tới">
+                <div className="space-y-2">
                   {birthdays.map((person) => (
-                    <div 
+                    <div
                       key={person.id}
-                      className={`p-2.5 rounded-xl border transition-all flex items-center justify-between ${
-                        person.isToday 
-                          ? 'bg-rose-50/50 border-rose-100' 
-                          : 'bg-slate-50/40 border-slate-100 hover:border-slate-200'
-                      }`}
+                      className={`px-2.5 py-2 rounded-lg border flex items-center justify-between gap-2 ${person.isToday ? 'bg-rose-50/60 border-rose-100' : 'bg-white border-slate-100 hover:border-slate-200'}`}
                     >
-                      <div className="flex items-center space-x-3">
-                        <img 
-                          src={person.avatar} 
-                          alt={person.name} 
-                          className="w-9 h-9 rounded-full border border-slate-100"
-                          referrerPolicy="no-referrer"
-                        />
-                        <div>
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <img src={person.avatar} alt="" className="w-8 h-8 rounded-full shrink-0" />
+                        <div className="min-w-0">
                           <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-bold text-slate-800">{person.name}</span>
-                            {person.isToday && (
-                              <span className="px-1.5 py-0.5 bg-rose-100 text-rose-600 text-[9px] font-black uppercase tracking-wider rounded">Hôm nay</span>
-                            )}
+                            <span className="text-[12.5px] font-bold text-slate-800 truncate">{person.name}</span>
+                            {person.isToday && <span className="px-1.5 py-px bg-rose-100 text-rose-600 text-[9px] font-black uppercase tracking-wider rounded">Hôm nay</span>}
                           </div>
-                          <p className="text-[10px] text-slate-400 font-semibold">{person.role} • <span className="font-bold text-slate-600">{person.date}</span></p>
+                          <p className="text-[10.5px] text-slate-400 font-semibold truncate">
+                            {person.role} · <span className="font-bold text-slate-600">{person.date}</span>
+                          </p>
                         </div>
                       </div>
-
                       <button
                         onClick={() => openWishCompose({ id: person.id, name: person.name, avatar: person.avatar })}
                         disabled={wishesSent[person.id]}
-                        className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
-                          wishesSent[person.id]
-                            ? 'bg-emerald-50 text-emerald-600 border border-emerald-100 cursor-not-allowed'
-                            : 'bg-rose-500 hover:bg-rose-600 text-white active:scale-95'
+                        className={`shrink-0 h-7 px-3 text-[11px] font-bold rounded-lg transition-all ${
+                          wishesSent[person.id] ? 'bg-emerald-50 text-emerald-600 border border-emerald-100 cursor-not-allowed' : 'bg-rose-500 hover:bg-rose-600 text-white active:scale-95 cursor-pointer'
                         }`}
                       >
                         {wishesSent[person.id] ? 'Đã gửi' : 'Chúc'}
@@ -655,41 +592,27 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                     </div>
                   ))}
                 </div>
-              </div>
+              </Card>
 
-              {/* Company Notice Board */}
-              <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-3">
-                  <div className="flex items-center space-x-2">
-                    <div className="p-2 bg-amber-50 text-amber-600 rounded-xl">
-                      <Bell size={16} />
+              {/* Thông báo nội bộ */}
+              <Card icon={Bell} tone="amber" title="Thông báo nội bộ" sub="Lịch nghỉ & quy định">
+                <div className="space-y-2">
+                  {NOTICES.map((n) => (
+                    <div key={n.title} className="flex gap-3 p-2.5 rounded-lg border border-slate-100 hover:border-slate-200 transition-colors">
+                      <span className={`w-1 rounded-full shrink-0 ${n.bar}`} />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[9.5px] font-black uppercase tracking-wider ${n.tagCls}`}>{n.tag}</span>
+                          <span className="text-[10.5px] text-slate-400 font-semibold">{n.date}</span>
+                        </div>
+                        <h4 className="text-[12.5px] font-bold text-slate-800 mt-0.5 leading-snug">{n.title}</h4>
+                        <p className="text-[11px] text-slate-500 mt-0.5 leading-snug line-clamp-2">{n.body}</p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-800">Thông Báo Nội Bộ</h3>
-                      <p className="text-[10px] text-slate-400 font-semibold uppercase">Lịch nghỉ & Quy định Fwork</p>
-                    </div>
-                  </div>
+                  ))}
                 </div>
-
-                <div className="space-y-3">
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                    <span className="text-[9px] font-bold text-emerald-600 uppercase">Lịch nghỉ lễ sắp tới</span>
-                    <h4 className="text-xs font-bold text-slate-800 mt-0.5">Nghỉ Lễ Quốc Khánh 02/09/2026</h4>
-                    <p className="text-[10px] text-slate-500 mt-1">
-                      Toàn thể CBNV được nghỉ 02 ngày (02/09 và 03/09). Vui lòng đăng ký Timesheet đúng hạn trước khi nghỉ lễ.
-                    </p>
-                  </div>
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                    <span className="text-[9px] font-bold text-blue-600 uppercase">Khảo sát HR</span>
-                    <h4 className="text-xs font-bold text-slate-800 mt-0.5">Khảo sát môi trường làm việc Quý 2</h4>
-                    <p className="text-[10px] text-slate-500 mt-1">
-                      HR kính mời CBNV tham gia đánh giá mức độ hài lòng về đãi ngộ & hạ tầng công nghệ.
-                    </p>
-                  </div>
-                </div>
-              </div>
+              </Card>
             </div>
-
           </div>
         </div>
       )}

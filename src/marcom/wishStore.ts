@@ -3,6 +3,7 @@
  * (người nhận bấm vào thông báo → mở thiệp chúc của người chúc). Lưu trong trình duyệt để tải lại trang không mất (bản prototype).
  */
 import { useSyncExternalStore } from 'react';
+import { initialsAvatar } from '../utils/avatar';
 
 export type WishTheme = 'cake' | 'balloon' | 'firework' | 'flower';
 export const WISH_THEMES: Record<WishTheme, { label: string; emoji: string; bg: string; ring: string; accent: string; btn: string; dots: string[] }> = {
@@ -34,7 +35,7 @@ export interface Wish {
 }
 
 /** Người dùng đang đăng nhập (prototype). */
-export const CURRENT_USER = { name: 'Nguyễn Văn An', avatar: 'https://ui-avatars.com/api/?name=Nguyen+An&background=1f5fa8&color=fff&bold=true' };
+export const CURRENT_USER = { name: 'Nguyễn Văn An', avatar: initialsAvatar('Nguyễn Văn An', ['#1f5fa8', '#ffffff']) };
 
 const KEY = 'imis_bday_wishes';
 const load = (): Wish[] => {

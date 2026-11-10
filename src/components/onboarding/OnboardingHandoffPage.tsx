@@ -19,7 +19,7 @@ import { useRc } from '../../recruitment/rc/RcContext';
 import {
   OnbRecord, HandoffData, HANDOFF_LABELS, CONTRACT_TYPES, COMPANIES, departmentsOf, HR_POSITIONS, HR_LEVELS, STAFF_NAMES, DATE_RANGES, DateRangeKey,
   missingForApprove, taskOf, fieldText, money, probationSalary, dmy, dmyhm, daysUntil, isRefer, ChecklistOwner, stepIndex, rangeOf, inRange, todayIso,
-  IT_MAILBOX, MARCOM_MAILBOX,
+  IT_MAILBOX, MARCOM_MAILBOX, ONBOARD_MAIL_HOUR,
 } from '../../onboarding/onboardingData';
 import { OnbStatusTag, DaysTag, OnbStepper, ChangeList, CatalogSelect } from './onbUi';
 import { OnbProgressPanel, ProgressTag, WaitTag, Secret, ItReturnModal, MarcomDoneModal, pendingTaskNames, TASK_STATUS_CLS } from './OnbProgressPanel';
@@ -30,12 +30,13 @@ type Toast = (m: string) => void;
 type Role = 'hcns' | 'it' | 'marcom';
 type StepKey = '' | 'pending' | 'form' | 'it' | 'marcom' | 'ready' | 'done' | 'closed';
 
-const isClosed = (r: OnbRecord) => r.status === 'Huỷ onboard' || r.status === 'HCNS từ chối';
+const isClosed = (r: OnbRecord) => r.status === 'Huỷ onboard' || r.status === 'HCNS từ chối' || r.status === 'Cancel offer';
 const stepKeyOf = (r: OnbRecord): StepKey => {
   if (r.status === 'Chờ HCNS duyệt') return 'pending';
   if (r.status === 'Đã onboard') return 'done';
   if (isClosed(r)) return 'closed';
-  return (['', '', 'form', 'it', 'marcom', 'ready'] as StepKey[])[stepIndex(r)] || 'form';
+  const i = stepIndex(r);
+  return i === 2 ? 'form' : i === 3 ? 'it' : taskOf(r, 'marcom').status === 'Đã hoàn thành' ? 'ready' : 'marcom';
 };
 
 type View = { mode: 'list' } | { mode: 'detail'; id: string };
@@ -109,6 +110,7 @@ const FlowStrip: React.FC = () => {
     { who: 'Ứng viên', what: 'Điền form thông tin cá nhân', cls: 'bg-blue-50 border-blue-200 text-blue-800' },
     { who: 'IT', what: 'Trả email, tài khoản, mật khẩu', cls: 'bg-amber-50 border-amber-200 text-amber-800' },
     { who: 'MarCom', what: 'Chuẩn bị Welcome Onboard', cls: 'bg-rose-50 border-rose-200 text-rose-800' },
+    { who: 'Hệ thống', what: `Email onboard ${ONBOARD_MAIL_HOUR}:00 ngày onboard`, cls: 'bg-emerald-50 border-emerald-200 text-emerald-800' },
   ];
   return (
     <div className="flex flex-wrap items-stretch gap-1.5 text-[12px]">
@@ -176,6 +178,8 @@ const HcnsList: React.FC<{ rows: OnbRecord[]; onOpen: (id: string) => void; toas
   const [company, setCompany] = useState('');
   const [sel, setSel] = useState<string[]>([]);
   const [modal, setModal] = useState<'' | 'accept' | 'reject'>('');
+  const [cancelId, setCancelId] = useState('');
+  const cancelRec = all.find((r) => r.id === cancelId);
 
   const count = (k: StepKey) => all.filter((r) => stepKeyOf(r) === k).length;
   const rows = useMemo(() => {
@@ -201,9 +205,9 @@ const HcnsList: React.FC<{ rows: OnbRecord[]; onOpen: (id: string) => void; toas
     { label: 'Chờ ứng viên điền form', key: 'form', tone: 'neutral', sub: 'Đã gửi link form' },
     { label: 'Chờ IT cấp tài khoản', key: 'it', tone: count('it') ? 'bad' : 'neutral', sub: `Yêu cầu tới ${IT_MAILBOX}` },
     { label: 'Chờ MarCom Welcome', key: 'marcom', tone: 'neutral', sub: `Đã báo ${MARCOM_MAILBOX}` },
-    { label: 'Sẵn sàng nhận việc', key: 'ready', tone: 'good', sub: 'Đủ 4/4 việc' },
-    { label: 'Đã onboard', key: 'done', tone: 'good', sub: 'Đã nhận việc' },
-    { label: 'Reject / Huỷ', key: 'closed', tone: 'neutral', sub: 'HCNS reject · TA báo huỷ' },
+    { label: `Chờ email onboard ${ONBOARD_MAIL_HOUR}:00`, key: 'ready', tone: 'good', sub: 'Gửi sáng ngày onboard' },
+    { label: 'Đã onboard', key: 'done', tone: 'good', sub: 'Đã gửi email onboard' },
+    { label: 'Reject / Cancel offer', key: 'closed', tone: 'neutral', sub: 'HCNS reject · cancel offer' },
   ];
 
   return (
@@ -347,6 +351,11 @@ const HcnsList: React.FC<{ rows: OnbRecord[]; onOpen: (id: string) => void; toas
                       <button type="button" onClick={() => onOpen(r.id)} className="text-[#1f5fa8] underline cursor-pointer mr-2">
                         Xem
                       </button>
+                      {r.status === 'Đang onboard' && (
+                        <button type="button" onClick={() => setCancelId(r.id)} className="text-rose-600 font-bold underline cursor-pointer" data-testid={`cancel-${r.id}`}>
+                          Cancel offer
+                        </button>
+                      )}
                       {pending && (
                         <>
                           <button type="button" onClick={() => (setSel([r.id]), setModal('accept'))} className="text-emerald-700 font-bold underline cursor-pointer mr-2">
@@ -380,6 +389,7 @@ const HcnsList: React.FC<{ rows: OnbRecord[]; onOpen: (id: string) => void; toas
           );
         }}
       />
+      {cancelRec && <CancelOfferModal record={cancelRec} onClose={() => setCancelId('')} toast={toast} />}
       <RejectModal
         open={modal === 'reject'}
         records={selRecs}
@@ -588,11 +598,11 @@ const MarcomList: React.FC<{ rows: OnbRecord[]; onOpen: (id: string) => void; to
 type Tab = 'info' | 'checklist' | 'history' | 'mails';
 
 const DetailView: React.FC<{ id: string; onBack: () => void; toast: Toast; onNavigate?: Nav; onOpenForm: (id: string) => void }> = ({ id, onBack, toast, onNavigate, onOpenForm }) => {
-  const { find, hrApprove, hrReject, toggleChecklist, confirmOnboarded, hrSave } = useOnboarding();
+  const { find, hrApprove, hrReject, toggleChecklist, hrSave } = useOnboarding();
   const rc = useRc();
   const r = find(id);
   const [tab, setTab] = useState<Tab>('info');
-  const [modal, setModal] = useState<'' | 'approve' | 'reject'>('');
+  const [modal, setModal] = useState<'' | 'approve' | 'reject' | 'cancel'>('');
   if (!r) return null;
 
   const missing = missingForApprove(r);
@@ -631,18 +641,8 @@ const DetailView: React.FC<{ id: string; onBack: () => void; toast: Toast; onNav
         </Btn>,
       );
     actions.push(
-      <Btn
-        key="onb"
-        variant="success"
-        icon={UserCheck}
-        disabled={d != null && d > 0}
-        title={d != null && d > 0 ? 'Chưa tới ngày nhận việc' : undefined}
-        onClick={() => {
-          confirmOnboarded(r.id);
-          toast(`${r.data.fullName} đã nhận việc — Stage Onboarded`);
-        }}
-      >
-        Xác nhận đã nhận việc
+      <Btn key="cancel" variant="danger" icon={XCircle} onClick={() => setModal('cancel')} data-testid="detail-cancel-offer">
+        Cancel offer
       </Btn>,
     );
   }
@@ -678,16 +678,18 @@ const DetailView: React.FC<{ id: string; onBack: () => void; toast: Toast; onNav
       pend.length ? 'warn' : 'info',
       <>
         Nhân viên <b>{r.account.employeeCode}</b>
-        {r.account.companyEmail && <> · {r.account.companyEmail}</>}. {pend.length ? <>Đang chờ: {pend.join('; ')}.</> : <>Đã xong 4/4 việc — sẵn sàng nhận việc.</>} Nhận việc {dmy(r.data.startDate)}
-        {d != null && d > 0 ? ` (còn ${d} ngày)` : ''}.
+        {r.account.companyEmail && <> · {r.account.companyEmail}</>}. {pend.length ? <>Đang chờ: {pend.join('; ')}.</> : null} Email onboard tự gửi lúc <b>{ONBOARD_MAIL_HOUR}:00 {dmy(r.data.startDate)}</b>
+        {d != null && d > 0 ? ` (còn ${d} ngày)` : ''} — gửi xong phiếu chuyển Đã onboard. Ứng viên báo không nhận việc → bấm <b>Cancel offer</b>.
       </>,
     );
+  } else if (r.status === 'Cancel offer') {
+    notice = bar('bad', <>HCNS <b>Cancel offer</b> lúc {dmyhm(r.cancelledAt || '')} ({r.cancelledBy}): {r.cancelReason}. Đã huỷ onboard — huỷ lịch email onboard, xoá hồ sơ nhân viên, báo Tuyển dụng / IT / MarCom.</>);
   } else if (r.status === 'Huỷ onboard') {
     notice = bar('muted', <>TA đã gửi <b>Báo hủy Onboard</b>: {r.cancelReason}. {r.account.status === 'Đã tạo' && <>Hồ sơ {r.account.employeeCode} đã có tài khoản — <b>cần HR xử lý hồ sơ/tài khoản đã tạo</b>.</>}</>);
   } else if (r.status === 'HCNS từ chối') {
     notice = bar('bad', <>HCNS Reject lúc {dmyhm(r.decidedAt || '')} ({r.decidedBy}){r.returnReason ? `: ${r.returnReason}` : ''}. TA gửi lại thông tin → tạo yêu cầu mới.</>);
   } else if (r.status === 'Đã onboard') {
-    notice = bar('info', <>Ứng viên đã nhận việc ngày {dmy(r.data.startDate)} — mã nhân sự {r.account.employeeCode}.</>);
+    notice = bar('info', <>Đã gửi email onboard {ONBOARD_MAIL_HOUR}:00 ngày {dmy(r.data.startDate)} — mã nhân sự {r.account.employeeCode}.</>);
   }
 
   const mark = (label: string, value: React.ReactNode): React.ReactNode => {
@@ -738,7 +740,7 @@ const DetailView: React.FC<{ id: string; onBack: () => void; toast: Toast; onNav
         <OnbStepper record={r} />
       </Panel>
 
-      {(r.status === 'Đang onboard' || r.status === 'Đã onboard' || (r.status === 'Huỷ onboard' && (r.tasks || []).length > 0)) && (
+      {(r.status === 'Đang onboard' || r.status === 'Đã onboard' || ((r.status === 'Huỷ onboard' || r.status === 'Cancel offer') && (r.tasks || []).length > 0)) && (
         <OnbProgressPanel record={r} toast={toast} onOpenEmployee={() => onNavigate?.('Employees')} onOpenForm={() => onOpenForm(r.id)} onOpenWelcome={onNavigate ? () => onNavigate('Welcome Onboard') : undefined} />
       )}
 
@@ -906,6 +908,7 @@ const DetailView: React.FC<{ id: string; onBack: () => void; toast: Toast; onNav
           toast(`Đã Accept ${r.data.fullName} — đã tạo nhân viên trong Employees và gửi link form`);
         }}
       />
+      {modal === 'cancel' && <CancelOfferModal record={r} onClose={() => setModal('')} toast={toast} />}
       <RejectModal
         open={modal === 'reject'}
         records={[r]}
@@ -1046,6 +1049,7 @@ const AcceptEffects: React.FC<{ emails: string[] }> = ({ emails }) => (
       <li>Gửi email kèm link form thông tin cá nhân tới {emails.length === 1 ? emails[0] : `${emails.length} ứng viên`}.</li>
       <li>Khi ứng viên submit form: đổ dữ liệu vào Employees và gửi yêu cầu tới {IT_MAILBOX} (Họ và tên, Khối, Cấp trên trực tiếp, Công ty).</li>
       <li>Khi IT trả email, tên tài khoản, mật khẩu: tự báo {MARCOM_MAILBOX} chuẩn bị Welcome Onboard.</li>
+      <li>{ONBOARD_MAIL_HOUR}:00 sáng ngày onboard: tự gửi email onboard tới ứng viên → phiếu chuyển Đã onboard.</li>
     </ul>
   </div>
 );
@@ -1232,6 +1236,57 @@ const RejectModal: React.FC<{ open: boolean; records: OnbRecord[]; onClose: () =
         <p className="text-[12px] text-slate-600">Phiếu chuyển sang <b>HCNS từ chối</b> và gửi email báo lại Tuyển dụng; TA có thể gửi lại thông tin (tạo yêu cầu mới).</p>
         <FormRow label="Lý do" hint={`${reason.length}/500 ký tự · không bắt buộc`}>
           <textarea rows={3} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} className={`${erp.inputFull} h-auto py-1.5 resize-none`} />
+        </FormRow>
+      </div>
+    </Modal>
+  );
+};
+
+/** Cancel offer — ứng viên báo không onboard; HCNS chuyển trạng thái để huỷ onboard. */
+const CancelOfferModal: React.FC<{ record: OnbRecord; onClose: () => void; toast: Toast }> = ({ record: r, onClose, toast }) => {
+  const { cancelOffer } = useOnboarding();
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const it = taskOf(r, 'itAccount').status !== 'Chưa bắt đầu';
+  const mc = taskOf(r, 'marcom').status !== 'Chưa bắt đầu';
+  const err = !reason.trim() ? 'Bắt buộc' : '';
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Cancel offer — ${r.data.fullName}`}
+      footer={
+        <>
+          <Btn onClick={onClose}>Đóng</Btn>
+          <Btn
+            variant="danger"
+            icon={XCircle}
+            onClick={() => {
+              if (err) return setTried(true);
+              cancelOffer(r.id, reason.trim());
+              onClose();
+              toast(`Đã Cancel offer ${r.data.fullName} — đã huỷ onboard`);
+            }}
+            data-testid="cancel-offer-confirm"
+          >
+            Cancel offer
+          </Btn>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <p className="text-[12.5px] text-slate-700">
+          Ứng viên báo không onboard ngày <b>{dmy(r.data.startDate)}</b>. Chuyển trạng thái <b>Cancel offer</b> sẽ huỷ onboard ứng viên này:
+        </p>
+        <ul className="list-disc pl-5 text-[12px] text-slate-600 space-y-0.5">
+          <li>Huỷ lịch email onboard {ONBOARD_MAIL_HOUR}:00 ngày onboard; dừng các việc đang chờ.</li>
+          {r.account.employeeCode && <li>Xoá hồ sơ {r.account.employeeCode} khỏi Employees.</li>}
+          {it && <li>Báo IT {r.account.status === 'Đã tạo' ? `khoá tài khoản ${r.account.companyEmail || ''}` : 'huỷ yêu cầu cấp tài khoản'}.</li>}
+          {mc && <li>Báo MarCom huỷ Welcome Onboard.</li>}
+          <li>Báo Tuyển dụng ({r.taPic}); lượt ứng tuyển chuyển Offer Rejected.</li>
+        </ul>
+        <FormRow label="Lý do" required error={tried ? err : undefined} hint={`${reason.length}/500 ký tự`}>
+          <textarea rows={3} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="VD: Ứng viên nhận offer công ty khác" className={`${erp.inputFull} h-auto py-1.5 resize-none`} data-testid="cancel-reason" />
         </FormRow>
       </div>
     </Modal>

@@ -4,12 +4,12 @@
  * Đổi Stage lượt ứng tuyển như code thật: gửi → Offer Accepted, nhận việc → Onboarded, huỷ → Offer Rejected.
  * Phải bọc TRONG RcProvider (store Tuyển dụng).
  */
-import React, { createContext, useContext, useMemo, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useRc } from '../recruitment/rc/RcContext';
 import { Stage, MailKind } from '../recruitment/rc/rcData';
 import {
   OnbRecord, HandoffData, FieldChange, OnbMail, OnbTask, TaskKey, ItRequest, ItReturn, SEED_RECORDS, HCNS_MAILBOX, IT_MAILBOX, MARCOM_MAILBOX, FORM_FIELDS,
-  buildChecklist, diffHandoff, todayIso, formLinkOf, missingForApprove,
+  buildChecklist, diffHandoff, todayIso, formLinkOf, missingForApprove, onboardMailAt, ONBOARD_MAIL_HOUR, dmy,
 } from './onboardingData';
 import { upsertEmployeeFromOnboarding, removeEmployeeFromOnboarding } from '../components/EmployeePage';
 
@@ -18,7 +18,7 @@ export const TA_USER = 'MenTT';
 export const HCNS_USER = 'Nguyễn Thị Mai';
 
 const statusReal = (r: OnbRecord) => (r.status === 'Chờ HCNS duyệt' ? 'Pending' : 'Approved');
-const ACTIVE = (r: OnbRecord) => r.status !== 'Huỷ onboard' && r.status !== 'HCNS từ chối';
+const ACTIVE = (r: OnbRecord) => r.status !== 'Huỷ onboard' && r.status !== 'HCNS từ chối' && r.status !== 'Cancel offer';
 
 export interface SubmitInput {
   candidateId: string;
@@ -61,7 +61,10 @@ interface OnboardingContextValue {
   /** IT trả email, tên tài khoản, mật khẩu → báo MarCom. */
   itReturn: (id: string, ret: { email: string; accountName: string; password: string; by: string; note?: string }) => void;
   marcomDone: (id: string, by: string, note?: string) => void;
-  confirmOnboarded: (id: string) => void;
+  /** Gửi email onboard tới ứng viên (job 08:00 ngày onboard) → Đã onboard. */
+  sendOnboardMail: (id: string, manual?: boolean) => void;
+  /** HCNS chuyển Cancel offer khi ứng viên báo không onboard → huỷ onboard. */
+  cancelOffer: (id: string, reason: string) => void;
 }
 
 const OnboardingContext = createContext<OnboardingContextValue | null>(null);
@@ -123,7 +126,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const lastSnapshot: OnboardingContextValue['lastSnapshot'] = (candidateId, requestId) =>
     recordsRef.current
-      .filter((r) => r.candidateId === candidateId && r.requestId === requestId && r.status !== 'Huỷ onboard')
+      .filter((r) => r.candidateId === candidateId && r.requestId === requestId && r.status !== 'Huỷ onboard' && r.status !== 'Cancel offer')
       .sort((a, b) => b.sentAt.localeCompare(a.sentAt))[0];
 
   const submitHandoff: OnboardingContextValue['submitHandoff'] = (input, composed) => {
@@ -297,6 +300,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           { key: 'personalForm', status: 'Đang thực hiện', startedAt: at, formLink: link, reminders: 0, detail: `Đã gửi link form tới ${r.candidateEmail} — chờ ứng viên submit` },
           { key: 'itAccount', status: 'Chưa bắt đầu', detail: 'Tự gửi IT khi ứng viên submit form' },
           { key: 'marcom', status: 'Chưa bắt đầu', detail: 'Tự báo MarCom khi IT trả tài khoản' },
+          { key: 'onboardMail', status: 'Đang thực hiện', startedAt: at, detail: `Lên lịch ${ONBOARD_MAIL_HOUR}:00 ${dmy(data.startDate)} tới ${r.candidateEmail}` },
         ],
         mails: [...r.mails, formMail],
         history: [
@@ -437,16 +441,85 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       checklist: r.checklist.map((c) => (c.id === itemId ? (c.done ? { ...c, done: false, doneBy: undefined, doneAt: undefined } : { ...c, done: true, doneBy: HCNS_USER, doneAt: nowIso() }) : c)),
     }));
 
-  const confirmOnboarded: OnboardingContextValue['confirmOnboarded'] = (id) => {
+  /** Email onboard 08:00 ngày onboard → phiếu Đã onboard, Stage Onboarded. */
+  const sendOnboardMail: OnboardingContextValue['sendOnboardMail'] = (id, manual = false) => {
     const r = recordsRef.current.find((x) => x.id === id);
-    if (!r) return;
+    if (!r || r.status !== 'Đang onboard') return;
+    const at = manual ? nowIso() : onboardMailAt(r.data.startDate);
+    const acc = r.account.companyEmail ? ` · email công ty ${r.account.companyEmail}` : '';
+    // cập nhật ref ngay để job không gửi trùng
+    recordsRef.current = recordsRef.current.map((x) => (x.id === id ? { ...x, status: 'Đã onboard' } : x));
     patch(id, (x) => ({
       ...x,
       status: 'Đã onboard',
-      history: [...x.history, { at: nowIso(), by: HCNS_USER, role: 'HCNS', action: 'Xác nhận ứng viên đã nhận việc', note: `Ngày nhận việc ${x.data.startDate <= todayIso() ? 'đã tới' : 'sớm hơn kế hoạch'} → Stage Onboarded` }],
+      tasks: setTask(x, 'onboardMail', { status: 'Đã hoàn thành', doneAt: at, doneBy: 'Hệ thống', detail: `Đã gửi tới ${x.candidateEmail}${acc}` }),
+      mails: [...x.mails, { at, kind: 'Email onboard cho ứng viên', subject: `Chào mừng ${x.data.fullName} — hôm nay là ngày đầu tiên của bạn`, to: x.candidateEmail, cc: [HCNS_MAILBOX, x.data.manager], attachments: [] }],
+      history: [
+        ...x.history,
+        { at, by: 'Hệ thống', role: 'Hệ thống', action: `Gửi email onboard tới ${x.candidateEmail}`, note: `${manual ? 'Gửi thủ công (mô phỏng)' : `Job ${ONBOARD_MAIL_HOUR}:00 ngày onboard`} → Đã onboard · Stage Onboarded` },
+      ],
     }));
     setStage(r.candidateId, r.requestId, 'Onboarded');
     if (r.account.employeeCode) rcRef.current.setCandidateHr(r.candidateId, { status: 'Probation', employeeCode: r.account.employeeCode, employeeName: r.data.fullName, startDate: r.data.startDate });
+  };
+
+  // Job gửi email onboard: chạy khi mở app và mỗi phút
+  useEffect(() => {
+    const tick = () => {
+      const now = nowIso();
+      recordsRef.current.filter((r) => r.status === 'Đang onboard' && r.data.startDate && new Date(onboardMailAt(r.data.startDate)).toISOString() <= now).forEach((r) => sendOnboardMail(r.id));
+    };
+    tick();
+    const t = window.setInterval(tick, 60000);
+    return () => window.clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** HCNS Cancel offer: ứng viên báo không onboard → dừng luồng, huỷ lịch email, thu hồi hồ sơ / tài khoản. */
+  const cancelOffer: OnboardingContextValue['cancelOffer'] = (id, reason) => {
+    const r = recordsRef.current.find((x) => x.id === id);
+    if (!r || r.status !== 'Đang onboard') return;
+    const at = nowIso();
+    const t = (k: TaskKey) => r.tasks?.find((x) => x.key === k)?.status || 'Chưa bắt đầu';
+    const toIt = t('itAccount') !== 'Chưa bắt đầu';
+    const toMc = t('marcom') !== 'Chưa bắt đầu';
+    const hasAcc = r.account.status === 'Đã tạo';
+    const subject = `[HCNS] Cancel offer — ${r.data.fullName} không onboard ngày ${dmy(r.data.startDate)}`;
+    const mails: OnbMail[] = [
+      { at, kind: 'Cancel offer', subject, to: r.taPic, cc: [HCNS_MAILBOX], attachments: [] },
+      ...(toIt ? [{ at, kind: 'Cancel offer' as const, subject: `${subject}${hasAcc ? ' — đề nghị khoá tài khoản ' + (r.account.companyEmail || '') : ' — huỷ yêu cầu cấp tài khoản'}`, to: IT_MAILBOX, cc: [HCNS_MAILBOX], attachments: [] }] : []),
+      ...(toMc ? [{ at, kind: 'Cancel offer' as const, subject: `${subject} — huỷ Welcome Onboard`, to: MARCOM_MAILBOX, cc: [HCNS_MAILBOX], attachments: [] }] : []),
+    ];
+    patch(id, (x) => ({
+      ...x,
+      status: 'Cancel offer',
+      cancelReason: reason,
+      cancelledBy: HCNS_USER,
+      cancelledAt: at,
+      tasks: (x.tasks || []).map((k) =>
+        k.status === 'Đã hoàn thành' ? k : { ...k, detail: k.key === 'onboardMail' ? 'Đã huỷ lịch gửi email onboard' : `${k.detail || ''} — dừng do Cancel offer` },
+      ),
+      hrNote: [x.hrNote, `[Cancel offer] ${HCNS_USER} lúc ${new Date(at).toLocaleString('vi-VN')} – Lý do: ${reason}`].filter(Boolean).join('\n'),
+      mails: [...x.mails, ...mails],
+      history: [
+        ...x.history,
+        { at, by: HCNS_USER, role: 'HCNS', action: 'Cancel offer — huỷ onboard', note: reason },
+        {
+          at, by: 'Hệ thống', role: 'Hệ thống', action: 'Huỷ onboard',
+          note: [
+            'Huỷ lịch email onboard',
+            r.account.employeeCode && `xoá hồ sơ ${r.account.employeeCode} khỏi Employees`,
+            toIt && (hasAcc ? 'báo IT khoá tài khoản' : 'báo IT huỷ yêu cầu'),
+            toMc && 'báo MarCom huỷ Welcome',
+            'báo Tuyển dụng',
+            'Stage → Offer Rejected',
+          ].filter(Boolean).join(' · '),
+        },
+      ],
+    }));
+    setStage(r.candidateId, r.requestId, 'Offer Rejected');
+    rcRef.current.setCandidateHr(r.candidateId, { status: 'None' });
+    if (r.account.employeeCode) removeEmployeeFromOnboarding(r.account.employeeCode);
   };
 
   const value = useMemo<OnboardingContextValue>(
@@ -467,7 +540,8 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       submitForm,
       itReturn,
       marcomDone,
-      confirmOnboarded,
+      sendOnboardMail,
+      cancelOffer,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [records],

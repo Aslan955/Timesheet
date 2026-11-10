@@ -40,16 +40,70 @@ export const useTodayBirthdays = (simulateEmpty = false) => {
 const subLine = (cfg: BoxConfig, e: MarcomEmployee) => [cfg.showPosition ? e.position : null, cfg.showDivision ? e.division : null].filter(Boolean).join(' · ');
 
 /** Nội dung box sinh nhật (1 mục của slide). onClose = hiện nút ẩn ở góc. */
-const BirthdaySlide: React.FC<{ box: BoxConfig; people: MarcomEmployee[]; preview: boolean; onClose?: () => void }> = ({ box, people, preview, onClose }) => {
+/** Chiều cao cố định của box ở chế độ gọn (trang chủ) — mọi slide cùng cao để không giật khi chuyển. */
+export const COMPACT_H = 'h-[132px]';
+
+const BirthdaySlide: React.FC<{ box: BoxConfig; people: MarcomEmployee[]; preview: boolean; onClose?: () => void; compact?: boolean }> = ({ box, people, preview, onClose, compact }) => {
   const { tr, wdLong } = useMarcomLang();
   const theme = BOX_THEMES[box.theme];
   const today = new Date();
   const dismiss = () => onClose?.();
   const rounded = box.photoShape === 'circle' ? 'rounded-full' : 'rounded-xl';
 
+  if (compact && people.length > 0) {
+    const light = box.layout === 'banner';
+    return (
+      <div className={`relative ${COMPACT_H} overflow-hidden rounded-2xl border ${light ? 'border-transparent' : `bg-gradient-to-r ${theme.bg}`} shadow-sm`} data-testid="bday-compact">
+        {light &&
+          (box.bgUrl ? (
+            <>
+              <img src={box.bgUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-slate-900/40" />
+            </>
+          ) : (
+            <div className={`absolute inset-0 bg-gradient-to-br ${theme.icon}`} />
+          ))}
+        <div className="relative h-full flex items-center gap-5 pl-5 pr-11">
+          <div className="min-w-0 flex-1 max-w-[46%]">
+            <div className="flex items-center gap-2.5">
+              <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${theme.icon} flex items-center justify-center shadow shrink-0 ${light ? 'ring-2 ring-white/40' : ''}`}>
+                <Cake size={18} className="text-white" />
+              </div>
+              <div className="min-w-0">
+                <div className={`text-[10px] font-black uppercase tracking-wider ${light ? 'text-white/80' : theme.accent}`}>
+                  {tr('Sinh nhật hôm nay', "Today's birthdays")} · {wdLong[today.getDay()]}, {fmtDayMonth(today)}
+                </div>
+                <div className={`text-[15px] font-black flex items-center gap-1.5 truncate ${light ? 'text-white' : 'text-slate-800'}`}>
+                  {boxTitle(box, people.length)} <PartyPopper size={15} className="text-amber-400 shrink-0" />
+                </div>
+              </div>
+            </div>
+            <div className={`mt-2 text-[12.5px] leading-snug line-clamp-2 ${light ? 'text-white/90' : 'text-slate-600'}`}>
+              “<RichHtml inline html={box.greeting} />” <span className={`font-black whitespace-nowrap ${light ? 'text-white' : theme.accent}`}>— {box.signature}</span>
+            </div>
+          </div>
+          <div className="flex-1 min-w-0 flex gap-2.5 overflow-x-auto py-1 justify-end">
+            {people.map((e) => (
+              <div key={e.id} className={`shrink-0 flex items-center gap-2.5 rounded-xl pl-1.5 pr-3 py-1.5 ${light ? 'bg-white/15 border border-white/25' : 'bg-white/85 border border-white shadow-sm'}`}>
+                <span className="relative shrink-0">
+                  <Avatar e={e} size={40} rounded={rounded} className={`ring-2 ${light ? 'ring-white/40' : theme.ring}`} />
+                  <span className="absolute -bottom-0.5 -right-0.5 text-[10px]">🎂</span>
+                </span>
+                <div className="min-w-0 max-w-[140px]">
+                  <div className={`text-[12.5px] font-black truncate ${light ? 'text-white' : 'text-slate-800'}`}>{e.name}</div>
+                  {subLine(box, e) && <div className={`text-[11px] truncate ${light ? 'text-white/75' : 'text-slate-400 font-semibold'}`}>{subLine(box, e)}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (people.length === 0) {
     return (
-      <div className={`relative h-full rounded-2xl border bg-gradient-to-r ${theme.bg} px-5 py-4 flex items-center gap-3`}>
+      <div className={`relative h-full rounded-2xl border bg-gradient-to-r ${theme.bg} px-5 py-4 flex items-center gap-3 ${compact ? COMPACT_H : ''}`}>
         <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center">
           <Cake size={20} className={theme.accent} />
         </div>
@@ -173,9 +227,9 @@ const BirthdaySlide: React.FC<{ box: BoxConfig; people: MarcomEmployee[]; previe
 };
 
 /** 1 banner MarCom trong slide — có link thì bấm mở trang mới. */
-const BannerSlide: React.FC<{ b: HomeBanner }> = ({ b }) => {
+const BannerSlide: React.FC<{ b: HomeBanner; compact?: boolean }> = ({ b, compact }) => {
   const img = (
-    <div className="relative h-full min-h-[200px] overflow-hidden rounded-2xl shadow-sm bg-slate-100">
+    <div className={`relative overflow-hidden rounded-2xl shadow-sm bg-slate-100 ${compact ? COMPACT_H : 'h-full min-h-[200px]'}`}>
       <img src={b.url} alt={b.name} className="absolute inset-0 w-full h-full object-cover" draggable={false} />
     </div>
   );
@@ -188,7 +242,8 @@ const BannerSlide: React.FC<{ b: HomeBanner }> = ({ b }) => {
   );
 };
 
-export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean; cfg?: BoxConfig }> = ({ preview = false, simulateEmpty = false, cfg }) => {
+/** compact: bản gọn cho trang chủ (cao cố định, 1 hàng). */
+export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean; cfg?: BoxConfig; compact?: boolean }> = ({ preview = false, simulateEmpty = false, cfg, compact = false }) => {
   const { config } = useMarcom();
   const { tr } = useMarcomLang();
   const box = cfg ?? config.box;
@@ -245,7 +300,7 @@ export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean;
       </div>
     ) : null;
   // Chỉ có box sinh nhật → hiển thị như cũ, không chạy slide
-  if (n === 1 && hasBday) return <BirthdaySlide box={box} people={people} preview={preview} onClose={dismiss} />;
+  if (n === 1 && hasBday && !compact) return <BirthdaySlide box={box} people={people} preview={preview} onClose={dismiss} />;
 
   return (
     <div
@@ -264,7 +319,7 @@ export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean;
             data-slide={x.kind === 'bday' ? 'birthday' : x.b.name}
             className={`[grid-area:1/1] transition-opacity duration-500 ${i === cur ? 'opacity-100 z-[1]' : 'opacity-0 pointer-events-none'}`}
           >
-            {x.kind === 'bday' ? <BirthdaySlide box={box} people={people} preview={preview} /> : <BannerSlide b={x.b} />}
+            {x.kind === 'bday' ? <BirthdaySlide box={box} people={people} preview={preview} compact={compact} /> : <BannerSlide b={x.b} compact={compact} />}
           </div>
         ))}
       </div>
@@ -272,7 +327,7 @@ export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean;
         <button
           type="button"
           onClick={dismiss}
-          className="absolute top-3 right-3 z-[2] p-1.5 rounded-lg cursor-pointer bg-white/70 text-slate-500 hover:bg-white hover:text-slate-700 shadow-sm"
+          className={`absolute z-[2] rounded-lg cursor-pointer bg-white/70 text-slate-500 hover:bg-white hover:text-slate-700 shadow-sm ${compact ? 'top-2 right-2 p-1' : 'top-3 right-3 p-1.5'}`}
           title={tr('Ẩn trong hôm nay', 'Hide for today')}
         >
           <X size={15} />

@@ -11,6 +11,7 @@ export const ONB_STATUS_CLS: Record<OnbStatus, string> = {
   'Chờ HCNS duyệt': TAG.amber,
   'Đang onboard': TAG.blue,
   'Đã onboard': TAG.green,
+  'Cancel offer': TAG.rose,
   'Huỷ onboard': TAG.slate,
   'HCNS từ chối': TAG.rose,
 };
