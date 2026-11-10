@@ -13,21 +13,21 @@ const EMPLOYEE_STATUS_LABEL_EN: Record<EmployeeStatus, string> = {
   Resigned: 'Resigned',
   'Cancel Onboard': 'Cancel Onboard',
 };
+// đồng bộ code iMIS 05/11 — biến {PascalCase} như MarcomPlaceholders
 const PLACEHOLDER_DESC_EN: Record<string, string> = {
-  '{{fullname}}': 'Full name',
-  '{{khoi}}': 'Division',
-  '{{vitri}}': 'Position',
-  '{{ngaysinh}}': 'Date of birth (dd/MM)',
-  '{{ngayonboard}}': 'Onboard date',
+  '{EmployeeName}': 'Full name',
+  '{Division}': 'Division',
+  '{Position}': 'Position',
+  '{BirthDate}': 'Date of birth (dd/MM)',
+  '{OnboardDate}': 'Onboard date (dd/MM/yyyy)',
 };
 /** Ghi chú hệ thống sinh ra trong lịch sử gửi / dữ liệu mẫu (không phải nội dung người dùng nhập). */
+// đồng bộ code iMIS 05/11 — ghi chú nhật ký chỉ "Gửi thử" hoặc lỗi gửi
 const SYSTEM_NOTE_EN: Record<string, string> = {
   'Gửi thử': 'Test send',
-  'Gửi lại thủ công': 'Manual resend',
   'Nhân sự đã nghỉ việc': 'Employee has resigned',
   'Mailbox không tồn tại (550 5.1.1)': 'Mailbox does not exist (550 5.1.1)',
   'Máy chủ mail tạm thời không phản hồi (421)': 'Mail server temporarily unavailable (421)',
-  'Gửi thành công khi tự thử lại': 'Sent on automatic retry',
   'Ứng viên từ chối offer, nhận việc nơi khác': 'Candidate declined the offer and joined another company',
   'Ứng viên không đến nhận việc, không liên lạc được': 'Candidate did not show up and cannot be reached',
   'Ứng viên xin lùi 1 ngày do bàn giao việc cũ': 'Candidate asked to postpone 1 day to hand over previous job',
@@ -46,7 +46,12 @@ export const useMarcomLang = () => {
     wdLong: en ? WEEKDAY_LONG_EN : WEEKDAY_LONG,
     statusLabel: (s: EmployeeStatus) => (en ? EMPLOYEE_STATUS_LABEL_EN : EMPLOYEE_STATUS_LABEL)[s],
     placeholders: MAIL_PLACEHOLDERS.map((p) => ({ ...p, desc: en ? PLACEHOLDER_DESC_EN[p.key] ?? p.desc : p.desc })),
-    /** Dịch ghi chú hệ thống; chuỗi lạ (người dùng nhập) giữ nguyên. */
-    note: (s: string | undefined) => (s && en ? SYSTEM_NOTE_EN[s] ?? s : s),
+    /** Dịch ghi chú hệ thống; chuỗi lạ (người dùng nhập) giữ nguyên. "Gửi thử: lỗi" dịch phần đầu. */
+    note: (s: string | undefined) => {
+      if (!s || !en) return s;
+      if (SYSTEM_NOTE_EN[s]) return SYSTEM_NOTE_EN[s];
+      const i = s.indexOf(': ');
+      return i > 0 && SYSTEM_NOTE_EN[s.slice(0, i)] ? `${SYSTEM_NOTE_EN[s.slice(0, i)]}: ${SYSTEM_NOTE_EN[s.slice(i + 2)] ?? s.slice(i + 2)}` : s;
+    },
   };
 };

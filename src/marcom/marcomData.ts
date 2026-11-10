@@ -47,12 +47,27 @@ export type PhotoSource = 'employee' | 'upload';
 
 /** Dung lượng tối đa mọi ảnh MarCom tải lên (ảnh chúc mừng, banner, ảnh nền, nền thiệp). */
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+// đồng bộ code iMIS 05/11 — MarcomImageRules: PNG/JPG/WebP ≤ 5MB
+export const IMAGE_ACCEPT = 'image/png,image/jpeg,image/webp';
+export const isAllowedImage = (f: File) => IMAGE_ACCEPT.split(',').includes(f.type) && f.size > 0 && f.size <= MAX_IMAGE_BYTES;
+
+// đồng bộ code iMIS 05/11 — MarcomRules: banner trang chủ khung 4:1, cảnh báo (không chặn) lệch > 10% hoặc rộng < 1600px
+export const BANNER_FITS = ['contain', 'cover', 'fill', 'scale-down', 'none'] as const;
+export type BannerFit = (typeof BANNER_FITS)[number];
+export const bannerSizeIssue = (w: number, h: number): 'ratio' | 'small' | null => {
+  if (w <= 0 || h <= 0) return null;
+  if (Math.abs(w / h - 4) / 4 > 0.1) return 'ratio';
+  return w < 1600 ? 'small' : null;
+};
+/** Thời gian mỗi slide (giây) — đồng bộ code iMIS 05/11. */
+export const SLIDE_SECONDS = [1, 2, 3, 5, 7, 10, 15];
 
 /** Tạm ẩn kênh đăng bài Microsoft Teams (UI + logic khoá ảnh) — đổi true để bật lại. */
 export const TEAMS_POST_ENABLED = false;
 
 export type MailKind = 'birthday' | 'welcome';
-export type MailStatus = 'sent' | 'failed' | 'skipped' | 'test';
+// đồng bộ code iMIS 05/11 — không có trạng thái "Bỏ qua" (người bị loại không gửi, không ghi log)
+export type MailStatus = 'sent' | 'failed' | 'test';
 
 export interface MailLog {
   id: string;
@@ -145,6 +160,20 @@ export const batchPhase = (tuesday: Date, now = new Date()): BatchPhase => {
  *  - Cancel Onboard = trạng thái Employee chuyển sang 'Cancel Onboard' → KHÔNG vào đợt Welcome nào, không gửi mail Welcome. */
 export const inWelcomeBatch = (e: MarcomEmployee) => e.isNewHire && e.status === 'Working';
 export const isCancelOnboard = (e: MarcomEmployee) => e.isNewHire && e.status === 'Cancel Onboard';
+
+/** Nhân sự của đợt thứ 3 `tuesday` (cửa sổ batchWindow), loại Cancel Onboard / nghỉ việc; sắp theo ngày onboard rồi họ tên. */
+export const welcomeBatchMembers = (employees: MarcomEmployee[], tuesday: Date) => {
+  const { from, to } = batchWindow(tuesday);
+  return employees
+    .filter((e) => inWelcomeBatch(e) && fromKey(e.onboardDate) >= from && fromKey(e.onboardDate) <= to)
+    .sort((a, b) => a.onboardDate.localeCompare(b.onboardDate) || a.name.localeCompare(b.name, 'vi'));
+};
+
+/** Đợt đang hiện trên Box trang chủ = thứ 3 gần nhất ≤ hôm nay (hiện từ T đến hết T+6). */
+export const shownBatchTuesday = (now = new Date()) => {
+  const d = startOfDay(now);
+  return addDays(d, -((d.getDay() - 2 + 7) % 7));
+};
 
 // ---------------------------------------------------------------------------
 // Ảnh đại diện mẫu (SVG nội tuyến, không phụ thuộc mạng)
@@ -288,7 +317,7 @@ export const buildEmployees = (ref = new Date()): MarcomEmployee[] => {
   return list;
 };
 
-/** Lịch sử gửi mail mẫu: sinh nhật/onboard đã qua trong tháng → đã gửi; 1 lỗi, 1 bỏ qua. */
+/** Lịch sử gửi mail mẫu: sinh nhật/onboard đã qua trong năm → đã gửi; 1 lỗi; vài bản ghi năm trước (bộ chọn năm). */
 export const buildMailLogs = (employees: MarcomEmployee[], ref = new Date()): MailLog[] => {
   const today = startOfDay(ref);
   const logs: MailLog[] = [];
@@ -300,29 +329,27 @@ export const buildMailLogs = (employees: MarcomEmployee[], ref = new Date()): Ma
   employees.forEach((e, idx) => {
     const bday = birthdayThisYear(e, today);
     const passed = bday < today || (bday.getTime() === today.getTime() && isPastTimeToday('09:00', ref));
+    // đồng bộ code iMIS 05/11 — năm trước: vài bản ghi để xem bằng bộ chọn năm (idx 4 lỗi năm trước → không gửi lại được)
+    if (idx < 8 && e.status === 'Working') {
+      const last = birthdayInYear(e, today.getFullYear() - 1);
+      logs.push({ id: `L-y-${e.id}`, kind: 'birthday', employeeId: e.id, employeeName: e.name, to: e.email, sentAt: at(last, 9, 0), status: idx === 4 ? 'failed' : 'sent', note: idx === 4 ? 'Mailbox không tồn tại (550 5.1.1)' : undefined });
+    }
     // Mail sinh nhật các ngày đã qua trong năm; idx 9 = hôm đó đang tắt tự động → không có bản ghi ("Không gửi")
-    if (passed && idx !== 9) {
-      if (e.status === 'Resigned') {
-        logs.push({ id: `L-b-${e.id}`, kind: 'birthday', employeeId: e.id, employeeName: e.name, to: e.email, sentAt: at(bday, 9, 0), status: 'skipped', note: 'Nhân sự đã nghỉ việc' });
-      } else {
+    // đồng bộ code iMIS 05/11 — người đã nghỉ việc / Cancel Onboard / thiếu email: không gửi, KHÔNG ghi log
+    if (passed && idx !== 9 && e.status === 'Working') {
+      {
         const failed = idx === 5;
-        // idx 7: lần đầu lỗi, tự thử lại thành công sau 10 phút → lịch sử ghi cả 2 bản ghi
+        // idx 7: lần đầu lỗi, tự thử lại thành công sau 10 phút → lịch sử ghi cả 2 bản ghi (bản thành công không có ghi chú)
         if (idx === 7) {
           logs.push({ id: `L-bf-${e.id}`, kind: 'birthday', employeeId: e.id, employeeName: e.name, to: e.email, sentAt: at(bday, 9, 0), status: 'failed', note: 'Máy chủ mail tạm thời không phản hồi (421)' });
-          logs.push({ id: `L-b-${e.id}`, kind: 'birthday', employeeId: e.id, employeeName: e.name, to: e.email, sentAt: at(bday, 9, 10), status: 'sent', note: 'Gửi thành công khi tự thử lại' });
+          logs.push({ id: `L-b-${e.id}`, kind: 'birthday', employeeId: e.id, employeeName: e.name, to: e.email, sentAt: at(bday, 9, 10), status: 'sent' });
         } else logs.push({
           id: `L-b-${e.id}`, kind: 'birthday', employeeId: e.id, employeeName: e.name, to: e.email, sentAt: at(bday, 9, failed ? 0 : 1), status: failed ? 'failed' : 'sent',
           note: failed ? 'Mailbox không tồn tại (550 5.1.1)' : undefined,
         });
       }
     }
-    if (e.status === 'Cancel Onboard') return;
-    if (e.isNewHire) {
-      const od = fromKey(e.onboardDate);
-      if (od < today || (od.getTime() === today.getTime() && isPastTimeToday('10:00', ref))) {
-        logs.push({ id: `L-w-${e.id}`, kind: 'welcome', employeeId: e.id, employeeName: e.name, to: e.email, sentAt: at(od, 10, 0), status: 'sent' });
-      }
-    }
+    // đồng bộ code iMIS 05/11 — chưa có job gửi mail Welcome (Module Marcom.Welcome) → nhật ký không có dòng Welcome tự động
   });
   return logs.sort((a, b) => b.sentAt.localeCompare(a.sentAt));
 };
@@ -359,21 +386,31 @@ export const birthdayInYear = (e: MarcomEmployee, y: number) => {
 export const birthdayThisYear = (e: MarcomEmployee, ref = new Date()) => birthdayInYear(e, ref.getFullYear());
 export const isBirthdayToday = (e: MarcomEmployee, ref = new Date()) => birthdayThisYear(e, ref).getTime() === startOfDay(ref).getTime();
 
-/** Thay biến {{...}} trong mẫu email. */
-export const fillTemplate = (tpl: string, e: MarcomEmployee) =>
-  tpl
-    .replace(/\{\{fullname\}\}/g, e.name)
-    .replace(/\{\{khoi\}\}/g, e.division)
-    .replace(/\{\{vitri\}\}/g, e.position)
-    .replace(/\{\{ngayonboard\}\}/g, fmtDate(e.onboardDate))
-    .replace(/\{\{ngaysinh\}\}/g, fmtDayMonth(e.dob));
+// đồng bộ code iMIS 05/11 — biến kiểu {PascalCase} như MarcomPlaceholders; biến lạ giữ nguyên
+/** Biến tiêu đề Box: số người. */
+export const COUNT_VAR = '{Count}';
+/** Mẫu tách / nhận diện biến {Xxx}. */
+export const VAR_SPLIT = /(\{[A-Za-z]+\})/g;
+export const VAR_ONLY = /^\{[A-Za-z]+\}$/;
+const mailValues = (e: MarcomEmployee): Record<string, string> => ({
+  '{EmployeeName}': e.name,
+  '{Division}': e.division,
+  '{Position}': e.position,
+  '{BirthDate}': fmtDayMonth(e.dob),
+  '{OnboardDate}': fmtDate(e.onboardDate),
+});
+/** Thay biến {Xxx} trong mẫu email (MarcomPlaceholders.Fill). */
+export const fillTemplate = (tpl: string, e: MarcomEmployee) => {
+  const v = mailValues(e);
+  return tpl.replace(/\{[A-Za-z]+\}/g, (m) => v[m] ?? m);
+};
 
 export const MAIL_PLACEHOLDERS: { key: string; desc: string; kinds: MailKind[] }[] = [
-  { key: '{{fullname}}', desc: 'Họ và tên (Full name)', kinds: ['birthday', 'welcome'] },
-  { key: '{{khoi}}', desc: 'Division (Khối)', kinds: ['birthday', 'welcome'] },
-  { key: '{{vitri}}', desc: 'Vị trí', kinds: ['birthday', 'welcome'] },
-  { key: '{{ngaysinh}}', desc: 'Ngày sinh (dd/MM)', kinds: ['birthday'] },
-  { key: '{{ngayonboard}}', desc: 'Ngày onboard', kinds: ['welcome'] },
+  { key: '{EmployeeName}', desc: 'Họ và tên', kinds: ['birthday', 'welcome'] },
+  { key: '{Division}', desc: 'Division (Khối)', kinds: ['birthday', 'welcome'] },
+  { key: '{Position}', desc: 'Vị trí', kinds: ['birthday', 'welcome'] },
+  { key: '{BirthDate}', desc: 'Ngày sinh (dd/MM)', kinds: ['birthday'] },
+  { key: '{OnboardDate}', desc: 'Ngày onboard (dd/MM/yyyy)', kinds: ['welcome'] },
 ];
 
 /** Tải ảnh: data URI / object URL → file. */

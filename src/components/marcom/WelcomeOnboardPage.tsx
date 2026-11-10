@@ -14,12 +14,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { UserX, AlertTriangle, ArrowRight, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Download, FileSpreadsheet, History, RefreshCw, Table2, UserMinus } from 'lucide-react';
 import { useMarcom } from '../../marcom/MarcomContext';
-import { Avatar, FilterBar, FilterCell, LangSwitch, TAG, iconBtn, useToast } from '../../marcom/MarcomUi';
+import { Avatar, FilterBar, FilterCell, TAG, iconBtn, useToast } from '../../marcom/MarcomUi';
 import { useMarcomLang } from '../../marcom/i18n';
 import { Btn, ErpPage, ErpTitleBar, KpiBox, Panel, Tag, erp } from '../erp/Erp';
 import {
   BatchPhase, DIVISIONS, MarcomEmployee, addDays, batchDeadline, batchPhase, batchTuesdayOf, batchWindow, downloadPhoto,
-  fmtDate, fmtDateTime, fmtDayMonth, fmtTime, fromKey, inWelcomeBatch, isCancelOnboard, isPastTimeToday, startOfDay, toKey,
+  fmtDate, fmtDateTime, fmtDayMonth, fmtTime, fromKey, inWelcomeBatch, isCancelOnboard, isPastTimeToday, startOfDay, toKey, welcomeBatchMembers,
 } from '../../marcom/marcomData';
 
 const PHASE: Record<BatchPhase, { text: string; en: string; cls: string }> = {
@@ -51,8 +51,7 @@ export const WelcomeOnboardPage: React.FC = () => {
   const batchOf = (e: MarcomEmployee) => batchTuesdayOf(e.onboardDate).getTime();
 
   const batchAll = useMemo(
-    () => newHires.filter((e) => inWelcomeBatch(e) && batchOf(e) === tue.getTime()).sort((a, b) => a.onboardDate.localeCompare(b.onboardDate) || a.name.localeCompare(b.name, 'vi')),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    () => welcomeBatchMembers(newHires, tue),
     [newHires, tue],
   );
   const rows = batchAll
@@ -101,11 +100,11 @@ export const WelcomeOnboardPage: React.FC = () => {
     <ErpPage>
       {toastNode}
       <ErpTitleBar
-        crumbs={['Human Resources', 'MarCom', 'Welcome Onboard']}
+        crumbs={['MarCom', 'Welcome Onboard']} /* đồng bộ code iMIS 05/11 — menu cấp 1 MarCom */
         title="Welcome Onboard"
         actions={
           <>
-            <LangSwitch />
+            {/* đồng bộ code iMIS 05/11 — không có nút VI | EN riêng */}
             <Btn icon={RefreshCw} onClick={refresh} title={tr('Dữ liệu đọc trực tiếp từ hồ sơ Employee', 'Data is read directly from Employee profiles')}>
               {tr('Làm mới', 'Refresh')}
             </Btn>

@@ -216,11 +216,11 @@ export const INCOME_RULE: { name: string; cap: number }[] = [
   { name: 'Hỗ trợ nhà ở', cap: 2_000_000 },
 ];
 type IncomeSrc = Pick<Contract, 'baseSalary' | 'rate' | 'allowances' | 'perfBonus' | 'income'>;
-const rateK = (c: Pick<Contract, 'rate'>) => (c.rate ?? 100) / 100 || 1;
+const rateK = (c: Pick<Contract, 'rate'>) => (c.rate ?? 100) / 100; // 0% hợp lệ → 0
 /** Tổng thu nhập. Dữ liệu cũ chưa lưu TN → suy ra từ LCB + hỗ trợ + HQCV (= Mức lương hưởng) chia mức hưởng. */
-const incomeOf = (c: IncomeSrc) => c.income ?? Math.round(((c.baseSalary || 0) + c.allowances.reduce((x, a) => x + (a.amount || 0), 0) + (c.perfBonus || 0)) / rateK(c));
+const incomeOf = (c: IncomeSrc) => c.income ?? Math.round(((c.baseSalary || 0) + c.allowances.reduce((x, a) => x + (a.amount || 0), 0) + (c.perfBonus || 0)) / (rateK(c) || 1)); // mức hưởng 0 → không suy ra được TN, coi hệ số 1
 /** Tổng thu nhập tối thiểu để Mức lương hưởng đủ trả Lương cơ bản + ăn trưa (HQCV ≥ 0). */
-const minIncomeOf = (c: Pick<Contract, 'baseSalary' | 'rate'>) => Math.ceil(((c.baseSalary || 0) + LUNCH) / rateK(c));
+const minIncomeOf = (c: Pick<Contract, 'baseSalary' | 'rate'>) => (rateK(c) > 0 ? Math.ceil(((c.baseSalary || 0) + LUNCH) / rateK(c)) : 0); // mức hưởng 0% → không kiểm TN tối thiểu
 export const splitIncome = (salary: number, lcb: number) => {
   const out: Record<string, number> = { 'Hỗ trợ ăn trưa': LUNCH };
   let rest = salary - lcb - LUNCH;
@@ -232,6 +232,7 @@ export const splitIncome = (salary: number, lcb: number) => {
 };
 /** Lưu Tổng thu nhập rồi chia lại các khoản hỗ trợ + HQCV (mặc định giữ nguyên Tổng thu nhập hiện tại). */
 const withIncome = <T extends IncomeSrc>(c: T, total = incomeOf(c)): T => {
+  if (rateK(c) <= 0) return { ...c, income: total, allowances: normSupports(c.allowances), perfBonus: c.perfBonus || 0 }; // MLH = 0 → giữ nguyên các khoản đã nhập
   const p = splitIncome(Math.round(total * rateK(c)), c.baseSalary || 0);
   return { ...c, income: total, allowances: SUPPORTS.map((x) => ({ id: uid(), name: x.name, amount: p.supports[x.name] || 0 })), perfBonus: p.perf };
 };
@@ -284,8 +285,11 @@ const contractStatus = (c: Contract, all: Contract[], working = true): { text: C
   if (!working) return { text: 'Hết hiệu lực', note: 'người lao động đã nghỉ việc' };
   return { text: 'Đang thực hiện', note: c.from > t ? `có hiệu lực từ ${dmy(c.from)}` : c.ended?.date ? `sẽ hết hiệu lực từ ${dmy(c.ended.date)}` : c.to ? `đến ${dmy(c.to)}` : isK(c.type, 'KXD') ? 'không xác định thời hạn' : 'chưa có ngày kết thúc' };
 };
-/** Ngày cuối còn hiệu lực: hết hiệu lực từ ngày X → còn hiệu lực đến X−1; không thì theo ngày kết thúc. */
-const effEnd = (c: Pick<Contract, 'to' | 'ended'>) => (c.ended?.date ? addDays(c.ended.date, -1) : c.to) || '9999-12-31';
+/** Ngày kết thúc thực tế: ngày chấm dứt (nếu có) hoặc ngày hết hạn; ngày này vẫn thuộc HĐ (BR-014/047). */
+const actualEnd = (c: Pick<Contract, 'to' | 'ended'>) => c.ended?.date || c.to || '';
+const effEnd = (c: Pick<Contract, 'to' | 'ended'>) => actualEnd(c) || '9999-12-31';
+/** Ngày hiệu lực mặc định khi tái ký = ngày kết thúc thực tế + 1. */
+const renewFrom = (c: Pick<Contract, 'to' | 'ended'>) => (actualEnd(c) ? addDays(actualEnd(c), 1) : '');
 const overlaps = (a: Pick<Contract, 'from' | 'to' | 'ended'>, b: Pick<Contract, 'from' | 'to' | 'ended'>) => a.from <= effEnd(b) && b.from <= effEnd(a);
 
 // ==========================================================================
@@ -463,6 +467,9 @@ const validate = (c: Contract, all: Contract[]): Record<string, string> => {
   if (!c.signDate) e.signDate = 'Bắt buộc';
   if (!c.from) e.from = 'Bắt buộc';
   if (c.to && c.from && c.to < c.from) e.to = 'Trước ngày có hiệu lực';
+  // Thời hạn ngoài danh sách của loại HĐ: chặn mới, giữ nếu sửa mà không đổi
+  const prev = all.find((x) => x.id === c.id);
+  if (c.type && c.term && !isK(c.type, 'KXD') && !termsOf(c.type).some((x) => x.label === c.term) && !(prev && prev.type === c.type && prev.term === c.term)) e.term = 'Thời hạn không thuộc danh sách cho phép của loại HĐ';
   if (!c.signer.trim()) e.signer = 'Chọn người ký';
   if (incomeOf(c) < minIncomeOf(c)) e.income = `Tối thiểu ${money(minIncomeOf(c))} — Mức lương hưởng (× ${c.rate}%) phải đủ Lương cơ bản + ăn trưa ${money(LUNCH)}`;
   if (c.ended && !c.ended.date) e.ended = 'Nhập ngày hết hiệu lực';
@@ -497,7 +504,7 @@ const blankFor = (w: Worker | undefined, s: Store, type?: CType, from?: string):
   const nx = last ? nextOf(last) : { type: defaultTypeOf('TV'), term: defaultTerm(defaultTypeOf('TV')) };
   const tp = type || nx.type;
   const term = type ? defaultTerm(type) : nx.term;
-  const f = from || (last?.to ? addDays(last.to, 1) : w?.joinDate && !last ? (w.joinDate > today() ? w.joinDate : today()) : today());
+  const f = from || (last && actualEnd(last) ? renewFrom(last) : w?.joinDate && !last ? (w.joinDate > today() ? w.joinDate : today()) : today());
   const unit = w?.unit || '';
   const companyId = last && companyById(last.companyId)?.active ? last.companyId : defaultCompanyId();
   const sg = signerOf(unit, tp, f, s.signers, companyId);
@@ -591,6 +598,11 @@ export const mergeDataOf = (c: Contract, w: Worker, appendix?: AppendixTypeDef, 
   const sup = allowTotal(c);
   const months = termMonths(c.type, c.term);
   const ins = [c.insurance.bhxh && 'bảo hiểm xã hội', c.insurance.bhyt && 'bảo hiểm y tế', c.insurance.bhtn && 'bảo hiểm thất nghiệp'].filter(Boolean).join(', ');
+  const insStart = (() => {
+    if (!['XD', 'KXD'].includes(kindOf(c.type)) || !/^\d{4}-\d{2}-\d{2}$/.test(c.from)) return '';
+    const [y, m, dd] = c.from.split('-').map(Number);
+    return dd > 15 ? dmy(new Date(y, m, 1).toLocaleDateString('sv')) : dmy(c.from);
+  })();
   const signer = c.signer || '';
   const d: Record<string, string> = {
     // I. Người lao động
@@ -652,6 +664,7 @@ export const mergeDataOf = (c: Contract, w: Worker, appendix?: AppendixTypeDef, 
     Tổng_hỗ_trợ: vnd(sup),
     Tổng_thu_nhập: vnd(incomeOf(c)),
     Tổng_thu_nhập_bằng_chữ: soThanhChu(incomeOf(c)),
+    Ngày_bắt_đầu_đóng_BH: insStart, // BR-026: XĐ/KXĐ ngày hiệu lực > 15 → ngày 1 tháng sau; nhóm khác trống
     Hình_thức_trả_lương: 'Chuyển khoản',
     Kỳ_hạn_trả_lương: 'ngày 10 hằng tháng',
     // IV. Người đại diện ký
@@ -2439,12 +2452,12 @@ const RenewPanel: React.FC<{ s: Store; rows: Row[]; onClose: () => void; onDone:
       .filter(({ r }) => (seen.has(r.w.id) ? false : (seen.add(r.w.id), true)));
   }, [rows, s.contracts]);
   const [cfg, setCfg] = useState(
-    () => Object.fromEntries(items.map(({ r, last }) => [r.w.id, { ...nextOf(last), from: last.to ? addDays(last.to, 1) : '' }])) as Record<string, { type: CType; term: string; from: string }>,
+    () => Object.fromEntries(items.map(({ r, last }) => [r.w.id, { ...nextOf(last), from: renewFrom(last) }])) as Record<string, { type: CType; term: string; from: string }>,
   );
   const [signDate, setSignDate] = useState('');
   const [signPlace, setSignPlace] = useState('Hà Nội');
 
-  const cfgOf = (id: string, last: Contract) => cfg[id] || { ...nextOf(last), from: last.to ? addDays(last.to, 1) : '' };
+  const cfgOf = (id: string, last: Contract) => cfg[id] || { ...nextOf(last), from: renewFrom(last) };
   const plan = (() => {
     let all = s.contracts;
     return items.map(({ r, last }) => {
@@ -2465,7 +2478,7 @@ const RenewPanel: React.FC<{ s: Store; rows: Row[]; onClose: () => void; onDone:
         workTime: last.workTime,
         jobDesc: last.jobDesc,
         baseSalary: last.baseSalary,
-        ...fitIncome({ baseSalary: last.baseSalary, rate: rateOf(k.type), allowances: last.allowances, perfBonus: last.perfBonus || 0 }, incomeOf(last)),
+        ...withIncome({ baseSalary: last.baseSalary, rate: rateOf(k.type), allowances: last.allowances, perfBonus: last.perfBonus || 0 }, incomeOf(last)), // TN thiếu/thấp → validate báo lỗi, không tự nâng
       };
       const sg = signerOf(c.unit, c.type, c.signDate, s.signers, c.companyId);
       c.signerId = sg?.signerId || '';
@@ -2475,7 +2488,7 @@ const RenewPanel: React.FC<{ s: Store; rows: Row[]; onClose: () => void; onDone:
       c.authorization = sg?.authorization || '';
       c.history = [{ at: nowIso(), by: ME, action: `Tái ký từ HĐ ${last.no}` }];
       const e = validate(c, all);
-      const err = Object.values(e)[0];
+      const err = e.income ?? Object.values(e)[0];
       if (!err) all = [...all, c];
       return { r, last, c, err };
     });
@@ -2641,6 +2654,8 @@ const matchType = (v: string): CType | undefined => {
   if (hit) return hit.name;
   return /thu viec/.test(n) ? defaultTypeOf('TV') : /khong xac dinh/.test(n) ? defaultTypeOf('KXD') : /xac dinh/.test(n) ? defaultTypeOf('XD') : undefined;
 };
+const IMP_MAX_ROWS = 1000; // OQ-30: tối đa 1.000 dòng dữ liệu / file
+const IMP_MAX_BYTES = 5 * 1024 * 1024; // OQ-30: tối đa 5 MB / file
 const KIND_CLS = { 'Thêm mới': 'bg-emerald-50 text-emerald-700 border-emerald-300', 'Cập nhật': 'bg-sky-50 text-sky-700 border-sky-300', 'Không đổi': 'bg-slate-50 text-slate-600 border-slate-300', Lỗi: 'bg-rose-50 text-rose-700 border-rose-300' };
 
 const ImportPanel: React.FC<{ s: Store; onClose: () => void; flash: (m: string) => void }> = ({ s, onClose, flash }) => {
@@ -2650,6 +2665,11 @@ const ImportPanel: React.FC<{ s: Store; onClose: () => void; flash: (m: string) 
   const ref = useRef<HTMLInputElement>(null);
 
   const parse = async (f: File) => {
+    if (f.size > IMP_MAX_BYTES) {
+      setRows([]);
+      setFileName(f.name);
+      return flash(`File "${f.name}" vượt quá 5 MB (tối đa 5 MB)`);
+    }
     try {
       await parseFile(f);
     } catch (e) {
@@ -2663,6 +2683,11 @@ const ImportPanel: React.FC<{ s: Store; onClose: () => void; flash: (m: string) 
     const sh = wb.Sheets[wb.SheetNames[0]];
     if (!sh) throw new Error('file không có trang tính');
     const aoa = XLSX.utils.sheet_to_json<unknown[]>(sh, { header: 1, defval: '', raw: true });
+    const dataRows = aoa.slice(1).filter((r) => r.some((v) => String(v ?? '').trim())).length;
+    if (dataRows > IMP_MAX_ROWS) {
+      setRows([]);
+      return flash(`File "${f.name}" có ${dataRows.toLocaleString('vi-VN')} dòng dữ liệu, vượt quá giới hạn 1.000 dòng — hãy chia nhỏ file`);
+    }
     const head = (aoa[0] || []).map((h) => norm(h));
     const idx = (label: string) => head.indexOf(norm(label));
     const miss = TPL_COLS.filter((c) => ['Mã NLĐ', 'Loại HĐ', 'Ngày có hiệu lực'].includes(c) && idx(c) < 0);
@@ -2691,7 +2716,6 @@ const ImportPanel: React.FC<{ s: Store; onClose: () => void; flash: (m: string) 
       const type = matchType(typeRaw) || (typeRaw ? undefined : old?.type);
       if (!type) return fail(typeRaw ? `Loại HĐ không hợp lệ: ${typeRaw}` : 'Loại HĐ: Bắt buộc');
       const term = isK(type, 'KXD') ? '' : gs('Thời hạn') || (old?.type === type ? old.term : '');
-      if (!isK(type, 'KXD') && term && !termsOf(type).some((x) => x.label === term)) return fail(`Thời hạn "${term}" không hợp lệ với ${shortOf(type)}`);
       const dates: Record<string, string> = {};
       for (const [k, label] of [
         ['signDate', 'Ngày ký'],
@@ -2745,8 +2769,10 @@ const ImportPanel: React.FC<{ s: Store; onClose: () => void; flash: (m: string) 
       // Phụ lục 01: chia lại theo Tổng thu nhập (cột "Tổng thu nhập"; file cũ có từng khoản hỗ trợ → lấy tổng các khoản)
       const legacy = [...SUPPORTS.map((x) => x.name), 'Thưởng hiệu quả (tạm tính)'].some((l) => num(l) !== undefined);
       const tn = num('Tổng thu nhập');
-      if (tn !== undefined && tn < minIncomeOf(c)) return fail(`Tổng thu nhập ${money(tn)} quá thấp: × ${c.rate}% phải đủ Lương cơ bản + ăn trưa (tối thiểu ${money(minIncomeOf(c))})`);
-      Object.assign(c, fitIncome(c, tn ?? (old && !legacy ? incomeOf(old) : incomeOf({ ...c, income: undefined }))));
+      const total = tn ?? (old && !legacy ? incomeOf(old) : legacy ? incomeOf({ ...c, income: undefined }) : undefined);
+      if (!total) return fail('Tổng thu nhập: Bắt buộc');
+      if (total < minIncomeOf(c)) return fail(`Tổng thu nhập quá thấp: Mức lương hưởng không đủ trả Lương cơ bản + ăn trưa (tối thiểu ${money(minIncomeOf(c))})`);
+      Object.assign(c, withIncome(c, total));
       if (!old) {
         // HĐ mới: người ký theo thiết lập
         const sg = signerOf(c.unit, c.type, c.signDate, s.signers, c.companyId);
@@ -2879,6 +2905,7 @@ const SignerSetup: React.FC<{ s: Store; onBack: () => void; flash: (m: string) =
   const cat = useCatalog();
   const blank = (): SignerSetting => ({ id: uid(), signerId: '', unit: '', types: [...typeNames()], from: today(), salutation: 'Ông', signer: '', signerTitle: '', authorization: '' });
   const [form, setForm] = useState<SignerSetting | null>(null);
+  const [coId, setCoId] = useState(''); // công ty chọn trước, người ký lọc theo công ty này
   const [tried, setTried] = useState(false);
   const [delId, setDelId] = useState<string | null>(null);
   const isEdit = !!form && s.signers.some((x) => x.id === form.id);
@@ -2886,7 +2913,8 @@ const SignerSetup: React.FC<{ s: Store; onBack: () => void; flash: (m: string) =
   if (form) {
     if (!form.types.length) errs.types = 'Chọn ít nhất 1 loại';
     if (!form.from) errs.from = 'Bắt buộc';
-    if (!form.signerId) errs.signer = 'Chọn người ký trong Danh mục người ký';
+    if (!coId) errs.company = 'Chọn công ty';
+    if (!form.signerId) errs.signer = coId ? 'Chọn người ký của công ty' : 'Chọn công ty trước';
     const coOf = (x: SignerSetting) => signerById(x.signerId)?.companyId;
     const dup = s.signers.find((x) => x.id !== form.id && coOf(x) === coOf(form) && x.unit === form.unit && x.from === form.from && x.types.some((tp) => form.types.includes(tp)));
     if (dup) errs.from = `Trùng thiết lập của ${dup.signer} (cùng đơn vị, ngày hiệu lực, loại HĐ)`;
@@ -2923,7 +2951,7 @@ const SignerSetup: React.FC<{ s: Store; onBack: () => void; flash: (m: string) =
             <Btn icon={FileSpreadsheet} onClick={exportX}>
               Xuất Excel
             </Btn>
-            <Btn variant="primary" icon={Plus} onClick={() => (setForm(blank()), setTried(false))}>
+            <Btn variant="primary" icon={Plus} onClick={() => (setForm(blank()), setCoId(''), setTried(false))}>
               Thêm thiết lập
             </Btn>
           </>
@@ -2993,29 +3021,48 @@ const SignerSetup: React.FC<{ s: Store; onBack: () => void; flash: (m: string) =
             ]}
             right={[
               {
+                label: lb('Công ty', true, true),
+                value: (
+                  <>
+                    <select
+                      data-testid="setup-company"
+                      value={coId}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setCoId(id);
+                        setForm({ ...form, signerId: id ? defaultSignerOf(id)?.id || '' : '' }); // chọn sẵn người ký mặc định của công ty
+                      }}
+                      className={`${INPUT} ${errCls(E('company'))}`}
+                    >
+                      <option value="">— Chọn công ty —</option>
+                      {cat.companies
+                        .filter((co) => (co.active && co.signsContract) || co.id === coId)
+                        .map((co) => (
+                          <option key={co.id} value={co.id}>
+                            {co.shortName || co.name}
+                          </option>
+                        ))}
+                    </select>
+                    <ErrText e={E('company')} />
+                  </>
+                ),
+              },
+              {
                 label: lb('Người ký', true, true),
                 value: (
                   <>
-                    <select data-testid="setup-signer" value={form.signerId} onChange={(e) => setForm({ ...form, signerId: e.target.value })} className={`${INPUT} ${errCls(E('signer'))}`}>
-                      <option value="">— Chọn người ký —</option>
-                      {cat.companies.map((co) => {
-                        const list = signersOf(co.id, form.signerId);
-                        return list.length ? (
-                          <optgroup key={co.id} label={co.shortName || co.name}>
-                            {list.map((x) => (
-                              <option key={x.id} value={x.id}>
-                                {x.salutation} {x.name} — {x.title}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ) : null;
-                      })}
+                    <select data-testid="setup-signer" value={form.signerId} disabled={!coId} onChange={(e) => setForm({ ...form, signerId: e.target.value })} className={`${INPUT} ${errCls(E('signer'))}`}>
+                      <option value="">{coId ? '— Chọn người ký —' : '— Chọn công ty trước —'}</option>
+                      {signersOf(coId, form.signerId).map((x) => (
+                        <option key={x.id} value={x.id}>
+                          {x.salutation} {x.name} — {x.title}
+                        </option>
+                      ))}
                     </select>
                     <ErrText e={E('signer')} />
                   </>
                 ),
               },
-              { label: 'Công ty', value: companyById(signerById(form.signerId)?.companyId || '')?.name || '—' },
               { label: 'Giấy uỷ quyền', value: signerById(form.signerId)?.authorization || '—' },
             ]}
           />
@@ -3077,7 +3124,7 @@ const SignerSetup: React.FC<{ s: Store; onBack: () => void; flash: (m: string) =
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-2">
-                          <button type="button" className={btn.link} onClick={() => (setForm({ ...x, types: [...x.types] }), setTried(false))}>
+                          <button type="button" className={btn.link} onClick={() => (setForm({ ...x, types: [...x.types] }), setCoId(signerById(x.signerId)?.companyId || ''), setTried(false))}>
                             Sửa
                           </button>
                           <button type="button" className={`${btn.link} !text-rose-600`} onClick={() => setDelId(x.id)}>

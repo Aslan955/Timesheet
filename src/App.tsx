@@ -61,6 +61,7 @@ import { LeaveReportPage } from './components/LeaveReportPage';
 import { CandidatePage } from './components/CandidatePage';
 import { CandidateDetailV2Page } from './components/CandidateDetailV2Page';
 import { CatalogPage } from './components/CatalogPage';
+import { CompanyPage } from './components/CompanyPage';
 import { CatalogProvider, CATALOG_DEFS } from './catalog/CatalogContext';
 import { RecruitmentRequestPage } from './components/RecruitmentRequestPage';
 import { RecruitmentProvider } from './recruitment/RecruitmentContext';
@@ -252,6 +253,8 @@ export default function App() {
         return <RcCandidatePage onNavigate={setActiveItem} />;
       case 'Chi tiết ứng viên (Giao diện mới)':
         return <CandidateDetailV2Page />;
+      case 'Company':
+        return <CompanyPage />;
       case 'Mẫu email':
         return <RcMailTemplatePage />;
       case 'Báo cáo theo khối':

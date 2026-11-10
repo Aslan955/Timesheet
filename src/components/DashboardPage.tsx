@@ -104,14 +104,14 @@ const StatTile: React.FC<{ icon: React.ElementType; tone: Tone; label: string; v
       <Icon size={18} />
     </div>
     <div className="min-w-0 flex-1">
-      <p className="text-[13px] font-semibold text-slate-600 uppercase truncate" title={label}>{label}</p>
+      <p className="text-[13px] font-semibold text-slate-500 uppercase truncate" title={label}>{label}</p>
       <div className="flex items-baseline gap-1 mt-0.5">
-        <span className="text-[20px] font-bold text-slate-900 font-mono leading-none">{value}</span>
-        <span className="text-[13px] font-semibold text-slate-500 truncate">{unit}</span>
-        <span className="ml-auto pl-1 text-[13px] font-semibold text-slate-500 whitespace-nowrap hidden min-[1440px]:inline">{note}</span>
+        <span className="text-[20px] font-bold text-slate-700 font-mono leading-none">{value}</span>
+        <span className="text-[13px] font-semibold text-slate-400 truncate">{unit}</span>
+        <span className="ml-auto pl-1 text-[13px] font-semibold text-slate-400 whitespace-nowrap hidden min-[1440px]:inline">{note}</span>
       </div>
       <div className="h-1 bg-slate-100 rounded-full mt-2 overflow-hidden">
-        <div className={`h-full rounded-full ${TONE[tone].bar} transition-all duration-500`} style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+        <div className={`h-full rounded-full ${TONE[tone].bar} opacity-70 transition-all duration-500`} style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
       </div>
     </div>
   </button>
@@ -377,7 +377,7 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
         </div>
       </div>
 
-      {/* Banner MarCom / sinh nhật hôm nay — bản gọn */}
+      {/* Box trang chủ (MarCom): slide Sinh nhật · Chào mừng thành viên mới · Banner — bản gọn */}
       <BirthdayBox compact />
 
       {/* =========================================
@@ -428,11 +428,11 @@ export const DashboardPage: React.FC<DashboardProps> = ({ onNavigate }) => {
                 <Wrench size={18} />
               </div>
               <div className="relative min-w-0">
-                <p className="text-[13px] font-semibold text-slate-600 uppercase tracking-wide truncate">Đơn từ đang chờ</p>
-                <p className="flex items-center gap-1.5 text-[15px] font-bold text-slate-900 leading-tight mt-0.5">
+                <p className="text-[13px] font-semibold text-slate-500 uppercase tracking-wide truncate">Đơn từ đang chờ</p>
+                <p className="flex items-center gap-1.5 text-[15px] font-bold text-slate-700 leading-tight mt-0.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Đang bảo trì
                 </p>
-                <p className="text-[13px] font-semibold text-amber-600 truncate mt-0.5">Đang nâng cấp, sẽ sớm hoạt động lại</p>
+                <p className="text-[13px] font-semibold text-amber-500 truncate mt-0.5">Đang nâng cấp, sẽ sớm hoạt động lại</p>
               </div>
             </div>
           </div>

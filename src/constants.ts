@@ -171,16 +171,6 @@ export const NAVIGATION: NavItem[] = [
       { title: 'Overview', icon: BarChart3 },
       { title: 'Employees', icon: Users },
       { title: 'Đánh giá định kỳ', icon: Award },
-      {
-        // MarCom: chúc mừng sinh nhật + Welcome Onboard (yêu cầu MarCom)
-        title: 'MarCom',
-        icon: Megaphone,
-        children: [
-          { title: 'Sinh nhật nhân sự', icon: Cake },
-          { title: 'Welcome Onboard', icon: Hand },
-          { title: 'Email tự động MarCom', icon: MailCheck },
-        ],
-      },
       { title: 'Báo cáo nghỉ phép nhân sự', icon: PieChart },
       { title: 'Contracts', icon: FileText },
       { title: 'Danh mục hợp đồng', icon: Database },
@@ -190,6 +180,16 @@ export const NAVIGATION: NavItem[] = [
       { title: 'Certificate Management', icon: Award },
       { title: 'Thông tin người phụ thuộc', icon: Users },
     ]
+  },
+  {
+    // MarCom: chúc mừng sinh nhật + Welcome Onboard — đồng bộ code iMIS 05/11: menu cấp 1 "MarCom"
+    title: 'MarCom',
+    icon: Megaphone,
+    children: [
+      { title: 'Sinh nhật nhân sự', icon: Cake },
+      { title: 'Welcome Onboard', icon: Hand },
+      { title: 'Email tự động MarCom', icon: MailCheck },
+    ],
   },
   {
     title: 'Recruitment',

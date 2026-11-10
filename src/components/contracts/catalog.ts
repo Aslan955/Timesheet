@@ -8,6 +8,7 @@
  * Dữ liệu mẫu là giả lập.
  */
 import { useSyncExternalStore } from 'react';
+import { getMasters, subscribeMasters, updateMasters, type Company } from '../../catalog/companyMaster';
 import { buildDocx, inspectDocx, type BuildBlock } from './docx';
 
 export type Kind = 'TV' | 'XD' | 'KXD' | 'OTHER';
@@ -15,6 +16,15 @@ export const KINDS: Kind[] = ['TV', 'XD', 'KXD', 'OTHER'];
 export const KIND_LABEL: Record<Kind, string> = { TV: 'Thử việc', XD: 'Xác định thời hạn', KXD: 'Không xác định thời hạn', OTHER: 'Khác (học việc, thực tập, dịch vụ)' };
 export const KIND_SHORT: Record<Kind, string> = { TV: 'Thử việc', XD: 'Xác định', KXD: 'Không XĐ', OTHER: 'Khác' };
 export const KIND_COLOR: Record<Kind, string> = { KXD: '#3b5bdb', XD: '#a855f7', TV: '#f43f5e', OTHER: '#0d9488' };
+/** Loại nghiệp vụ — lương, quỹ phép, onboarding đọc thuộc tính này; phải khớp Nhóm (BR-049). */
+export type BizType = 'Thực tập' | 'Học việc' | 'Thử việc' | 'Xác định thời hạn' | 'Không xác định thời hạn' | 'Dịch vụ';
+export const BIZ_BY_KIND: Record<Kind, BizType[]> = {
+  TV: ['Thử việc'],
+  XD: ['Xác định thời hạn'],
+  KXD: ['Không xác định thời hạn'],
+  OTHER: ['Thực tập', 'Học việc', 'Dịch vụ'],
+};
+export const defaultBiz = (k: Kind): BizType => BIZ_BY_KIND[k][0];
 export const KIND_CLS: Record<Kind, string> = {
   TV: 'bg-rose-50 text-rose-700 border-rose-300',
   XD: 'bg-violet-50 text-violet-700 border-violet-300',
@@ -31,7 +41,8 @@ export interface ContractTypeDef {
   code: string;
   name: string;
   kind: Kind;
-  suffix: string; // ký hiệu cuối số HĐ: «Mã_NV»/AEQUITAS/HDCT
+  bizType: BizType; // loại nghiệp vụ, khớp nhóm
+  suffix: string; // ký hiệu cuối số HĐ: «Mã_NV»/AEQ/HDCT
   terms: number[]; // tháng
   defTerm: number; // 0 = không có
   rate: number; // mức hưởng mặc định %
@@ -45,7 +56,7 @@ export interface CompanyDef {
   code: string;
   name: string;
   shortName: string;
-  contractCode: string; // ký hiệu công ty trong số HĐ: «Mã_NV»/AEQUITAS/HDCT
+  contractCode: string; // ký hiệu công ty trong số HĐ: «Mã_NV»/AEQ/HDCT
   taxCode: string;
   address: string;
   phone: string;
@@ -57,7 +68,9 @@ export interface CompanyDef {
   bankName: string;
   isDefault: boolean;
   active: boolean;
+  signsContract: boolean; // cờ "Ký hợp đồng" — chỉ công ty có cờ mới chọn được làm Công ty ký HĐ (dùng chung với Catalog › Company)
   note: string;
+  ver?: number; // phiên bản bản ghi công ty (lấy từ Catalog > Company)
 }
 /** Danh mục người ký hợp đồng — 1 công ty có thể có nhiều người ký (người đại diện theo pháp luật, người được uỷ quyền). */
 export interface SignerDef {
@@ -96,7 +109,7 @@ export interface TemplateDef {
   name: string;
   kind: TplKind;
   appliesTo: string[]; // id loại HĐ (HD) hoặc id loại phụ lục (PL)
-  companyId: string; // '' = mọi công ty
+  companyIds: string[]; // [] = template chung (bật ô riêng; áp cả công ty thêm sau); còn lại = danh sách cụ thể (kể cả chọn đủ)
   fileName: string;
   size: number;
   data: Uint8Array | null;
@@ -148,7 +161,7 @@ export const FIELDS: FieldDef[] = [
   { group: "I. Thông tin người lao động", key: "Ngân_hàng", label: "Ngân hàng nhận lương", desc: "Tên ngân hàng và chi nhánh mở tài khoản", sample: "Vietcombank – Chi nhánh Hà Nội", format: "Văn bản – \"Tên ngân hàng – Chi nhánh\"" },
   { group: "I. Thông tin người lao động", key: "Ngày_vào_làm", label: "Ngày bắt đầu làm việc (dd/mm/yyyy)", desc: "Ngày người lao động bắt đầu làm việc tại công ty", sample: "20/09/2026", format: "Ngày – dd/mm/yyyy" },
   { group: "I. Thông tin người lao động", key: "Ngày_vào_làm_text", label: "Ngày bắt đầu làm việc (ngày … tháng … năm …)", desc: "Như {{Ngày_vào_làm}}, trình bày dạng \"ngày … tháng … năm …\"", sample: "ngày 20 tháng 9 năm 2026", format: "Ngày – \"ngày dd tháng m năm yyyy\" (ngày < 10 và tháng 1, 2 thêm số 0 phía trước)" },
-  { group: "II. Thông tin hợp đồng & công việc", key: "Số_hợp_đồng", label: "Số hợp đồng", desc: "Số hiệu hợp đồng do hệ thống cấp", sample: "NV1016/AEQUITAS/HDCT", format: "Văn bản – IN HOA, theo quy tắc đánh số hợp đồng của công ty" },
+  { group: "II. Thông tin hợp đồng & công việc", key: "Số_hợp_đồng", label: "Số hợp đồng", desc: "Số hiệu hợp đồng do hệ thống cấp", sample: "NV1016/AEQ/HDCT", format: "Văn bản – IN HOA, theo quy tắc đánh số hợp đồng của công ty" },
   { group: "II. Thông tin hợp đồng & công việc", key: "Loại_hợp_đồng", label: "Loại hợp đồng", desc: "Loại hợp đồng giao kết", sample: "Hợp đồng lao động xác định thời hạn", format: "Danh mục – Hợp đồng lao động xác định thời hạn | Hợp đồng lao động không xác định thời hạn | Hợp đồng thử việc | Hợp đồng học việc | Hợp đồng thực tập | Hợp đồng dịch vụ" },
   { group: "II. Thông tin hợp đồng & công việc", key: "Ngày_ký", label: "Ngày ký hợp đồng (dd/mm/yyyy)", desc: "Ngày hai bên ký hợp đồng", sample: "20/09/2026", format: "Ngày – dd/mm/yyyy" },
   { group: "II. Thông tin hợp đồng & công việc", key: "Ngày_ký_text", label: "Ngày ký hợp đồng  (ngày … tháng … năm …)", desc: "Như {{Ngày_ký}}, trình bày dạng \"ngày … tháng … năm …\"", sample: "ngày 20 tháng 9 năm 2026", format: "Ngày – \"ngày dd tháng m năm yyyy\" (ngày < 10 và tháng 1, 2 thêm số 0 phía trước)" },
@@ -182,6 +195,7 @@ export const FIELDS: FieldDef[] = [
   { group: "III. Tiền lương & các khoản hỗ trợ", key: "Tổng_thu_nhập_bằng_chữ", label: "Tổng thu nhập (bằng chữ)", desc: "Tổng thu nhập viết bằng chữ", sample: "Mười tám triệu năm trăm ba mươi nghìn đồng", format: "Văn bản – số tiền bằng chữ, viết hoa chữ cái đầu, kết thúc bằng \"đồng\"" },
   { group: "III. Tiền lương & các khoản hỗ trợ", key: "Mức_lương_hưởng", label: "Mức lương hưởng", desc: "Tổng thu nhập × tỷ lệ hưởng lương (thử việc 85% → 85% tổng thu nhập)", sample: "15.000.000", format: "Số tiền – #.##0 (dấu chấm phân cách hàng nghìn), không kèm đơn vị" },
   { group: "III. Tiền lương & các khoản hỗ trợ", key: "Mức_lương_hưởng_bằng_chữ", label: "Mức lương hưởng (bằng chữ)", desc: "Mức lương hưởng viết bằng chữ", sample: "Mười lăm triệu đồng", format: "Văn bản – số tiền bằng chữ, viết hoa chữ cái đầu, kết thúc bằng \"đồng\"" },
+  { group: "III. Tiền lương & các khoản hỗ trợ", key: "Ngày_bắt_đầu_đóng_BH", label: "Ngày bắt đầu đóng BH (dd/mm/yyyy)", desc: "Ngày bắt đầu đóng BHXH, BHYT, BHTN", sample: "01/10/2026", format: "Ngày – dd/mm/yyyy (được để trống)" },
   { group: "III. Tiền lương & các khoản hỗ trợ", key: "Hình_thức_trả_lương", label: "Hình thức trả lương", desc: "Cách thức chi trả lương", sample: "Chuyển khoản", format: "Danh mục – Chuyển khoản | Tiền mặt" },
   { group: "III. Tiền lương & các khoản hỗ trợ", key: "Kỳ_hạn_trả_lương", label: "Thời hạn trả lương", desc: "Ngày trả lương cố định hằng tháng", sample: "ngày 10 hằng tháng", format: "Văn bản – chữ thường, \"ngày dd hằng tháng\"" },
   { group: "IV. Người đại diện ký (bên sử dụng lao động)", key: "Xưng_hô", label: "Danh xưng người đại diện ký", desc: "Ông hoặc Bà, theo giới tính người đại diện ký", sample: "Ông", format: "Danh mục – Ông | Bà" },
@@ -191,7 +205,7 @@ export const FIELDS: FieldDef[] = [
   { group: "IV. Người đại diện ký (bên sử dụng lao động)", key: "Giấy_ủy_quyền", label: "Văn bản ủy quyền ký", desc: "Số, ngày văn bản ủy quyền; để trống khi người đại diện theo pháp luật trực tiếp ký", sample: "", format: "Văn bản – \"Giấy ủy quyền số … ngày dd/mm/yyyy\"" },
   { group: "V. Phụ lục hợp đồng", key: "Số_phụ_lục", label: "Số phụ lục", desc: "Số hiệu của phụ lục hợp đồng", sample: "01/2026/PLHĐ-NV1016", format: "Văn bản – IN HOA, theo quy tắc đánh số phụ lục của công ty" },
   { group: "V. Phụ lục hợp đồng", key: "Tên_phụ_lục", label: "Tên phụ lục", desc: "Tên loại phụ lục", sample: "Phụ lục điều chỉnh tiền lương", format: "Văn bản – viết hoa chữ cái đầu" },
-  { group: "V. Phụ lục hợp đồng", key: "Mã_Hợp_đồng_hiện_tại", label: "Số hợp đồng đang áp dụng", desc: "Số của hợp đồng được sửa đổi, bổ sung bởi phụ lục", sample: "NV1016/AEQUITAS/HDCT", format: "Văn bản – IN HOA, theo quy tắc đánh số hợp đồng của công ty" },
+  { group: "V. Phụ lục hợp đồng", key: "Mã_Hợp_đồng_hiện_tại", label: "Số hợp đồng đang áp dụng", desc: "Số của hợp đồng được sửa đổi, bổ sung bởi phụ lục", sample: "NV1016/AEQ/HDCT", format: "Văn bản – IN HOA, theo quy tắc đánh số hợp đồng của công ty" },
   { group: "V. Phụ lục hợp đồng", key: "Ngày_ký_HD_hiện_tại", label: "Ngày ký hợp đồng đang áp dụng (dd/mm/yyyy)", desc: "Ngày ký hợp đồng được sửa đổi", sample: "20/09/2026", format: "Ngày – dd/mm/yyyy" },
   { group: "V. Phụ lục hợp đồng", key: "Ngày_ký_HD_hiện_tại_text", label: "Ngày ký hợp đồng đang áp dụng  (ngày … tháng … năm …)", desc: "Như {{Ngày_ký_HD_hiện_tại_text}}, trình bày dạng \"ngày … tháng … năm …\"", sample: "ngày 20 tháng 9 năm 2026", format: "Ngày – \"ngày dd tháng m năm yyyy\" (ngày < 10 và tháng 1, 2 thêm số 0 phía trước)" },
   { group: "V. Phụ lục hợp đồng", key: "Ngày_bắt_đầu_HD", label: "Ngày hiệu lực hợp đồng đang áp dụng (dd/mm/yyyy)", desc: "Ngày bắt đầu hiệu lực của hợp đồng được sửa đổi", sample: "20/09/2026", format: "Ngày – dd/mm/yyyy" },
@@ -242,23 +256,23 @@ export const fieldLabel = (k: string) => FIELDS.find((f) => f.key === k)?.label 
 const ME = 'hr.lan';
 const T0 = '2026-10-23T02:00:00.000Z';
 const TYPES_SEED: ContractTypeDef[] = [
-  { id: 'ct-tv', code: 'HDTV', name: 'Hợp đồng thử việc', kind: 'TV', suffix: 'HDTV', terms: [1, 2], defTerm: 2, rate: 85, insurance: false, order: 1, active: true, note: 'Thời gian thử việc tối đa 60 ngày (180 ngày với quản lý doanh nghiệp).' },
-  { id: 'ct-xd', code: 'HDXD', name: 'Hợp đồng xác định thời hạn', kind: 'XD', suffix: 'HDCT', terms: [6, 12, 24, 36], defTerm: 12, rate: 100, insurance: true, order: 2, active: true, note: 'Thời hạn không quá 36 tháng; ký tối đa 2 lần trước khi chuyển không xác định thời hạn.' },
-  { id: 'ct-kxd', code: 'HDKXD', name: 'Hợp đồng không xác định thời hạn', kind: 'KXD', suffix: 'HDCT', terms: [], defTerm: 0, rate: 100, insurance: true, order: 3, active: true, note: '' },
-  { id: 'ct-hv', code: 'HDHV', name: 'Hợp đồng học việc', kind: 'OTHER', suffix: 'HDHV', terms: [1, 2, 3], defTerm: 3, rate: 100, insurance: false, order: 4, active: true, note: 'Học việc tại công ty, được hỗ trợ một khoản tiền hằng tháng.' },
-  { id: 'ct-tt', code: 'HDTT', name: 'Hợp đồng thực tập', kind: 'OTHER', suffix: 'HDTT', terms: [1, 2, 3, 6], defTerm: 3, rate: 100, insurance: false, order: 5, active: true, note: 'Sinh viên thực tập.' },
-  { id: 'ct-dv', code: 'HDDV', name: 'Hợp đồng dịch vụ', kind: 'OTHER', suffix: 'HDDV', terms: [1, 3, 6, 12], defTerm: 3, rate: 100, insurance: false, order: 6, active: true, note: 'Hợp đồng dân sự — cộng tác / cung ứng dịch vụ theo hạng mục, nghiệm thu khi hoàn thành.' },
+  { id: 'ct-tv', code: 'HDTV', name: 'Hợp đồng thử việc', kind: 'TV', bizType: 'Thử việc', suffix: 'HDTV', terms: [1, 2], defTerm: 2, rate: 85, insurance: false, order: 1, active: true, note: 'Thời gian thử việc tối đa 60 ngày (180 ngày với quản lý doanh nghiệp).' },
+  { id: 'ct-xd', code: 'HDXD', name: 'Hợp đồng xác định thời hạn', kind: 'XD', bizType: 'Xác định thời hạn', suffix: 'HDCT', terms: [6, 12, 24, 36], defTerm: 12, rate: 100, insurance: true, order: 2, active: true, note: 'Thời hạn không quá 36 tháng; ký tối đa 2 lần trước khi chuyển không xác định thời hạn.' },
+  { id: 'ct-kxd', code: 'HDKXD', name: 'Hợp đồng không xác định thời hạn', kind: 'KXD', bizType: 'Không xác định thời hạn', suffix: 'HDCT', terms: [], defTerm: 0, rate: 100, insurance: true, order: 3, active: true, note: '' },
+  { id: 'ct-hv', code: 'HDHV', name: 'Hợp đồng học việc', kind: 'OTHER', bizType: 'Học việc', suffix: 'HDHV', terms: [1, 2, 3], defTerm: 3, rate: 100, insurance: false, order: 4, active: true, note: 'Học việc tại công ty, được hỗ trợ một khoản tiền hằng tháng.' },
+  { id: 'ct-tt', code: 'HDTT', name: 'Hợp đồng thực tập', kind: 'OTHER', bizType: 'Thực tập', suffix: 'HDTT', terms: [1, 2, 3, 6], defTerm: 3, rate: 100, insurance: false, order: 5, active: true, note: 'Sinh viên thực tập.' },
+  { id: 'ct-dv', code: 'HDDV', name: 'Hợp đồng dịch vụ', kind: 'OTHER', bizType: 'Dịch vụ', suffix: 'HDDV', terms: [1, 3, 6, 12], defTerm: 3, rate: 100, insurance: false, order: 6, active: true, note: 'Hợp đồng dân sự — cộng tác / cung ứng dịch vụ theo hạng mục, nghiệm thu khi hoàn thành.' },
 ];
 const COMPANIES_SEED: CompanyDef[] = [
   {
-    id: 'co-1', code: 'AEQ', name: 'CÔNG TY CỔ PHẦN AEQUITAS', shortName: 'AEQUITAS', contractCode: 'AEQUITAS', taxCode: '0108598427',
+    id: 'co-1', code: 'AEQ', name: 'CÔNG TY CỔ PHẦN AEQUITAS', shortName: 'AEQUITAS', contractCode: 'AEQ', taxCode: '0108598427',
     address: 'Tầng 15, Tòa nhà CIC TOWER, số 2 ngõ 219 Phố Trung Kính, Phường Yên Hòa, Thành phố Hà Nội, Việt Nam', phone: '', email: '',
-    legalRep: 'Lê Hoài Thanh', legalRepTitle: 'Giám đốc', legalRepSalutation: 'Ông', bankAccount: '', bankName: '', isDefault: true, active: true, note: 'Theo bộ mẫu hợp đồng AEQUITAS',
+    legalRep: 'Lê Hoài Thanh', legalRepTitle: 'Giám đốc', legalRepSalutation: 'Ông', bankAccount: '', bankName: '', isDefault: true, active: true, signsContract: true, note: 'Theo bộ mẫu hợp đồng AEQUITAS',
   },
   {
     id: 'co-2', code: 'EDSO', name: 'CÔNG TY CỔ PHẦN EDSO LABS', shortName: 'EDSO LABS', contractCode: 'EDSOLABS', taxCode: '',
     address: 'Tầng 3, Tòa nhà Bamboo Airways, số 265 đường Cầu Giấy, Phường Dịch Vọng, Quận Cầu Giấy, Thành phố Hà Nội, Việt Nam', phone: '', email: '',
-    legalRep: 'Lê Hoài Thanh', legalRepTitle: 'Giám đốc', legalRepSalutation: 'Ông', bankAccount: '', bankName: '', isDefault: false, active: true,
+    legalRep: 'Lê Hoài Thanh', legalRepTitle: 'Giám đốc', legalRepSalutation: 'Ông', bankAccount: '', bankName: '', isDefault: false, active: true, signsContract: true,
     note: 'Theo “Mẫu Edso”. Mẫu đang ghi mã số thuế giống AEQUITAS (0108598427) — cần bổ sung mã số thuế đúng của EDSO LABS.',
   },
 ];
@@ -292,7 +306,7 @@ import urlHdtt from './templates/aeq-hd-thuc-tap.docx?url';
 import urlEdso from './templates/edso-hd-lao-dong.docx?url';
 import { TEMPLATE_FIXES } from './templates/fixes';
 
-const mkTpl = (id: string, code: string, name: string, kind: TplKind, appliesTo: string[], companyId: string, fileName: string, fileUrl: string, note = ''): TemplateDef => {
+const mkTpl = (id: string, code: string, name: string, kind: TplKind, appliesTo: string[], companyIds: string[], fileName: string, fileUrl: string, note = ''): TemplateDef => {
   // khớp tên file (dev: aeq-hdtv.docx · bản build: aeq-hdtv-<mã>.docx)
   const key = Object.keys(TEMPLATE_FIXES)
     .filter((k) => new RegExp(`/${k.replace('.docx', '')}[.-][^/]*$`).test(fileUrl))
@@ -304,7 +318,7 @@ const mkTpl = (id: string, code: string, name: string, kind: TplKind, appliesTo:
   name,
   kind,
   appliesTo,
-  companyId,
+  companyIds,
   fileName,
   size: 0,
   data: null,
@@ -318,18 +332,18 @@ const mkTpl = (id: string, code: string, name: string, kind: TplKind, appliesTo:
   };
 };
 const TEMPLATES_SEED = (): TemplateDef[] => [
-  mkTpl('tp-hdtv', 'AEQ-HDTV', 'Hợp đồng thử việc', 'HD', ['ct-tv'], 'co-1', '1.1. AEQ_HDTV.docx', urlHdtv, 'Kèm Phụ lục 01 — các khoản hỗ trợ'),
-  mkTpl('tp-hdxd', 'AEQ-HDXD', 'Hợp đồng lao động xác định thời hạn', 'HD', ['ct-xd'], 'co-1', '2.1. AEQ_HĐ xác định thời hạn 1.docx', urlHdxd, 'Kèm Phụ lục 01 — các khoản hỗ trợ'),
-  mkTpl('tp-hdkxd', 'AEQ-HDKXD', 'Hợp đồng lao động không xác định thời hạn', 'HD', ['ct-kxd'], 'co-1', '4. AEQ_HĐ không xác định thời hạn.docx', urlHdkxd, 'Kèm Phụ lục 01 — các khoản hỗ trợ'),
-  mkTpl('tp-nda', 'AEQ-NDA', 'Thỏa thuận bảo mật thông tin (NDA)', 'KT', ['ct-tv', 'ct-xd'], 'co-1', '5. AEQ_NDA.docx', urlNda, 'In kèm khi In HĐ thử việc / xác định thời hạn. Số: «Mã_NV»/TTBMTT/AEQUITAS'),
-  mkTpl('tp-pl-luong', 'AEQ-PL-LUONG', 'Phụ lục điều chỉnh lương', 'PL', ['pl-01'], 'co-1', '7. AEQ_Phụ lục điều chỉnh lương.docx', urlPlLuong),
-  mkTpl('tp-pl-cv', 'AEQ-PL-CV', 'Phụ lục điều chỉnh chức vụ & lương', 'PL', ['pl-02'], 'co-1', '7.1 AEQ_Phụ lục điều chỉnh chức vụ  lương.docx', urlPlChucVu, 'Chức danh, mức lương lấy theo hợp đồng đang áp dụng; ngày áp dụng chọn khi in'),
-  mkTpl('tp-pl-bp', 'AEQ-PL-BP', 'Phụ lục điều chỉnh bộ phận & lương', 'PL', ['pl-03'], 'co-1', '7.2 AEQ_Phụ lục điều chỉnh bộ phận  lương.docx', urlPlBoPhan),
-  mkTpl('tp-pl-dk', 'AEQ-PL-DK', 'Phụ lục điều chỉnh điều khoản hợp đồng', 'PL', ['pl-04'], 'co-1', 'Mẫu Phụ lục điều chỉnh điều khoản HD.docx', urlPlDieuKhoan),
-  mkTpl('tp-hddv', 'AEQ-HDDV', 'Hợp đồng dịch vụ', 'HD', ['ct-dv'], 'co-1', '8. AEQ BM_HDDV update 3103.docx', urlHddv, 'Bảng hạng mục công việc, tiêu chuẩn nghiệm thu và biên bản nghiệm thu điền tay'),
-  mkTpl('tp-hdhv', 'AEQ-HDHV', 'Hợp đồng học việc', 'HD', ['ct-hv'], 'co-1', '9. AEQ_HĐ Học việc.docx', urlHdhv, ''),
-  mkTpl('tp-hdtt', 'AEQ-HDTT', 'Hợp đồng thực tập', 'HD', ['ct-tt'], 'co-1', '9.1 AEQ_HĐ Thực tập.docx', urlHdtt, ''),
-  mkTpl('tp-edso', 'EDSO-HDLD', 'Hợp đồng lao động (EDSO LABS)', 'HD', ['ct-kxd'], 'co-2', 'Mẫu Edso.docx', urlEdso, 'Template riêng của công ty EDSO LABS — HĐ không xác định thời hạn'),
+  mkTpl('tp-hdtv', 'AEQ-HDTV', 'Hợp đồng thử việc', 'HD', ['ct-tv'], ['co-1'], '1.1. AEQ_HDTV.docx', urlHdtv, 'Kèm Phụ lục 01 — các khoản hỗ trợ'),
+  mkTpl('tp-hdxd', 'AEQ-HDXD', 'Hợp đồng lao động xác định thời hạn', 'HD', ['ct-xd'], ['co-1'], '2.1. AEQ_HĐ xác định thời hạn 1.docx', urlHdxd, 'Kèm Phụ lục 01 — các khoản hỗ trợ'),
+  mkTpl('tp-hdkxd', 'AEQ-HDKXD', 'Hợp đồng lao động không xác định thời hạn', 'HD', ['ct-kxd'], ['co-1'], '4. AEQ_HĐ không xác định thời hạn.docx', urlHdkxd, 'Kèm Phụ lục 01 — các khoản hỗ trợ'),
+  mkTpl('tp-nda', 'AEQ-NDA', 'Thỏa thuận bảo mật thông tin (NDA)', 'KT', ['ct-tv', 'ct-xd'], ['co-1'], '5. AEQ_NDA.docx', urlNda, 'In kèm khi In HĐ thử việc / xác định thời hạn. Số: «Mã_NV»/TTBMTT/AEQ'),
+  mkTpl('tp-pl-luong', 'AEQ-PL-LUONG', 'Phụ lục điều chỉnh lương', 'PL', ['pl-01'], ['co-1'], '7. AEQ_Phụ lục điều chỉnh lương.docx', urlPlLuong),
+  mkTpl('tp-pl-cv', 'AEQ-PL-CV', 'Phụ lục điều chỉnh chức vụ & lương', 'PL', ['pl-02'], ['co-1'], '7.1 AEQ_Phụ lục điều chỉnh chức vụ  lương.docx', urlPlChucVu, 'Chức danh, mức lương lấy theo hợp đồng đang áp dụng; ngày áp dụng chọn khi in'),
+  mkTpl('tp-pl-bp', 'AEQ-PL-BP', 'Phụ lục điều chỉnh bộ phận & lương', 'PL', ['pl-03'], ['co-1'], '7.2 AEQ_Phụ lục điều chỉnh bộ phận  lương.docx', urlPlBoPhan),
+  mkTpl('tp-pl-dk', 'AEQ-PL-DK', 'Phụ lục điều chỉnh điều khoản hợp đồng', 'PL', ['pl-04'], ['co-1'], 'Mẫu Phụ lục điều chỉnh điều khoản HD.docx', urlPlDieuKhoan),
+  mkTpl('tp-hddv', 'AEQ-HDDV', 'Hợp đồng dịch vụ', 'HD', ['ct-dv'], ['co-1'], '8. AEQ BM_HDDV update 3103.docx', urlHddv, 'Bảng hạng mục công việc, tiêu chuẩn nghiệm thu và biên bản nghiệm thu điền tay'),
+  mkTpl('tp-hdhv', 'AEQ-HDHV', 'Hợp đồng học việc', 'HD', ['ct-hv'], ['co-1'], '9. AEQ_HĐ Học việc.docx', urlHdhv, ''),
+  mkTpl('tp-hdtt', 'AEQ-HDTT', 'Hợp đồng thực tập', 'HD', ['ct-tt'], ['co-1'], '9.1 AEQ_HĐ Thực tập.docx', urlHdtt, ''),
+  mkTpl('tp-edso', 'EDSO-HDLD', 'Hợp đồng lao động (EDSO LABS)', 'HD', ['ct-kxd'], ['co-2'], 'Mẫu Edso.docx', urlEdso, 'Template riêng của công ty EDSO LABS — HĐ không xác định thời hạn'),
 ];
 /** File Word liệt kê toàn bộ trường trộn — tải về để soạn mẫu mới. */
 export const SAMPLE_FILES = {
@@ -344,12 +358,48 @@ export const SAMPLE_FILES = {
 // ==========================================================================
 // Kho dữ liệu danh mục
 // ==========================================================================
-let CAT: Catalog = { types: TYPES_SEED, companies: COMPANIES_SEED, signers: SIGNERS_SEED, appendix: APPENDIX_SEED, templates: TEMPLATES_SEED() };
+/** Công ty hợp đồng = bản ghi Catalog > Company (trường dùng chung) + phần riêng của hợp đồng (ký hiệu số HĐ, chức vụ, danh xưng, mặc định, ghi chú). */
+const fromMaster = (m: Company, ext?: CompanyDef): CompanyDef => ({
+  id: m.id, ver: m.ver, code: m.code, name: m.description || m.name, shortName: m.name, taxCode: m.taxCode, address: m.address, phone: m.phone, email: m.email,
+  legalRep: m.representative, bankAccount: m.bankAccount, bankName: m.bank, active: m.isActive, signsContract: m.signsContract,
+  contractCode: ext?.contractCode ?? m.code.toUpperCase().replace(/[^A-Z0-9_-]/g, ''),
+  legalRepTitle: ext?.legalRepTitle ?? 'Giám đốc', legalRepSalutation: ext?.legalRepSalutation ?? 'Ông', isDefault: ext?.isDefault ?? false, note: ext?.note ?? '',
+});
+const toMaster = (f: CompanyDef): Omit<Company, 'ver'> => ({
+  id: f.id, code: f.code, name: f.shortName || f.name, description: f.name, taxCode: f.taxCode, address: f.address, phone: f.phone, email: f.email,
+  representative: f.legalRep, bankAccount: f.bankAccount, bank: f.bankName, isActive: f.active, signsContract: f.signsContract,
+});
+/** Danh sách công ty luôn lấy theo Catalog > Company; luôn có đúng 1 công ty mặc định. */
+const mergeCompanies = (old: CompanyDef[]): CompanyDef[] => {
+  const list = getMasters().map((m) => fromMaster(m, old.find((x) => x.id === m.id)));
+  const def = list.find((x) => x.isDefault && x.active && x.signsContract) || list.find((x) => x.active && x.signsContract);
+  return list.map((x) => ({ ...x, isDefault: x.id === def?.id }));
+};
+let CAT: Catalog = { types: TYPES_SEED, companies: mergeCompanies(COMPANIES_SEED), signers: SIGNERS_SEED, appendix: APPENDIX_SEED, templates: TEMPLATES_SEED() };
 const SUBS = new Set<() => void>();
 export const getCatalog = () => CAT;
 export const updateCatalog = (fn: (c: Catalog) => Catalog) => {
   CAT = fn(CAT);
   SUBS.forEach((f) => f());
+};
+// Catalog > Company đổi → danh mục hợp đồng cập nhật theo
+subscribeMasters(() => {
+  CAT = { ...CAT, companies: mergeCompanies(CAT.companies) };
+  SUBS.forEach((f) => f());
+});
+/** Lưu công ty từ danh mục hợp đồng: phần riêng ở lại đây, trường dùng chung ghi ngược về Catalog > Company. */
+export const saveCompanyDef = (f: CompanyDef) => {
+  const prevDefIds = f.isDefault ? CAT.companies.filter((x) => x.id !== f.id && x.isDefault).map((x) => x.id) : [];
+  updateCatalog((c) => {
+    let cos = c.companies.some((x) => x.id === f.id) ? c.companies.map((x) => (x.id === f.id ? f : x)) : [...c.companies, f];
+    if (f.isDefault) cos = cos.map((x) => (x.id === f.id ? x : { ...x, isDefault: false }));
+    return { ...c, companies: cos };
+  });
+  updateMasters((ms) => (ms.some((x) => x.id === f.id) ? ms.map((x) => (x.id === f.id ? { ...x, ...toMaster(f) } : prevDefIds.includes(x.id) ? { ...x } : x)) : [...ms, { ...toMaster(f), ver: 1 }]));
+};
+export const removeCompanyDef = (id: string) => {
+  updateCatalog((c) => ({ ...c, companies: c.companies.filter((x) => x.id !== id) }));
+  updateMasters((ms) => ms.filter((x) => x.id !== id));
 };
 export const useCatalog = () => useSyncExternalStore((cb) => (SUBS.add(cb), () => void SUBS.delete(cb)), () => CAT);
 /** Tải bộ mẫu Word có sẵn và đọc trường trộn. */
@@ -400,7 +450,8 @@ export const defaultTypeOf = (k: Kind) => [...CAT.types].filter((t) => t.kind ==
 
 export const companyById = (id: string) => CAT.companies.find((c) => c.id === id);
 export const defaultCompanyId = () => (CAT.companies.find((c) => c.isDefault && c.active) || CAT.companies.find((c) => c.active))?.id || '';
-export const activeCompanies = (keep = '') => CAT.companies.filter((c) => c.active || c.id === keep);
+/** Công ty chọn được làm Công ty ký HĐ: đang dùng + có cờ "Ký hợp đồng" (giữ thêm công ty đang chọn). */
+export const activeCompanies = (keep = '') => CAT.companies.filter((c) => (c.active && c.signsContract) || c.id === keep);
 export const signerById = (id?: string) => (id ? CAT.signers.find((x) => x.id === id) : undefined);
 /** Người ký của công ty (đang sử dụng; giữ thêm người đang chọn) — mặc định lên đầu */
 export const signersOf = (companyId: string, keep = '') =>
@@ -414,19 +465,47 @@ export const defaultSignerOf = (companyId: string): SignerDef | undefined => {
   return co?.legalRep ? { id: '', code: '', companyId, salutation: co.legalRepSalutation, name: co.legalRep, title: co.legalRepTitle, authorization: '', isDefault: true, active: true, note: '' } : undefined;
 };
 
+/** Công ty còn ký HĐ (đang sử dụng + cờ Ký hợp đồng). */
+export const isSigningCompany = (id: string) => !!CAT.companies.find((c) => c.id === id && c.active && c.signsContract);
+/** Template áp dụng cho công ty: chung ([]) hoặc có công ty trong danh sách; công ty không còn ký HĐ thì không dùng được. */
+export const tplHasCompany = (t: Pick<TemplateDef, 'companyIds'>, companyId: string) => isSigningCompany(companyId) && (!t.companyIds.length || t.companyIds.includes(companyId));
+/** Hai template trùng công ty: cùng là chung, hoặc cùng riêng và có công ty chung nhau (chung và riêng cùng tồn tại, riêng ưu tiên). */
+export const tplCompaniesOverlap = (a: Pick<TemplateDef, 'companyIds'>, b: Pick<TemplateDef, 'companyIds'>) =>
+  !a.companyIds.length || !b.companyIds.length ? !a.companyIds.length && !b.companyIds.length : a.companyIds.some((x) => b.companyIds.includes(x));
+/** Tên công ty của template: [] = "Tất cả công ty". */
+export const tplCompanyNames = (t: Pick<TemplateDef, 'companyIds'>, full = false) =>
+  t.companyIds.length ? t.companyIds.map((id) => { const c = CAT.companies.find((x) => x.id === id); const n = (full ? c?.name : c?.shortName) || ''; return n && !isSigningCompany(id) ? `${c?.shortName} (không còn ký HĐ)` : n; }).filter(Boolean).join(', ') : 'Tất cả công ty';
+
 /** Template áp dụng: đang dùng, đúng loại (HĐ / phụ lục), ưu tiên template riêng của công ty. */
 export const findTemplate = (kind: TplKind, targetId: string | undefined, companyId: string) =>
   targetId
     ? CAT.templates
-        .filter((t) => t.active && t.kind === kind && t.data && t.appliesTo.includes(targetId) && (!t.companyId || t.companyId === companyId))
-        .sort((a, b) => Number(!!b.companyId) - Number(!!a.companyId))[0]
+        .filter((t) => t.active && t.kind === kind && t.data && t.appliesTo.includes(targetId) && tplHasCompany(t, companyId))
+        .sort((a, b) => Number(!!b.companyIds.length) - Number(!!a.companyIds.length))[0]
     : undefined;
 export const templateForType = (typeName: string, companyId: string) => findTemplate('HD', typeDef(typeName)?.id, companyId);
-/** Văn bản in kèm hợp đồng (vd Thỏa thuận bảo mật) — mọi template KT đang dùng khớp loại HĐ + công ty. */
+/** Văn bản in kèm hợp đồng (vd Thỏa thuận bảo mật) — chọn như mẫu chính: mẫu riêng của công ty ưu tiên hơn mẫu chung. */
 export const attachmentsFor = (typeName: string, companyId: string) => {
-  const id = typeDef(typeName)?.id;
-  return id ? CAT.templates.filter((t) => t.active && t.kind === 'KT' && t.data && t.appliesTo.includes(id) && (!t.companyId || t.companyId === companyId)) : [];
+  const t = findTemplate('KT', typeDef(typeName)?.id, companyId);
+  return t ? [t] : [];
 };
+/** Nhân viên thuộc công ty: so tên viết tắt, tên pháp lý hoặc Mã (không phân biệt hoa thường). */
+export const empInCompany = (e: { company?: string }, co: { code?: string; name?: string; shortName?: string }) => {
+  const v = (e.company || '').trim().toLowerCase();
+  return !!v && [co.shortName, co.name, co.code].some((k) => (k || '').trim().toLowerCase() === v);
+};
+/** Công ty cần template: đang sử dụng và có cờ "Ký hợp đồng". */
+export const signingCompanies = () => CAT.companies.filter((c) => c.active && c.signsContract);
 /** Ký hiệu số HĐ: «Mã_NV»/«ký hiệu công ty»/«ký hiệu loại HĐ». */
 export const contractNoBase = (empCode: string, companyId: string, typeName: string) =>
   `${empCode}/${companyById(companyId)?.contractCode || 'CT'}/${typeDef(typeName)?.suffix || 'HD'}`;
+
+// ---------------- Lịch sử thay đổi danh mục (HD-P-25) — lưu trong bộ nhớ
+export type CatalogHistory = { id: number; key: string; at: string; by: string; action: string; changes: { field: string; from: string; to: string }[] };
+let HIST: CatalogHistory[] = [];
+const HIST_SUBS = new Set<() => void>();
+export const addCatalogHistory = (h: Omit<CatalogHistory, 'id' | 'at'>) => {
+  HIST = [{ ...h, id: HIST.length + 1, at: new Date().toISOString() }, ...HIST];
+  HIST_SUBS.forEach((f) => f());
+};
+export const useCatalogHistory = () => useSyncExternalStore((cb) => (HIST_SUBS.add(cb), () => void HIST_SUBS.delete(cb)), () => HIST);

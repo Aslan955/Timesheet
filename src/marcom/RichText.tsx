@@ -4,7 +4,7 @@
  */
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { AlignCenter, AlignLeft, AlignRight, Baseline, Bold, Check, ChevronDown, Italic, Link2, List, ListOrdered, RemoveFormatting, Strikethrough, Underline } from 'lucide-react';
-import { MarcomEmployee, fillTemplate } from './marcomData';
+import { MarcomEmployee, VAR_ONLY, VAR_SPLIT, fillTemplate } from './marcomData';
 import { useMarcomLang } from './i18n';
 
 /** Kiểu hiển thị chung cho ô soạn và bản xem trước mail (Tailwind reset mất kiểu list/link). */
@@ -57,10 +57,11 @@ export const sanitizeHtml = (html: string) => transform(html);
 
 /** HTML của thân mail: có nhân sự → điền biến; không có → biến hiện dạng thẻ xanh (chế độ template). */
 export const renderMailHtml = (body: string, e?: MarcomEmployee) =>
+  // đồng bộ code iMIS 05/11 — biến {Xxx} (MarcomMailPreview.VarToken)
   transform(toHtml(body), (text, doc) => {
-    if (e) return [doc.createTextNode(text.replace(/\{\{\w+\}\}/g, (m) => fillTemplate(m, e)))];
-    return text.split(/(\{\{\w+\}\})/g).filter(Boolean).map((part) => {
-      if (!/^\{\{\w+\}\}$/.test(part)) return doc.createTextNode(part);
+    if (e) return [doc.createTextNode(fillTemplate(text, e))];
+    return text.split(VAR_SPLIT).filter(Boolean).map((part) => {
+      if (!VAR_ONLY.test(part)) return doc.createTextNode(part);
       const chip = doc.createElement('span');
       chip.className = VAR_CLS;
       chip.textContent = part;
@@ -86,7 +87,8 @@ export interface RichTextHandle {
   insertText: (text: string) => void;
 }
 
-export const RichTextEditor = forwardRef<RichTextHandle, { value: string; onChange: (html: string) => void; compact?: boolean }>(({ value, onChange, compact = false }, handle) => {
+/** basic = ô soạn mail MarCom như code iMIS (marcom-editor.js): chỉ B / I / U + danh sách, dán chỉ giữ chữ thường, không tô sáng nút. */
+export const RichTextEditor = forwardRef<RichTextHandle, { value: string; onChange: (html: string) => void; compact?: boolean; basic?: boolean }>(({ value, onChange, compact = false, basic = false }, handle) => {
   const { tr } = useMarcomLang();
   const ref = useRef<HTMLDivElement>(null);
   const last = useRef<string | null>(null); // HTML vừa phát ra → không ghi đè lại (giữ con trỏ)
@@ -206,8 +208,27 @@ export const RichTextEditor = forwardRef<RichTextHandle, { value: string; onChan
   );
   const sep = <span className="w-px h-5 bg-slate-300 mx-0.5" />;
 
+  // đồng bộ code iMIS 05/11 — thanh định dạng mail: In đậm / In nghiêng / Gạch chân / Danh sách gạch đầu dòng / Danh sách đánh số
+  const basicTools: [string, string, React.ElementType][] = [
+    ['bold', 'In đậm', Bold],
+    ['italic', 'In nghiêng', Italic],
+    ['underline', 'Gạch chân', Underline],
+    ['insertUnorderedList', 'Danh sách gạch đầu dòng', List],
+    ['insertOrderedList', 'Danh sách đánh số', ListOrdered],
+  ];
+  const basicEn: Record<string, string> = { bold: 'Bold', italic: 'Italic', underline: 'Underline', insertUnorderedList: 'Bulleted list', insertOrderedList: 'Numbered list' };
+
   return (
     <div className="border border-slate-300 rounded-[3px] bg-white focus-within:border-[#1f5fa8] focus-within:ring-2 focus-within:ring-[#1f5fa8]/15" data-testid="rich-editor">
+      {basic ? (
+        <div className="flex flex-wrap items-center gap-0.5 px-1 py-1 border-b border-slate-200 bg-slate-50 rounded-t-[3px]">
+          {basicTools.map(([cmd, vi, Icon]) => (
+            <Tool key={cmd} title={tr(vi, basicEn[cmd])} onClick={() => exec(cmd)}>
+              <Icon size={14} />
+            </Tool>
+          ))}
+        </div>
+      ) : (
       <div className="relative flex flex-wrap items-center gap-0.5 px-1 py-1 border-b border-slate-200 bg-slate-50 rounded-t-[3px]">
         <Tool title={tr('Đậm (Ctrl+B)', 'Bold (Ctrl+B)')} on={active.bold} onClick={() => exec('bold')}>
           <Bold size={14} />
@@ -304,6 +325,7 @@ export const RichTextEditor = forwardRef<RichTextHandle, { value: string; onChan
           </div>
         )}
       </div>
+      )}
       <div
         ref={ref}
         contentEditable
@@ -314,7 +336,7 @@ export const RichTextEditor = forwardRef<RichTextHandle, { value: string; onChan
         onFocus={() => setPop(null)}
         onPaste={(ev) => {
           ev.preventDefault();
-          const html = ev.clipboardData.getData('text/html');
+          const html = basic ? '' : ev.clipboardData.getData('text/html'); // basic: dán chỉ giữ chữ thường — đồng bộ code iMIS 05/11
           if (html) document.execCommand('insertHTML', false, sanitizeHtml(html));
           else document.execCommand('insertText', false, ev.clipboardData.getData('text/plain'));
           emit();

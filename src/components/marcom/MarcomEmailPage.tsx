@@ -1,25 +1,29 @@
 /**
- * MarCom · Email tự động (yêu cầu 1.4 + 2.3) + cấu hình Box sinh nhật (1.3).
+ * MarCom · Email tự động (yêu cầu 1.4 + 2.3) + cấu hình Box trang chủ (1.3; slide Chào mừng thành viên mới — CR-20261105-001).
  *  - Mail sinh nhật: gửi đúng ngày sinh nhật, 09:00. Mail Welcome: gửi đúng ngày onboard, 10:00.
- *  - Nội dung do MarCom cung cấp: tiêu đề/nội dung (biến {{...}}), banner đầu + banner cuối mail (ảnh làm sẵn) tuỳ chọn.
+ *  - Nội dung do MarCom cung cấp: tiêu đề/nội dung (biến {EmployeeName}…), banner đầu + banner cuối mail (ảnh làm sẵn) tuỳ chọn.
  *  - Avatar người nhận KHÔNG upload tay: lấy tự động từ hồ sơ Employee của từng người nhận, hiện nhỏ cạnh lời chúc.
  *    Hồ sơ chưa có ảnh → dùng ảnh mặc định hoặc gửi không kèm ảnh (cấu hình), kèm cảnh báo để HCNS bổ sung.
- *  - Lịch sử gửi: thành công / lỗi / bỏ qua / gửi thử, gửi lại thủ công khi lỗi.
+ *  - Lịch sử gửi: thành công / lỗi / gửi thử theo năm, gửi lại bản ghi lỗi (đồng bộ code iMIS 05/11).
  * Giao diện: khung ERP (src/components/erp/Erp.tsx) như màn Báo cáo hiệu quả dự án.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, GalleryHorizontal, Cake, Hand, LayoutTemplate, History, Upload, Trash2, Send, Save, RotateCcw, Image as ImageIcon, Settings2, FileText, Eye, Clock, UserSquare2, AlertTriangle, Megaphone, Palette, Maximize2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, GalleryHorizontal, Cake, Hand, LayoutTemplate, History, Upload, Trash2, Send, Save, RotateCcw, Image as ImageIcon, Settings2, FileText, Eye, Clock, UserSquare2, AlertTriangle, Megaphone, Maximize2, X } from 'lucide-react';
 import { useMarcom, MailConfig, BoxConfig, BoxTheme, HomeBanner } from '../../marcom/MarcomContext';
-import { Avatar, FilterBar, FilterCell, LangSwitch, Switch, TAG, useToast } from '../../marcom/MarcomUi';
+import { Avatar, FilterBar, FilterCell, Switch, TAG, useToast } from '../../marcom/MarcomUi';
 import { useMarcomLang } from '../../marcom/i18n';
 import { MailHtml, RichTextEditor, RichTextHandle } from '../../marcom/RichText';
-import { BirthdayBox, BOX_THEMES, useTodayBirthdays } from '../../marcom/BirthdayBox';
+import { BirthdayBox, BOX_THEMES, BoxSlot, PeopleKind, SlideDesign, SlidePreview, boxSlots, designOf, designPatch, slotsToConfig, useTodayBirthdays, useWelcomeNewcomers } from '../../marcom/BirthdayBox';
 import { TeamsBirthdayPost, TEAMS_PLACEHOLDERS, TEAMS_DIRECTORY, TEAMS_SENDER, SenderAvatar } from '../../marcom/TeamsBirthdayPost';
 import { Btn, ErpPage, ErpTitleBar, FieldTable, FolderTabs, FormRow, Panel, Segmented, Tag, erp } from '../erp/Erp';
 import {
-  MAX_IMAGE_BYTES, MailKind, MarcomEmployee, TEAMS_POST_ENABLED, addDays, fillTemplate, fmtDate, fmtDateTime, inWelcomeBatch, isBirthdayToday, isPastTimeToday,
-  startOfDay, toKey,
+  BANNER_FITS, BannerFit, COUNT_VAR, IMAGE_ACCEPT, MAX_IMAGE_BYTES, MailKind, MarcomEmployee, SLIDE_SECONDS, TEAMS_POST_ENABLED, VAR_ONLY, VAR_SPLIT, addDays, batchTuesdayOf, batchWindow,
+  bannerSizeIssue, birthdayThisYear, fillTemplate, fmtDate, fmtDateTime, fmtDayMonth, fromKey, inWelcomeBatch, isAllowedImage, isBirthdayToday, isPastTimeToday, startOfDay, toKey,
 } from '../../marcom/marcomData';
+
+/** Tài khoản gửi mail của hệ thống (MarcomEmailComponent.SenderAddress) — đồng bộ code iMIS 05/11. */
+const SENDER = 'Tài khoản gửi mail của hệ thống iMIS <snd.agent@synodus.com>';
+const SENDER_EN = 'iMIS system mail account <snd.agent@synodus.com>';
 
 type Tab = MailKind | 'box' | 'logs';
 
@@ -46,18 +50,15 @@ export const MarcomEmailPage: React.FC = () => {
   return (
     <ErpPage>
       {toastNode}
-      <ErpTitleBar
-        crumbs={['Human Resources', 'MarCom', tr('Email tự động MarCom', 'MarCom automated emails')]}
-        title={tr('Email tự động MarCom', 'MarCom automated emails')}
-        actions={<LangSwitch />}
-      />
+      {/* đồng bộ code iMIS 05/11 — menu cấp 1 "MarCom", không có nút VI | EN riêng */}
+      <ErpTitleBar crumbs={['MarCom', tr('Email tự động MarCom', 'MarCom automated emails')]} title={tr('Email tự động MarCom', 'MarCom automated emails')} />
       <FolderTabs
         tabs={[
           { key: 'birthday' as Tab, label: tr('Mail sinh nhật', 'Birthday email'), icon: Cake },
           { key: 'welcome' as Tab, label: tr('Mail Welcome Onboard', 'Welcome Onboard email'), icon: Hand },
           {
             key: 'box' as Tab,
-            label: TEAMS_POST_ENABLED ? tr('Box sinh nhật (Trang chủ & Teams)', 'Birthday box (Home & Teams)') : tr('Box sinh nhật (Trang chủ)', 'Birthday box (Home)'),
+            label: TEAMS_POST_ENABLED ? tr('Box (Trang chủ & Teams)', 'Box (Home & Teams)') : tr('Box', 'Box'),
             icon: LayoutTemplate,
           },
           { key: 'logs' as Tab, label: tr('Lịch sử gửi', 'Send history'), icon: History },
@@ -76,28 +77,21 @@ export const MarcomEmailPage: React.FC = () => {
 // Thiệp: khung (ảnh nền MarCom) + ảnh nhân sự lấy từ Employee + tên, khối
 // ---------------------------------------------------------------------------
 /** Dòng form cho ô soạn có định dạng — không dùng FormRow (<label>) vì bấm vào ô soạn sẽ thành bấm nút đầu tiên của thanh công cụ. */
-const EditorRow: React.FC<{ label: string; required?: boolean; children: React.ReactNode }> = ({ label, required, children }) => {
-  const { tr } = useMarcomLang();
-  return (
-    <div className="grid grid-cols-[150px_1fr] items-start gap-x-2">
-      <span className="text-[12px] text-slate-600 pt-1.5 leading-tight">
-        {label} {required && <span className="text-rose-600">*</span>}
-      </span>
-      <span className="min-w-0">
-        {children}
-        <span className="block mt-0.5 text-[11px] text-slate-400">
-          {tr('Bôi đen chữ rồi chọn định dạng trên thanh công cụ · Ctrl+B đậm, Ctrl+I nghiêng, Ctrl+U gạch chân', 'Select text, then pick a format on the toolbar · Ctrl+B bold, Ctrl+I italic, Ctrl+U underline')}
-        </span>
-      </span>
-    </div>
-  );
-};
+// đồng bộ code iMIS 05/11 — code không có dòng gợi ý phím tắt dưới ô soạn
+const EditorRow: React.FC<{ label: string; required?: boolean; children: React.ReactNode }> = ({ label, required, children }) => (
+  <div className="grid grid-cols-[150px_1fr] items-start gap-x-2">
+    <span className="text-[12px] text-slate-600 pt-1.5 leading-tight">
+      {label} {required && <span className="text-rose-600">*</span>}
+    </span>
+    <span className="min-w-0">{children}</span>
+  </div>
+);
 
-/** Biến {{...}} hiển thị dạng thẻ xanh trong chế độ xem template. */
+/** Biến {Xxx} hiển thị dạng thẻ xanh trong chế độ xem template — đồng bộ code iMIS 05/11. */
 const VarText: React.FC<{ text: string }> = ({ text }) => (
   <>
-    {text.split(/(\{\{\w+\}\})/g).map((part, i) =>
-      /^\{\{\w+\}\}$/.test(part) ? (
+    {text.split(VAR_SPLIT).map((part, i) =>
+      VAR_ONLY.test(part) ? (
         <span key={i} className="px-1 mx-px rounded-[3px] border border-[#b9d3f0] bg-[#eaf2fc] text-[#1f5fa8] font-mono text-[0.85em]">
           {part}
         </span>
@@ -137,8 +131,8 @@ const BannerMail: React.FC<{ kind: MailKind; cfg: MailConfig; e?: MarcomEmployee
             />
           )}
           <div className="min-w-0">
-            <div className={`${mobile ? 'text-[13px]' : 'text-[14px]'} font-bold text-slate-900 leading-tight break-words`}>{e ? e.name : <VarText text="{{fullname}}" />}</div>
-            <div className="text-[11px] text-slate-500">{e ? e.division : <VarText text="{{khoi}}" />}</div>
+            <div className={`${mobile ? 'text-[13px]' : 'text-[14px]'} font-bold text-slate-900 leading-tight break-words`}>{e ? e.name : <VarText text="{EmployeeName}" />}</div>
+            <div className="text-[11px] text-slate-500">{e ? e.division : <VarText text="{Division}" />}</div>
           </div>
         </div>
         <div className={`${mobile ? 'text-[12.5px]' : 'text-[13px]'} leading-relaxed text-slate-700 break-words`}>{body}</div>
@@ -170,7 +164,25 @@ const MailEditor: React.FC<{ kind: MailKind; toast: (m: string) => void }> = ({ 
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
 
   const today = startOfDay(new Date());
-  const sampleList = useMemo(() => employees.filter((e) => (kind === 'birthday' ? e.active : inWelcomeBatch(e))), [employees, kind]);
+  // đồng bộ code iMIS 05/11 (GetSampleEmployeesAsync) — tối đa 50 người:
+  //  sinh nhật: người sinh trong tháng hiện tại, hôm nay lên đầu rồi theo ngày; Welcome: đợt trước + đợt này + đợt sau, theo ngày onboard
+  //  (#10: chỉ nhân sự đã tới ngày onboard)
+  const sampleList = useMemo(() => {
+    if (kind === 'birthday') {
+      return employees
+        .filter((e) => e.active && fromKey(e.dob).getMonth() === today.getMonth())
+        .sort((a, b) => Number(isBirthdayToday(b)) - Number(isBirthdayToday(a)) || birthdayThisYear(a).getTime() - birthdayThisYear(b).getTime() || a.name.localeCompare(b.name, 'vi'))
+        .slice(0, 50);
+    }
+    const cur = batchTuesdayOf(today);
+    const from = addDays(cur, -13);
+    const end = addDays(cur, 8);
+    return employees
+      .filter((e) => inWelcomeBatch(e) && fromKey(e.onboardDate) >= from && fromKey(e.onboardDate) < end && fromKey(e.onboardDate) <= today)
+      .sort((a, b) => a.onboardDate.localeCompare(b.onboardDate) || a.name.localeCompare(b.name, 'vi'))
+      .slice(0, 50);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employees, kind]);
   const defaultSample = (kind === 'birthday' ? sampleList.find((e) => isBirthdayToday(e)) : sampleList.find((e) => e.onboardDate === toKey(today))) ?? sampleList[0];
   const [sampleId, setSampleId] = useState(defaultSample?.id);
   const [view, setView] = useState<'template' | 'sample'>('template');
@@ -191,11 +203,12 @@ const MailEditor: React.FC<{ kind: MailKind; toast: (m: string) => void }> = ({ 
 
   const set = (patch: Partial<MailConfig>) => setDraft((d) => ({ ...d, ...patch }));
   const insert = (token: string) => (bodyRef.current ? bodyRef.current.insertText(token) : set({ body: draft.body + token }));
+  // đồng bộ code iMIS 05/11 — ImageUploadComponent: PNG/JPG/WebP ≤ 5MB, banner mail không kiểm kích thước; thông báo là chữ cố định tiếng Anh của component
   const badImage = (f: File) =>
-    !f.type.startsWith('image/')
-      ? (toast(tr('Chỉ nhận file ảnh (PNG/JPG)', 'Only image files are accepted (PNG/JPG)')), true)
+    !IMAGE_ACCEPT.split(',').includes(f.type)
+      ? (toast(`File type not allowed: .${f.name.split('.').pop()?.toLowerCase() ?? ''}`), true)
       : f.size > MAX_IMAGE_BYTES
-        ? (toast(tr('Ảnh tối đa 5MB', 'Maximum image size is 5MB')), true)
+        ? (toast(`File too large. Max 5.0 MB (current: ${(f.size / 1024 / 1024).toFixed(1)} MB).`), true)
         : false;
   const onFile = (f: File | undefined) => {
     if (!f || badImage(f)) return;
@@ -264,6 +277,11 @@ const MailEditor: React.FC<{ kind: MailKind; toast: (m: string) => void }> = ({ 
           icon={Save}
           disabled={!dirty}
           onClick={() => {
+            // đồng bộ code iMIS 05/11 — tiêu đề + nội dung bắt buộc
+            if (!draft.subject.trim() || !draft.body.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim()) {
+              toast(tr('Vui lòng nhập Tiêu đề và Nội dung', 'Please enter the Subject and Content'));
+              return;
+            }
             updateMailConfig(kind, draft);
             toast(tr('Đã lưu cấu hình email', 'Email settings saved'));
           }}
@@ -296,7 +314,14 @@ const MailEditor: React.FC<{ kind: MailKind; toast: (m: string) => void }> = ({ 
         <div className="space-y-3 min-w-0">
           <Panel title={tr('Cấu hình gửi', 'Sending settings')} icon={Settings2}>
             <div className="space-y-2.5">
-              <FormRow label={tr('Trạng thái', 'Status')}>
+              {/* đồng bộ code iMIS 05/11 — tiêu đề / nội dung / bật-tắt nằm ở Notification Templates (seed đã tạo mẫu) */}
+              <FormRow
+                label={tr('Trạng thái', 'Status')}
+                hint={tr(
+                  `Nội dung và trạng thái dùng chung với Notification Templates (mã ${kind === 'birthday' ? 'MARCOM_BIRTHDAY' : 'MARCOM_WELCOME'})`,
+                  `Content and status are shared with Notification Templates (code ${kind === 'birthday' ? 'MARCOM_BIRTHDAY' : 'MARCOM_WELCOME'})`,
+                )}
+              >
                 <span className="flex items-center gap-2 h-8">
                   <Switch on={draft.enabled} onChange={(v) => set({ enabled: v })} />
                   <span className="text-[12px] font-semibold text-slate-700">{draft.enabled ? tr('Đang bật gửi tự động', 'Auto-send on') : tr('Đang tắt', 'Off')}</span>
@@ -314,7 +339,7 @@ const MailEditor: React.FC<{ kind: MailKind; toast: (m: string) => void }> = ({ 
           <Panel title={tr('Nội dung email', 'Email content')} icon={FileText}>
             <div className="space-y-2.5">
               <FormRow label={tr('Tiêu đề', 'Subject')} required>
-                <input value={draft.subject} onChange={(e) => set({ subject: e.target.value })} className={erp.inputFull} />
+                <input value={draft.subject} maxLength={256} onChange={(e) => set({ subject: e.target.value })} className={erp.inputFull} />
               </FormRow>
               <FormRow label={tr('Biến chèn', 'Placeholders')} hint={tr('Bấm để chèn vào vị trí con trỏ trong nội dung', 'Click to insert at the cursor in the content')}>
                 <span className="flex flex-wrap gap-1 pt-1">
@@ -326,7 +351,8 @@ const MailEditor: React.FC<{ kind: MailKind; toast: (m: string) => void }> = ({ 
                 </span>
               </FormRow>
               <EditorRow label={tr('Nội dung', 'Content')} required>
-                <RichTextEditor ref={bodyRef} value={draft.body} onChange={(html) => set({ body: html })} />
+                {/* đồng bộ code iMIS 05/11 — chỉ B / I / U + danh sách, dán chỉ giữ chữ thường */}
+                <RichTextEditor basic ref={bodyRef} value={draft.body} onChange={(html) => set({ body: html })} />
               </EditorRow>
             </div>
           </Panel>
@@ -380,9 +406,10 @@ const MailEditor: React.FC<{ kind: MailKind; toast: (m: string) => void }> = ({ 
               )}
               <FormRow
                 label={tr('Banner đầu mail (MarCom)', 'Header banner (MarCom)')}
-                hint={tr('PNG/JPG, rộng 720–1440 px, tỉ lệ ~3:1 · hiện nguyên ảnh ở đầu mail · để trống hiện khung chờ', 'PNG/JPG, 720–1440 px wide, ratio ~3:1 · shown in full at the top of the email · leave empty to show a placeholder')}
+                hint={tr('PNG/JPG/WebP, rộng 720–1440 px, tỉ lệ ~3:1 · hiện nguyên ảnh ở đầu mail · để trống hiện khung chờ', 'PNG/JPG/WebP, 720–1440 px wide, ratio ~3:1 · shown in full at the top of the email · leave empty to show a placeholder')}
               >
-                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
+                {/* đồng bộ code iMIS 05/11 — PNG/JPG/WebP */}
+                <input ref={fileRef} type="file" accept={IMAGE_ACCEPT} className="hidden" onChange={(e) => (onFile(e.target.files?.[0]), (e.target.value = ''))} />
                 {draft.frameUrl ? (
                   <span className="flex items-center gap-2 border border-slate-300 rounded-[3px] p-1.5">
                     <img src={draft.frameUrl} alt="" className="w-20 h-10 object-cover rounded-[2px]" />
@@ -400,8 +427,8 @@ const MailEditor: React.FC<{ kind: MailKind; toast: (m: string) => void }> = ({ 
                   </Btn>
                 )}
               </FormRow>
-              <FormRow label={tr('Banner cuối mail (MarCom)', 'Footer banner (MarCom)')} hint={tr('Tuỳ chọn · PNG/JPG, rộng 720–1440 px · hiện nguyên ảnh ở cuối mail, dưới lời chúc', 'Optional · PNG/JPG, 720–1440 px wide · shown in full at the bottom of the email, below the greeting')}>
-                <input ref={footerRef} type="file" accept="image/*" className="hidden" onChange={(e) => (onFooterFile(e.target.files?.[0]), (e.target.value = ''))} />
+              <FormRow label={tr('Banner cuối mail (MarCom)', 'Footer banner (MarCom)')} hint={tr('Tuỳ chọn · PNG/JPG/WebP, rộng 720–1440 px · hiện nguyên ảnh ở cuối mail, dưới lời chúc', 'Optional · PNG/JPG/WebP, 720–1440 px wide · shown in full at the bottom of the email, below the greeting')}>
+                <input ref={footerRef} type="file" accept={IMAGE_ACCEPT} className="hidden" onChange={(e) => (onFooterFile(e.target.files?.[0]), (e.target.value = ''))} />
                 {draft.footerUrl ? (
                   <span className="flex items-center gap-2 border border-slate-300 rounded-[3px] p-1.5">
                     <img src={draft.footerUrl} alt="" className="w-20 h-10 object-cover rounded-[2px]" />
@@ -450,30 +477,35 @@ const MailEditor: React.FC<{ kind: MailKind; toast: (m: string) => void }> = ({ 
                 <Btn icon={Maximize2} className="h-7" onClick={() => setFull(true)} title={tr('Xem toàn màn hình (Esc để đóng)', 'Full screen (Esc to close)')}>
                   {tr('Toàn màn hình', 'Full screen')}
                 </Btn>
-                {view === 'sample' && (
-                  <select value={sample?.id} onChange={(e) => setSampleId(e.target.value)} className={`${erp.input} h-7 text-[12px] w-56`} title={tr('Chỉ để xem thử — không phải người nhận', 'Preview only — not a recipient')}>
-                    {sampleList.map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {e.name} — {kind === 'birthday' ? fmtDate(e.dob).slice(0, 5) : fmtDate(e.onboardDate)}
-                        {e.photoUrl ? '' : tr(' (chưa có ảnh)', ' (no photo)')}
-                      </option>
-                    ))}
-                  </select>
-                )}
               </>
             }
           >
+            {/* đồng bộ code iMIS 05/11 — thanh "Nhân sự mẫu" dưới tiêu đề panel (sinh nhật trong tháng / đợt Welcome, tối đa 50) */}
+            {view === 'sample' && (
+              <div className="flex items-center gap-2 px-3 py-1.5 border-b border-slate-200 bg-slate-50">
+                <span className="text-[12px] text-slate-600">{tr('Nhân sự mẫu', 'Sample employee')}</span>
+                <select value={sample?.id ?? ''} onChange={(e) => setSampleId(e.target.value)} className={`${erp.input} h-7 text-[12px] w-64`} title={tr('Chỉ để xem thử — không phải người nhận', 'Preview only — not a recipient')}>
+                  {!sampleList.length && <option value="">{tr('Chưa có nhân sự mẫu', 'No sample employee')}</option>}
+                  {sampleList.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.name} — {kind === 'birthday' ? fmtDate(e.dob).slice(0, 5) : fmtDate(e.onboardDate)}
+                      {e.photoUrl ? '' : tr(' (chưa có ảnh)', ' (no photo)')}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             {view === 'template' || !sample ? (
               <>
                 <FieldTable
                   labelWidth="90px"
                   rows={[
-                    { label: tr('Từ', 'From'), value: 'VTX Group · MarCom <marcom@aequitas.vn>' },
+                    { label: tr('Từ', 'From'), value: tr(SENDER, SENDER_EN) },
                     {
                       label: tr('Tới', 'To'),
                       value: (
                         <span>
-                          <VarText text="{{email}}" /> <span className="text-[11px] text-slate-500">{tr(`— email nội bộ của từng nhân sự ${kind === 'birthday' ? 'có sinh nhật' : 'onboard'} hôm đó (job tự điền, mỗi người 1 email riêng)`, `— internal email of each employee ${kind === 'birthday' ? 'with a birthday' : 'onboarding'} that day (filled in by the job, one separate email per person)`)}</span>
+                          <VarText text="{Email}" /> <span className="text-[11px] text-slate-500">{tr(`— email nội bộ của từng nhân sự ${kind === 'birthday' ? 'có sinh nhật' : 'onboard'} hôm đó (job tự điền, mỗi người 1 email riêng)`, `— internal email of each employee ${kind === 'birthday' ? 'with a birthday' : 'onboarding'} that day (filled in by the job, one separate email per person)`)}</span>
                         </span>
                       ),
                     },
@@ -486,7 +518,7 @@ const MailEditor: React.FC<{ kind: MailKind; toast: (m: string) => void }> = ({ 
                   </div>
                 </div>
                 <div className="px-3 py-1.5 border-t border-slate-200 bg-slate-50 text-[11px] text-slate-500">
-                  {tr('Các ô', 'The')} <span className="px-1 rounded-[3px] border border-[#b9d3f0] bg-[#eaf2fc] text-[#1f5fa8] font-mono">{"{{…}}"}</span> {tr('và ảnh được job điền theo hồ sơ Employee của từng người nhận khi gửi.', 'fields and the photo are filled in by the job from each recipient’s Employee profile at send time.')}
+                  {tr('Các ô', 'The')} <span className="px-1 rounded-[3px] border border-[#b9d3f0] bg-[#eaf2fc] text-[#1f5fa8] font-mono">{'{…}'}</span> {tr('và ảnh được job điền theo hồ sơ Employee của từng người nhận khi gửi.', 'fields and the photo are filled in by the job from each recipient’s Employee profile at send time.')}
                 </div>
               </>
             ) : (
@@ -494,7 +526,7 @@ const MailEditor: React.FC<{ kind: MailKind; toast: (m: string) => void }> = ({ 
                 <FieldTable
                   labelWidth="90px"
                   rows={[
-                    { label: tr('Từ', 'From'), value: 'VTX Group · MarCom <marcom@aequitas.vn>' },
+                    { label: tr('Từ', 'From'), value: tr(SENDER, SENDER_EN) },
                     { label: tr('Tới', 'To'), value: sample.email },
                     { label: tr('Tiêu đề', 'Subject'), value: fillTemplate(draft.subject, sample), strong: true },
                   ]}
@@ -581,7 +613,13 @@ const MailEditor: React.FC<{ kind: MailKind; toast: (m: string) => void }> = ({ 
               )}
             </div>
             {kind === 'birthday' ? <div>• {tr('Sinh nhật 29/02: năm không nhuận gửi vào 28/02.', 'Birthday on 29/02: sent on 28/02 in non-leap years.')}</div> : <div>• {tr('Cancel Onboard thì không gửi; đổi ngày onboard trên Employee thì lịch gửi tự dời theo.', 'Not sent on Cancel Onboard; changing the onboard date in Employee reschedules the email automatically.')}</div>}
-            <div>• {tr('Gửi lỗi: tự thử lại 3 lần trong 30 phút, sau đó hiện ở tab Lịch sử gửi để MarCom gửi lại.', 'Failed sends are retried automatically 3 times within 30 minutes, then shown in the Send history tab for MarCom to resend.')}</div>
+            {/* đồng bộ code iMIS 05/11 — retry 10/20/30 phút chỉ có ở mail sinh nhật; Welcome chỉ gửi lại thủ công */}
+            <div>
+              •{' '}
+              {kind === 'birthday'
+                ? tr('Gửi lỗi thì hệ thống tự thử lại 3 lần trong 30 phút; vẫn lỗi thì hiện ở tab Lịch sử gửi để MarCom gửi lại thủ công.', 'Failed sends are retried automatically 3 times within 30 minutes; if still failing they appear in the Send history tab for MarCom to resend manually.')
+                : tr('Mail gửi lỗi hiện ở tab Lịch sử gửi để MarCom gửi lại thủ công.', 'Failed emails appear in the Send history tab for MarCom to resend manually.')}
+            </div>
           </div>
         </div>
       </div>
@@ -597,7 +635,10 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
   const [draft, setDraft] = useState<BoxConfig>(saved);
   const [target, setTarget] = useState<'home' | 'teams'>('home');
   const [simulateEmpty, setSimulateEmpty] = useState(false);
+  const [simulateNoNewcomers, setSimulateNoNewcomers] = useState(false);
+  const { tuesday: welcomeTue, people: newcomers } = useWelcomeNewcomers(simulateNoNewcomers);
   const bgRef = useRef<HTMLInputElement>(null);
+  const welcomeBgRef = useRef<HTMLInputElement>(null); // CR-20261105-001 thiết kế riêng 05/11
   const cardRef = useRef<HTMLInputElement>(null);
   const bannerRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
@@ -608,30 +649,63 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
 
   const today = startOfDay(new Date());
   const nextPost = isPastTimeToday(draft.teamsPostTime) ? addDays(today, 1) : today;
+  // đồng bộ code iMIS 05/11 — ảnh nền dùng ImageUploadComponent (PNG/JPG/WebP ≤ 5MB, thông báo tiếng Anh cố định của component)
   const pickImage = (f: File | undefined, apply: (url: string, name: string) => void) => {
     if (!f) return;
-    if (!f.type.startsWith('image/')) return toast(tr('Chỉ nhận file ảnh (PNG/JPG)', 'Only image files are accepted (PNG/JPG)'));
-    if (f.size > MAX_IMAGE_BYTES) return toast(tr('Ảnh tối đa 5MB', 'Maximum image size is 5MB'));
+    if (!IMAGE_ACCEPT.split(',').includes(f.type)) return toast(`File type not allowed: .${f.name.split('.').pop()?.toLowerCase() ?? ''}`);
+    if (f.size > MAX_IMAGE_BYTES) return toast(`File too large. Max 5.0 MB (current: ${(f.size / 1024 / 1024).toFixed(1)} MB).`);
     apply(URL.createObjectURL(f), f.name);
   };
-  // Banner trang chủ — chạy slide cùng box sinh nhật
+  // Banner trang chủ — chạy slide cùng slide Sinh nhật / Chào mừng thành viên mới
   const banners = draft.banners || [];
   const setBanners = (fn: (l: HomeBanner[]) => HomeBanner[]) => setDraft((d) => ({ ...d, banners: fn(d.banners || []) }));
   const patchBanner = (id: string, patch: Partial<HomeBanner>) => setBanners((l) => l.map((b) => (b.id === id ? { ...b, ...patch } : b)));
-  const moveBanner = (i: number, d: number) =>
-    setBanners((l) => {
-      const n = [...l];
-      [n[i], n[i + d]] = [n[i + d], n[i]];
-      return n;
+  // đồng bộ code iMIS 05/11 — danh sách = banner + ô slide Sinh nhật (chỉ đổi vị trí, không xoá) [+ ô slide Chào mừng — CR]
+  const slots = boxSlots(draft);
+  const setSlots = (next: BoxSlot[]) => setDraft((d) => ({ ...d, ...slotsToConfig(next) }));
+  const moveSlot = (i: number, d: number) => {
+    const n = [...slots];
+    [n[i], n[i + d]] = [n[i + d], n[i]];
+    setSlots(n);
+  };
+  const removeBanner = (id: string) => setSlots(slots.filter((s) => s.kind !== 'banner' || s.b.id !== id));
+  // Kích thước thật của ảnh banner (đo trên trình duyệt, không lưu) → cảnh báo lệch 4:1 / nhỏ hơn 1600px
+  const [sizes, setSizes] = useState<Record<string, [number, number]>>({});
+  const measure = (url: string) =>
+    new Promise<[number, number]>((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve([img.naturalWidth, img.naturalHeight]);
+      img.onerror = () => resolve([0, 0]);
+      img.src = url;
     });
-  const addBanners = (files: FileList | null) => {
+  useEffect(() => {
+    banners.filter((b) => b.url && !sizes[b.url]).forEach((b) => measure(b.url).then((s) => setSizes((m) => ({ ...m, [b.url]: s }))));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [banners]);
+  const addBanners = async (files: FileList | null) => {
     const list = [...(files || [])];
-    const imgs = list.filter((f) => f.type.startsWith('image/') && f.size <= MAX_IMAGE_BYTES);
+    const imgs = list.filter(isAllowedImage);
     if (imgs.length < list.length) toast(tr('Chỉ nhận file ảnh PNG/JPG/WebP tối đa 5MB — đã bỏ qua file khác', 'Only PNG/JPG/WebP images up to 5MB are accepted — other files were skipped'));
     if (!imgs.length) return;
-    setBanners((l) => [...l, ...imgs.map((f, k) => ({ id: `bn-${Date.now()}-${k}`, name: f.name.replace(/\.[^.]+$/, ''), url: URL.createObjectURL(f), link: '', active: true }))]);
+    const added = imgs.map((f, k) => ({ id: `bn-${Date.now()}-${k}`, name: f.name.replace(/\.[^.]+$/, ''), url: URL.createObjectURL(f), link: '', active: true }));
+    setBanners((l) => [...l, ...added]);
+    // Cảnh báo (không chặn) từng file sai tỉ lệ 4:1 / nhỏ hơn 1600px — chữ như code
+    for (const b of added) {
+      const [w, h] = await measure(b.url);
+      const issue = bannerSizeIssue(w, h);
+      if (issue === 'ratio') toast(tr(`${b.name}: ảnh ${w}×${h} không đúng tỉ lệ 4:1 — banner sẽ có nền mờ hai bên hoặc trên dưới (hoặc bị méo nếu chọn fill). Nên dùng 3200×800.`, `${b.name}: ${w}×${h} is not 4:1 — the banner gets blurred side/top bars (or is stretched with fill). Use 3200×800.`));
+      if (issue === 'small') toast(tr(`${b.name}: ảnh ${w}×${h} nhỏ hơn khuyến nghị — có thể mờ trên màn hình lớn. Nên dùng 3200×800 (tối thiểu 1600×400).`, `${b.name}: ${w}×${h} is smaller than recommended — may look blurry on large screens. Use 3200×800 (min 1600×400).`));
+    }
   };
   const activeBanners = banners.filter((b) => b.active).length;
+  const welcomeWin = batchWindow(welcomeTue);
+  const FIT_LABEL: Record<BannerFit, [string, string]> = {
+    contain: ['Hiện trọn ảnh (contain)', 'Show whole image (contain)'],
+    cover: ['Phủ kín khung, cắt phần thừa (cover)', 'Fill frame, crop overflow (cover)'],
+    fill: ['Kéo giãn vừa khung (fill)', 'Stretch to frame (fill)'],
+    'scale-down': ['Chỉ thu nhỏ khi ảnh lớn hơn khung (scale-down)', 'Only shrink when larger than frame (scale-down)'],
+    none: ['Giữ kích thước gốc (none)', 'Keep original size (none)'],
+  };
   const insertBody = (token: string) => {
     const el = bodyRef.current;
     if (!el) return set({ teamsBody: draft.teamsBody + token });
@@ -661,6 +735,94 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
       </Btn>
     );
 
+  // CR-20261105-001 thiết kế riêng 05/11 — bộ control thiết kế theo slide (designOf / designPatch) + xem trước đúng slide đó
+  const slideDesignFields = (kind: PeopleKind) => {
+    const d = designOf(draft, kind);
+    const setD = (p: Partial<SlideDesign>) => set(designPatch(kind, p));
+    const wel = kind === 'welcome';
+    const ref = wel ? welcomeBgRef : bgRef;
+    return (
+      <div className="space-y-2.5">
+        <FormRow label={tr('Bố cục', 'Layout')}>
+          <Segmented
+            options={[
+              { key: 'cards' as const, label: tr('Thẻ', 'Cards') },
+              { key: 'list' as const, label: tr('Danh sách', 'List') },
+              { key: 'banner' as const, label: tr('Banner ảnh nền', 'Background banner') },
+            ]}
+            value={d.layout}
+            onChange={(v) => setD({ layout: v })}
+          />
+        </FormRow>
+        <FormRow label={tr('Màu chủ đạo', 'Theme color')}>
+          <span className="flex items-center gap-1.5 h-8">
+            {(Object.keys(BOX_THEMES) as BoxTheme[]).map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setD({ theme: k })}
+                title={en ? BOX_THEMES[k].labelEn : BOX_THEMES[k].label}
+                className={`w-6 h-6 rounded-full ${BOX_THEMES[k].swatch} cursor-pointer ${d.theme === k ? 'ring-2 ring-offset-2 ring-slate-500' : 'opacity-80 hover:opacity-100'}`}
+              />
+            ))}
+            <span className="ml-1 text-[12px] text-slate-500">{en ? BOX_THEMES[d.theme].labelEn : BOX_THEMES[d.theme].label}</span>
+          </span>
+        </FormRow>
+        <FormRow label={tr('Ảnh nền (MarCom)', 'Background image (MarCom)')} hint={tr('Dùng cho bố cục Banner · PNG/JPG/WebP ≤ 5MB · khuyến nghị 1600×500 · để trống dùng nền theo màu chủ đạo', 'For the Banner layout · PNG/JPG/WebP ≤ 5MB · recommended 1600×500 · leave empty to use the theme color')}>
+          <input ref={ref} type="file" accept={IMAGE_ACCEPT} className="hidden" onChange={(e) => (pickImage(e.target.files?.[0], (url, name) => setD({ bgUrl: url, bgName: name, layout: 'banner' })), (e.target.value = ''))} />
+          {imageField(d.bgUrl, d.bgName, ref, () => setD({ bgUrl: null, bgName: null }), tr('Tải ảnh nền', 'Upload background'))}
+        </FormRow>
+        <FormRow label={tr('Kiểu ảnh nhân sự', 'Employee photo style')}>
+          <Segmented
+            options={[
+              { key: 'circle' as const, label: tr('Tròn', 'Circle') },
+              { key: 'rounded' as const, label: tr('Vuông bo góc', 'Rounded square') },
+            ]}
+            value={d.photoShape}
+            onChange={(v) => setD({ photoShape: v })}
+          />
+        </FormRow>
+        <FormRow label={tr('Thông tin hiển thị', 'Displayed info')} hint={wel ? tr('Luôn có ảnh Employee, họ tên và ngày onboard', 'Employee photo, full name and onboard date are always shown') : tr('Luôn có ảnh chúc mừng và họ tên', 'Greeting photo and full name are always shown')}>
+          <span className="flex items-center gap-4 h-8 text-[12px] text-slate-700">
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" checked={d.showDivision} onChange={(e) => setD({ showDivision: e.target.checked })} className="accent-[#1f5fa8]" />
+              {tr('Division (Khối)', 'Division')}
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" checked={d.showPosition} onChange={(e) => setD({ showPosition: e.target.checked })} className="accent-[#1f5fa8]" />
+              {tr('Vị trí', 'Position')}
+            </label>
+          </span>
+        </FormRow>
+        <FormRow label={tr('Tiêu đề', 'Title')}>
+          <span className="flex items-center gap-1.5">
+            <input value={d.title} onChange={(e) => setD({ title: e.target.value })} className={erp.inputFull} />
+            {/* đồng bộ code iMIS 05/11 — biến {Count} */}
+            <button
+              type="button"
+              onClick={() => setD({ title: d.title + COUNT_VAR })}
+              title={wel ? tr('Số nhân sự mới trong đợt', 'Number of new members in the batch') : tr('Số người sinh nhật hôm nay', 'Number of birthdays today')}
+              className="shrink-0 px-1.5 py-px rounded-[3px] border border-[#b9d3f0] bg-[#eaf2fc] text-[#1f5fa8] text-[11px] font-mono hover:bg-[#dbe9fa] cursor-pointer"
+            >
+              {COUNT_VAR}
+            </button>
+          </span>
+        </FormRow>
+        {/* đồng bộ code iMIS 05/11 — lời chúc / lời chào chung là ô chữ thường */}
+        <FormRow label={wel ? tr('Lời chào chung', 'Common greeting') : tr('Lời chúc chung', 'Common greeting')} hint={wel ? tr('Chữ thường, không định dạng', 'Plain text, no formatting') : undefined}>
+          <textarea rows={wel ? 2 : 3} maxLength={wel ? 500 : undefined} value={d.greeting} onChange={(e) => setD({ greeting: e.target.value })} className={textarea} />
+        </FormRow>
+        <FormRow label={tr('Ký tên', 'Signature')}>
+          <input value={d.signature} onChange={(e) => setD({ signature: e.target.value })} className={erp.inputFull} />
+        </FormRow>
+        <div className="pt-1">
+          <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">{wel ? tr('Xem trước slide Chào mừng', 'Welcome slide preview') : tr('Xem trước slide Sinh nhật', 'Birthday slide preview')}</div>
+          <SlidePreview kind={kind} cfg={draft} />
+        </div>
+      </div>
+    );
+  };
+
   return (
     <>
       {/* Thanh thao tác */}
@@ -688,8 +850,8 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
             updateBoxConfig(draft);
             toast(
               TEAMS_POST_ENABLED
-                ? tr('Đã lưu thiết kế box sinh nhật (trang chủ & Teams)', 'Birthday box design saved (home page & Teams)')
-                : tr('Đã lưu thiết kế box sinh nhật (trang chủ)', 'Birthday box design saved (home page)'),
+                ? tr('Đã lưu thiết kế Box', 'Box design saved')
+                : tr('Đã lưu thiết kế Box', 'Box design saved'),
             );
           }}
         >
@@ -734,22 +896,23 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
                 icon={GalleryHorizontal}
                 actions={
                   <>
-                    <input ref={bannerRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => (addBanners(e.target.files), (e.target.value = ''))} data-testid="banner-input" />
+                    <input ref={bannerRef} type="file" accept={IMAGE_ACCEPT} multiple className="hidden" onChange={(e) => (addBanners(e.target.files), (e.target.value = ''))} data-testid="banner-input" />
                     <Btn icon={Upload} className="h-7" onClick={() => bannerRef.current?.click()}>
                       {tr('Tải banner', 'Upload banner')}
                     </Btn>
                   </>
                 }
                 footer={tr(
-                  `Slide chạy lần lượt: Sinh nhật hôm nay → ${activeBanners ? `${activeBanners} banner đang bật` : 'banner'} · mỗi mục ${draft.slideSeconds || 5} giây · di chuột vào thì dừng. Ảnh khuyến nghị 1600×400 px.`,
-                  `Slideshow order: Today’s birthdays → ${activeBanners ? `${activeBanners} active banner(s)` : 'banners'} · ${draft.slideSeconds || 5} seconds each · pauses on hover. Recommended image size 1600×400 px.`,
+                  `Slide chạy lần lượt theo thứ tự danh sách (Chúc mừng sinh nhật${draft.welcomeEnabled ? ' + Chào mừng thành viên mới' : ''} + ${activeBanners ? `${activeBanners} banner đang bật` : 'banner'}) · mỗi mục ${draft.slideSeconds || 5} giây · di chuột vào thì dừng. Ảnh khuyến nghị 3200×800 px (tối thiểu 1600×400), tỉ lệ 4:1.`,
+                  `Slides run in list order (Birthday${draft.welcomeEnabled ? ' + Welcome new members' : ''} + ${activeBanners ? `${activeBanners} active banner(s)` : 'banners'}) · ${draft.slideSeconds || 5} seconds each · pauses on hover. Recommended image 3200×800 px (min 1600×400), ratio 4:1.`,
                 )}
               >
                 <div className="space-y-2.5">
+                  {/* đồng bộ code iMIS 05/11 — 1/2/3/5/7/10/15 giây */}
                   <FormRow label={tr('Thời gian mỗi mục', 'Duration per slide')}>
                     <span className="flex items-center gap-2">
                       <select value={draft.slideSeconds || 5} onChange={(e) => set({ slideSeconds: Number(e.target.value) })} className={`${erp.input} w-24`}>
-                        {[3, 5, 7, 10, 15].map((x) => (
+                        {SLIDE_SECONDS.map((x) => (
                           <option key={x} value={x}>
                             {x} {tr('giây', 'sec')}
                           </option>
@@ -757,16 +920,63 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
                       </select>
                     </span>
                   </FormRow>
-                  {!banners.length ? (
-                    <div className="border border-dashed border-slate-300 rounded-[4px] bg-slate-50 py-5 text-center text-[12px] text-slate-500">
-                      {tr('Chưa có banner — trang chủ chỉ hiện box sinh nhật.', 'No banners yet — the home page shows only the birthday box.')}{' '}
-                      <button type="button" onClick={() => bannerRef.current?.click()} className="text-[#1f5fa8] font-semibold hover:underline cursor-pointer">
-                        {tr('Tải banner', 'Upload banner')}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5" data-testid="banner-list">
-                      {banners.map((b, i) => (
+                  {/* đồng bộ code iMIS 05/11 — cách hiển thị ảnh banner (object-fit), mặc định contain */}
+                  <FormRow label={tr('Cách hiển thị ảnh (object-fit)', 'Image display (object-fit)')}>
+                    <select value={draft.bannerFit || 'contain'} onChange={(e) => set({ bannerFit: e.target.value as BannerFit })} className={erp.inputFull}>
+                      {BANNER_FITS.map((f) => (
+                        <option key={f} value={f}>
+                          {tr(FIT_LABEL[f][0], FIT_LABEL[f][1])}
+                        </option>
+                      ))}
+                    </select>
+                  </FormRow>
+                  <div className="space-y-1.5" data-testid="banner-list">
+                    {slots.map((s, i) => {
+                      const tools = (
+                        <span className="flex items-center gap-0.5">
+                          <button type="button" disabled={i === 0} onClick={() => moveSlot(i, -1)} className="p-1 rounded text-slate-500 hover:bg-slate-100 disabled:opacity-30 cursor-pointer" title={tr('Lên trước', 'Move up')}>
+                            <ArrowUp size={13} />
+                          </button>
+                          <button type="button" disabled={i === slots.length - 1} onClick={() => moveSlot(i, 1)} className="p-1 rounded text-slate-500 hover:bg-slate-100 disabled:opacity-30 cursor-pointer" title={tr('Xuống sau', 'Move down')}>
+                            <ArrowDown size={13} />
+                          </button>
+                          {s.kind === 'banner' && (
+                            <button type="button" onClick={() => removeBanner(s.b.id)} className="p-1 rounded text-rose-500 hover:bg-rose-50 cursor-pointer" title={tr('Xoá banner', 'Remove banner')}>
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </span>
+                      );
+                      if (s.kind !== 'banner') {
+                        // Ô slide Sinh nhật (code) / Chào mừng thành viên mới (CR): chỉ đổi vị trí, không xoá / không tắt ở đây
+                        const bday = s.kind === 'bday';
+                        const off = !bday && !draft.welcomeEnabled;
+                        return (
+                          <div key={s.kind} data-slot={s.kind} className={`flex items-center gap-2 border border-dashed rounded-[3px] p-1.5 ${bday ? 'border-pink-300 bg-pink-50/60' : 'border-sky-300 bg-sky-50/60'} ${off ? 'opacity-60' : ''}`}>
+                            <span className={`w-[136px] h-[34px] shrink-0 rounded-[2px] flex items-center justify-center ${bday ? 'bg-pink-100 text-pink-600' : 'bg-sky-100 text-sky-700'}`}>
+                              {bday ? <Cake size={16} /> : <Hand size={16} />}
+                            </span>
+                            <span className="flex-1 min-w-0">
+                              <span className="block text-[12px] font-bold text-slate-700">{bday ? tr('Chúc mừng sinh nhật', 'Birthday greetings') : tr('Chào mừng thành viên mới', 'Welcome new members')}</span>
+                              <span className="block text-[11px] text-slate-500">
+                                {bday
+                                  ? tr('Box sinh nhật hôm nay · chỉ đổi vị trí, không xoá được', 'Today’s birthday box · reorder only, cannot be removed')
+                                  : off
+                                    ? tr('Đang tắt — bật ở mục “Chào mừng thành viên mới”', 'Off — turn on under “Welcome new members”')
+                                    : tr('Nhân sự đợt onboard tuần này · chỉ đổi vị trí, không xoá được', 'This week’s onboard batch · reorder only, cannot be removed')}
+                              </span>
+                            </span>
+                            <span className="flex flex-col items-end gap-1 shrink-0">
+                              <span className="text-[11px] text-slate-500">{i + 1}</span>
+                              {tools}
+                            </span>
+                          </div>
+                        );
+                      }
+                      const b = s.b;
+                      const size = sizes[b.url];
+                      const issue = size ? bannerSizeIssue(size[0], size[1]) : null;
+                      return (
                         <div key={b.id} className={`flex items-start gap-2 border rounded-[3px] p-1.5 ${b.active ? 'border-slate-300 bg-white' : 'border-slate-200 bg-slate-50 opacity-70'}`}>
                           <img src={b.url} alt="" className="w-[136px] h-[34px] object-cover rounded-[2px] border border-slate-200 shrink-0" />
                           <div className="flex-1 min-w-0 space-y-1">
@@ -774,106 +984,70 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
                             <input value={b.link} onChange={(e) => patchBanner(b.id, { link: e.target.value })} placeholder={tr('Link khi bấm vào banner (tuỳ chọn) — https://...', 'Link when the banner is clicked (optional) — https://...')} className={`${erp.inputFull} h-7 text-[12px]`} />
                           </div>
                           <div className="flex flex-col items-end gap-1 shrink-0">
-                            <span className="flex items-center gap-1.5" title={b.active ? tr('Đang hiển thị', 'Visible') : tr('Đang ẩn', 'Hidden')}>
+                            <span className="flex items-center gap-1.5">
+                              {size && size[0] > 0 && (
+                                <span
+                                  className={`text-[11px] tabular-nums inline-flex items-center gap-0.5 ${issue ? 'text-amber-700' : 'text-slate-400'}`}
+                                  title={issue === 'ratio' ? tr('Không đúng tỉ lệ 4:1 (khuyến nghị 3200×800)', 'Not 4:1 (recommended 3200×800)') : issue === 'small' ? tr('Nhỏ hơn 1600×400, có thể bị mờ', 'Smaller than 1600×400, may be blurry') : undefined}
+                                >
+                                  {issue && <AlertTriangle size={11} />}
+                                  {size[0]}×{size[1]}
+                                </span>
+                              )}
                               <span className="text-[11px] text-slate-500">{i + 1}</span>
+                              <span className="text-[11px] text-slate-500">{b.active ? tr('Đang hiển thị', 'Visible') : tr('Đang ẩn', 'Hidden')}</span>
                               <Switch on={b.active} onChange={(v) => patchBanner(b.id, { active: v })} />
                             </span>
-                            <span className="flex items-center gap-0.5">
-                              <button type="button" disabled={i === 0} onClick={() => moveBanner(i, -1)} className="p-1 rounded text-slate-500 hover:bg-slate-100 disabled:opacity-30 cursor-pointer" title={tr('Lên trước', 'Move up')}>
-                                <ArrowUp size={13} />
-                              </button>
-                              <button type="button" disabled={i === banners.length - 1} onClick={() => moveBanner(i, 1)} className="p-1 rounded text-slate-500 hover:bg-slate-100 disabled:opacity-30 cursor-pointer" title={tr('Xuống sau', 'Move down')}>
-                                <ArrowDown size={13} />
-                              </button>
-                              <button type="button" onClick={() => setBanners((l) => l.filter((x) => x.id !== b.id))} className="p-1 rounded text-rose-500 hover:bg-rose-50 cursor-pointer" title={tr('Xoá banner', 'Remove banner')}>
-                                <Trash2 size={13} />
-                              </button>
-                            </span>
+                            {tools}
                           </div>
                         </div>
-                      ))}
+                      );
+                    })}
+                  </div>
+                  {!banners.length && (
+                    <div className="border border-dashed border-slate-300 rounded-[4px] bg-slate-50 py-5 text-center text-[12px] text-slate-500">
+                      {tr('Chưa có banner — trang chủ chỉ hiện slide Sinh nhật / Chào mừng thành viên mới.', 'No banners yet — the home page shows only the Birthday / Welcome new members slides.')}{' '}
+                      <button type="button" onClick={() => bannerRef.current?.click()} className="text-[#1f5fa8] font-semibold hover:underline cursor-pointer">
+                        {tr('Tải banner', 'Upload banner')}
+                      </button>
                     </div>
                   )}
                 </div>
               </Panel>
 
-              <Panel title={tr('Thiết kế box', 'Box design')} icon={Palette}>
-                <div className="space-y-2.5">
-                  <FormRow label={tr('Bố cục', 'Layout')}>
-                    <Segmented
-                      options={[
-                        { key: 'cards' as const, label: tr('Thẻ', 'Cards') },
-                        { key: 'list' as const, label: tr('Danh sách', 'List') },
-                        { key: 'banner' as const, label: tr('Banner ảnh nền', 'Background banner') },
-                      ]}
-                      value={draft.layout}
-                      onChange={(v) => set({ layout: v })}
-                    />
-                  </FormRow>
-                  <FormRow label={tr('Màu chủ đạo', 'Theme color')}>
-                    <span className="flex items-center gap-1.5 h-8">
-                      {(Object.keys(BOX_THEMES) as BoxTheme[]).map((k) => (
-                        <button
-                          key={k}
-                          type="button"
-                          onClick={() => set({ theme: k })}
-                          title={en ? BOX_THEMES[k].labelEn : BOX_THEMES[k].label}
-                          className={`w-6 h-6 rounded-full ${BOX_THEMES[k].swatch} cursor-pointer ${draft.theme === k ? 'ring-2 ring-offset-2 ring-slate-500' : 'opacity-80 hover:opacity-100'}`}
-                        />
-                      ))}
-                      <span className="ml-1 text-[12px] text-slate-500">{en ? BOX_THEMES[draft.theme].labelEn : BOX_THEMES[draft.theme].label}</span>
-                    </span>
-                  </FormRow>
-                  <FormRow label={tr('Ảnh nền (MarCom)', 'Background image (MarCom)')} hint={tr('Dùng cho bố cục Banner · khuyến nghị 1600×500 · để trống dùng nền theo màu chủ đạo', 'For the Banner layout · recommended 1600×500 · leave empty to use the theme color')}>
-                    <input ref={bgRef} type="file" accept="image/*" className="hidden" onChange={(e) => pickImage(e.target.files?.[0], (url, name) => set({ bgUrl: url, bgName: name, layout: 'banner' }))} />
-                    {imageField(draft.bgUrl, draft.bgName, bgRef, () => set({ bgUrl: null, bgName: null }), tr('Tải ảnh nền', 'Upload background'))}
-                  </FormRow>
-                  <FormRow label={tr('Kiểu ảnh nhân sự', 'Employee photo style')}>
-                    <Segmented
-                      options={[
-                        { key: 'circle' as const, label: tr('Tròn', 'Circle') },
-                        { key: 'rounded' as const, label: tr('Vuông bo góc', 'Rounded square') },
-                      ]}
-                      value={draft.photoShape}
-                      onChange={(v) => set({ photoShape: v })}
-                    />
-                  </FormRow>
-                  <FormRow label={tr('Thông tin hiển thị', 'Displayed info')} hint={tr('Luôn có ảnh chúc mừng và họ tên', 'Greeting photo and full name are always shown')}>
-                    <span className="flex items-center gap-4 h-8 text-[12px] text-slate-700">
-                      <label className="flex items-center gap-1.5 cursor-pointer">
-                        <input type="checkbox" checked={draft.showDivision} onChange={(e) => set({ showDivision: e.target.checked })} className="accent-[#1f5fa8]" />
-                        {tr('Division (Khối)', 'Division')}
-                      </label>
-                      <label className="flex items-center gap-1.5 cursor-pointer">
-                        <input type="checkbox" checked={draft.showPosition} onChange={(e) => set({ showPosition: e.target.checked })} className="accent-[#1f5fa8]" />
-                        {tr('Vị trí', 'Position')}
-                      </label>
-                    </span>
-                  </FormRow>
-                </div>
+              {/* CR-20261105-001 thiết kế riêng 05/11 — 2 nhóm thiết kế: slide Sinh nhật / slide Chào mừng thành viên mới */}
+              <Panel title={tr('Thiết kế slide Sinh nhật', 'Birthday slide design')} icon={Cake}>
+                {slideDesignFields('bday')}
               </Panel>
 
-              <Panel title={tr('Nội dung box', 'Box content')} icon={FileText}>
+              <Panel
+                title={tr('Thiết kế slide Chào mừng thành viên mới', 'Welcome new members slide design')}
+                icon={Hand}
+                footer={tr(
+                  `Đợt gần nhất: thứ 3 ${fmtDate(welcomeTue)} — nhân sự onboard ${fmtDayMonth(welcomeWin.from)}–${fmtDayMonth(welcomeWin.to)} (${newcomers.length} người, cùng danh sách màn Welcome, loại Cancel Onboard / nghỉ việc) · trang chủ chỉ hiện slide vào đúng ngày thứ 3 của đợt (xem trước luôn hiện). Không có ai → ẩn slide.`,
+                  `Latest batch: Tuesday ${fmtDate(welcomeTue)} — employees onboarding ${fmtDayMonth(welcomeWin.from)}–${fmtDayMonth(welcomeWin.to)} (${newcomers.length}, same list as the Welcome screen, excluding Cancel Onboard / resigned) · the home page shows this slide only on the batch Tuesday (preview always shows it). Nobody → slide hidden.`,
+                )}
+              >
                 <div className="space-y-2.5">
-                  <FormRow label={tr('Tiêu đề', 'Title')}>
-                    <span className="flex items-center gap-1.5">
-                      <input value={draft.title} onChange={(e) => set({ title: e.target.value })} className={erp.inputFull} />
-                      <button
-                        type="button"
-                        onClick={() => set({ title: draft.title + '{{soluong}}' })}
-                        title={tr('Số người sinh nhật hôm nay', 'Number of birthdays today')}
-                        className="shrink-0 px-1.5 py-px rounded-[3px] border border-[#b9d3f0] bg-[#eaf2fc] text-[#1f5fa8] text-[11px] font-mono hover:bg-[#dbe9fa] cursor-pointer"
-                      >
-                        {'{{soluong}}'}
-                      </button>
+                  <FormRow label={tr('Trạng thái', 'Status')}>
+                    <span className="flex items-center gap-2 h-8">
+                      <Switch on={draft.welcomeEnabled} onChange={(v) => set({ welcomeEnabled: v })} />
+                      <span className="text-[12px] text-slate-700">
+                        {draft.welcomeEnabled ? tr('Hiện slide nhân sự mới của đợt onboard tuần này', 'Show the new members of this week’s onboard batch') : tr('Không hiển thị', 'Hidden')}
+                      </span>
                     </span>
                   </FormRow>
-                  <EditorRow label={tr('Lời chúc chung', 'Common greeting')}>
-                    <RichTextEditor compact value={draft.greeting} onChange={(html) => set({ greeting: html })} />
-                  </EditorRow>
-                  <FormRow label={tr('Ký tên', 'Signature')}>
-                    <input value={draft.signature} onChange={(e) => set({ signature: e.target.value })} className={erp.inputFull} />
-                  </FormRow>
+                  {draft.welcomeEnabled && (
+                    <>
+                      {/* đồng bộ code iMIS 05/11 — vị trí slide đổi bằng mũi tên ở danh sách Banner trang chủ, như slide sinh nhật (BirthdaySlideIndex) */}
+                      <FormRow label={tr('Vị trí slide', 'Slide position')}>
+                        <span className="flex items-center h-8 text-[12px] text-slate-600">
+                          {tr(`Mục ${draft.welcomeSlideIndex + 1} trong danh sách “Banner trang chủ” — dùng mũi tên ↑ ↓ để đổi`, `Item ${draft.welcomeSlideIndex + 1} in the “Home page banners” list — use ↑ ↓ to move`)}
+                        </span>
+                      </FormRow>
+                      {slideDesignFields('welcome')}
+                    </>
+                  )}
                 </div>
               </Panel>
             </>
@@ -996,19 +1170,21 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
                       : tr('Trang chủ hiện nội dung mặc định', 'Home page shows the default content')
                 }
               >
+                {/* chốt 05/11 Q&A #23 — "Ẩn slide sinh nhật" (kênh Teams đang ẩn) */}
                 <Segmented
                   options={[
-                    { key: 'hide' as const, label: tr('Ẩn box / không đăng', 'Hide box / do not post') },
+                    { key: 'hide' as const, label: TEAMS_POST_ENABLED ? tr('Ẩn slide sinh nhật / không đăng', 'Hide birthday slide / do not post') : tr('Ẩn slide sinh nhật', 'Hide birthday slide') },
                     { key: 'default' as const, label: tr('Nội dung mặc định', 'Default content') },
                   ]}
                   value={draft.emptyMode}
                   onChange={(v) => set({ emptyMode: v })}
                 />
               </FormRow>
+              {/* đồng bộ code iMIS 05/11 — nội dung mặc định là ô chữ thường (#14) */}
               {draft.emptyMode === 'default' && (
-                <EditorRow label={tr('Nội dung mặc định', 'Default content')}>
-                  <RichTextEditor compact value={draft.emptyText} onChange={(html) => set({ emptyText: html })} />
-                </EditorRow>
+                <FormRow label={tr('Nội dung mặc định', 'Default content')}>
+                  <textarea rows={2} value={draft.emptyText} onChange={(e) => set({ emptyText: e.target.value })} className={textarea} />
+                </FormRow>
               )}
             </div>
           </Panel>
@@ -1018,16 +1194,27 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
           title={target === 'home' ? tr('Xem trước · Trang chủ iMIS', 'Preview · iMIS home page') : tr('Xem trước · Microsoft Teams', 'Preview · Microsoft Teams')}
           icon={Eye}
           actions={
-            <label className="flex items-center gap-1.5 text-[12px] text-slate-600 cursor-pointer select-none">
-              <input type="checkbox" checked={simulateEmpty} onChange={(e) => setSimulateEmpty(e.target.checked)} className="accent-[#1f5fa8]" />
-              {tr('Giả lập ngày không có sinh nhật', 'Simulate a day with no birthdays')}
-            </label>
+            <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <label className="flex items-center gap-1.5 text-[12px] text-slate-600 cursor-pointer select-none">
+                <input type="checkbox" checked={simulateEmpty} onChange={(e) => setSimulateEmpty(e.target.checked)} className="accent-[#1f5fa8]" />
+                {tr('Giả lập ngày không có sinh nhật', 'Simulate a day with no birthdays')}
+              </label>
+              {target === 'home' && draft.welcomeEnabled && (
+                <label className="flex items-center gap-1.5 text-[12px] text-slate-600 cursor-pointer select-none">
+                  <input type="checkbox" checked={simulateNoNewcomers} onChange={(e) => setSimulateNoNewcomers(e.target.checked)} className="accent-[#1f5fa8]" />
+                  {tr('Giả lập đợt không có nhân sự mới', 'Simulate a batch with no new members')}
+                </label>
+              )}
+            </span>
           }
-          footer={tr('Danh sách người sinh nhật lấy tự động từ hồ sơ Employee theo ngày, kèm ảnh chúc mừng', 'The birthday list is taken automatically from Employee profiles by date, with each greeting photo')}
+          footer={tr(
+            'Người sinh nhật lấy tự động từ hồ sơ Employee theo ngày, kèm ảnh chúc mừng · Nhân sự mới lấy theo đợt onboard tuần này, ảnh Employee · Đợt không có ai: xem trước dùng nhân sự mẫu (gắn nhãn "Dữ liệu mẫu"), trang chủ ẩn slide',
+            'Birthdays are taken automatically from Employee profiles by date, with each greeting photo · New members come from this week’s onboard batch, with Employee photos · Empty batch: the preview uses sample people (labelled "Sample data"), the home page hides the slide',
+          )}
         >
           {target === 'home' ? (
             draft.showOnHome ? (
-              <BirthdayBox preview simulateEmpty={simulateEmpty} cfg={draft} />
+              <BirthdayBox preview simulateEmpty={simulateEmpty} simulateNoNewcomers={simulateNoNewcomers} cfg={draft} />
             ) : (
               <div className="border border-dashed border-slate-300 rounded-[4px] bg-slate-50 py-8 text-center text-[12px] text-slate-400">{tr('Đang tắt hiển thị trên trang chủ iMIS.', 'Display on the iMIS home page is off.')}</div>
             )
@@ -1047,15 +1234,20 @@ const MailLogs: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
   const { logs, resend } = useMarcom();
   const { tr, note } = useMarcomLang();
   const [kind, setKind] = useState<'all' | MailKind>('all');
-  const [status, setStatus] = useState<'all' | 'sent' | 'failed' | 'skipped' | 'test'>('all');
-  const rows = logs.filter((l) => (kind === 'all' || l.kind === kind) && (status === 'all' || l.status === status));
-  // Đã có bản ghi Thành công (tự thử lại hoặc gửi lại thủ công) → ẩn nút Gửi lại ở bản ghi lỗi
-  const resent = new Set(logs.filter((l) => l.status === 'sent').map((l) => `${l.kind}-${l.employeeId}`));
+  // đồng bộ code iMIS 05/11 — không có trạng thái "Bỏ qua"; có bộ chọn năm (#12), mặc định năm hiện tại
+  const [status, setStatus] = useState<'all' | 'sent' | 'failed' | 'test'>('all');
+  const curYear = new Date().getFullYear();
+  const [year, setYear] = useState(curYear);
+  const yearOf = (iso: string) => new Date(iso).getFullYear();
+  const years = Array.from(new Set([curYear, ...logs.map((l) => yearOf(l.sentAt))])).sort((a, b) => b - a);
+  const rows = logs.filter((l) => yearOf(l.sentAt) === year && (kind === 'all' || l.kind === kind) && (status === 'all' || l.status === status));
+  // đồng bộ code iMIS 05/11 — dòng lỗi "đã gửi lại" khi có dòng Thành công SAU nó (cùng loại, người, năm) → ẩn nút Gửi lại
+  const resent = (l: (typeof logs)[number]) =>
+    logs.some((s) => s.status === 'sent' && s.kind === l.kind && s.to === l.to && yearOf(s.sentAt) === yearOf(l.sentAt) && s.sentAt > l.sentAt);
 
   const statusTag = {
     sent: <Tag cls={TAG.green}>{tr('Thành công', 'Sent')}</Tag>,
     failed: <Tag cls={TAG.rose}>{tr('Lỗi', 'Failed')}</Tag>,
-    skipped: <Tag cls={TAG.slate}>{tr('Bỏ qua', 'Skipped')}</Tag>,
     test: <Tag cls={TAG.blue}>{tr('Gửi thử', 'Test')}</Tag>,
   };
 
@@ -1063,6 +1255,15 @@ const MailLogs: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
     <Panel title={tr('Lịch sử gửi email', 'Email send history')} icon={History} noPad actions={<span className="text-[12px] text-slate-600">{rows.length} {tr('bản ghi', 'records')}</span>}>
       <div className="p-3 border-b border-slate-200">
         <FilterBar>
+          <FilterCell label={tr('Năm', 'Year')}>
+            <select value={year} onChange={(e) => setYear(Number(e.target.value))} className={`${erp.input} w-24`}>
+              {years.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          </FilterCell>
           <FilterCell label={tr('Loại mail', 'Email type')}>
             <Segmented
               options={[
@@ -1079,7 +1280,6 @@ const MailLogs: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
               <option value="all">{tr('Tất cả', 'All')}</option>
               <option value="sent">{tr('Thành công', 'Sent')}</option>
               <option value="failed">{tr('Lỗi', 'Failed')}</option>
-              <option value="skipped">{tr('Bỏ qua', 'Skipped')}</option>
               <option value="test">{tr('Gửi thử', 'Test')}</option>
             </select>
           </FilterCell>
@@ -1120,7 +1320,8 @@ const MailLogs: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
                 <td className={erp.td}>{statusTag[l.status]}</td>
                 <td className={`${erp.td} text-slate-500`}>{note(l.note) ?? '—'}</td>
                 <td className={`${erp.td} text-center`}>
-                  {l.status === 'failed' && !resent.has(`${l.kind}-${l.employeeId}`) && (
+                  {/* đồng bộ code iMIS 05/11 — chỉ dòng lỗi (không phải gửi thử) của năm hiện tại, chưa có Thành công sau đó */}
+                  {l.status === 'failed' && yearOf(l.sentAt) === curYear && !resent(l) && (
                     <Btn
                       className="h-7"
                       icon={Send}

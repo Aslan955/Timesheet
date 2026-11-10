@@ -8,7 +8,7 @@ import * as XLSX from 'xlsx';
 import { AlertTriangle, Check, FileDown, FileSpreadsheet, FileText, Printer, RotateCcw, Undo2, X } from 'lucide-react';
 import { DateInput, today } from '../EmployeePage';
 import { Btn, erp } from '../erp/Erp';
-import { FIELDS, fieldLabel, typeDef, useCatalog, type AppendixTypeDef, type TemplateDef } from './catalog';
+import { FIELDS, fieldLabel, tplHasCompany, typeDef, useCatalog, type AppendixTypeDef, type TemplateDef } from './catalog';
 import { renderAsync } from '../../vendor/docx-preview';
 import { FIELD_RE, MF_RE, inspectDocx, mergeDocx, soThanhChu, type DocLine } from './docx';
 
@@ -60,7 +60,7 @@ const derivedOf = (name: string, v: string, wordsManual: boolean): Record<string
   if (KEYS.has(`${k}_text`) && dateTextOf(v)) return { [`${k}_text`]: dateTextOf(v) };
   return {};
 };
-const OPTIONAL = new Set(['Giấy_ủy_quyền', 'Ghi_chú', 'Mô_tả_công_việc', 'Contract_end', 'Contract_end_text', 'Số_tháng_HD', 'Điện_thoại_công_ty', 'Tên_phụ_lục', 'Nội_dung_điều_chỉnh', 'Mã_số_thuế', 'Email_NLĐ', 'Trình_độ_chuyên_môn', 'Số_giấy_phép_lao_động', 'Số_tài_khoản', 'Ngân_hàng', 'Cấp_bậc', 'Quản_lý_trực_tiếp']);
+const OPTIONAL = new Set(['Giấy_ủy_quyền', 'Ghi_chú', 'Mô_tả_công_việc', 'Contract_end', 'Contract_end_text', 'Số_tháng_HD', 'Điện_thoại_công_ty', 'Tên_phụ_lục', 'Nội_dung_điều_chỉnh', 'Mã_số_thuế', 'Email_NLĐ', 'Trình_độ_chuyên_môn', 'Số_giấy_phép_lao_động', 'Số_tài_khoản', 'Ngân_hàng', 'Cấp_bậc', 'Quản_lý_trực_tiếp', 'Ngày_bắt_đầu_đóng_BH']);
 const KIND_PREFIX = { HD: 'Hợp đồng', KT: 'Kèm theo', PL: 'Phụ lục' } as const;
 
 /** Trường số trong file dữ liệu trộn (ô số → mẫu Word có \\# #,##0 tự định dạng). */
@@ -358,24 +358,52 @@ const blocksOf = (lines: DocLine[]): (DocLine | PreviewTable)[] => {
   return out;
 };
 
-/** Xem trước đúng định dạng: trộn file Word rồi dựng bằng docx-preview (chỉ xem, sửa thông tin ở chế độ "Sửa nhanh"). */
+/** Tô trường trộn trên bản đã dựng: xanh = có trong danh sách, đỏ = không có (chỉ bắt được trường nằm trọn trong 1 đoạn chữ). */
+const markFields = (root: HTMLElement, known: Set<string>) => {
+  const re = new RegExp(`«\\s*([\\p{L}\\p{M}\\p{N}_]+)\\s*»|${FIELD_RE.source}`, 'gu');
+  const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes: Text[] = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+  for (const n of nodes) {
+    const text = n.data;
+    const ms = Array.from(text.matchAll(re));
+    if (!ms.length) continue;
+    const frag = root.ownerDocument.createDocumentFragment();
+    let last = 0;
+    for (const m of ms) {
+      frag.append(text.slice(last, m.index));
+      const ok = known.has((m[1] ?? m[2]).normalize('NFC'));
+      const mk = root.ownerDocument.createElement('mark');
+      mk.textContent = m[0];
+      mk.style.cssText = `background:${ok ? '#d1fae5' : '#ffe4e6'};color:${ok ? '#065f46' : '#be123c'};border-radius:2px`;
+      mk.title = ok ? 'Trường trộn hợp lệ' : 'Trường không có trong danh sách';
+      frag.append(mk);
+      last = m.index! + m[0].length;
+    }
+    frag.append(text.slice(last));
+    n.replaceWith(frag);
+  }
+};
+
+/** Xem trước đúng định dạng bằng docx-preview: có `data` → trộn dữ liệu trước; không có → dựng nguyên file mẫu (tô trường trộn theo `fieldKeys`). */
 let previewSeq = 0;
-const ExactPreview: React.FC<{ tpl: TemplateDef; data: Record<string, string> }> = ({ tpl, data }) => {
+export const ExactPreview: React.FC<{ tpl: Pick<TemplateDef, 'id' | 'data'>; data?: Record<string, string>; fieldKeys?: Set<string> }> = ({ tpl, data, fieldKeys }) => {
   const host = useRef<HTMLDivElement>(null);
   const css = useRef<HTMLDivElement>(null);
   const cls = useMemo(() => `dxp${++previewSeq}`, []); // style riêng cho từng bản xem trước
   const [state, setState] = useState<'loading' | 'ok' | string>('loading');
-  const key = JSON.stringify(data);
+  const key = JSON.stringify(data ?? null);
   useEffect(() => {
     let live = true;
     setState('loading');
     const t = setTimeout(async () => {
       try {
-        const bytes = await mergeDocx(tpl.data!, data);
+        const bytes = data ? await mergeDocx(tpl.data!, data) : tpl.data!;
         if (!live || !host.current || !css.current) return;
         await renderAsync(new Blob([bytes as BlobPart]), host.current, css.current, { className: cls, inWrapper: true, breakPages: true, ignoreLastRenderedPageBreak: true, renderHeaders: true, renderFooters: true, useBase64URL: true, experimental: true });
         host.current.querySelectorAll<HTMLElement>(':scope > div > section').forEach((sec) => !(sec.textContent || '').replace(/[\s\u00a0\-_.…]/g, '') && !sec.querySelector('img, svg, canvas') && sec.remove());
         fixDocxLayout(host.current, css.current);
+        if (fieldKeys) markFields(host.current, fieldKeys);
         if (live) setState('ok');
       } catch (e) {
         if (live) setState((e as Error).message);
@@ -385,7 +413,7 @@ const ExactPreview: React.FC<{ tpl: TemplateDef; data: Record<string, string> }>
       live = false;
       clearTimeout(t);
     };
-  }, [tpl.id, key]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tpl.id, tpl.data, key]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div data-testid="exact-preview">
       <div ref={css} hidden />
@@ -454,7 +482,7 @@ export const PrintDialog: React.FC<{ items: PrintItem[]; onClose: () => void; on
 
   // Mẫu có thể chọn cho hợp đồng đang xem (theo công ty), chia nhóm
   const options = useMemo(() => {
-    const ok = cat.templates.filter((t) => t.active && t.data && (!t.companyId || t.companyId === it.companyId));
+    const ok = cat.templates.filter((t) => t.active && t.data && tplHasCompany(t, it.companyId));
     const tid = typeDef(it.typeName)?.id || '';
     return [
       { label: `Mẫu hợp đồng phù hợp (${it.typeName})`, list: ok.filter((t) => t.kind === 'HD' && t.appliesTo.includes(tid)) },
@@ -569,7 +597,7 @@ export const PrintDialog: React.FC<{ items: PrintItem[]; onClose: () => void; on
     setCfg((p) =>
       Object.fromEntries(
         items.map((x) => {
-          const fits = !t || !t.companyId || t.companyId === x.companyId;
+          const fits = !t || tplHasCompany(t, x.companyId);
           return [x.id, fits ? { ...p[x.id], tpl: c.tpl, app: c.app, appDate: c.appDate } : p[x.id]];
         }),
       ),

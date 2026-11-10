@@ -12,7 +12,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { Cake, ChevronLeft, ChevronRight, Copy, Download, FileSpreadsheet, RefreshCw, Table2, Trash2, Upload } from 'lucide-react';
 import { useMarcom } from '../../marcom/MarcomContext';
-import { Avatar, FilterBar, FilterCell, LangSwitch, TAG, iconBtn, useToast } from '../../marcom/MarcomUi';
+import { Avatar, FilterBar, FilterCell, TAG, iconBtn, useToast } from '../../marcom/MarcomUi';
 import { useMarcomLang } from '../../marcom/i18n';
 import { Btn, ErpPage, ErpTitleBar, KpiBox, Panel, Tag, erp } from '../erp/Erp';
 import {
@@ -154,11 +154,11 @@ export const BirthdayListPage: React.FC = () => {
     <ErpPage>
       {toastNode}
       <ErpTitleBar
-        crumbs={['Human Resources', 'MarCom', tr('Sinh nhật nhân sự', 'Employee birthdays')]}
+        crumbs={['MarCom', tr('Sinh nhật nhân sự', 'Employee birthdays')]} /* đồng bộ code iMIS 05/11 — menu cấp 1 MarCom */
         title={tr('Sinh nhật nhân sự', 'Employee birthdays')}
         actions={
           <>
-            <LangSwitch />
+            {/* đồng bộ code iMIS 05/11 — không có nút VI | EN riêng */}
             <Btn icon={RefreshCw} onClick={refresh} title={tr('Dữ liệu đọc trực tiếp từ hồ sơ Employee', 'Data is read directly from Employee profiles')}>
               {tr('Làm mới', 'Refresh')}
             </Btn>
