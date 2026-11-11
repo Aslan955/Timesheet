@@ -669,7 +669,7 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
     setSlots(n);
   };
   const removeBanner = (id: string) => setSlots(slots.filter((s) => s.kind !== 'banner' || s.b.id !== id));
-  // Kích thước thật của ảnh banner (đo trên trình duyệt, không lưu) → cảnh báo lệch 4:1 / nhỏ hơn 1600px
+  // Kích thước thật của ảnh banner (đo trên trình duyệt, không lưu) → cảnh báo lệch 16:3 / nhỏ hơn 1600px
   const [sizes, setSizes] = useState<Record<string, [number, number]>>({});
   const measure = (url: string) =>
     new Promise<[number, number]>((resolve) => {
@@ -689,12 +689,12 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
     if (!imgs.length) return;
     const added = imgs.map((f, k) => ({ id: `bn-${Date.now()}-${k}`, name: f.name.replace(/\.[^.]+$/, ''), url: URL.createObjectURL(f), link: '', active: true }));
     setBanners((l) => [...l, ...added]);
-    // Cảnh báo (không chặn) từng file sai tỉ lệ 4:1 / nhỏ hơn 1600px — chữ như code
+    // Cảnh báo (không chặn) từng file sai tỉ lệ 16:3 / nhỏ hơn 1600px
     for (const b of added) {
       const [w, h] = await measure(b.url);
       const issue = bannerSizeIssue(w, h);
-      if (issue === 'ratio') toast(tr(`${b.name}: ảnh ${w}×${h} không đúng tỉ lệ 4:1 — banner sẽ có nền mờ hai bên hoặc trên dưới (hoặc bị méo nếu chọn fill). Nên dùng 3200×800.`, `${b.name}: ${w}×${h} is not 4:1 — the banner gets blurred side/top bars (or is stretched with fill). Use 3200×800.`));
-      if (issue === 'small') toast(tr(`${b.name}: ảnh ${w}×${h} nhỏ hơn khuyến nghị — có thể mờ trên màn hình lớn. Nên dùng 3200×800 (tối thiểu 1600×400).`, `${b.name}: ${w}×${h} is smaller than recommended — may look blurry on large screens. Use 3200×800 (min 1600×400).`));
+      if (issue === 'ratio') toast(tr(`${b.name}: ảnh ${w}×${h} không đúng tỉ lệ 16:3 — banner sẽ có nền mờ hai bên hoặc trên dưới (hoặc bị méo nếu chọn fill). Nên dùng 1600×300 (nét hơn: 3200×600).`, `${b.name}: ${w}×${h} is not 16:3 — the banner gets blurred side/top bars (or is stretched with fill). Use 1600×300 (sharper: 3200×600).`));
+      if (issue === 'small') toast(tr(`${b.name}: ảnh ${w}×${h} nhỏ hơn khuyến nghị — có thể mờ trên màn hình lớn. Nên dùng 1600×300 trở lên (nét hơn: 3200×600).`, `${b.name}: ${w}×${h} is smaller than recommended — may look blurry on large screens. Use at least 1600×300 (sharper: 3200×600).`));
     }
   };
   const activeBanners = banners.filter((b) => b.active).length;
@@ -903,8 +903,8 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
                   </>
                 }
                 footer={tr(
-                  `Slide chạy lần lượt theo thứ tự danh sách (Chúc mừng sinh nhật${draft.welcomeEnabled ? ' + Chào mừng thành viên mới' : ''} + ${activeBanners ? `${activeBanners} banner đang bật` : 'banner'}) · mỗi mục ${draft.slideSeconds || 5} giây · di chuột vào thì dừng. Ảnh khuyến nghị 3200×800 px (tối thiểu 1600×400), tỉ lệ 4:1.`,
-                  `Slides run in list order (Birthday${draft.welcomeEnabled ? ' + Welcome new members' : ''} + ${activeBanners ? `${activeBanners} active banner(s)` : 'banners'}) · ${draft.slideSeconds || 5} seconds each · pauses on hover. Recommended image 3200×800 px (min 1600×400), ratio 4:1.`,
+                  `Slide chạy lần lượt theo thứ tự danh sách (Chúc mừng sinh nhật${draft.welcomeEnabled ? ' + Chào mừng thành viên mới' : ''} + ${activeBanners ? `${activeBanners} banner đang bật` : 'banner'}) · mỗi mục ${draft.slideSeconds || 5} giây · di chuột vào thì dừng. Ảnh khuyến nghị 1600×300 px (nét hơn: 3200×600), tỉ lệ 16:3 — khung tự co theo bề rộng màn hình nên ảnh luôn hiện trọn, không bị thu nhỏ.`,
+                  `Slides run in list order (Birthday${draft.welcomeEnabled ? ' + Welcome new members' : ''} + ${activeBanners ? `${activeBanners} active banner(s)` : 'banners'}) · ${draft.slideSeconds || 5} seconds each · pauses on hover. Recommended image 1600×300 px (sharper: 3200×600), ratio 16:3 — the frame scales with the screen width so the image always fills it.`,
                 )}
               >
                 <div className="space-y-2.5">
@@ -988,7 +988,7 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
                               {size && size[0] > 0 && (
                                 <span
                                   className={`text-[11px] tabular-nums inline-flex items-center gap-0.5 ${issue ? 'text-amber-700' : 'text-slate-400'}`}
-                                  title={issue === 'ratio' ? tr('Không đúng tỉ lệ 4:1 (khuyến nghị 3200×800)', 'Not 4:1 (recommended 3200×800)') : issue === 'small' ? tr('Nhỏ hơn 1600×400, có thể bị mờ', 'Smaller than 1600×400, may be blurry') : undefined}
+                                  title={issue === 'ratio' ? tr('Không đúng tỉ lệ 16:3 (khuyến nghị 1600×300)', 'Not 16:3 (recommended 1600×300)') : issue === 'small' ? tr('Nhỏ hơn 1600×300, có thể bị mờ', 'Smaller than 1600×300, may be blurry') : undefined}
                                 >
                                   {issue && <AlertTriangle size={11} />}
                                   {size[0]}×{size[1]}

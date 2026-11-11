@@ -96,31 +96,31 @@ export interface MarcomConfig {
   box: BoxConfig;
 }
 
-/** Banner mẫu (ảnh vẽ sẵn, 2000×300 — tỉ lệ khung trang chủ cao 200px) — MarCom thay bằng banner thật ở Cấu hình › Box sinh nhật.
+/** Banner mẫu (ảnh vẽ sẵn, 1600×300 — tỉ lệ 16:3 của khung trang chủ) — MarCom thay bằng banner thật ở Cấu hình › Box sinh nhật.
  *  Chữ đặt trong vùng an toàn giữa (x 400–1600) vì khung hẹp sẽ cắt bớt hai bên. */
 const sampleBanner = (tag: string, title: string, sub: string, cta: string, c1: string, c2: string, c3: string) => {
-  const dots = Array.from({ length: 48 }, (_, i) => `<circle cx="${1380 + (i % 12) * 22}" cy="${60 + Math.floor(i / 12) * 22}" r="2.2" fill="#fff" opacity=".22"/>`).join('');
+  const dots = Array.from({ length: 48 }, (_, i) => `<circle cx="${1380 + (i % 12) * 22}" cy="${104 + Math.floor(i / 12) * 22}" r="2.2" fill="#fff" opacity=".22"/>`).join('');
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="300" viewBox="0 0 2000 300">
+    `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="300" viewBox="0 0 2000 375">
 <defs>
 <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset=".55" stop-color="${c2}"/><stop offset="1" stop-color="${c3}"/></linearGradient>
 <radialGradient id="glow" cx=".75" cy=".2" r=".6"><stop offset="0" stop-color="#fff" stop-opacity=".35"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
 <linearGradient id="w" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity=".18"/></linearGradient>
 </defs>
-<rect width="2000" height="300" fill="url(#g)"/>
-<rect width="2000" height="300" fill="url(#glow)"/>
-<path d="M0 250 C380 190 700 310 1100 240 S1700 170 2000 220 V300 H0 Z" fill="#fff" opacity=".07"/>
-<path d="M0 280 C420 235 820 305 1240 270 S1780 235 2000 260 V300 H0 Z" fill="#fff" opacity=".09"/>
-<path d="M1180 0 L1420 0 L1180 300 L940 300 Z" fill="url(#w)"/>
-<path d="M1460 0 L1560 0 L1320 300 L1220 300 Z" fill="url(#w)" opacity=".7"/>
+<rect width="2000" height="375" fill="url(#g)"/>
+<rect width="2000" height="375" fill="url(#glow)"/>
+<path d="M0 315 C380 255 700 375 1100 305 S1700 235 2000 285 V375 H0 Z" fill="#fff" opacity=".07"/>
+<path d="M0 345 C420 300 820 370 1240 335 S1780 300 2000 325 V375 H0 Z" fill="#fff" opacity=".09"/>
+<path d="M1180 0 L1420 0 L1120 375 L880 375 Z" fill="url(#w)"/>
+<path d="M1460 0 L1560 0 L1260 375 L1160 375 Z" fill="url(#w)" opacity=".7"/>
 <circle cx="1640" cy="40" r="120" fill="#fff" opacity=".06"/>
 ${dots}
-<rect x="400" y="74" rx="15" ry="15" width="${tag.length * 11 + 36}" height="30" fill="#fff" opacity=".2"/>
-<text x="418" y="95" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15" font-weight="800" letter-spacing="2" fill="#fff">${tag}</text>
-<text x="398" y="166" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="50" font-weight="800" fill="#fff">${title}</text>
-<text x="400" y="210" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="22" fill="#fff" opacity=".88">${sub}</text>
-<rect x="1430" y="126" rx="24" ry="24" width="${cta.length * 12 + 64}" height="48" fill="#fff"/>
-<text x="${1430 + (cta.length * 12 + 64) / 2}" y="157" text-anchor="middle" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" font-weight="800" fill="${c1}">${cta} →</text>
+<rect x="400" y="110" rx="15" ry="15" width="${tag.length * 11 + 36}" height="30" fill="#fff" opacity=".2"/>
+<text x="418" y="131" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15" font-weight="800" letter-spacing="2" fill="#fff">${tag}</text>
+<text x="398" y="200" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="50" font-weight="800" fill="#fff">${title}</text>
+<text x="400" y="244" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="22" fill="#fff" opacity=".88">${sub}</text>
+<rect x="1430" y="162" rx="24" ry="24" width="${cta.length * 12 + 64}" height="48" fill="#fff"/>
+<text x="${1430 + (cta.length * 12 + 64) / 2}" y="193" text-anchor="middle" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" font-weight="800" fill="${c1}">${cta} →</text>
 </svg>`,
   )}`;
 };

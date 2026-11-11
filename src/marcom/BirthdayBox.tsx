@@ -121,8 +121,9 @@ export const designPatch = (kind: PeopleKind, p: Partial<SlideDesign>): Partial<
   return Object.fromEntries(Object.entries(p).map(([k, v]) => [map[k as keyof SlideDesign], v])) as Partial<BoxConfig>;
 };
 
-/** Chiều cao cố định của Box ở chế độ gọn (trang chủ) — mọi slide cùng cao để không giật khi chuyển. */
-export const COMPACT_H = 'h-[200px]';
+/** Khung Box ở chế độ gọn (trang chủ): tỉ lệ 16:3 theo bề rộng — banner 1600×300 luôn hiện trọn, không bị thu nhỏ;
+ *  thấp nhất 160px trên màn hẹp. Mọi slide cùng khung nên không giật khi chuyển. */
+export const COMPACT_H = 'w-full aspect-[16/3] min-h-[160px]';
 /** Trên số người này thì danh sách trên banner chạy ngang; mỗi người ~3 giây. */
 export const MARQUEE_FROM = 5;
 const marqueeSeconds = (n: number) => Math.max(12, n * 3);
@@ -157,15 +158,15 @@ const PeopleSlide: React.FC<{
     const marquee = people.length > MARQUEE_FROM;
     const card = (e: MarcomEmployee) => (
       <div
-        className={`shrink-0 w-[144px] rounded-2xl px-2.5 pt-3.5 pb-3 text-center ${light ? 'bg-white/15 ring-1 ring-white/25 backdrop-blur' : 'bg-white/75 ring-1 ring-white backdrop-blur shadow-[0_6px_16px_-8px_rgba(15,23,42,.35)]'}`}
+        className={`shrink-0 w-[150px] rounded-2xl px-2.5 pt-4 pb-3.5 text-center ${light ? 'bg-white/15 ring-1 ring-white/25 backdrop-blur' : 'bg-white/75 ring-1 ring-white backdrop-blur shadow-[0_6px_16px_-8px_rgba(15,23,42,.35)]'}`}
       >
-        <div className="relative mx-auto w-[64px] h-[64px]">
+        <div className="relative mx-auto w-[72px] h-[72px]">
           <span className="absolute -inset-[3px] rounded-full" style={{ background: `conic-gradient(${theme.hex}, #fbbf24, #34d399, ${theme.hex})` }} />
           <span className="absolute inset-0 rounded-full bg-white" />
-          <Avatar e={e} size={64} rounded="rounded-full" className="relative" />
-          <span className="absolute -bottom-1 -right-1.5 w-6 h-6 rounded-full bg-white shadow flex items-center justify-center text-[12px]">{emoji}</span>
+          <Avatar e={e} size={72} rounded="rounded-full" className="relative" />
+          <span className="absolute -bottom-1 -right-1.5 w-7 h-7 rounded-full bg-white shadow flex items-center justify-center text-[13px]">{emoji}</span>
         </div>
-        <div className={`mt-2 text-[13px] font-semibold leading-tight truncate ${light ? 'text-white' : 'text-slate-800'}`} title={e.name}>
+        <div className={`mt-2.5 text-[13px] font-semibold leading-tight truncate ${light ? 'text-white' : 'text-slate-800'}`} title={e.name}>
           {e.name}
         </div>
         {(welcome ? dateLine(e) : subLine(d, e)) && (
@@ -212,7 +213,7 @@ const PeopleSlide: React.FC<{
               ))}
             </div>
             {!welcome && (
-              <svg className="pointer-events-none absolute right-3 -bottom-2 h-[160px] opacity-60" viewBox="0 0 90 140" aria-hidden>
+              <svg className="pointer-events-none absolute right-3 -bottom-2 h-[75%] opacity-60" viewBox="0 0 90 140" aria-hidden>
                 <path d="M28 70 C26 95 36 110 30 140" stroke="#94a3b8" strokeWidth="1" fill="none" />
                 <path d="M62 60 C64 90 54 110 60 140" stroke="#94a3b8" strokeWidth="1" fill="none" />
                 <ellipse cx="28" cy="44" rx="20" ry="25" fill={theme.hex} opacity=".55" />
@@ -234,10 +235,10 @@ const PeopleSlide: React.FC<{
                 : `${tr('Sinh nhật hôm nay', "Today's birthdays")} · ${wdLong[today.getDay()]}, ${fmtDayMonth(today)}`}
               {sample && <span className="ml-1 px-1.5 rounded bg-amber-100 text-amber-700">{tr('Dữ liệu mẫu', 'Sample data')}</span>}
             </div>
-            <div className={`mt-2 text-[22px] font-semibold tracking-tight flex items-center gap-1.5 truncate ${light ? 'text-white' : 'text-slate-800'}`}>
+            <div className={`mt-2.5 text-[24px] font-semibold tracking-tight flex items-center gap-1.5 truncate ${light ? 'text-white' : 'text-slate-800'}`}>
               {fillCount(d.title, people.length)} <PartyPopper size={18} className="text-amber-400 shrink-0" />
             </div>
-            <div className={`mt-1.5 text-[13px] italic leading-relaxed line-clamp-3 ${light ? 'text-white/85' : 'text-slate-600'}`}>
+            <div className={`mt-2 text-[13px] italic leading-relaxed line-clamp-3 ${light ? 'text-white/85' : 'text-slate-600'}`}>
               “{d.greeting}”{' '}
               <span className={`not-italic font-semibold whitespace-nowrap ${light ? 'text-white' : theme.accent}`}>— {d.signature}</span>
             </div>
