@@ -9,8 +9,8 @@
  */
 import React, { useMemo, useState } from 'react';
 import {
-  AlertCircle, AlertTriangle, CalendarRange, CheckCircle2, ClipboardCheck, ClipboardList, Copy, FileSpreadsheet, Hand, History, Info, KeyRound, Mail, Paperclip,
-  RotateCcw, Search, ShieldCheck, UserCheck, Users, X, XCircle,
+  AlertCircle, CalendarRange, CheckCircle2, ClipboardCheck, ClipboardList, Copy, FileSpreadsheet, Hand, History, Info, KeyRound, Mail, Paperclip,
+  Pencil, RotateCcw, Search, ShieldCheck, UserCheck, Users, X, XCircle,
 } from 'lucide-react';
 import { ErpPage, ErpTitleBar, Panel, Btn, erp, Tag, FieldTable, FolderTabs, KpiBox, FormRow } from '../erp/Erp';
 import { Modal, TAG, useToast } from '../../marcom/MarcomUi';
@@ -19,11 +19,13 @@ import { useRc } from '../../recruitment/rc/RcContext';
 import {
   OnbRecord, HandoffData, HANDOFF_LABELS, CONTRACT_TYPES, COMPANIES, departmentsOf, HR_POSITIONS, HR_LEVELS, STAFF_NAMES, DATE_RANGES, DateRangeKey,
   missingForApprove, taskOf, fieldText, money, probationSalary, dmy, dmyhm, daysUntil, isRefer, ChecklistOwner, stepIndex, rangeOf, inRange, todayIso,
-  IT_MAILBOX, MARCOM_MAILBOX, ONBOARD_MAIL_HOUR,
+  IT_MAILBOX, MARCOM_MAILBOX, ONBOARD_MAIL_HOUR, START_DATE_REASONS, validateHandoff, diffHandoff,
 } from '../../onboarding/onboardingData';
-import { OnbStatusTag, DaysTag, OnbStepper, ChangeList, CatalogSelect } from './onbUi';
-import { OnbProgressPanel, ProgressTag, WaitTag, Secret, ItReturnModal, MarcomDoneModal, pendingTaskNames, TASK_STATUS_CLS } from './OnbProgressPanel';
+import { OnbStatusTag, DaysTag, OnbStepper, ChangeList, CatalogSelect, FormField } from './onbUi';
+import { OnbProgressPanel, ProgressTag, WaitTag, Secret, ItReturnModal, MarcomDoneModal, TASK_STATUS_CLS } from './OnbProgressPanel';
 import { CandidateFormPage } from './CandidateFormPage';
+import { RcHcnsFields } from '../recruitment/RcHcnsForm';
+import type { RcCandidate, RcRequest } from '../../recruitment/rc/rcData';
 
 type Nav = (menuTitle: string) => void;
 type Toast = (m: string) => void;
@@ -599,25 +601,28 @@ type Tab = 'info' | 'checklist' | 'history' | 'mails';
 
 const DetailView: React.FC<{ id: string; onBack: () => void; toast: Toast; onNavigate?: Nav; onOpenForm: (id: string) => void }> = ({ id, onBack, toast, onNavigate, onOpenForm }) => {
   const { find, hrApprove, hrReject, toggleChecklist, hrSave } = useOnboarding();
-  const rc = useRc();
   const r = find(id);
   const [tab, setTab] = useState<Tab>('info');
-  const [modal, setModal] = useState<'' | 'approve' | 'reject' | 'cancel'>('');
+  const [modal, setModal] = useState<'' | 'approve' | 'reject' | 'cancel' | 'date' | 'edit'>('');
   if (!r) return null;
 
-  const missing = missingForApprove(r);
   const done = r.checklist.filter((c) => c.done).length;
-  const d = daysUntil(r.data.startDate);
   const changedLabels = new Set(r.lastChanges.map((c) => c.field));
   const formTask = taskOf(r, 'personalForm');
   const itTask = taskOf(r, 'itAccount');
 
   const actions: React.ReactNode[] = [];
+  const editBtn = (
+    <Btn key="edit" icon={Pencil} onClick={() => setModal('edit')} data-testid="detail-edit">
+      Sửa
+    </Btn>
+  );
   if (r.status === 'Chờ HCNS duyệt') {
     actions.push(
       <Btn key="reject" variant="danger" icon={XCircle} onClick={() => setModal('reject')}>
         Reject
       </Btn>,
+      editBtn,
       <Btn key="approve" variant="success" icon={ClipboardCheck} onClick={() => setModal('approve')} data-testid="detail-accept">
         Accept
       </Btn>,
@@ -641,55 +646,11 @@ const DetailView: React.FC<{ id: string; onBack: () => void; toast: Toast; onNav
         </Btn>,
       );
     actions.push(
+      editBtn,
       <Btn key="cancel" variant="danger" icon={XCircle} onClick={() => setModal('cancel')} data-testid="detail-cancel-offer">
         Cancel offer
       </Btn>,
     );
-  }
-
-  const bar = (tone: 'info' | 'warn' | 'bad' | 'muted', content: React.ReactNode) => {
-    const cls = { info: 'bg-[#eef4fb] text-[#1e3a5f]', warn: 'bg-amber-50 text-amber-800', bad: 'bg-rose-50 text-rose-800', muted: 'bg-slate-50 text-slate-600' }[tone];
-    const Icon = tone === 'muted' ? Info : tone === 'info' ? AlertCircle : AlertTriangle;
-    return (
-      <div className={`flex flex-wrap items-start gap-2 px-4 py-2 text-[12.5px] ${cls}`}>
-        <Icon size={15} className="shrink-0 mt-0.5" />
-        <span className="flex-1 min-w-[240px]">{content}</span>
-      </div>
-    );
-  };
-  let notice: React.ReactNode = null;
-  if (r.status === 'Chờ HCNS duyệt') {
-    notice = (
-      <>
-        {r.lastChanges.length > 0 && bar('warn', <>TA vừa <b>gửi cập nhật</b> lúc {dmyhm(r.sentAt)} — {r.lastChanges.length} trường thay đổi: {r.lastChanges.map((c) => c.field).join(', ')}.</>)}
-        {bar(
-          missing.length ? 'bad' : 'info',
-          missing.length ? (
-            <>Ứng viên chờ bạn Accept. Cần bổ sung trước khi Accept: <b>{missing.join(', ')}</b> (nhập ngay trong hộp “Accept”).</>
-          ) : (
-            <>Bấm <b>Accept</b> để tạo nhân viên trong Employees và gửi link form thông tin cá nhân tới {r.candidateEmail}.</>
-          ),
-        )}
-      </>
-    );
-  } else if (r.status === 'Đang onboard') {
-    const pend = pendingTaskNames(r);
-    notice = bar(
-      pend.length ? 'warn' : 'info',
-      <>
-        Nhân viên <b>{r.account.employeeCode}</b>
-        {r.account.companyEmail && <> · {r.account.companyEmail}</>}. {pend.length ? <>Đang chờ: {pend.join('; ')}.</> : null} Email onboard tự gửi lúc <b>{ONBOARD_MAIL_HOUR}:00 {dmy(r.data.startDate)}</b>
-        {d != null && d > 0 ? ` (còn ${d} ngày)` : ''} — gửi xong phiếu chuyển Đã onboard. Ứng viên báo không nhận việc → bấm <b>Cancel offer</b>.
-      </>,
-    );
-  } else if (r.status === 'Cancel offer') {
-    notice = bar('bad', <>HCNS <b>Cancel offer</b> lúc {dmyhm(r.cancelledAt || '')} ({r.cancelledBy}): {r.cancelReason}. Đã huỷ onboard — huỷ lịch email onboard, xoá hồ sơ nhân viên, báo Tuyển dụng / IT / MarCom.</>);
-  } else if (r.status === 'Huỷ onboard') {
-    notice = bar('muted', <>TA đã gửi <b>Báo hủy Onboard</b>: {r.cancelReason}. {r.account.status === 'Đã tạo' && <>Hồ sơ {r.account.employeeCode} đã có tài khoản — <b>cần HR xử lý hồ sơ/tài khoản đã tạo</b>.</>}</>);
-  } else if (r.status === 'HCNS từ chối') {
-    notice = bar('bad', <>HCNS Reject lúc {dmyhm(r.decidedAt || '')} ({r.decidedBy}){r.returnReason ? `: ${r.returnReason}` : ''}. TA gửi lại thông tin → tạo yêu cầu mới.</>);
-  } else if (r.status === 'Đã onboard') {
-    notice = bar('info', <>Đã gửi email onboard {ONBOARD_MAIL_HOUR}:00 ngày {dmy(r.data.startDate)} — mã nhân sự {r.account.employeeCode}.</>);
   }
 
   const mark = (label: string, value: React.ReactNode): React.ReactNode => {
@@ -718,22 +679,6 @@ const DetailView: React.FC<{ id: string; onBack: () => void; toast: Toast; onNav
           </>
         }
         actions={<>{actions}</>}
-        meta={[
-          { label: 'Ứng viên', value: rc.candidate(r.candidateId)?.code || r.candidateId },
-          { label: 'Khối · Công ty', value: `${r.block} · ${r.company}` },
-          { label: 'Vị trí', value: `${r.data.position} · ${r.data.level || '—'}` },
-          { label: 'Cấp trên trực tiếp', value: r.data.manager || '—' },
-          {
-            label: 'Ngày onboard',
-            value: (
-              <span className="inline-flex items-center gap-1.5">
-                {dmy(r.data.startDate)} <DaysTag iso={r.data.startDate} muted={isClosed(r) || r.status === 'Đã onboard'} />
-              </span>
-            ),
-          },
-          { label: 'TA gửi', value: `${r.taPic} · ${dmyhm(r.sentAt)}` },
-        ]}
-        notice={notice}
       />
 
       <Panel title="Tiến trình onboard" icon={ClipboardCheck}>
@@ -909,6 +854,8 @@ const DetailView: React.FC<{ id: string; onBack: () => void; toast: Toast; onNav
         }}
       />
       {modal === 'cancel' && <CancelOfferModal record={r} onClose={() => setModal('')} toast={toast} />}
+      {modal === 'date' && <ChangeStartDateModal record={r} onClose={() => setModal('')} toast={toast} />}
+      {modal === 'edit' && <EditCandidateModal record={r} onClose={() => setModal('')} toast={toast} />}
       <RejectModal
         open={modal === 'reject'}
         records={[r]}
@@ -1237,6 +1184,177 @@ const RejectModal: React.FC<{ open: boolean; records: OnbRecord[]; onClose: () =
         <FormRow label="Lý do" hint={`${reason.length}/500 ký tự · không bắt buộc`}>
           <textarea rows={3} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} className={`${erp.inputFull} h-auto py-1.5 resize-none`} />
         </FormRow>
+      </div>
+    </Modal>
+  );
+};
+
+/** Sửa toàn bộ thông tin ứng viên (17 trường bàn giao + email/điện thoại) — HCNS, khi phiếu chưa onboard. */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EditCandidateModal: React.FC<{ record: OnbRecord; onClose: () => void; toast: Toast }> = ({ record: r, onClose, toast }) => {
+  const { hrEdit } = useOnboarding();
+  const rc = useRc();
+  const [data, setData] = useState<HandoffData>(() => ({ ...r.data }));
+  const [email, setEmail] = useState(r.candidateEmail);
+  const [phone, setPhone] = useState(r.candidatePhone);
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const base = rc.candidate(r.candidateId);
+  const cand = { ...(base || {}), source: r.candidateSource, cvFile: r.cvFile, referrerName: base?.referrerName || '', taInput: base?.taInput || r.taPic } as RcCandidate;
+  const req = (rc.request(r.requestId) || { block: r.block, taPics: [r.taPic] }) as RcRequest;
+  const errors = validateHandoff(data, { hasCvFile: !!r.cvFile, refer: isRefer(r.candidateSource) });
+  const dateMoved = data.startDate !== r.data.startDate;
+  if (dateMoved && data.startDate && data.startDate < todayIso()) errors.startDate = 'Không chọn ngày đã qua';
+  const emailErr = !email.trim() ? 'Bắt buộc' : !EMAIL_RE.test(email.trim()) ? 'Email không hợp lệ' : '';
+  const phoneErr = !phone.trim() ? 'Bắt buộc' : !/^[0-9+ ().-]{8,15}$/.test(phone.trim()) ? 'Số điện thoại không hợp lệ' : '';
+  const reasonErr = dateMoved && !reason.trim() ? 'Bắt buộc khi đổi ngày onboard' : '';
+  const changes = diffHandoff(r.data, data).length + (email.trim() !== r.candidateEmail ? 1 : 0) + (phone.trim() !== r.candidatePhone ? 1 : 0);
+  const accepted = r.status === 'Đang onboard';
+  const save = () => {
+    if (Object.keys(errors).length || emailErr || phoneErr || reasonErr) return setTried(true);
+    if (!changes) {
+      onClose();
+      return toast('Không có thay đổi');
+    }
+    const n = hrEdit(r.id, { data: { ...data, fullName: data.fullName.trim() }, candidateEmail: email.trim(), candidatePhone: phone.trim() }, reason.trim());
+    onClose();
+    toast(`Đã lưu ${n} thay đổi thông tin ${data.fullName.trim()}`);
+  };
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      width="max-w-4xl"
+      title={`Sửa thông tin ứng viên — ${r.id}`}
+      footer={
+        <>
+          <span className={`mr-auto text-[12px] ${tried && (Object.keys(errors).length || emailErr || phoneErr || reasonErr) ? 'text-rose-600' : 'text-slate-500'}`}>
+            {tried && (Object.keys(errors).length || emailErr || phoneErr || reasonErr) ? 'Vui lòng kiểm tra các trường báo đỏ' : changes ? `${changes} trường thay đổi` : 'Chưa có thay đổi'}
+          </span>
+          <Btn onClick={onClose}>Đóng</Btn>
+          <Btn variant="primary" icon={CheckCircle2} onClick={save} data-testid="edit-save">
+            Lưu thay đổi
+          </Btn>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <div className="flex items-start gap-2 px-3 py-2 rounded-[4px] bg-[#eef4fb] text-[#1e3a5f] text-[12.5px]">
+          <Info size={15} className="shrink-0 mt-0.5" />
+          <span>
+            Thay đổi được ghi vào Lịch sử và báo Tuyển dụng ({r.taPic}).
+            {r.account.employeeCode && <> Hồ sơ {r.account.employeeCode} trong Employees cập nhật theo.</>}
+            {accepted && <> Đổi ngày onboard sẽ dời email {ONBOARD_MAIL_HOUR}:00 và báo ứng viên / IT / MarCom.</>}
+          </span>
+        </div>
+        <div className="grid grid-cols-12 gap-x-4 gap-y-3">
+          <FormField label="Email cá nhân" required error={tried ? emailErr : undefined} className="col-span-12 sm:col-span-6">
+            <input value={email} onChange={(e) => setEmail(e.target.value)} className={erp.inputFull} data-testid="edit-email" />
+          </FormField>
+          <FormField label="Điện thoại" required error={tried ? phoneErr : undefined} className="col-span-12 sm:col-span-6">
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} className={erp.inputFull} data-testid="edit-phone" />
+          </FormField>
+        </div>
+        <RcHcnsFields
+          draft={{ data, hasOffer: true }}
+          cand={cand}
+          req={req}
+          skillOptions={rc.options('Skill', [data.techStack])}
+          onChange={(p) => setData((x) => ({ ...x, ...p }))}
+          errors={errors}
+          showErr={tried}
+        />
+        {dateMoved && (
+          <FormField label={`Lý do đổi ngày onboard (${dmy(r.data.startDate)} → ${dmy(data.startDate)})`} required error={tried ? reasonErr : undefined}>
+            <select value={START_DATE_REASONS.includes(reason) ? reason : reason ? 'Khác' : ''} onChange={(e) => setReason(e.target.value === 'Khác' ? ' ' : e.target.value)} className={`${erp.inputFull} cursor-pointer`} data-testid="edit-date-reason">
+              <option value="">-- Chọn lý do --</option>
+              {[...START_DATE_REASONS, 'Khác'].map((o) => (
+                <option key={o}>{o}</option>
+              ))}
+            </select>
+            {reason && !START_DATE_REASONS.includes(reason) && (
+              <input value={reason.trimStart()} onChange={(e) => setReason(e.target.value || ' ')} placeholder="Ghi rõ lý do" className={`${erp.inputFull} mt-1.5`} />
+            )}
+          </FormField>
+        )}
+      </div>
+    </Modal>
+  );
+};
+
+/** Sửa ngày onboard — ứng viên xin đổi ngày nhận việc; HCNS cập nhật, hệ thống dời lịch & báo các bên. */
+const ChangeStartDateModal: React.FC<{ record: OnbRecord; onClose: () => void; toast: Toast }> = ({ record: r, onClose, toast }) => {
+  const { changeStartDate } = useOnboarding();
+  const [date, setDate] = useState(r.data.startDate);
+  const [pick, setPick] = useState('');
+  const [other, setOther] = useState('');
+  const [tried, setTried] = useState(false);
+  const reason = (pick === 'Khác' ? other : pick).trim();
+  const today = todayIso();
+  const accepted = r.status === 'Đang onboard';
+  const it = accepted && taskOf(r, 'itAccount').status !== 'Chưa bắt đầu';
+  const mc = accepted && taskOf(r, 'marcom').status !== 'Chưa bắt đầu';
+  const dateErr = !date ? 'Bắt buộc' : date === r.data.startDate ? 'Chọn ngày khác ngày hiện tại' : date < today ? 'Không chọn ngày đã qua' : '';
+  const reasonErr = !reason ? 'Bắt buộc' : '';
+  const d = date && !dateErr ? daysUntil(date) : null;
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Sửa ngày onboard — ${r.data.fullName}`}
+      footer={
+        <>
+          <Btn onClick={onClose}>Đóng</Btn>
+          <Btn
+            variant="primary"
+            icon={CalendarRange}
+            onClick={() => {
+              if (dateErr || reasonErr) return setTried(true);
+              changeStartDate(r.id, date, reason);
+              onClose();
+              toast(`Đã đổi ngày onboard ${r.data.fullName}: ${dmy(r.data.startDate)} → ${dmy(date)}`);
+            }}
+            data-testid="start-date-confirm"
+          >
+            Lưu ngày mới
+          </Btn>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <FieldTable
+          labelWidth="34%"
+          rows={[
+            { label: 'Ngày onboard hiện tại', value: <b>{dmy(r.data.startDate)}</b> },
+            ...((r.dateChanges || []).length ? [{ label: 'Đã đổi trước đó', value: (r.dateChanges || []).map((c) => `${dmy(c.from)} → ${dmy(c.to)}`).join(' · ') }] : []),
+          ]}
+        />
+        <FormRow label="Ngày onboard mới" required error={tried ? dateErr : undefined} hint={d != null ? (d === 0 ? 'Hôm nay' : `Còn ${d} ngày`) : undefined}>
+          <input type="date" min={today} value={date} onChange={(e) => setDate(e.target.value)} className={erp.inputFull} data-testid="start-date-input" />
+        </FormRow>
+        <FormRow label="Lý do" required error={tried ? reasonErr : undefined}>
+          <select value={pick} onChange={(e) => setPick(e.target.value)} className={`${erp.inputFull} cursor-pointer`} data-testid="start-date-reason">
+            <option value="">-- Chọn lý do --</option>
+            {[...START_DATE_REASONS, 'Khác'].map((o) => (
+              <option key={o}>{o}</option>
+            ))}
+          </select>
+        </FormRow>
+        {pick === 'Khác' && (
+          <FormRow label="Ghi rõ lý do" required>
+            <textarea rows={2} maxLength={300} value={other} onChange={(e) => setOther(e.target.value)} className={`${erp.inputFull} h-auto py-1.5 resize-none`} />
+          </FormRow>
+        )}
+        <div className="border border-slate-200 bg-slate-50 rounded-[4px] px-3 py-2">
+          <p className="text-[12px] font-bold text-slate-700 mb-1">Khi lưu, hệ thống sẽ:</p>
+          <ul className="list-disc pl-5 text-[12px] text-slate-600 space-y-0.5">
+            {accepted && <li>Dời email onboard sang {ONBOARD_MAIL_HOUR}:00 ngày mới và gửi email xác nhận ngày mới tới {r.candidateEmail}.</li>}
+            {r.account.employeeCode && <li>Cập nhật ngày vào làm của hồ sơ {r.account.employeeCode} trong Employees.</li>}
+            {it && <li>Báo IT ({IT_MAILBOX}) hạn cấp tài khoản mới.</li>}
+            {mc && <li>Báo MarCom ({MARCOM_MAILBOX}) dời Welcome Onboard.</li>}
+            <li>Báo Tuyển dụng ({r.taPic}); ghi lịch sử thay đổi.</li>
+          </ul>
+        </div>
       </div>
     </Modal>
   );

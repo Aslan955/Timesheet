@@ -38,6 +38,11 @@ import {
   Workflow,
   Ticket,
   MapPin,
+  Handshake,
+  BookUser,
+  CalendarDays,
+  Gift,
+  ShieldCheck,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -112,6 +117,19 @@ export const NAVIGATION: NavItem[] = [
           { title: 'Audit log', icon: Database },
         ],
       },
+    ],
+  },
+  {
+    // CRM — Nền tảng quản lý khách hàng (Phòng Đối ngoại): 3 module danh bạ / lịch ngoại giao & quà tặng / cảnh báo sớm
+    title: 'CRM',
+    icon: Handshake,
+    children: [
+      { title: 'CRM · Tổng quan', label: 'Tổng quan', icon: PieChart },
+      { title: 'Danh bạ khách hàng', icon: BookUser },
+      { title: 'Lịch ngoại giao', icon: CalendarDays },
+      { title: 'Nhắc việc', icon: BellRing },
+      { title: 'Sổ quà tặng', icon: Gift },
+      { title: 'Phân quyền & nhật ký', icon: ShieldCheck },
     ],
   },
   {

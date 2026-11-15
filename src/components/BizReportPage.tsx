@@ -25,7 +25,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { ClipboardList, FileUp, BarChart3, Building2, CheckCircle2, AlertTriangle, Eye, CircleDashed, FolderKanban, Filter, Table2, BookOpen, Check } from 'lucide-react';
 import { LedgerDetailModal, LedgerDrill, drillCls } from './LedgerDetailModal';
 import { LedgerImportModal } from './LedgerImportModal';
-import { BizProject, DIVISIONS, latestActualMonth, useBusinessProjects } from '../business/BusinessProjectContext';
+import { BizProject, DIVISIONS, latestActualMonth, projectCodes, useBusinessProjects } from '../business/BusinessProjectContext';
 import {
   CostParts,
   costParts,
@@ -35,6 +35,9 @@ import {
   MonthPoint,
   REPORT_METRICS,
   ReportMetric,
+  CHART_METRICS,
+  ChartMetric,
+  planless,
   Totals,
   addTotals,
   lowerIsBetter,
@@ -53,13 +56,13 @@ const PNL = { revenue: '#2a78d6', cost: '#eb6834', profit: '#1baf7a' };
 
 const fmtMonth = (m: string) => (m ? `${m.slice(5, 7)}/${m.slice(0, 4)}` : '—');
 const dmy = (iso: string) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—');
-const isMoney = (k: ReportMetric) => REPORT_METRICS.find((m) => m.key === k)!.money;
-const val = (_k: ReportMetric, n: number) => Math.round(n).toLocaleString('en-US');
+const isMoney = (k: ChartMetric) => CHART_METRICS.find((m) => m.key === k)!.money;
+const val = (_k: ChartMetric, n: number) => Math.round(n).toLocaleString('en-US');
 /** Tooltip tách Chi phí thực tế = Chi thực tế import (SX + KD + Chi phí chung) + CP phân bổ khối + CP quản lý (Kế toán import theo dự án). */
 const costTipOf = (c: CostParts) =>
-  `Chi thực tế import (SX + KD + Chi phí chung): ${val('cost', c.direct)}\n+ CP quản lý: ${val('cost', c.mgmt)}\n+ CP phân bổ (vận hành): ${val('cost', c.alloc)}\n= Chi phí thực tế: ${val('cost', c.direct + c.alloc + c.mgmt)}`;
+  `Chi thực tế import (SX + KD + Chi phí chung): ${val('cost', c.direct)}\n+ CP quản lý: ${val('cost', c.mgmt)}\n+ CP vận hành chung: ${val('cost', c.alloc)}\n= Chi phí thực tế: ${val('cost', c.direct + c.alloc + c.mgmt)}`;
 const pct = (r: number | null, digits = 0) => (r === null ? '—' : `${(r * 100).toFixed(digits)}%`);
-const unitOf = (k: ReportMetric) => (isMoney(k) ? 'VNĐ' : 'SP');
+const unitOf = (k: ChartMetric) => (isMoney(k) ? 'VNĐ' : 'SP');
 
 /** Chỉ tiêu có sổ chi tiết kế toán để xem khi bấm vào số thực tế. */
 const ledgerKindOf = (k: ReportMetric): LedgerDrill['kind'] | null => (k === 'revenue' ? 'revenue' : k === 'cashIn' ? 'cashIn' : k === 'cost' ? 'cost' : null);
@@ -84,8 +87,8 @@ const DrillVal: React.FC<{ k: ReportMetric; value: number; onClick?: () => void 
   );
 
 /** Tốt khi thực tế ≥ KH (chi phí: ≤ KH). */
-const goodTone = (k: ReportMetric, actual: number, plan: number) => (lowerIsBetter(k) ? actual <= plan : actual >= plan);
-const toneOf = (k: ReportMetric, actual: number, plan: number): Tone => (plan ? (goodTone(k, actual, plan) ? 'good' : 'bad') : 'neutral');
+const goodTone = (k: ChartMetric, actual: number, plan: number) => (lowerIsBetter(k) ? actual <= plan : actual >= plan);
+const toneOf = (k: ChartMetric, actual: number, plan: number): Tone => (plan ? (goodTone(k, actual, plan) ? 'good' : 'bad') : 'neutral');
 
 const HEALTH_STYLE: Record<Health, { cls: string; icon: React.ElementType }> = {
   'Tốt': { cls: 'bg-emerald-50 text-emerald-700 border-emerald-300', icon: CheckCircle2 },
@@ -100,6 +103,8 @@ const HealthBadge: React.FC<{ h: Health }> = ({ h }) => (
 );
 
 const METRIC_OPTIONS = REPORT_METRICS.map((m) => ({ key: m.key, label: m.label }));
+/** Bảng "Chi tiết theo dự án": đủ 4 chỉ tiêu (Chi phí chỉ Kế hoạch / Thực tế / Chênh lệch — không tách CP quản lý, CP vận hành chung). */
+const TABLE_METRICS = REPORT_METRICS;
 
 /** Nhãn + ô lọc trên cùng 1 dòng. */
 const FilterField: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
@@ -280,9 +285,9 @@ const niceCeil = (v: number) => {
   return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p;
 };
 
-const ChartLegend: React.FC<{ metric: ReportMetric }> = ({ metric }) => (
+const ChartLegend: React.FC<{ metric: ChartMetric }> = ({ metric }) => (
   <span className="flex items-center gap-3 text-[11px] text-slate-600">
-    {(['plan', 'actual'] as const).map((s) => (
+    {(planless(metric) ? (['actual'] as const) : (['plan', 'actual'] as const)).map((s) => (
       <span key={s} className="flex items-center gap-1.5">
         <span className="w-3 h-3 rounded-[2px]" style={{ background: SERIES[s] }} />
         {s === 'plan' ? 'Kế hoạch' : 'Thực tế'}
@@ -292,8 +297,9 @@ const ChartLegend: React.FC<{ metric: ReportMetric }> = ({ metric }) => (
   </span>
 );
 
-const PlanActualChart: React.FC<{ groups: ChartGroup[]; metric: ReportMetric; height?: number }> = ({ groups, metric, height = 230 }) => {
+const PlanActualChart: React.FC<{ groups: ChartGroup[]; metric: ChartMetric; height?: number; onPick?: (g: ChartGroup) => void }> = ({ groups, metric, height = 230, onPick }) => {
   const [hover, setHover] = useState<number | null>(null);
+  const noPlan = planless(metric);
   const max = niceCeil(Math.max(1, ...groups.map((g) => Math.max(g.plan, g.actual ?? 0))));
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => t * max);
   const h = (v: number) => `${Math.max(0, (v / max) * 100)}%`;
@@ -321,11 +327,13 @@ const PlanActualChart: React.FC<{ groups: ChartGroup[]; metric: ReportMetric; he
               {groups.map((gr, i) => (
                 <div
                   key={gr.key}
-                  className={`flex-1 flex items-end justify-center gap-[2px] cursor-default ${hover === i ? 'bg-[#eaf2fc]' : ''}`}
+                  className={`flex-1 flex items-end justify-center gap-[2px] ${onPick && gr.actual ? 'cursor-pointer' : 'cursor-default'} ${hover === i ? 'bg-[#eaf2fc]' : ''}`}
                   onMouseEnter={() => setHover(i)}
                   onMouseLeave={() => setHover(null)}
+                  onClick={() => onPick && gr.actual && onPick(gr)}
+                  data-testid={`chart-bar-${gr.key}`}
                 >
-                  <div className="w-[min(24px,35%)] rounded-t-[3px]" style={{ height: h(gr.plan), background: SERIES.plan }} />
+                  {!noPlan && <div className="w-[min(24px,35%)] rounded-t-[3px]" style={{ height: h(gr.plan), background: SERIES.plan }} />}
                   {gr.actual !== null && <div className="w-[min(24px,35%)] rounded-t-[3px]" style={{ height: h(gr.actual), background: SERIES.actual }} />}
                 </div>
               ))}
@@ -338,22 +346,31 @@ const PlanActualChart: React.FC<{ groups: ChartGroup[]; metric: ReportMetric; he
                 <p className="font-bold px-2.5 py-1 bg-[#e8edf4] border-b border-slate-300 text-[#1e3a5f]">{g.label}</p>
                 <table className="tabular-nums">
                   <tbody>
-                    <tr>
-                      <td className="px-2.5 py-0.5 flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-sm" style={{ background: SERIES.plan }} /> Kế hoạch
-                      </td>
-                      <td className="px-2.5 py-0.5 text-right font-semibold">{val(metric, g.plan)}</td>
-                    </tr>
+                    {!noPlan && (
+                      <tr>
+                        <td className="px-2.5 py-0.5 flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-sm" style={{ background: SERIES.plan }} /> Kế hoạch
+                        </td>
+                        <td className="px-2.5 py-0.5 text-right font-semibold">{val(metric, g.plan)}</td>
+                      </tr>
+                    )}
                     <tr>
                       <td className="px-2.5 py-0.5 flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-sm" style={{ background: SERIES.actual }} /> Thực tế
                       </td>
                       <td className="px-2.5 py-0.5 text-right font-semibold">{g.actual === null ? 'chưa chốt số' : val(metric, g.actual)}</td>
                     </tr>
-                    {g.actual !== null && (
+                    {g.actual !== null && !noPlan && (
                       <tr className="border-t border-slate-200">
                         <td className="px-2.5 py-0.5 text-slate-500">Hoàn thành</td>
                         <td className="px-2.5 py-0.5 text-right font-semibold">{pct(ratio(g.actual, g.plan))}</td>
+                      </tr>
+                    )}
+                    {onPick && !!g.actual && (
+                      <tr className="border-t border-slate-200">
+                        <td colSpan={2} className="px-2.5 py-0.5 text-[10.5px] text-[#1f5fa8]">
+                          Bấm cột để xem chi tiết
+                        </td>
                       </tr>
                     )}
                   </tbody>
@@ -552,6 +569,156 @@ const PnlChart: React.FC<{ groups: PnlGroup[]; height?: number }> = ({ groups, h
 // ==========================================================================
 const ALL = 'Toàn công ty';
 
+/**
+ * Tab "Chi phí vận hành chung": bảng phân bổ theo khối + tháng (không vẽ biểu đồ).
+ *   Tỉ lệ = Chi phí dự án trong tháng ÷ Tổng chi phí các dự án của khối trong tháng · Phân bổ = Tỉ lệ × Tổng chi phí VHC của khối.
+ */
+const VhcAllocTable: React.FC<{ projects: BizProject[]; from: string; to: string; onDrill: OnDrill }> = ({ projects, from, to, onDrill }) => {
+  const { ledger } = useBusinessProjects();
+  const single = projects.length === 1 ? projects[0] : null;
+  const divisions = new Set(projects.map((p) => p.division));
+  const byCode = new Map(projects.flatMap((p) => projectCodes(p).map((c) => [c, p] as const)));
+  const groups = ledger.vhc
+    .filter((v) => v.month >= from && v.month <= to && divisions.has(v.division))
+    .sort((a, b) => a.month.localeCompare(b.month) || a.division.localeCompare(b.division))
+    .map((v) => {
+      const khoiCost = v.alloc.reduce((a, x) => a + x.cost, 0);
+      const rows = v.alloc.map((a) => ({ a, p: byCode.get(a.projectCode.trim().toLowerCase()) })).filter((x) => x.p);
+      // 1 dự án đang xem nhưng không phát sinh chi phí tháng đó → vẫn hiện 0%
+      if (single && !rows.length && single.division === v.division) rows.push({ a: { projectCode: single.productionCode || single.masterCode, projectName: single.name, division: v.division, cost: 0, ratio: 0, value: 0 }, p: single });
+      return { v, khoiCost, rows };
+    })
+    .filter((g) => g.rows.length);
+  const totalAlloc = groups.reduce((a, g) => a + g.rows.reduce((b, x) => b + x.a.value, 0), 0);
+  const totalPool = groups.reduce((a, g) => a + g.v.pool, 0);
+  const totalKhoiCost = groups.reduce((a, g) => a + g.khoiCost, 0);
+  const shownCost = groups.reduce((a, g) => a + g.rows.reduce((b, x) => b + x.a.cost, 0), 0);
+  const allocated = new Set(groups.flatMap((g) => g.rows.filter((x) => x.a.value > 0).map((x) => x.p!.id)));
+  const khois = [...new Set(groups.map((g) => g.v.division))];
+  const months = new Set(groups.map((g) => g.v.month)).size;
+  const th = `${erp.th} whitespace-nowrap`;
+  const td = `${erp.td} whitespace-nowrap`;
+  const num = `${td} ${erp.num}`;
+  const open = (g: (typeof groups)[number]) =>
+    onDrill({
+      kind: 'cost',
+      part: 'alloc',
+      projects: g.rows.map((x) => x.p!),
+      from: g.v.month,
+      to: g.v.month,
+      expected: g.rows.reduce((b, x) => b + x.a.value, 0),
+      title: `Khối ${g.v.division} · ${fmtMonth(g.v.month)}${single ? ` · ${single.masterCode} — ${single.name}` : ''}`,
+    });
+  const scopeText = khois.length === 1 ? `Khối ${khois[0]}` : `${khois.length} khối`;
+  return (
+    <div className="space-y-3" data-testid="vhc-alloc-table">
+      {/* Thông tin nhanh */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5" data-testid="vhc-kpis">
+        <KpiBox
+          label="Tổng chi phí vận hành chung"
+          value={val('opex', totalPool)}
+          valueText={val('opex', totalPool)}
+          sub={groups.length ? `${scopeText} · ${months} tháng (${fmtMonth(from)} → ${fmtMonth(to)})` : 'Chưa có file VHC trong kỳ'}
+        />
+        <KpiBox label="Tổng chi phí mã SX (.2) của khối" value={val('opex', totalKhoiCost)} valueText={val('opex', totalKhoiCost)} sub="Mẫu số để tính tỉ lệ phân bổ" />
+        <KpiBox
+          label="Số dự án được phân bổ"
+          value={allocated.size}
+          sub={single ? `${single.masterCode} — ${allocated.size ? 'có phát sinh chi phí mã .2' : 'không phát sinh chi phí mã .2 → 0 đ'}` : `/ ${projects.length} dự án trong phạm vi · dự án không có chi phí mã .2 → 0 đ`}
+        />
+        <KpiBox
+          label={single ? `VHC phân bổ cho ${single.masterCode}` : 'Chi phí VHC đã phân bổ'}
+          value={val('opex', totalAlloc)}
+          valueText={val('opex', totalAlloc)}
+          badge={totalPool ? pct(totalAlloc / totalPool, 1) : undefined}
+          sub={single ? `Chi phí mã SX của dự án: ${val('opex', shownCost)}` : 'Bằng tổng chi phí vận hành chung của khối'}
+        />
+      </div>
+
+      <p className="text-[12px] text-slate-600 bg-[#f5f8fc] border border-slate-200 rounded-[3px] px-3 py-2">
+        <b className="text-slate-700">Công thức:</b> Tỉ lệ = Chi phí mã sản xuất (.2) của dự án trong tháng ÷ Tổng chi phí mã sản xuất của các dự án trong khối · Chi phí VHC phân bổ = Tỉ lệ × Tổng chi phí
+        vận hành chung của khối (file Kế toán upload). Không tính mã kinh doanh (.1); dự án không phát sinh chi phí → 0 đ.
+      </p>
+
+      <div className="overflow-x-auto border border-slate-300">
+        <table className={erp.table}>
+          <thead>
+            <tr>
+              <th className={`${th} text-left border-t-0 border-l-0`}>Tháng</th>
+              <th className={`${th} text-left border-t-0`}>Khối</th>
+              <th className={`${th} text-left border-t-0`}>Dự án</th>
+              <th className={`${th} text-right border-t-0`}>Chi phí mã SX (.2) trong tháng</th>
+              <th className={`${th} text-right border-t-0 w-[180px]`}>Tỉ lệ</th>
+              <th className={`${th} text-right border-t-0`}>Chi phí VHC phân bổ</th>
+              <th className={`${th} border-t-0 border-r-0`} />
+            </tr>
+          </thead>
+          <tbody>
+            {groups.map((g) => (
+              <React.Fragment key={g.v.id}>
+                {g.rows.map(({ a, p }, i) => (
+                  <tr key={`${g.v.id}-${a.projectCode}`} className={erp.tr}>
+                    {i === 0 && (
+                      <>
+                        <td rowSpan={g.rows.length} className={`${td} border-l-0 align-top font-semibold text-[#1e3a5f]`}>
+                          {fmtMonth(g.v.month)}
+                        </td>
+                        <td rowSpan={g.rows.length} className={`${td} align-top font-semibold`}>
+                          {g.v.division}
+                        </td>
+                      </>
+                    )}
+                    <td className={td}>
+                      <span className={`${erp.code} font-semibold`}>{p!.masterCode}</span> <span className="text-slate-600">{p!.name}</span>
+                    </td>
+                    <td className={num}>{val('opex', a.cost)}</td>
+                    <td className={`${td} text-right`}>
+                      <span className="inline-flex items-center justify-end gap-2 w-full">
+                        <span className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <span className="block h-full bg-[#eb6834]" style={{ width: `${Math.min(100, a.ratio * 100)}%` }} />
+                        </span>
+                        <b className="tabular-nums w-14 text-right">{(a.ratio * 100).toFixed(2)}%</b>
+                      </span>
+                    </td>
+                    <td className={`${num} font-bold ${a.value ? 'text-rose-700' : 'text-slate-400'}`}>{val('opex', a.value)}</td>
+                    {i === 0 && (
+                      <td rowSpan={g.rows.length} className={`${td} border-r-0 align-top`}>
+                        <button type="button" onClick={() => open(g)} className="text-[12px] font-semibold text-[#1f5fa8] hover:underline cursor-pointer" data-testid={`vhc-open-${g.v.division}-${g.v.month}`}>
+                          Xem khoản chi
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </React.Fragment>
+            ))}
+            {!groups.length && (
+              <tr>
+                <td colSpan={7} className={`${erp.td} border-x-0 text-center text-slate-400 py-8`}>
+                  Chưa có chi phí vận hành chung trong kỳ / phạm vi đang xem.
+                </td>
+              </tr>
+            )}
+          </tbody>
+          {groups.length > 0 && (
+            <tfoot>
+              <tr className={erp.totalRow}>
+                <td className={`${td} border-l-0`} colSpan={3}>
+                  Tổng cộng
+                </td>
+                <td className={num}>{val('opex', shownCost)}</td>
+                <td className={`${td} text-right`}>{totalPool ? pct(totalAlloc / totalPool, 2) : '—'}</td>
+                <td className={num}>{val('opex', totalAlloc)}</td>
+                <td className={`${td} border-r-0`} />
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+    </div>
+  );
+};
+
 const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProject: (id: string) => void; onDrill: OnDrill }> = ({
   projects,
   cutoff,
@@ -564,7 +731,7 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
   const [to, setTo] = useState(defTo);
   const [scope, setScope] = useState(ALL);
   const [projectId, setProjectId] = useState(ALL); // lọc 1 dự án trong phạm vi (ALL = tất cả)
-  const [metric, setMetric] = useState<ReportMetric | 'overview'>('overview');
+  const [metric, setMetric] = useState<ChartMetric | 'overview'>('overview');
   const [kind, setKind] = useState<'actual' | 'plan'>('actual'); // dùng cho chỉ tiêu "Tổng quan"
   const [axis, setAxis] = useState<'month' | 'project'>('month');
   const [health, setHealth] = useState<Health | 'all'>('all');
@@ -587,10 +754,11 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
       ? []
       : axis === 'month'
       ? monthlySeries(scoped, metric, from, to, cutoff).map((m) => ({ key: m.month, label: fmtMonth(m.month), plan: m.plan, actual: m.actual }))
-      : perfs
-          .filter((x) => x.plan[metric] || x.actual[metric])
-          .map((x) => ({ key: x.project.id, label: x.project.masterCode, plan: x.plan[metric], actual: x.actual[metric] }));
-
+      : metric === 'opex'
+        ? perfs.filter((x) => x.cost.alloc).map((x) => ({ key: x.project.id, label: x.project.masterCode, plan: 0, actual: x.cost.alloc }))
+        : perfs
+            .filter((x) => x.plan[metric] || x.actual[metric])
+            .map((x) => ({ key: x.project.id, label: x.project.masterCode, plan: x.plan[metric], actual: x.actual[metric] }));
   const pnlGroups: PnlGroup[] =
     metric !== 'overview'
       ? []
@@ -663,8 +831,8 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
           </FilterBar>
         </div>
         <div className="flex flex-wrap items-center gap-3 mb-3">
-          {metric === 'overview' ? <PnlLegend /> : <ChartLegend metric={metric} />}
-          <Segmented options={[{ key: 'overview' as const, label: 'Tổng quan' }, ...METRIC_OPTIONS]} value={metric} onChange={setMetric} />
+          {metric === 'overview' ? <PnlLegend /> : metric !== 'opex' && <ChartLegend metric={metric} />}
+          <Segmented options={[{ key: 'overview' as const, label: 'Tổng quan' }, ...CHART_METRICS.map((m) => ({ key: m.key, label: m.label }))]} value={metric} onChange={setMetric} />
           {metric === 'overview' && (
             <Segmented
               options={[
@@ -675,16 +843,24 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
               onChange={setKind}
             />
           )}
-          <Segmented
-            options={[
-              { key: 'month', label: 'Theo tháng' },
-              { key: 'project', label: 'Theo dự án' },
-            ]}
-            value={axis}
-            onChange={setAxis}
-          />
+          {metric !== 'opex' && (
+            <Segmented
+              options={[
+                { key: 'month', label: 'Theo tháng' },
+                { key: 'project', label: 'Theo dự án' },
+              ]}
+              value={axis}
+              onChange={setAxis}
+            />
+          )}
         </div>
-        {metric === 'overview' ? <PnlChart groups={pnlGroups} /> : <PlanActualChart groups={groups} metric={metric} />}
+        {metric === 'overview' ? (
+          <PnlChart groups={pnlGroups} />
+        ) : metric === 'opex' ? (
+          <VhcAllocTable projects={scoped} from={from} to={compareEnd} onDrill={onDrill} />
+        ) : (
+          <PlanActualChart groups={groups} metric={metric} />
+        )}
       </Panel>
 
       <Panel
@@ -719,27 +895,17 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
                 <th rowSpan={2} className={`${erp.th} text-center border-t-0`}>
                   Sức khoẻ
                 </th>
-                {REPORT_METRICS.map((m) => (
-                  <th key={m.key} colSpan={m.key === 'cost' ? 5 : 3} className={`${erp.th} text-center border-t-0 last:border-r-0`}>
+                {TABLE_METRICS.map((m) => (
+                  <th key={m.key} colSpan={3} className={`${erp.th} text-center border-t-0 last:border-r-0`}>
                     {m.label}
                   </th>
                 ))}
               </tr>
               <tr>
-                {REPORT_METRICS.map((m) => (
+                {TABLE_METRICS.map((m) => (
                   <React.Fragment key={m.key}>
                     <th className={`${erp.th} text-center font-medium`}>Kế hoạch</th>
-                    {m.key === 'cost' && (
-                      <>
-                        <th className={`${erp.th} text-center font-medium`} title="Chi phí quản lý phân bổ cho dự án — Kế toán import (sổ Chi phí quản lý)">
-                          CP quản lý
-                        </th>
-                        <th className={`${erp.th} text-center font-medium`} title="Chi phí vận hành khối phân bổ cho dự án — Kế toán import (sổ Chi phí vận hành)">
-                          CP phân bổ
-                        </th>
-                      </>
-                    )}
-                    <th className={`${erp.th} text-center font-medium`} title={m.key === 'cost' ? 'Chi phí thực tế = Chi thực tế import (SX + KD + Chi phí chung) + CP quản lý + CP phân bổ (vận hành)' : undefined}>
+                    <th className={`${erp.th} text-center font-medium`} title={m.key === 'cost' ? 'Chi phí thực tế = Chi thực tế import (SX + KD + Chi phí chung) + CP quản lý + CP vận hành chung' : undefined}>
                       Thực tế
                     </th>
                     <th className={`${erp.th} text-center font-medium`}>Chênh lệch (%)</th>
@@ -761,7 +927,7 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
                   <td className={erp.td}>
                     <HealthBadge h={x.health} />
                   </td>
-                  {REPORT_METRICS.map(({ key }) => {
+                  {TABLE_METRICS.map(({ key }) => {
                     const pl = x.plan[key];
                     const act = x.actual[key];
                     const d = act - pl;
@@ -771,16 +937,6 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
                     return (
                       <React.Fragment key={key}>
                         <td className={`${erp.td} ${erp.num} text-slate-600`}>{val(key, pl)}</td>
-                        {key === 'cost' && (
-                          <>
-                            <td className={`${erp.td} ${erp.num} text-slate-700`}>
-                              {noData ? '–' : <DrillVal k={key} value={x.cost.mgmt} onClick={() => drillFor(key, [x.project], x.cost.mgmt, title, 'mgmt')} />}
-                            </td>
-                            <td className={`${erp.td} ${erp.num} text-slate-700`}>
-                              {noData ? '–' : <DrillVal k={key} value={x.cost.alloc} onClick={() => drillFor(key, [x.project], x.cost.alloc, title, 'alloc')} />}
-                            </td>
-                          </>
-                        )}
                         <td className={`${erp.td} ${erp.num} font-semibold`} title={key === 'cost' && !noData ? costTip(x.cost) : undefined}>
                           {noData ? '–' : <DrillVal k={key} value={act} onClick={() => drillFor(key, [x.project], act, title)} />}
                         </td>
@@ -815,7 +971,7 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
                   <td className={`${erp.td} sticky left-0 z-10 bg-[#fff6d6] border-l-0`} colSpan={4}>
                     Tổng cộng ({shown.length} dự án)
                   </td>
-                  {REPORT_METRICS.map(({ key }) => {
+                  {TABLE_METRICS.map(({ key }) => {
                     const p = shown.reduce((s, x) => s + x.plan[key], 0);
                     const a = shown.reduce((s, x) => s + x.actual[key], 0);
                     const d = a - p;
@@ -826,16 +982,6 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
                     return (
                       <React.Fragment key={key}>
                         <td className={`${erp.td} ${erp.num}`}>{val(key, p)}</td>
-                        {key === 'cost' && (
-                          <>
-                            <td className={`${erp.td} ${erp.num}`}>
-                              <DrillVal k={key} value={parts.mgmt} onClick={() => drillFor(key, list, parts.mgmt, title, 'mgmt')} />
-                            </td>
-                            <td className={`${erp.td} ${erp.num}`}>
-                              <DrillVal k={key} value={parts.alloc} onClick={() => drillFor(key, list, parts.alloc, title, 'alloc')} />
-                            </td>
-                          </>
-                        )}
                         <td className={`${erp.td} ${erp.num}`} title={key === 'cost' ? costTip(parts) : undefined}>
                           <DrillVal k={key} value={a} onClick={() => drillFor(key, list, a, title)} />
                         </td>
@@ -1034,10 +1180,10 @@ const ProjectTab: React.FC<{ projects: BizProject[]; cutoff: string; projectId: 
           <table className={erp.table}>
             <thead>
               <tr>
-                {['Tháng', 'Kế hoạch', ...(isCost ? ['CP quản lý', 'CP phân bổ'] : []), 'Thực tế', 'Chênh lệch', '+/- %', 'Luỹ kế kế hoạch', 'Luỹ kế thực tế', '% luỹ kế'].map((h, i) => (
+                {['Tháng', 'Kế hoạch', ...(isCost ? ['CP quản lý', 'CP vận hành chung'] : []), 'Thực tế', 'Chênh lệch', '+/- %', 'Luỹ kế kế hoạch', 'Luỹ kế thực tế', '% luỹ kế'].map((h, i) => (
                   <th
                     key={h}
-                    title={isCost && h === 'Thực tế' ? 'Chi phí thực tế = Chi thực tế import (SX + KD + Chi phí chung) + CP quản lý + CP phân bổ (vận hành)' : undefined}
+                    title={isCost && h === 'Thực tế' ? 'Chi phí thực tế = Chi thực tế import (SX + KD + Chi phí chung) + CP quản lý + CP vận hành chung' : undefined}
                     className={`${erp.th} ${i ? 'text-right' : 'text-left'} border-t-0 first:border-l-0 last:border-r-0`}
                   >
                     {h}

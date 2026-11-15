@@ -121,9 +121,9 @@ export const designPatch = (kind: PeopleKind, p: Partial<SlideDesign>): Partial<
   return Object.fromEntries(Object.entries(p).map(([k, v]) => [map[k as keyof SlideDesign], v])) as Partial<BoxConfig>;
 };
 
-/** Khung Box ở chế độ gọn (trang chủ): tỉ lệ 16:3 theo bề rộng — banner 1600×300 luôn hiện trọn, không bị thu nhỏ;
- *  thấp nhất 160px trên màn hẹp. Mọi slide cùng khung nên không giật khi chuyển. */
-export const COMPACT_H = 'w-full aspect-[16/3] min-h-[160px]';
+/** Khung Box ở chế độ gọn (trang chủ): tỉ lệ 32:5 theo bề rộng — banner 1600×250 luôn hiện trọn, không bị thu nhỏ;
+ *  thấp nhất 140px trên màn hẹp. Mọi slide cùng khung nên không giật khi chuyển. */
+export const COMPACT_H = 'w-full aspect-[32/5] min-h-[140px]';
 /** Trên số người này thì danh sách trên banner chạy ngang; mỗi người ~3 giây. */
 export const MARQUEE_FROM = 5;
 const marqueeSeconds = (n: number) => Math.max(12, n * 3);
@@ -158,15 +158,15 @@ const PeopleSlide: React.FC<{
     const marquee = people.length > MARQUEE_FROM;
     const card = (e: MarcomEmployee) => (
       <div
-        className={`shrink-0 w-[150px] rounded-2xl px-2.5 pt-4 pb-3.5 text-center ${light ? 'bg-white/15 ring-1 ring-white/25 backdrop-blur' : 'bg-white/75 ring-1 ring-white backdrop-blur shadow-[0_6px_16px_-8px_rgba(15,23,42,.35)]'}`}
+        className={`shrink-0 w-[128px] rounded-xl px-2 pt-3 pb-2.5 text-center ${light ? 'bg-white/15 ring-1 ring-white/25 backdrop-blur' : 'bg-white/75 ring-1 ring-white backdrop-blur shadow-[0_6px_16px_-8px_rgba(15,23,42,.35)]'}`}
       >
-        <div className="relative mx-auto w-[72px] h-[72px]">
-          <span className="absolute -inset-[3px] rounded-full" style={{ background: `conic-gradient(${theme.hex}, #fbbf24, #34d399, ${theme.hex})` }} />
+        <div className="relative mx-auto w-[52px] h-[52px]">
+          <span className="absolute -inset-[2px] rounded-full" style={{ background: `conic-gradient(${theme.hex}, #fbbf24, #34d399, ${theme.hex})` }} />
           <span className="absolute inset-0 rounded-full bg-white" />
-          <Avatar e={e} size={72} rounded="rounded-full" className="relative" />
-          <span className="absolute -bottom-1 -right-1.5 w-7 h-7 rounded-full bg-white shadow flex items-center justify-center text-[13px]">{emoji}</span>
+          <Avatar e={e} size={52} rounded="rounded-full" className="relative" />
+          <span className="absolute -bottom-1 -right-1.5 w-5 h-5 rounded-full bg-white shadow flex items-center justify-center text-[11px]">{emoji}</span>
         </div>
-        <div className={`mt-2.5 text-[13px] font-semibold leading-tight truncate ${light ? 'text-white' : 'text-slate-800'}`} title={e.name}>
+        <div className={`mt-2 text-[13px] font-semibold leading-tight truncate ${light ? 'text-white' : 'text-slate-800'}`} title={e.name}>
           {e.name}
         </div>
         {(welcome ? dateLine(e) : subLine(d, e)) && (
@@ -510,7 +510,26 @@ export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean;
     setElapsed(0);
   };
 
-  if (!preview && (!box.showOnHome || dismissed)) return null;
+  if (!preview && !box.showOnHome) return null;
+  // Đã bấm X ẩn trong hôm nay → trang chủ vẫn còn thanh nhỏ để hiện lại
+  if (!preview && dismissed)
+    return compact && n ? (
+      <button
+        type="button"
+        onClick={() => {
+          setDismissed(false);
+          try {
+            localStorage.removeItem(DISMISS_KEY);
+          } catch {
+            /* bỏ qua */
+          }
+        }}
+        className="w-full h-8 rounded-lg border border-dashed border-slate-300 bg-white/70 text-[13px] text-slate-500 hover:text-[#011b64] hover:border-[#011b64]/40 inline-flex items-center justify-center gap-1.5 cursor-pointer"
+        data-testid="home-banner-restore"
+      >
+        <EyeOff size={14} /> {tr('Bạn đã ẩn banner hôm nay — bấm để hiện lại', 'Banner hidden for today — click to show it again')}
+      </button>
+    ) : null;
   const dismiss = () => {
     setDismissed(true);
     try {

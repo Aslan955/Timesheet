@@ -180,6 +180,16 @@ export interface FieldChange {
   from: string;
   to: string;
 }
+export interface OnbDateChange {
+  at: string;
+  by: string;
+  from: string; // yyyy-mm-dd
+  to: string;
+  reason: string;
+}
+/** Phiếu còn được đổi ngày onboard: chưa onboard và chưa đóng. */
+export const canChangeStartDate = (r: { status: OnbStatus }) => r.status === 'Chờ HCNS duyệt' || r.status === 'Đang onboard';
+export const START_DATE_REASONS = ['Ứng viên xin lùi ngày nhận việc', 'Ứng viên xin nhận việc sớm hơn', 'Ứng viên chưa hoàn tất nghỉ việc ở công ty cũ', 'Công ty đổi lịch onboard'];
 export interface OnbHistory {
   at: string; // ISO
   by: string;
@@ -193,7 +203,7 @@ export interface OnbMail {
   kind:
     | 'Gửi thông tin sang HCNS' | 'Cập nhật thông tin onboard' | 'Báo huỷ onboard' | 'HCNS từ chối'
     | 'Form onboarding cho ứng viên' | 'Nhắc điền form thông tin' | 'Mail IT cấp tài khoản' | 'IT trả thông tin tài khoản' | 'Thông báo MarCom'
-    | 'Email onboard cho ứng viên' | 'Cancel offer';
+    | 'Email onboard cho ứng viên' | 'Cancel offer' | 'Đổi ngày onboard';
   subject: string;
   to: string;
   cc: string[];
@@ -336,6 +346,8 @@ export interface OnbRecord {
   /** HCNS Cancel offer (ứng viên báo không nhận việc) */
   cancelledBy?: string;
   cancelledAt?: string;
+  /** HCNS đổi ngày onboard (ứng viên xin đổi ngày) — mới nhất ở cuối */
+  dateChanges?: OnbDateChange[];
   account: OnbAccount;
   checklist: ChecklistItem[];
   /** Tiến độ sau khi duyệt (rỗng khi chưa duyệt) */

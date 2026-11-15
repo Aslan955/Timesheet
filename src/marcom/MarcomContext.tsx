@@ -2,7 +2,7 @@
  * MarCom store (mock) — nhân sự (đồng bộ từ hồ sơ iMIS), cấu hình box sinh nhật + 2 email tự động, lịch sử gửi,
  * nhật ký đổi ngày onboard. "Gửi" là mock: ghi vào lịch sử, chưa gửi thật.
  */
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   BannerFit, MarcomEmployee, MailLog, MailKind, OnboardChange, PhotoSource,
   buildEmployees, buildMailLogs, buildOnboardChanges, birthdayThisYear, startOfDay,
@@ -96,31 +96,31 @@ export interface MarcomConfig {
   box: BoxConfig;
 }
 
-/** Banner mẫu (ảnh vẽ sẵn, 1600×300 — tỉ lệ 16:3 của khung trang chủ) — MarCom thay bằng banner thật ở Cấu hình › Box sinh nhật.
+/** Banner mẫu (ảnh vẽ sẵn, 1600×250 — tỉ lệ 32:5 của khung trang chủ) — MarCom thay bằng banner thật ở Cấu hình › Box sinh nhật.
  *  Chữ đặt trong vùng an toàn giữa (x 400–1600) vì khung hẹp sẽ cắt bớt hai bên. */
 const sampleBanner = (tag: string, title: string, sub: string, cta: string, c1: string, c2: string, c3: string) => {
-  const dots = Array.from({ length: 48 }, (_, i) => `<circle cx="${1380 + (i % 12) * 22}" cy="${104 + Math.floor(i / 12) * 22}" r="2.2" fill="#fff" opacity=".22"/>`).join('');
+  const dots = Array.from({ length: 48 }, (_, i) => `<circle cx="${1380 + (i % 12) * 22}" cy="${73 + Math.floor(i / 12) * 22}" r="2.2" fill="#fff" opacity=".22"/>`).join('');
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="300" viewBox="0 0 2000 375">
+    `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="250" viewBox="0 0 2000 312.5">
 <defs>
 <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset=".55" stop-color="${c2}"/><stop offset="1" stop-color="${c3}"/></linearGradient>
 <radialGradient id="glow" cx=".75" cy=".2" r=".6"><stop offset="0" stop-color="#fff" stop-opacity=".35"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
 <linearGradient id="w" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity=".18"/></linearGradient>
 </defs>
-<rect width="2000" height="375" fill="url(#g)"/>
-<rect width="2000" height="375" fill="url(#glow)"/>
-<path d="M0 315 C380 255 700 375 1100 305 S1700 235 2000 285 V375 H0 Z" fill="#fff" opacity=".07"/>
-<path d="M0 345 C420 300 820 370 1240 335 S1780 300 2000 325 V375 H0 Z" fill="#fff" opacity=".09"/>
-<path d="M1180 0 L1420 0 L1120 375 L880 375 Z" fill="url(#w)"/>
-<path d="M1460 0 L1560 0 L1260 375 L1160 375 Z" fill="url(#w)" opacity=".7"/>
+<rect width="2000" height="312.5" fill="url(#g)"/>
+<rect width="2000" height="312.5" fill="url(#glow)"/>
+<path d="M0 260 C380 200 700 312 1100 250 S1700 180 2000 230 V312.5 H0 Z" fill="#fff" opacity=".07"/>
+<path d="M0 288 C420 245 820 310 1240 278 S1780 245 2000 268 V312.5 H0 Z" fill="#fff" opacity=".09"/>
+<path d="M1180 0 L1420 0 L1170 312.5 L930 312.5 Z" fill="url(#w)"/>
+<path d="M1460 0 L1560 0 L1310 312.5 L1210 312.5 Z" fill="url(#w)" opacity=".7"/>
 <circle cx="1640" cy="40" r="120" fill="#fff" opacity=".06"/>
 ${dots}
-<rect x="400" y="110" rx="15" ry="15" width="${tag.length * 11 + 36}" height="30" fill="#fff" opacity=".2"/>
-<text x="418" y="131" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15" font-weight="800" letter-spacing="2" fill="#fff">${tag}</text>
-<text x="398" y="200" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="50" font-weight="800" fill="#fff">${title}</text>
-<text x="400" y="244" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="22" fill="#fff" opacity=".88">${sub}</text>
-<rect x="1430" y="162" rx="24" ry="24" width="${cta.length * 12 + 64}" height="48" fill="#fff"/>
-<text x="${1430 + (cta.length * 12 + 64) / 2}" y="193" text-anchor="middle" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" font-weight="800" fill="${c1}">${cta} →</text>
+<rect x="400" y="79" rx="15" ry="15" width="${tag.length * 11 + 36}" height="30" fill="#fff" opacity=".2"/>
+<text x="418" y="100" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15" font-weight="800" letter-spacing="2" fill="#fff">${tag}</text>
+<text x="398" y="169" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="50" font-weight="800" fill="#fff">${title}</text>
+<text x="400" y="213" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="22" fill="#fff" opacity=".88">${sub}</text>
+<rect x="1430" y="131" rx="24" ry="24" width="${cta.length * 12 + 64}" height="48" fill="#fff"/>
+<text x="${1430 + (cta.length * 12 + 64) / 2}" y="162" text-anchor="middle" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" font-weight="800" fill="${c1}">${cta} →</text>
 </svg>`,
   )}`;
 };
@@ -245,10 +245,33 @@ interface MarcomContextValue {
 
 const MarcomContext = createContext<MarcomContextValue | null>(null);
 
+/** Cấu hình MarCom (kể cả banner đã tải lên) lưu ở trình duyệt — tải lại trang / cập nhật code không mất banner. */
+const CONFIG_KEY = 'marcom_config_v1';
+const loadConfig = (): MarcomConfig => {
+  try {
+    const s = JSON.parse(localStorage.getItem(CONFIG_KEY) || 'null');
+    if (!s || typeof s !== 'object') return DEFAULT_CONFIG;
+    return {
+      birthday: { ...DEFAULT_CONFIG.birthday, ...(s.birthday || {}) },
+      welcome: { ...DEFAULT_CONFIG.welcome, ...(s.welcome || {}) },
+      box: { ...DEFAULT_CONFIG.box, ...(s.box || {}) },
+    };
+  } catch {
+    return DEFAULT_CONFIG;
+  }
+};
+
 export const MarcomProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [employees] = useState<MarcomEmployee[]>(() => buildEmployees());
   const [logs, setLogs] = useState<MailLog[]>(() => buildMailLogs(employees));
-  const [config, setConfig] = useState<MarcomConfig>(DEFAULT_CONFIG);
+  const [config, setConfig] = useState<MarcomConfig>(loadConfig);
+  useEffect(() => {
+    try {
+      localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+    } catch {
+      /* ảnh quá lớn so với bộ nhớ trình duyệt → chỉ giữ trong phiên */
+    }
+  }, [config]);
   // Ngày onboard / Cancel Onboard do HCNS cập nhật trên Employee — ở đây chỉ đọc sang (mock: lịch sử mẫu)
   const [changes] = useState<OnboardChange[]>(() => buildOnboardChanges(employees));
   const [syncedAt, setSyncedAt] = useState(() => new Date());

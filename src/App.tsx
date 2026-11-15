@@ -52,6 +52,13 @@ import { PmPlaceholderPage } from './components/PmPlaceholderPage';
 import { BizTargetPage, BizTargetProvider } from './components/BizTargetPage';
 import { PM_PLACEHOLDER_SCREENS } from './constants';
 import { BizReportPage } from './components/BizReportPage';
+import { CrmDashboardPage } from './components/crm/CrmDashboardPage';
+import { CrmCustomersPage } from './components/crm/CrmCustomersPage';
+import { CrmCalendarPage } from './components/crm/CrmCalendarPage';
+import { CrmRemindersPage } from './components/crm/CrmRemindersPage';
+import { CrmGiftsPage } from './components/crm/CrmGiftsPage';
+import { CrmAdminPage } from './components/crm/CrmAdminPage';
+import { crm as crmStore } from './crm/crmStore';
 import { BlockPlanPage } from './components/BlockPlanPage';
 import { BlockPlanProvider } from './business/BlockPlanContext';
 import { OverviewPage } from './components/OverviewPage';
@@ -91,6 +98,11 @@ import { ProjectsModulePage } from './components/projects/ProjectsModulePage';
 
 export default function App() {
   const [activeItem, setActiveItem] = useState('Mục tiêu kinh doanh'); // màn mở mặc định khi vào hệ thống
+  /** CRM: mở hồ sơ khách từ màn khác → chuyển sang Danh bạ khách hàng */
+  const openCrmCustomer = (id: string) => {
+    crmStore.openCustomer(id);
+    setActiveItem('Danh bạ khách hàng');
+  };
   const [login, setLogin] = useState<LoginUser | null>(() => savedLogin()); // màn đăng nhập iMIS
   // Chuyển màn từ bên trong một màn khác (vd hồ sơ nhân viên → Hợp đồng lao động)
   useEffect(() => {
@@ -168,6 +180,18 @@ export default function App() {
         return <OverviewPage />;
       case 'Mục tiêu kinh doanh':
         return <BizTargetPage />;
+      case 'CRM · Tổng quan':
+        return <CrmDashboardPage onNavigate={setActiveItem} onOpenCustomer={openCrmCustomer} />;
+      case 'Danh bạ khách hàng':
+        return <CrmCustomersPage />;
+      case 'Lịch ngoại giao':
+        return <CrmCalendarPage onOpenCustomer={openCrmCustomer} />;
+      case 'Nhắc việc':
+        return <CrmRemindersPage onOpenCustomer={openCrmCustomer} />;
+      case 'Sổ quà tặng':
+        return <CrmGiftsPage onOpenCustomer={openCrmCustomer} />;
+      case 'Phân quyền & nhật ký':
+        return <CrmAdminPage />;
       case 'Báo cáo hiệu quả dự án':
         return <BizReportPage onNavigate={setActiveItem} />;
       case 'Lập kế hoạch khối':

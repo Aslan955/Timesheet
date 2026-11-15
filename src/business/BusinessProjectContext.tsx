@@ -152,6 +152,42 @@ export const passedAccountant = (p: Pick<BizProject, 'pakd'>) => {
 };
 
 // ==========================================================================
+// Đóng dự án — AM yêu cầu ⇒ GĐ khối ⇒ Kế toán ⇒ BOD (GĐ khối / GĐKD yêu cầu ⇒ bỏ qua bước GĐ khối)
+// ==========================================================================
+export type CloseState = 'Chờ GĐK' | 'Chờ CFO' | 'Chờ BOD' | 'Đã duyệt' | 'Từ chối';
+export interface CloseStepLog {
+  step: 'Yêu cầu' | PakdStep;
+  by: string;
+  at: string; // ISO
+  approve: boolean;
+  note?: string;
+}
+/** Yêu cầu đóng dự án (lần gần nhất). Từ chối ở bất kỳ bước nào ⇒ dự án vẫn Đang thực hiện, người yêu cầu gửi lại. */
+export interface BizCloseRequest {
+  state: CloseState;
+  requestedAt: string; // ISO
+  requestedBy: string;
+  role: BizRole;
+  note?: string;
+  rejectedStep?: PakdStep;
+  log: CloseStepLog[];
+}
+/** Vai trò được bấm "Đóng dự án": AM, Giám đốc kinh doanh (SM), Giám đốc khối. */
+export const canRequestClose = (role: BizRole) => role === 'AM' || role === 'SM' || role === 'GĐK';
+/** Trạng thái sau khi gửi: AM ⇒ chờ GĐ khối; GĐ khối / GĐKD ⇒ bỏ qua bước GĐ khối, chờ Kế toán. */
+export const closeEntryState = (role: BizRole): CloseState => (role === 'AM' ? 'Chờ GĐK' : 'Chờ CFO');
+export const closePendingStep = (c?: BizCloseRequest): PakdStep | null =>
+  c?.state === 'Chờ GĐK' ? 'GĐK' : c?.state === 'Chờ CFO' ? 'CFO' : c?.state === 'Chờ BOD' ? 'BOD' : null;
+/** Dự án đang có yêu cầu đóng chờ duyệt. */
+export const isClosePending = (p: Pick<BizProject, 'status' | 'closeRequest'>) => p.status === 'Đang thực hiện' && !!closePendingStep(p.closeRequest);
+export const canDecideClose = (p: Pick<BizProject, 'status' | 'closeRequest'>, role: BizRole) => isClosePending(p) && closePendingStep(p.closeRequest) === role;
+export const closeApproveTo = (s: CloseState): CloseState => (s === 'Chờ GĐK' ? 'Chờ CFO' : s === 'Chờ CFO' ? 'Chờ BOD' : 'Đã duyệt');
+/** "Chờ GĐ khối duyệt đóng" / "Kế toán từ chối đóng" / "Đã duyệt đóng". */
+export const closeStateLabel = (c?: BizCloseRequest) =>
+  !c ? '' : closePendingStep(c) ? `Chờ ${PAKD_STEP_LABEL[closePendingStep(c)!]} duyệt đóng` : c.state === 'Từ chối' ? `${PAKD_STEP_LABEL[c.rejectedStep || 'GĐK']} từ chối đóng` : 'Đã duyệt đóng';
+export const closeTargetLabel = (s: CloseState) => closeStateLabel({ state: s } as BizCloseRequest);
+
+// ==========================================================================
 // Sổ theo dõi dự án — giá trị hợp đồng ký so với mục tiêu năm của từng khối
 // ==========================================================================
 /** Mục tiêu giá trị hợp đồng ký theo năm → khối (VNĐ). */
@@ -275,11 +311,75 @@ export interface AllocEntry {
   month: string; // YYYY-MM
   value: number; // Số tiền phân bổ cho dự án trong tháng (đ)
   note: string;
+  /** Chi phí vận hành chung: khối của bảng phân bổ (import theo khối + tháng) */
+  division?: string;
+}
+/** 1 dòng chi tiết sheet "Chi phí vận hành chung" của khối (mẫu IP chi phí VHC). */
+export interface VhcLine {
+  description: string;
+  amount: number;
+  partner: string; // Tên đối tượng
+  employee: string; // Tên nhân viên
+}
+/** Phân bổ chi phí vận hành chung cho 1 dự án của khối trong tháng (hệ thống tự tính). */
+export interface VhcAlloc {
+  projectCode: string;
+  projectName: string;
+  division: string;
+  cost: number; // Chi phí mã sản xuất (.2) của dự án trong tháng (sổ Chi thực tế)
+  ratio: number; // Tỉ lệ = chi phí dự án / tổng chi phí các dự án của khối trong tháng
+  value: number; // Chi phí VHC phân bổ = tỉ lệ × tổng chi phí vận hành chung của khối
+}
+/** File chi phí vận hành chung của 1 khối trong 1 tháng (Kế toán upload) + bảng phân bổ hệ thống tự tính. */
+export interface VhcSheet {
+  id: string;
+  ver: number;
+  division: string;
+  month: string; // YYYY-MM
+  fileName: string;
+  lines: VhcLine[];
+  total: number; // dòng "Cộng" sheet chi tiết
+  pool: number; // Tổng chi phí vận hành chung đem phân bổ (= dòng Cộng)
+  alloc: VhcAlloc[];
+  at: string;
+  by: string;
 }
 export type LedgerEntry = CashInEntry | CostEntry | AllocEntry;
+
+/**
+ * Phân bổ chi phí vận hành chung của khối trong tháng:
+ *   Tỉ lệ dự án = Chi phí của dự án trong tháng ÷ Tổng chi phí các dự án của khối trong tháng
+ *   Phân bổ    = Tỉ lệ × Tổng chi phí vận hành chung của khối (file Kế toán upload)
+ * Chi phí dự án = các dòng sổ Chi thực tế của MÃ SẢN XUẤT (.2) — không tính dòng của mã tổng / mã kinh doanh (.1), CP quản lý, CP vận hành chung.
+ * Dự án không phát sinh chi phí trong tháng → không phân bổ (0 đ). Làm tròn đồng, phần lẻ dồn vào dự án chi phí lớn nhất.
+ */
+export const allocateVhc = (pool: number, division: string, projects: BizProject[], costOf: (p: BizProject) => number): VhcAlloc[] => {
+  const list = projects
+    .filter((p) => p.division === division)
+    .map((p) => ({ p, cost: Math.max(0, costOf(p)) }))
+    .filter((x) => x.cost > 0);
+  const total = list.reduce((a, x) => a + x.cost, 0);
+  if (!total) return [];
+  const out = list.map(({ p, cost }) => ({ projectCode: p.productionCode || p.masterCode, projectName: p.name, division, cost, ratio: cost / total, value: Math.round((pool * cost) / total) }));
+  const diff = Math.round(pool) - out.reduce((a, x) => a + x.value, 0);
+  if (diff) out.reduce((m, x) => (x.cost > m.cost ? x : m)).value += diff;
+  return out;
+};
+/** Chi phí của từng dự án trong tháng theo sổ Chi thực tế. */
+/** Chi phí MÃ SẢN XUẤT (.2) của từng dự án trong tháng theo sổ Chi thực tế (dùng làm tỉ lệ phân bổ chi phí vận hành chung). */
+export const monthCostOf = (projects: BizProject[], cost: CostEntry[], month: string) => {
+  const byProd = new Map(projects.filter((p) => p.productionCode).map((p) => [p.productionCode.trim().toLowerCase(), p.id]));
+  const m = new Map<string, number>();
+  cost.forEach((e) => {
+    if (e.month !== month) return;
+    const id = byProd.get(e.projectCode.trim().toLowerCase());
+    if (id) m.set(id, (m.get(id) || 0) + e.costSx + e.costKd + (e.costChung || 0));
+  });
+  return (p: BizProject) => m.get(p.id) || 0;
+};
 /** 5 sổ chi tiết kế toán import: Doanh thu thực tế · Dòng tiền thu · Chi thực tế · Chi phí vận hành · Chi phí quản lý. */
 export type LedgerKind = 'revenue' | 'cashIn' | 'cost' | 'opex' | 'mgmt';
-export const LEDGER_LABEL: Record<LedgerKind, string> = { revenue: 'Doanh thu thực tế', cashIn: 'Dòng tiền thu', cost: 'Chi thực tế', opex: 'Chi phí vận hành', mgmt: 'Chi phí quản lý' };
+export const LEDGER_LABEL: Record<LedgerKind, string> = { revenue: 'Doanh thu thực tế', cashIn: 'Dòng tiền thu', cost: 'Chi thực tế', opex: 'Chi phí vận hành chung', mgmt: 'Chi phí quản lý' };
 /** Sổ dạng "theo mã dự án + tháng" (không có ngày hạch toán): Chi thực tế (2 cột tiền), Chi phí vận hành / quản lý (1 cột tiền). */
 export const isCostLike = (k: LedgerKind) => k === 'cost' || k === 'opex' || k === 'mgmt';
 /** Các cột tiền của 1 dòng sổ: [Số tiền, 0, 0] (doanh thu / thu / vận hành / quản lý) · [Chi SX, Chi KD, Chi phí chung]. */
@@ -302,6 +402,8 @@ export interface Ledger {
   cost: CostEntry[];
   opex: AllocEntry[];
   mgmt: AllocEntry[];
+  /** Chi tiết chi phí vận hành chung theo khối + tháng (nguồn của các dòng opex có division) */
+  vhc: VhcSheet[];
   imports: LedgerImportLog[];
 }
 
@@ -384,6 +486,8 @@ export interface BizProject {
   codeIssuedAt?: string; // YYYY-MM-DD — ngày cấp mã (GĐK duyệt / GĐK tự tạo)
   pakdDeadline?: string; // Hạn lập PAKD = ngày cấp mã (hoặc mở lại) + PAKD_DAYS
   closedAt?: string; // YYYY-MM-DD — ngày dự án chuyển Pending / Đóng
+  /** Yêu cầu đóng dự án (luồng duyệt GĐ khối → Kế toán → BOD). */
+  closeRequest?: BizCloseRequest;
   pakdForm?: PakdFormData; // Nội dung PAKD lập trên hệ thống (AM / GĐK nhập trong hạn PAKD_DAYS ngày)
   pakdDraft?: PakdFormData; // Bản điều chỉnh PAKD (GĐK / SM sửa khi dự án đang thực hiện) — nháp / chờ Kế toán duyệt
   pakd: PakdVersion[]; // các phiên bản PAKD đã nộp
@@ -405,7 +509,7 @@ export interface BizProject {
 
 export type BizProjectInput = Omit<
   BizProject,
-  'id' | 'version' | 'plan' | 'planImport' | 'actual' | 'actualImport' | 'contract' | 'attachments' | 'pakd' | 'createdAt' | 'updatedAt' | 'history'
+  'id' | 'version' | 'plan' | 'planImport' | 'actual' | 'actualImport' | 'contract' | 'attachments' | 'pakd' | 'createdAt' | 'updatedAt' | 'history' | 'closeRequest'
 >;
 
 // ==========================================================================
@@ -857,7 +961,12 @@ const SEED: BizProject[] = [
       [{ at: '2026-03-10T08:00:00.000Z', by: 'Nguyễn Đằng Giang (GĐK)', action: 'Tạo mã outsource', note: '022.061.2.1 · PM Phạm Hữu Trường · Nội dung: Thuê ngoài kiểm thử hiệu năng · Có hiệu lực' }],
     ),
     seedProject('BP-5', 'ERP Tập đoàn 022', '022.070', 'G1', 'Tập đoàn 022', '2026-01-01', '2027-06-30', [250_000_000_000, 150_000_000_000, 25_000_000_000, 600_000_000], { revenue: 0.78, cashIn: 0.6, cost: 1.12, workload: 0.85 }, ['Lê Hoài Thanh', 'Nguyễn Thị Huyền']),
-    seedProject('BP-6', 'Hệ thống bán lẻ đa kênh', '045.112', 'G2', 'Bán lẻ 045', '2026-02-01', '2026-12-31', [48_000_000_000, 27_500_000_000, 5_100_000_000, 110_000_000], { revenue: 0.9, cashIn: 0.8, cost: 1.05, workload: 0.92 }, ['Bùi Quang Minh', 'Đặng Thu Trang']),
+    // Demo: AM gửi yêu cầu đóng dự án ⇒ chờ GĐ khối duyệt
+    seedWith(
+      seedProject('BP-6', 'Hệ thống bán lẻ đa kênh', '045.112', 'G2', 'Bán lẻ 045', '2026-02-01', '2026-12-31', [48_000_000_000, 27_500_000_000, 5_100_000_000, 110_000_000], { revenue: 0.9, cashIn: 0.8, cost: 1.05, workload: 0.92 }, ['Bùi Quang Minh', 'Đặng Thu Trang']),
+      { closeRequest: { state: 'Chờ GĐK', requestedAt: '2026-11-10T09:00:00.000Z', requestedBy: 'Bùi Quang Minh (AM)', role: 'AM', note: 'Đã nghiệm thu tổng thể, bàn giao vận hành', log: [{ step: 'Yêu cầu', by: 'Bùi Quang Minh (AM)', at: '2026-11-10T09:00:00.000Z', approve: true, note: 'Đã nghiệm thu tổng thể, bàn giao vận hành' }] } },
+      [{ at: '2026-11-10T09:00:00.000Z', by: 'Bùi Quang Minh (AM)', action: 'Yêu cầu đóng dự án', note: 'Chờ GĐ khối duyệt đóng · Đã nghiệm thu tổng thể, bàn giao vận hành' }],
+    ),
     // Demo: dự án Đóng, yêu cầu mã bảo hành đang chờ GĐK duyệt
     seedWith(
       seedProject('BP-7', 'Data Lake phân tích khách hàng', '045.118', 'G2', 'Bán lẻ 045', '2026-01-01', '2026-10-31', [6_500_000_000, 3_400_000_000, 650_000_000, 15_000_000], { revenue: 0.98, cashIn: 0.96, cost: 0.95, workload: 1 }, ['Bùi Quang Minh', 'Hoàng Gia Bảo']),
@@ -957,11 +1066,24 @@ const SEED: BizProject[] = [
       {
         status: 'Kết thúc',
         closedAt: '2026-10-15',
+        closeRequest: {
+          state: 'Đã duyệt',
+          requestedAt: '2026-10-08T09:00:00.000Z',
+          requestedBy: 'Trần Minh Đức (AM)',
+          role: 'AM',
+          note: 'Hoàn thành nghiệm thu, hết hạn hợp đồng',
+          log: [
+            { step: 'Yêu cầu', by: 'Trần Minh Đức (AM)', at: '2026-10-08T09:00:00.000Z', approve: true, note: 'Hoàn thành nghiệm thu, hết hạn hợp đồng' },
+            { step: 'GĐK', by: 'Đỗ Quang Huy (GĐK)', at: '2026-10-09T10:00:00.000Z', approve: true },
+            { step: 'CFO', by: 'ketoan (CFO)', at: '2026-10-13T14:00:00.000Z', approve: true, note: 'Đã đối chiếu công nợ' },
+            { step: 'BOD', by: 'bod (BOD)', at: '2026-10-15T16:00:00.000Z', approve: true },
+          ],
+        },
         outsourceCodes: [{ code: '038.355.2.1', content: 'Thuê ngoài kiểm thử bảo mật', pm: 'Vũ Thị Lan', state: 'Có hiệu lực', createdAt: '2026-03-02T08:00:00.000Z', createdBy: 'Đỗ Quang Huy (GĐK)', decidedAt: '2026-03-02T08:00:00.000Z', decidedBy: 'Đỗ Quang Huy (GĐK)' }],
       },
       [
         { at: '2026-03-02T08:00:00.000Z', by: 'Đỗ Quang Huy (GĐK)', action: 'Tạo mã outsource', note: '038.355.2.1 · PM Vũ Thị Lan · Nội dung: Thuê ngoài kiểm thử bảo mật · Có hiệu lực' },
-        ...closeHistory('2026-10-15T16:00:00.000Z', 'namnv (SM)', ['038.355.1', '038.355.2', '038.355.2.1']),
+        ...closeHistory('2026-10-15T16:00:00.000Z', 'bod (BOD)', ['038.355.1', '038.355.2', '038.355.2.1']),
       ],
     ),
     // Demo chuỗi duyệt PAKD: SM lập ⇒ chờ GĐ khối duyệt
@@ -1033,6 +1155,55 @@ const COST_SX_NOTES = ['Lương nhân sự sản xuất', 'BHXH, BHYT, KPCĐ', '
 const COST_KD_NOTES = ['Chi phí tiếp khách, hội nghị', 'Hoa hồng / chi phí bán hàng'];
 const COST_CHUNG_NOTES = ['Chi phí thuê văn phòng, điện nước', 'Văn phòng phẩm, dịch vụ chung'];
 const m0 = (ym: string) => ym.slice(5, 7);
+/** Dòng chi tiết mẫu của chi phí vận hành chung (đối tượng / nhân viên là dữ liệu giả lập). */
+const VHC_SAMPLE: [string, number, string, string][] = [
+  ['Thuê văn phòng tầng 15 tháng {m}', 0.38, 'CÔNG TY TNHH TOÀ NHÀ MẪU', ''],
+  ['Phí dịch vụ toà nhà, gửi xe tháng {m}', 0.08, 'CÔNG TY TNHH TOÀ NHÀ MẪU', ''],
+  ['Tiền điện, nước văn phòng tháng {m}', 0.07, 'CÔNG TY ĐIỆN LỰC MẪU', ''],
+  ['Cước internet, đường truyền tháng {m}', 0.05, 'CÔNG TY VIỄN THÔNG MẪU', ''],
+  ['Lương bộ phận hỗ trợ chung của khối tháng {m}', 0.24, '', 'Nguyễn Văn Mẫu'],
+  ['Văn phòng phẩm, nước uống', 0.04, 'CÔNG TY TNHH VĂN PHÒNG PHẨM MẪU', 'Trần Thị Mẫu'],
+  ['Tiếp khách, hội họp khối', 0.06, 'CÔNG TY CP DỊCH VỤ ẨM THỰC MẪU', 'Lê Văn Mẫu'],
+  ['Phí chuyển tiền, quản lý tài khoản ngân hàng', 0.02, 'NGÂN HÀNG TMCP MẪU', ''],
+  ['Công tác phí, đi lại chung của khối', 0.06, '', 'Phạm Thị Mẫu'],
+];
+/** Mẫu: mỗi khối + tháng 1 file VHC (tổng = chi phí vận hành chung mẫu của khối), phân bổ theo tỉ lệ chi phí dự án trong tháng.
+ *  Ghi lại costAlloc của dữ liệu mẫu theo đúng công thức phân bổ. */
+const seedVhc = (projects: BizProject[]): VhcSheet[] => {
+  const pools = new Map<string, number>();
+  projects.forEach((p) => p.actual.forEach((r) => r.costAlloc && pools.set(`${p.division}|${r.month}`, (pools.get(`${p.division}|${r.month}`) || 0) + r.costAlloc)));
+  return [...pools.entries()].map(([key, pool]) => {
+    const [division, month] = key.split('|');
+    const mm = `${+month.slice(5, 7)}.${month.slice(0, 4)}`;
+    const amounts = splitAmount(pool, VHC_SAMPLE.map((x) => x[1]));
+    const lines = VHC_SAMPLE.slice(0, amounts.length).map(([d, , partner, employee], i) => ({ description: d.replace('{m}', mm), amount: amounts[i], partner, employee }));
+    const row = (p: BizProject) => p.actual.find((r) => r.month === month);
+    const alloc = allocateVhc(pool, division, projects, (p) => {
+      const r = row(p);
+      // Mẫu: chi KD hạch toán vào mã kinh doanh (.1) → không tính; chỉ chi phí mã sản xuất (.2)
+      return r ? r.costSx + (r.costChung || 0) + (p.businessCode ? 0 : r.costKd) : 0;
+    });
+    projects.filter((p) => p.division === division).forEach((p) => {
+      const r = row(p);
+      if (r) r.costAlloc = alloc.find((a) => a.projectCode === (p.productionCode || p.masterCode))?.value || 0;
+    });
+    return {
+      id: `VHC-${division}-${month}`,
+      ver: 4,
+      division,
+      month,
+      fileName: 'Chi_phi_VHC_T01-T08.2026.xlsx',
+      lines,
+      total: pool,
+      pool,
+      alloc,
+      at: '2026-09-05T09:00:00.000Z',
+      by: 'ketoan',
+    };
+  });
+};
+/** Chạy 1 lần khi nạp module: phân bổ lại costAlloc mẫu theo công thức (trước khi tạo state dự án / sổ). */
+const SEED_VHC = seedVhc(SEED);
 const seedLedger = (projects: BizProject[]): Ledger => {
   const revenue: CashInEntry[] = [];
   const cashIn: CashInEntry[] = [];
@@ -1042,7 +1213,7 @@ const seedLedger = (projects: BizProject[]): Ledger => {
   projects.forEach((p) =>
     p.actual.forEach((r, i) => {
       const mm = `${+m0(r.month)}/${r.month.slice(0, 4)}`;
-      if (r.costAlloc) opex.push({ id: `OP-${p.id}-${r.month}`, ver: 4, projectCode: p.productionCode, month: r.month, value: r.costAlloc, note: `Phân bổ chi phí vận hành khối ${p.division} tháng ${mm}` });
+      if (r.costAlloc) opex.push({ id: `OP-${p.id}-${r.month}`, ver: 4, projectCode: p.productionCode, month: r.month, value: r.costAlloc, note: `Phân bổ chi phí vận hành chung khối ${p.division} tháng ${mm}`, division: p.division });
       if (r.costMgmt) mgmt.push({ id: `MG-${p.id}-${r.month}`, ver: 5, projectCode: p.productionCode, month: r.month, value: r.costMgmt, note: `Phân bổ chi phí quản lý tháng ${mm}` });
       const [y, m] = r.month.split('-');
       const prevM = +m === 1 ? `12.${+y - 1}` : `${+m - 1}.${y}`;
@@ -1079,7 +1250,7 @@ const seedLedger = (projects: BizProject[]): Ledger => {
         cost.push({ id: `CO-${p.id}-${r.month}-sx${j}`, ver: 3, projectCode: p.productionCode, month: r.month, costSx: v, costKd: 0, costChung: 0, note: COST_SX_NOTES[j] }),
       );
       splitAmount(r.costKd, [0.65, 0.35]).forEach((v, j) =>
-        cost.push({ id: `CO-${p.id}-${r.month}-kd${j}`, ver: 3, projectCode: p.productionCode, month: r.month, costSx: 0, costKd: v, costChung: 0, note: COST_KD_NOTES[j] }),
+        cost.push({ id: `CO-${p.id}-${r.month}-kd${j}`, ver: 3, projectCode: p.businessCode || p.productionCode, month: r.month, costSx: 0, costKd: v, costChung: 0, note: COST_KD_NOTES[j] }), // chi phí bán hàng hạch toán vào mã kinh doanh (.1)
       );
       splitAmount(r.costChung || 0, [0.7, 0.3]).forEach((v, j) =>
         cost.push({ id: `CO-${p.id}-${r.month}-cc${j}`, ver: 3, projectCode: p.productionCode, month: r.month, costSx: 0, costKd: 0, costChung: v, note: COST_CHUNG_NOTES[j] }),
@@ -1094,9 +1265,10 @@ const seedLedger = (projects: BizProject[]): Ledger => {
     cost,
     opex,
     mgmt,
+    vhc: projects === SEED ? SEED_VHC : seedVhc(projects),
     imports: [
       { kind: 'mgmt', ver: 5, fileName: 'Chi_phi_quan_ly_T01-T08.2026.xlsx', months, lines: mgmt.length, at, by: 'ketoan' },
-      { kind: 'opex', ver: 4, fileName: 'Chi_phi_van_hanh_T01-T08.2026.xlsx', months, lines: opex.length, at, by: 'ketoan' },
+      { kind: 'opex', ver: 4, fileName: 'Chi_phi_VHC_T01-T08.2026.xlsx', months, lines: opex.length, at, by: 'ketoan' },
       { kind: 'cost', ver: 3, fileName: 'Chi_thuc_te_T01-T08.2026.xlsx', months, lines: cost.length, at, by: 'ketoan' },
       { kind: 'cashIn', ver: 2, fileName: 'Mau_dong_tien_thu_T01-T08.2026.xlsx', months, lines: cashIn.length, at, by: 'ketoan' },
       { kind: 'revenue', ver: 1, fileName: 'Doanh_thu_T01-T08.2026.xlsx', months, lines: revenue.length, at, by: 'ketoan' },
@@ -1112,6 +1284,8 @@ interface Ctx {
    * của loại sổ đó; Thu / Chi thực tế của dự án liên quan được tính lại = tổng các dòng.
    */
   importLedger: (kind: LedgerKind, entries: LedgerEntry[], months: string[], fileName: string, by: string) => void;
+  /** Import file chi phí vận hành chung của 1 khối / 1 tháng: thay bảng phân bổ cũ cùng khối + tháng, tính lại chi phí dự án. */
+  importVhc: (sheet: Omit<VhcSheet, 'id' | 'ver' | 'at' | 'by' | 'alloc'>, by: string) => number;
   /** Xoá 1 dòng sổ kế toán đã import; số thực tế của dự án liên quan được tính lại. */
   removeLedgerEntry: (kind: LedgerKind, id: string, by: string) => void;
   /** Xoá cả một lần import (phiên bản); `projectId` → chỉ xoá các dòng của dự án đó trong phiên bản. */
@@ -1143,6 +1317,10 @@ interface Ctx {
   cancelPakdAdjust: (id: string, by: string) => void;
   /** Kết thúc dự án Đang thực hiện ⇒ Đóng; KD / SX / outsource có hiệu lực Closed + Jira pending. */
   finishProject: (id: string, by: string) => void;
+  /** AM / GĐKD / GĐ khối gửi yêu cầu đóng dự án (Đang thực hiện). Trả về trạng thái sau khi gửi. */
+  requestCloseProject: (id: string, role: BizRole, by: string, note: string) => CloseState | undefined;
+  /** GĐ khối / Kế toán / BOD duyệt hoặc từ chối yêu cầu đóng; BOD duyệt ⇒ dự án Đóng + mã Closed + Jira pending. */
+  decideCloseProject: (id: string, approve: boolean, role: BizRole, by: string, note: string) => CloseState | undefined;
   /** Thêm / xoá tài liệu đính kèm của dự án (ghi lịch sử, không tăng version). */
   setAttachments: (id: string, files: BizAttachment[], by: string, note: string) => void;
   /** Tạo mã outsource (tối đa MAX_OUTSOURCE): `issueNow` (GĐK tạo) ⇒ có hiệu lực ngay, còn lại chờ GĐK duyệt. Trả về mã mới hoặc ''. */
@@ -1267,7 +1445,7 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
       if (p0.warranty?.state === 'Chờ HOD duyệt') return '';
       // Đã chốt 04/11: có .3 ⇒ chỉ mở lại .3 (KD / SX / outsource giữ Closed); chưa có ⇒ mở lại KD / SX / outsource.
       const codes = lifecycleCodes(p0);
-      patchLog(id, () => ({ status: 'Đang thực hiện', closedAt: undefined }), [
+      patchLog(id, () => ({ status: 'Đang thực hiện', closedAt: undefined, closeRequest: undefined }), [
         { by, action: 'Mở lại dự án', note: `Đóng ⇒ Đang thực hiện${inWarrantyPhase(p0) ? ' (KD / SX / outsource vẫn Closed)' : ''}` },
         { by: 'Hệ thống', action: 'Đồng bộ Jira', note: `Đã gửi Jira reopen: mã ${codes.join(', ')}` },
       ]);
@@ -1464,6 +1642,42 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
       { by, action: 'Kết thúc dự án', note: 'Dự án ⇒ Đóng' },
       { by: 'Hệ thống', action: 'Đồng bộ Jira', note: `Đã gửi Jira pending: mã ${codes.join(', ')}` },
     ]);
+  };
+
+
+  const requestCloseProject = (id: string, role: BizRole, by: string, note: string): CloseState | undefined => {
+    const p0 = projects.find((p) => p.id === id);
+    if (!p0 || p0.status !== 'Đang thực hiện' || !canRequestClose(role) || isClosePending(p0) || pendingOutsource(p0).length) return;
+    const state = closeEntryState(role);
+    const at = now();
+    const req: BizCloseRequest = { state, requestedAt: at, requestedBy: by, role, note: note || undefined, log: [{ step: 'Yêu cầu', by, at, approve: true, note: note || undefined }] };
+    patch(id, () => ({ closeRequest: req }), by, 'Yêu cầu đóng dự án', `${closeTargetLabel(state)}${role !== 'AM' ? ' (bỏ qua bước GĐ khối)' : ''}${note ? ` · ${note}` : ''}`);
+    return state;
+  };
+
+  const decideCloseProject = (id: string, approve: boolean, role: BizRole, by: string, note: string): CloseState | undefined => {
+    const p0 = projects.find((p) => p.id === id);
+    if (!p0 || !canDecideClose(p0, role)) return;
+    const c = p0.closeRequest!;
+    const step = closePendingStep(c)!;
+    const at = now();
+    const log = [...c.log, { step, by, at, approve, note: note || undefined }];
+    if (!approve) {
+      patch(id, () => ({ closeRequest: { ...c, state: 'Từ chối', rejectedStep: step, log } }), by, `${role} từ chối đóng dự án`, `Trả về ${c.requestedBy}${note ? ` · ${note}` : ''}`);
+      return 'Từ chối';
+    }
+    const next = closeApproveTo(c.state);
+    if (next !== 'Đã duyệt') {
+      patch(id, () => ({ closeRequest: { ...c, state: next, log } }), by, `${role} duyệt đóng dự án`, `${closeTargetLabel(next)}${note ? ` · ${note}` : ''}`);
+      return next;
+    }
+    if (pendingOutsource(p0).length) return;
+    const codes = lifecycleCodes(p0);
+    patchLog(id, () => ({ status: 'Kết thúc', closedAt: today(), closeRequest: { ...c, state: 'Đã duyệt', log } }), [
+      { by, action: 'BOD duyệt đóng dự án', note: `Dự án ⇒ Đóng${note ? ` · ${note}` : ''}` },
+      { by: 'Hệ thống', action: 'Đồng bộ Jira', note: `Đã gửi Jira pending: mã ${codes.join(', ')}` },
+    ]);
+    return 'Đã duyệt';
   };
 
   const live = (o: BizOutsource) => !o.deletedAt;
@@ -1695,6 +1909,58 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
       [...old.filter(inMonths), ...stamped].map((e) => matchProject(projects, e.projectCode)?.id).filter((id): id is string => !!id),
     );
     recomputeProjects(kind, next, months, touched, by, `${fileName} (v${ver})`);
+    if (kind === 'cost') reallocVhc(months, next as CostEntry[], by);
+  };
+
+  /** Dòng sổ "Chi phí vận hành chung" của các dự án từ bảng phân bổ. */
+  const vhcEntries = (sheet: Pick<VhcSheet, 'division' | 'month' | 'alloc'>, ver: number): AllocEntry[] => {
+    const mm = `${+sheet.month.slice(5, 7)}/${sheet.month.slice(0, 4)}`;
+    return sheet.alloc.map((a, i) => ({
+      id: `OP-${sheet.division}-${sheet.month}-${ver}-${i}`,
+      ver,
+      projectCode: a.projectCode,
+      month: sheet.month,
+      value: a.value,
+      note: `Phân bổ chi phí vận hành chung khối ${sheet.division} tháng ${mm} (${(a.ratio * 100).toFixed(2)}% chi phí khối)`,
+      division: sheet.division,
+    }));
+  };
+  /** Sổ Chi thực tế đổi → tính lại phân bổ chi phí vận hành chung của các khối trong các tháng đó. */
+  const reallocVhc = (months: string[], cost: CostEntry[], by: string) => {
+    const sheets = ledger.vhc.filter((v) => months.includes(v.month));
+    if (!sheets.length) return;
+    const redone = sheets.map((v) => ({ ...v, alloc: allocateVhc(v.pool, v.division, projects, monthCostOf(projects, cost, v.month)) }));
+    const hit = (e: AllocEntry) => sheets.some((v) => v.month === e.month && e.division === v.division);
+    const old = ledger.opex;
+    const next = [...old.filter((e) => !hit(e)), ...redone.flatMap((v) => vhcEntries(v, v.ver))];
+    setLedger((prev) => ({ ...prev, opex: next, vhc: prev.vhc.map((v) => redone.find((x) => x.id === v.id) || v) }));
+    const touched = new Set(
+      [...old.filter(hit), ...next.filter(hit)].map((e) => matchProject(projects, e.projectCode)?.id).filter((id): id is string => !!id),
+    );
+    recomputeProjects('opex', next, [...new Set<string>(sheets.map((v) => v.month))], touched, by, 'Tính lại phân bổ chi phí vận hành chung theo chi phí dự án');
+  };
+
+  const importVhc = (raw: Omit<VhcSheet, 'id' | 'ver' | 'at' | 'by' | 'alloc'>, by: string) => {
+    const at = now();
+    const ver = nextLedgerVer();
+    const sheet = { ...raw, alloc: allocateVhc(raw.pool, raw.division, projects, monthCostOf(projects, ledger.cost, raw.month)) };
+    const codes = new Set(sheet.alloc.map((a) => a.projectCode.trim().toLowerCase()));
+    const entries = vhcEntries(sheet, ver);
+    const old = ledger.opex;
+    // Thay dòng cũ cùng khối + tháng (file cũ không ghi khối: thay theo mã công trình có trong file)
+    const replaced = (e: AllocEntry) => e.month === sheet.month && (e.division ? e.division === sheet.division : codes.has(e.projectCode.trim().toLowerCase()));
+    const next = [...old.filter((e) => !replaced(e)), ...entries];
+    setLedger((prev) => ({
+      ...prev,
+      opex: next,
+      vhc: [...prev.vhc.filter((v) => !(v.division === sheet.division && v.month === sheet.month)), { ...sheet, id: `VHC-${sheet.division}-${sheet.month}-${ver}`, ver, at, by }],
+      imports: [{ kind: 'opex', ver, fileName: sheet.fileName, months: [sheet.month], lines: entries.length, at, by }, ...prev.imports],
+    }));
+    const touched = new Set(
+      [...old.filter(replaced), ...entries].map((e) => matchProject(projects, e.projectCode)?.id).filter((id): id is string => !!id),
+    );
+    recomputeProjects('opex', next, [sheet.month], touched, by, `${sheet.fileName} — khối ${sheet.division} (v${ver})`);
+    return ver;
   };
 
   const removeLedgerEntry = (kind: LedgerKind, id: string, by: string) => {
@@ -1705,6 +1971,7 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
     setLedger((prev) => ({ ...prev, [kind]: next }));
     const pid = matchProject(projects, gone.projectCode)?.id;
     if (pid) recomputeProjects(kind, next, [gone.month], new Set([pid]), by, `Xoá dòng sổ v${gone.ver}`);
+    if (kind === 'cost') reallocVhc([gone.month], next as CostEntry[], by);
   };
 
   const removeLedgerVersion = (kind: LedgerKind, ver: number, by: string, projectId?: string) => {
@@ -1715,14 +1982,20 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
     if (!gone.length) return;
     const next = old.filter((e) => !hit(e));
     const whole = !next.some((e) => e.ver === ver);
-    setLedger((prev) => ({ ...prev, [kind]: next, imports: whole ? prev.imports.filter((i) => !(i.kind === kind && i.ver === ver)) : prev.imports }));
+    setLedger((prev) => ({
+      ...prev,
+      [kind]: next,
+      vhc: kind === 'opex' && whole ? prev.vhc.filter((v) => v.ver !== ver) : prev.vhc,
+      imports: whole ? prev.imports.filter((i) => !(i.kind === kind && i.ver === ver)) : prev.imports,
+    }));
     const months = [...new Set(gone.map((e) => e.month))];
     const touched = new Set(gone.map((e) => matchProject(projects, e.projectCode)?.id).filter((id): id is string => !!id));
     recomputeProjects(kind, next, months, touched, by, projectId ? `Xoá dòng của dự án trong lần import v${ver}` : `Xoá lần import v${ver}`);
+    if (kind === 'cost') reallocVhc(months, next as CostEntry[], by);
   };
 
   return (
-    <BusinessProjectContext.Provider value={{ projects, ledger, importLedger, removeLedgerEntry, removeLedgerVersion, nextLedgerVer, createProject, updateProject, deleteProject, importMonthly, savePlanMonths, saveContract, setAttachments, addOutsourceCode, decideOutsource, removeOutsourceCode, requestWarranty, decideWarranty, setCodePm, approveCode, reopenProject, submitPakd, savePakdForm, savePakdAdjust, cancelPakdAdjust, decidePakd, finishProject, targets, setYearTargets }}>
+    <BusinessProjectContext.Provider value={{ projects, ledger, importLedger, importVhc, removeLedgerEntry, removeLedgerVersion, nextLedgerVer, createProject, updateProject, deleteProject, importMonthly, savePlanMonths, saveContract, setAttachments, addOutsourceCode, decideOutsource, removeOutsourceCode, requestWarranty, decideWarranty, setCodePm, approveCode, reopenProject, submitPakd, savePakdForm, savePakdAdjust, cancelPakdAdjust, decidePakd, finishProject, requestCloseProject, decideCloseProject, targets, setYearTargets }}>
       {children}
     </BusinessProjectContext.Provider>
   );

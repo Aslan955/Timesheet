@@ -10,7 +10,7 @@
  * (kế toán import). Chỉ tiêu (dọc) × tháng (ngang); chỉ Chi tách SX / KD; lọc theo năm.
  *
  * Quy trình: AM tạo yêu cầu → Chờ duyệt mã (GĐK duyệt; GĐK tự tạo thì cấp mã ngay) → Chưa có PAKD
- *   → PAKD chờ duyệt (GĐ khối → Kế toán → BOD; từ chối ⇒ Reject) → Đang thực hiện → Đóng (Kết thúc dự án; mã KD / SX / outsource Closed)
+ *   → PAKD chờ duyệt (GĐ khối → Kế toán → BOD; từ chối ⇒ Reject) → Đang thực hiện → Đóng (AM yêu cầu đóng ⇒ GĐ khối ⇒ Kế toán ⇒ BOD, kèm bảng tổng kết lãi / lỗ; mã KD / SX / outsource Closed)
  *   → Bảo hành (cấp mã .3, lập PAKD bảo hành V(n+1)) → Đang thực hiện (giai đoạn bảo hành) → Đóng.
  *   Quá 30 ngày PAKD chưa qua bước Kế toán → Pending (CFO / GĐKD / GĐ khối mở lại).
  *   Danh sách hiển thị Hạn lập PAKD, Phiên bản PAKD, nút thao tác theo vai trò (chọn AM / SM / GĐK / CFO / BOD),
@@ -125,7 +125,14 @@ import {
   latestActualMonth,
   sumRows,
   totalCost,
+  canDecideClose,
+  canRequestClose,
+  closeStateLabel,
+  closeTargetLabel,
+  closePendingStep,
+  isClosePending,
 } from '../business/BusinessProjectContext';
+import { ProjectCloseModal, closeModeOf } from './ProjectCloseModal';
 import { BizMonthlyImportModal, fmtMonth } from './BizMonthlyImportModal';
 import { LedgerDetailModal, LedgerDrill, drillCls } from './LedgerDetailModal';
 import { AttachmentList, ContractModal } from './ContractModal';
@@ -205,7 +212,7 @@ const useWide = () => {
 type View = { mode: 'list' } | { mode: 'detail'; id: string } | { mode: 'form'; id?: string };
 
 export const BusinessProjectPage: React.FC = () => {
-  const { projects, createProject, updateProject, deleteProject, importMonthly, saveContract, setAttachments, approveCode, reopenProject, submitPakd, savePakdForm, savePakdAdjust, cancelPakdAdjust, decidePakd, finishProject } =
+  const { projects, createProject, updateProject, deleteProject, importMonthly, saveContract, setAttachments, approveCode, reopenProject, submitPakd, savePakdForm, savePakdAdjust, cancelPakdAdjust, decidePakd, requestCloseProject, decideCloseProject } =
     useBusinessProjects();
   // Đến từ Quản lý dự án › Dự án (link "Nguồn") ⇒ mở thẳng chi tiết
   const [view, setView] = useState<View>(() => {
@@ -237,6 +244,17 @@ export const BusinessProjectPage: React.FC = () => {
     flash(`${p.contract ? 'Đã cập nhật hợp đồng' : 'Đã xác nhận ký hợp đồng'} ${c.number} — ${p.masterCode}`);
   };
 
+  /** Đóng dự án: AM ⇒ chờ GĐ khối; GĐ khối / GĐKD ⇒ chờ Kế toán; BOD duyệt ⇒ Đóng. */
+  const requestClose = (p: BizProject, note: string) => {
+    const next = requestCloseProject(p.id, role, actor, note);
+    if (next) flash(`Đã gửi yêu cầu đóng dự án ${p.masterCode} — ${closeTargetLabel(next)}`);
+  };
+  const decideClose = (p: BizProject, approve: boolean, note: string) => {
+    const next = decideCloseProject(p.id, approve, role, actor, note);
+    if (!next) return;
+    flash(!approve ? `${role} đã từ chối đóng dự án ${p.masterCode} — trả về người yêu cầu` : next === 'Đã duyệt' ? `BOD đã duyệt — dự án ${p.masterCode} Đóng, các mã đã Closed` : `${role} đã duyệt đóng dự án ${p.masterCode} — ${closeTargetLabel(next)}`);
+  };
+
   const current = view.mode !== 'list' && 'id' in view && view.id ? projects.find((p) => p.id === view.id) : undefined;
 
   return (
@@ -264,6 +282,8 @@ export const BusinessProjectPage: React.FC = () => {
           onCreate={() => setView({ mode: 'form' })}
           onDecide={decide}
           onSaveContract={signContract}
+          onRequestClose={requestClose}
+          onDecideClose={decideClose}
         />
       )}
 
@@ -307,11 +327,8 @@ export const BusinessProjectPage: React.FC = () => {
           actor={actor}
           onFlash={flash}
           onDecide={(approve, note) => decide(current, approve, note)}
-          onFinish={() => {
-            if (!window.confirm(`Kết thúc dự án "${current.name}"?\nDự án chuyển "Đóng"; ${inWarrantyPhase(current) ? 'mã bảo hành' : 'mã KD / SX / outsource'} chuyển Closed và gửi Jira pending.`)) return;
-            finishProject(current.id, actor);
-            flash('Đã kết thúc dự án — trạng thái Đóng, các mã đã Closed');
-          }}
+          onRequestClose={(note) => requestClose(current, note)}
+          onDecideClose={(approve, note) => decideClose(current, approve, note)}
           onAttachments={(files, note) => setAttachments(current.id, files, CURRENT_USER, note)}
           onSaveContract={(c) => signContract(current, c)}
           onImport={(kind, rows, fileName, summary) => {
@@ -411,7 +428,8 @@ const projectYear = (p: BizProject) => (signedDate(p) || p.expectedSignDate || p
 
 /** Dự án đang chờ đúng vai trò này: GĐK duyệt mã + PAKD chờ GĐ khối; Kế toán / BOD theo bước — gồm bản bị trả về, không tính BOD duyệt thẳng, không tính dự án Pending. */
 const approvalNeededBy = (p: BizProject, role: BizRole) =>
-  (role === 'GĐK' && p.status === 'Chờ duyệt mã') || (!isPakdLocked(p) && !!workingPakd(p) && pendingRole(workingPakd(p)) === role);
+  (role === 'GĐK' && p.status === 'Chờ duyệt mã') ||
+  canDecideClose(p, role) || (!isPakdLocked(p) && !!workingPakd(p) && pendingRole(workingPakd(p)) === role);
 
 /** locked: nút hiện nhưng khoá, kèm tooltip lý do. */
 type RowAction = { label: string; kind: 'view' | 'decide'; locked?: string } | null;
@@ -442,6 +460,29 @@ const rowAction = (p: BizProject, role: BizRole): RowAction => {
     default:
       return null;
   }
+};
+
+/** Link Đóng dự án trên lưới: AM / GĐKD / GĐ khối gửi yêu cầu · bước đang chờ duyệt · xem tổng kết dự án đã Đóng. */
+const closeAction = (p: BizProject, role: BizRole): { label: string; strong?: boolean; locked?: string; tip?: string } | null => {
+  if (p.status === 'Đang thực hiện') {
+    if (canDecideClose(p, role)) return { label: 'Duyệt đóng', strong: true, tip: 'Xem bảng tổng kết và duyệt / từ chối đóng dự án' };
+    if (isClosePending(p)) return { label: 'Xem tổng kết', tip: closeStateLabel(p.closeRequest) };
+    if (canRequestClose(role))
+      return pendingOutsource(p).length ? { label: 'Đóng dự án', locked: 'Còn mã outsource chờ GĐ khối duyệt' } : { label: 'Đóng dự án', tip: 'Xem bảng tổng kết lãi / lỗ rồi gửi yêu cầu đóng' };
+    return null;
+  }
+  if (p.status === 'Kết thúc' || p.status === 'Bảo hành') return { label: 'Tổng kết', tip: 'Báo cáo tổng kết dự án' };
+  return null;
+};
+/** Nhãn phụ dưới trạng thái: đang chờ duyệt đóng / bị từ chối đóng. */
+const CloseTag: React.FC<{ project: BizProject }> = ({ project: p }) => {
+  const c = p.closeRequest;
+  if (p.status !== 'Đang thực hiện' || !c || c.state === 'Đã duyệt') return null;
+  return (
+    <span className="block mt-0.5">
+      <Tag cls={c.state === 'Từ chối' ? 'bg-rose-50 text-rose-700 border-rose-300' : 'bg-amber-50 text-amber-700 border-amber-300'}>{closeStateLabel(c)}</Tag>
+    </span>
+  );
 };
 
 /** Các tab bổ sung trên màn chi tiết dự án (khung trống, làm nội dung sau). */
@@ -799,7 +840,9 @@ const ProjectList: React.FC<{
   onCreate: () => void;
   onDecide: (p: BizProject, approve: boolean, note: string) => void;
   onSaveContract: (p: BizProject, c: Omit<BizContract, 'updatedAt' | 'updatedBy'>) => void;
-}> = ({ projects, role, onRoleChange, onView, onCreate, onDecide, onSaveContract }) => {
+  onRequestClose: (p: BizProject, note: string) => void;
+  onDecideClose: (p: BizProject, approve: boolean, note: string) => void;
+}> = ({ projects, role, onRoleChange, onView, onCreate, onDecide, onSaveContract, onRequestClose, onDecideClose }) => {
   const [q, setQ] = useState('');
   const [division, setDivision] = useState('');
   const [status, setStatus] = useState('');
@@ -816,6 +859,8 @@ const ProjectList: React.FC<{
   const [year, setYear] = useState(() => String(new Date().getFullYear()));
   const [deciding, setDeciding] = useState<BizProject | null>(null);
   const [contractOf, setContractOf] = useState<BizProject | null>(null);
+  const [closingId, setClosingId] = useState<string | null>(null);
+  const closing = closingId ? projects.find((p) => p.id === closingId) : undefined;
 
   // Lọc theo Năm · Khối · Tìm kiếm (dùng chung cho danh sách và số đếm trong các ô lọc).
   const base = useMemo(() => {
@@ -873,7 +918,7 @@ const ProjectList: React.FC<{
 
   // Dự án đang chờ chính vai trò này phê duyệt (tính trên toàn bộ danh sách, không theo bộ lọc).
   const needApproval = useMemo(() => projects.filter((p) => approvalNeededBy(p, role)), [projects, role]);
-  const approvalWhat: Partial<Record<BizRole, string>> = { GĐK: ' (duyệt mã dự án / PAKD chờ GĐ khối)', CFO: ' (PAKD chờ Kế toán)', BOD: ' (PAKD chờ BOD)' };
+  const approvalWhat: Partial<Record<BizRole, string>> = { GĐK: ' (duyệt mã dự án / PAKD / đóng dự án chờ GĐ khối)', CFO: ' (PAKD / đóng dự án chờ Kế toán)', BOD: ' (PAKD / đóng dự án chờ BOD)' };
 
   return (
     <>
@@ -999,6 +1044,7 @@ const ProjectList: React.FC<{
                     <td className={`${erp.td} whitespace-nowrap`}>{p.productionPm || '—'}</td>
                     <td className={`${erp.td} whitespace-nowrap`}>
                       <ProjectStatus project={p} />
+                      <CloseTag project={p} />
                     </td>
                     <td className={`${erp.td} whitespace-nowrap`}>
                       {codeApprovalPending(p) ? <Tag cls="bg-amber-50 text-amber-700 border-amber-300">Chờ duyệt mã</Tag> : <span className="text-slate-700">Đã duyệt</span>}
@@ -1023,6 +1069,26 @@ const ProjectList: React.FC<{
                           {act.label}
                         </button>
                       )}
+                      {(() => {
+                        const ca = closeAction(p, role);
+                        return (
+                          ca && (
+                            <button
+                              type="button"
+                              disabled={!!ca.locked}
+                              title={ca.locked || ca.tip}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setClosingId(p.id);
+                              }}
+                              data-testid={`close-${p.masterCode}`}
+                              className={`block mx-auto mt-0.5 text-[12px] underline underline-offset-2 ${ca.locked ? 'text-slate-400 cursor-not-allowed' : ca.strong ? 'text-rose-600 font-bold cursor-pointer' : 'text-[#1f5fa8] hover:text-[#184c88] cursor-pointer'}`}
+                            >
+                              {ca.label}
+                            </button>
+                          )
+                        );
+                      })()}
                     </td>
                     <td className={`${erp.td} ${erp.num} whitespace-nowrap font-medium ${p.contractSigned ? 'text-slate-800' : 'text-slate-400'}`}>
                       {p.contractSigned ? money(p.contract?.value ?? p.expectedRevenue) : '—'}
@@ -1106,6 +1172,23 @@ const ProjectList: React.FC<{
             onDecide={(approve, note) => {
               onDecide(deciding, approve, note);
               setDeciding(null);
+            }}
+          />
+        )}
+        {closing && closeModeOf(closing, role) && (
+          <ProjectCloseModal
+            key="close"
+            project={closing}
+            role={role}
+            mode={closeModeOf(closing, role)!}
+            onClose={() => setClosingId(null)}
+            onRequest={(note) => {
+              onRequestClose(closing, note);
+              setClosingId(null);
+            }}
+            onDecide={(approve, note) => {
+              onDecideClose(closing, approve, note);
+              setClosingId(null);
             }}
           />
         )}
@@ -1232,7 +1315,7 @@ const FIN_ROWS: FinRow[] = [
   { label: { plan: 'Chi cho dự án kinh doanh (KD)', actual: 'Chi cho dự án kinh doanh (KD)' }, get: (r) => r.costKd, labelCls: 'text-rose-700', sub: true, drill: { kind: 'cost', part: 'kd' } },
   { label: { plan: 'Chi phí chung', actual: 'Chi phí chung' }, get: (r) => r.costChung || 0, labelCls: 'text-rose-700', sub: true, drill: { kind: 'cost', part: 'chung' }, only: 'actual' },
   { label: { plan: 'Chi phí quản lý', actual: 'Chi phí quản lý' }, get: (r) => r.costMgmt || 0, labelCls: 'text-rose-700', sub: true, drill: { kind: 'cost', part: 'mgmt' }, only: 'actual' },
-  { label: { plan: 'Chi phí phân bổ', actual: 'Chi phí phân bổ' }, get: (r) => r.costAlloc || 0, labelCls: 'text-rose-700', sub: true, drill: { kind: 'cost', part: 'alloc' }, only: 'actual' },
+  { label: { plan: 'Chi phí vận hành chung', actual: 'Chi phí vận hành chung' }, get: (r) => r.costAlloc || 0, labelCls: 'text-rose-700', sub: true, drill: { kind: 'cost', part: 'alloc' }, only: 'actual' },
   { label: { plan: 'Khối lượng công việc (SP)', actual: 'Khối lượng công việc (SP)' }, get: (r) => r.workload, labelCls: 'text-indigo-800' },
 ];
 
@@ -1680,19 +1763,24 @@ const StepActionBar: React.FC<{
   onLapPakd: () => void;
   onDecide: () => void;
   onReopen: () => void;
-  onFinish: () => void;
+  onCloseReport: () => void;
   onAdjust: () => void;
-}> = ({ project: p, role, onApproveCode, onLapPakd, onDecide, onReopen, onFinish, onAdjust }) => {
+}> = ({ project: p, role, onApproveCode, onLapPakd, onDecide, onReopen, onCloseReport, onAdjust }) => {
   const w = workingPakd(p);
   const left = p.pakdDeadline ? Math.ceil((new Date(`${p.pakdDeadline}T00:00:00`).getTime() - new Date(new Date().toDateString()).getTime()) / 86_400_000) : null;
   let text: React.ReactNode = null;
   let action: React.ReactNode = null;
   let waitingFor = '';
   // Đã chốt 04/11: còn mã outsource chờ duyệt ⇒ chưa kết thúc được.
-  const finishBlock = pendingOutsource(p).length ? 'Còn mã outsource chờ HOD duyệt — duyệt / từ chối trước khi kết thúc' : undefined;
-  const finishBtn = (
-    <Btn icon={Flag} onClick={onFinish} disabled={!!finishBlock} title={finishBlock || `Dự án chuyển Đóng; ${inWarrantyPhase(p) ? 'mã bảo hành' : 'mã KD / SX / outsource'} Closed + gửi Jira pending`}>
-      Kết thúc dự án
+  const finishBlock = pendingOutsource(p).length ? 'Còn mã outsource chờ HOD duyệt — duyệt / từ chối trước khi đóng dự án' : undefined;
+  // Đóng dự án: AM / GĐKD / GĐ khối mở bảng tổng kết rồi gửi yêu cầu (GĐ khối → Kế toán → BOD).
+  const finishBtn = canRequestClose(role) ? (
+    <Btn icon={Flag} onClick={onCloseReport} disabled={!!finishBlock} title={finishBlock || 'Xem bảng tổng kết lãi / lỗ và gửi yêu cầu đóng dự án'} data-testid="close-request-btn">
+      Đóng dự án
+    </Btn>
+  ) : (
+    <Btn icon={FileSpreadsheet} onClick={onCloseReport} title="Bảng tổng kết Kế hoạch – Thực tế">
+      Xem tổng kết
     </Btn>
   );
   const decideBtn = (label = 'Duyệt / Từ chối PAKD') => (
@@ -1756,6 +1844,32 @@ const StepActionBar: React.FC<{
         </>
       );
     } else waitingFor = wb ? 'người lập PAKD bảo hành' : `người lập PAKD (hạn ${dmy(p.pakdDeadline || '')})`;
+  } else if (p.status === 'Đang thực hiện' && isClosePending(p)) {
+    const c = p.closeRequest!;
+    const who = `${c.requestedBy} · ${dmy(c.requestedAt)}`;
+    if (canDecideClose(p, role)) {
+      text = (
+        <>
+          Yêu cầu <b>đóng dự án</b> ({who}) đang chờ bạn duyệt — xem bảng tổng kết lãi / lỗ rồi Duyệt / Từ chối. Duyệt ⇒ <b>{closePendingStep(c) === 'BOD' ? 'Dự án Đóng' : closeTargetLabel(closePendingStep(c) === 'GĐK' ? 'Chờ CFO' : 'Chờ BOD')}</b>.
+        </>
+      );
+      action = (
+        <Btn variant="primary" icon={ClipboardCheck} onClick={onCloseReport} data-testid="close-decide-btn">
+          Tổng kết & duyệt đóng
+        </Btn>
+      );
+    } else {
+      text = (
+        <>
+          Đã gửi yêu cầu <b>đóng dự án</b> ({who}) — <b>{closeStateLabel(c)}</b>. Luồng: GĐ khối → Kế toán → BOD.
+        </>
+      );
+      action = (
+        <Btn icon={FileSpreadsheet} onClick={onCloseReport}>
+          Xem tổng kết
+        </Btn>
+      );
+    }
   } else if (p.status === 'Đang thực hiện') {
     // Bản điều chỉnh đang trong chuỗi duyệt ⇒ thao tác duyệt; GĐ khối từ chối ⇒ SM / AM sửa tiếp.
     if (w && (isPakdPending(w) || isPakdReturned(w) || !canEditPakdVersion(w, role))) chainStep(w);
@@ -1816,12 +1930,33 @@ const StepActionBar: React.FC<{
         {canManageSubCodes(role) && !wWait && !inWarrantyPhase(p) && <> Cần bảo hành: tích <b>Tạo mã bảo hành</b> ở khung Mã dự án.</>}
       </>
     );
+    const reportBtn = (
+      <Btn icon={FileSpreadsheet} onClick={onCloseReport} title="Báo cáo tổng kết Kế hoạch – Thực tế">
+        Tổng kết dự án
+      </Btn>
+    );
+    action = reportBtn;
     if (canReopen(role))
       action = (
+        <span className="flex gap-2">
+        {reportBtn}
         <Btn icon={RotateCcw} onClick={onReopen} disabled={wWait} title={wWait ? 'Đang có yêu cầu mã bảo hành chờ HOD duyệt — không mở lại được' : inWarrantyPhase(p) ? 'Đang thực hiện; chỉ mã bảo hành về In Progress + gửi Jira reopen (KD / SX / outsource vẫn Closed)' : 'Đang thực hiện; mã KD / SX / outsource về In Progress + gửi Jira reopen'}>
           Mở lại dự án
         </Btn>
+        </span>
       );
+  }
+  // Yêu cầu đóng bị từ chối ⇒ nhắc người yêu cầu (gửi lại bằng nút Đóng dự án).
+  const cr = p.closeRequest;
+  if (p.status === 'Đang thực hiện' && cr?.state === 'Từ chối') {
+    const n = cr.log[cr.log.length - 1]?.note;
+    const rej = (
+      <>
+        Yêu cầu đóng dự án bị <b className="text-rose-700">{closeStateLabel(cr)}</b>
+        {n ? ` (“${n}”)` : ''}. {canRequestClose(role) ? 'Xử lý xong bấm Đóng dự án để gửi lại.' : ''}{' '}
+      </>
+    );
+    text = text ? <>{rej}{text}</> : rej;
   }
   const wPending = p.warranty?.state === 'Chờ HOD duyệt';
   const nOut = mainCodesClosed(p) ? 0 : pendingOutsource(p).length;
@@ -1925,12 +2060,14 @@ const ProjectDetail: React.FC<{
   onCancelAdjust: () => void;
   actor: string;
   onDecide: (approve: boolean, note: string) => void;
-  onFinish: () => void;
+  onRequestClose: (note: string) => void;
+  onDecideClose: (approve: boolean, note: string) => void;
   onFlash?: (msg: string) => void;
-}> = ({ project: p, onBack, onUpdateBasic, onDelete, onImport, onSaveContract, onAttachments, role, onRoleChange, onApproveCode, onReopen, onSubmitPakd, onSavePakd, onAdjustPakd, onCancelAdjust, actor, onDecide, onFinish, onFlash }) => {
+}> = ({ project: p, onBack, onUpdateBasic, onDelete, onImport, onSaveContract, onAttachments, role, onRoleChange, onApproveCode, onReopen, onSubmitPakd, onSavePakd, onAdjustPakd, onCancelAdjust, actor, onDecide, onRequestClose, onDecideClose, onFlash }) => {
   const files = p.attachments || [];
   const { projects, decideWarranty, decideOutsource } = useBusinessProjects();
   const [deciding, setDeciding] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [decidingWarranty, setDecidingWarranty] = useState(false);
   const [decidingOutsource, setDecidingOutsource] = useState(false);
   const [tab, setTab] = useState<DetailTab>('overview');
@@ -2030,7 +2167,7 @@ const ProjectDetail: React.FC<{
               onLapPakd={lapPakd}
               onDecide={() => setDeciding(true)}
               onReopen={onReopen}
-              onFinish={onFinish}
+              onCloseReport={() => setClosing(true)}
               onAdjust={startAdjust}
             />
           )
@@ -2227,6 +2364,23 @@ const ProjectDetail: React.FC<{
             onDecide={(approve, note) => {
               onDecide(approve, note);
               setDeciding(false);
+            }}
+          />
+        )}
+        {closing && closeModeOf(p, role) && (
+          <ProjectCloseModal
+            key="close"
+            project={p}
+            role={role}
+            mode={closeModeOf(p, role)!}
+            onClose={() => setClosing(false)}
+            onRequest={(note) => {
+              onRequestClose(note);
+              setClosing(false);
+            }}
+            onDecide={(approve, note) => {
+              onDecideClose(approve, note);
+              setClosing(false);
             }}
           />
         )}

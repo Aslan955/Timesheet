@@ -20,12 +20,23 @@ export const REPORT_METRICS: { key: ReportMetric; label: string; money: boolean 
   { key: 'cashIn', label: 'Dòng tiền thu', money: true },
   { key: 'workload', label: 'Khối lượng công việc', money: false },
 ];
+/** Chỉ tiêu trên biểu đồ: 4 chỉ tiêu + "Chi phí vận hành chung" (1 phần của Chi phí, chỉ có số thực tế do Kế toán phân bổ). */
+export type ChartMetric = ReportMetric | 'opex';
+export const CHART_METRICS: { key: ChartMetric; label: string; money: boolean }[] = [
+  REPORT_METRICS[0],
+  REPORT_METRICS[1],
+  { key: 'opex', label: 'Chi phí vận hành chung', money: true },
+  REPORT_METRICS[2],
+  REPORT_METRICS[3],
+];
+/** Chỉ tiêu không có kế hoạch (chỉ so thực tế). */
+export const planless = (k: ChartMetric) => k === 'opex';
 /** Chi phí: vượt kế hoạch là xấu → đảo chiều màu tốt / xấu. */
-export const lowerIsBetter = (k: ReportMetric) => k === 'cost';
+export const lowerIsBetter = (k: ChartMetric) => k === 'cost' || k === 'opex';
 
 /** Chi phí = Chi SX + Chi KD + Chi phí chung (sổ Chi thực tế) + CP quản lý + CP phân bổ (2 sổ phân bổ; chỉ có ở số thực tế). */
 export const costOf = (r: BizMonthRow) => totalCost(r);
-export const metricOf = (r: BizMonthRow, k: ReportMetric) => (k === 'cost' ? costOf(r) : r[k]);
+export const metricOf = (r: BizMonthRow, k: ChartMetric) => (k === 'cost' ? costOf(r) : k === 'opex' ? r.costAlloc || 0 : r[k]);
 
 /** Tách Chi phí thực tế trong kỳ thành 3 phần: sổ Chi thực tế (SX + KD + Chi phí chung) · phân bổ (vận hành) · quản lý. */
 export interface CostParts {
@@ -117,7 +128,7 @@ export interface MonthPoint {
 }
 
 /** Chuỗi tháng [from, to] của 1 chỉ tiêu, cộng dồn trên nhiều dự án. */
-export const monthlySeries = (projects: BizProject[], k: ReportMetric, from: string, to: string, cutoff: string): MonthPoint[] =>
+export const monthlySeries = (projects: BizProject[], k: ChartMetric, from: string, to: string, cutoff: string): MonthPoint[] =>
   monthsBetween(`${from}-01`, `${to}-01`).map((month) => {
     const pick = (rows: BizMonthRow[]) => rows.filter((r) => r.month === month).reduce((s, r) => s + metricOf(r, k), 0);
     return {

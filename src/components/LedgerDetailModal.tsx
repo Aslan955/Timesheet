@@ -4,15 +4,17 @@
  * Liệt kê các dòng sổ kế toán tạo nên con số đó, đúng các cột của file kế toán:
  *  • Doanh thu thực tế (sổ chi tiết các tài khoản): Ngày hạch toán · Diễn giải · Số tiền · Tên đối tượng · Mã công trình · Tên công trình
  *  • Dòng tiền thu (sổ tiền gửi ngân hàng): như trên + Mã đơn vị · Tên đơn vị
- *  • Chi thực tế: Mã công trình · Tháng · Chi sản xuất · Chi kinh doanh · Chi phí chung · Chi phí quản lý · Chi phí phân bổ · Diễn giải
- *    (gộp 3 sổ "Chi thực tế", "Chi phí quản lý", "Chi phí vận hành" — Chi phí thực tế của dự án = tổng 4 cột)
+ *  • Chi thực tế: Mã công trình · Tháng · Chi sản xuất · Chi kinh doanh · Chi phí chung · Diễn giải (Tổng chi phí ghi kèm CP quản lý + CP vận hành chung)
+ *    (gộp 3 sổ "Chi thực tế", "Chi phí quản lý", "Chi phí vận hành chung" — Chi phí thực tế của dự án = tổng các cột)
+ *  • Chi phí vận hành chung (tab riêng trong Chi phí): bảng phân bổ theo khối + tháng và các khoản chi chi tiết của khối
+ *      Tháng · Khối · Diễn giải · Số tiền · Tên đối tượng · Tên nhân viên · Phân bổ cho dự án (= số tiền × tỉ lệ phân bổ)
  * Lọc theo các mã của dự án (Mã tổng / Mã PAKD / Mã SX) và kỳ [from, to]. Xuất lại được ra Excel.
  */
 import React, { useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { motion } from 'motion/react';
-import { X, Search, FileSpreadsheet, AlertTriangle, Landmark, Receipt, TrendingUp } from 'lucide-react';
-import { BizProject, LedgerKind, projectCodes, useBusinessProjects } from '../business/BusinessProjectContext';
+import { X, Search, FileSpreadsheet, AlertTriangle, Landmark, Receipt, TrendingUp, PieChart } from 'lucide-react';
+import { BizProject, LedgerKind, VhcSheet, projectCodes, useBusinessProjects } from '../business/BusinessProjectContext';
 import { erp } from './erp/Erp';
 
 export interface LedgerDrill {
@@ -35,6 +37,9 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
   const { ledger } = useBusinessProjects();
   const [q, setQ] = useState('');
   const [hideZero, setHideZero] = useState(true);
+  /** Chi phí: tab Tổng hợp (mọi sổ chi) / Chi phí vận hành chung (chi tiết VHC) */
+  const [view, setView] = useState<'sum' | 'vhc'>(part === 'alloc' ? 'vhc' : 'sum');
+  const isVhc = kind === 'cost' && view === 'vhc';
   const codes = useMemo(() => new Set(projects.flatMap(projectCodes)), [projects]);
   const inScope = (e: { projectCode: string; month: string }) => codes.has(e.projectCode.trim().toLowerCase()) && e.month >= from && e.month <= to;
   const needle = q.trim().toLowerCase();
@@ -50,7 +55,7 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
     [source, codes, from, to, needle],
   );
   type CostRow = { id: string; projectCode: string; month: string; sx: number; kd: number; chung: number; alloc: number; mgmt: number; note: string };
-  const cost = useMemo<CostRow[]>(
+  const costAll = useMemo<CostRow[]>(
     () =>
       [
         ...ledger.cost.map((e) => ({ id: e.id, projectCode: e.projectCode, month: e.month, sx: e.costSx, kd: e.costKd, chung: e.costChung || 0, alloc: 0, mgmt: 0, note: e.note })),
@@ -64,15 +69,52 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
         .sort((a, b) => a.month.localeCompare(b.month) || a.projectCode.localeCompare(b.projectCode)),
     [ledger.cost, ledger.opex, ledger.mgmt, codes, from, to, needle, hideZero, part],
   );
+  // Bảng Tổng hợp chỉ liệt kê sổ Chi thực tế (SX · KD · Chi phí chung); CP quản lý / CP vận hành chung chỉ cộng vào tổng
+  // (CP vận hành chung xem ở tab riêng; CP quản lý chỉ hiện cột khi mở từ con số CP quản lý)
+  const showMgmt = part === 'mgmt';
+  const cost = useMemo(() => costAll.filter((e) => (showMgmt ? e.mgmt : !e.mgmt && !e.alloc)), [costAll, showMgmt]);
+
+  // ---- Chi phí vận hành chung: bảng phân bổ + dòng chi tiết của khối, quy về phần của (các) dự án đang xem
+  type VhcGroup = { sheet: VhcSheet; allocs: VhcSheet['alloc']; share: number; base: number };
+  const vhcGroups = useMemo<VhcGroup[]>(
+    () =>
+      ledger.vhc
+        .filter((v) => v.month >= from && v.month <= to)
+        .map((sheet) => {
+          const allocs = sheet.alloc.filter((a) => codes.has(a.projectCode.trim().toLowerCase()));
+          const base = sheet.lines.reduce((a, l) => a + l.amount, 0);
+          return { sheet, allocs, share: allocs.reduce((a, x) => a + x.value, 0), base };
+        })
+        .filter((g) => g.allocs.length)
+        .sort((a, b) => a.sheet.month.localeCompare(b.sheet.month) || a.sheet.division.localeCompare(b.sheet.division)),
+    [ledger.vhc, codes, from, to],
+  );
+  // Dòng phân bổ không kèm file chi tiết (import mẫu cũ "Mã công trình | Diễn giải | Số tiền")
+  const vhcLoose = useMemo(
+    () => ledger.opex.filter(inScope).filter((e) => !ledger.vhc.some((v) => v.month === e.month && v.alloc.some((a) => a.projectCode.trim().toLowerCase() === e.projectCode.trim().toLowerCase()))),
+    [ledger.opex, ledger.vhc, codes, from, to],
+  );
+  const vhcLines = useMemo(
+    () =>
+      vhcGroups.flatMap((g) =>
+        g.sheet.lines
+          .map((l, i) => ({ key: `${g.sheet.id}-${i}`, month: g.sheet.month, division: g.sheet.division, ...l, alloc: g.base ? (l.amount * g.share) / g.base : 0 }))
+          .filter((l) => !needle || [l.description, l.partner, l.employee, l.division].some((v) => v.toLowerCase().includes(needle))),
+      ),
+    [vhcGroups, needle],
+  );
+  const vhcAllocTotal = vhcGroups.reduce((a, g) => a + g.share, 0) + vhcLoose.reduce((a, e) => a + e.value, 0);
+  const vhcLinesTotal = vhcLines.reduce((a, l) => a + l.amount, 0);
+  const vhcLinesAlloc = vhcLines.reduce((a, l) => a + l.alloc, 0);
 
   const totalCash = cash.reduce((s, e) => s + e.amount, 0);
-  const totalSx = cost.reduce((s, e) => s + e.sx, 0);
-  const totalKd = cost.reduce((s, e) => s + e.kd, 0);
-  const totalChung = cost.reduce((s, e) => s + e.chung, 0);
-  const totalAlloc = cost.reduce((s, e) => s + e.alloc, 0);
-  const totalMgmt = cost.reduce((s, e) => s + e.mgmt, 0);
+  const totalSx = costAll.reduce((s, e) => s + e.sx, 0);
+  const totalKd = costAll.reduce((s, e) => s + e.kd, 0);
+  const totalChung = costAll.reduce((s, e) => s + e.chung, 0);
+  const totalAlloc = costAll.reduce((s, e) => s + e.alloc, 0);
+  const totalMgmt = costAll.reduce((s, e) => s + e.mgmt, 0);
   const totalCost = totalSx + totalKd + totalChung + totalMgmt + totalAlloc;
-  const shownTotal = isLines ? totalCash : part === 'sx' ? totalSx : part === 'kd' ? totalKd : part === 'chung' ? totalChung : part === 'alloc' ? totalAlloc : part === 'mgmt' ? totalMgmt : totalCost;
+  const shownTotal = isVhc ? vhcAllocTotal : isLines ? totalCash : part === 'sx' ? totalSx : part === 'kd' ? totalKd : part === 'chung' ? totalChung : part === 'alloc' ? totalAlloc : part === 'mgmt' ? totalMgmt : totalCost;
   const mismatch = !needle && expected !== undefined && Math.round(expected) !== Math.round(shownTotal);
 
   const heading =
@@ -80,11 +122,38 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
       ? 'BÁO CÁO DOANH THU PHÁT SINH TRONG KỲ'
       : kind === 'cashIn'
         ? 'BÁO CÁO DÒNG TIỀN THU TRONG KỲ'
-        : `CHI PHÍ THỰC TẾ${part === 'sx' ? ' — CHI SẢN XUẤT' : part === 'kd' ? ' — CHI KINH DOANH' : part === 'chung' ? ' — CHI PHÍ CHUNG' : part === 'alloc' ? ' — CHI PHÍ PHÂN BỔ (VẬN HÀNH)' : part === 'mgmt' ? ' — CHI PHÍ QUẢN LÝ' : ''}`;
-  const Icon = kind === 'revenue' ? TrendingUp : kind === 'cashIn' ? Landmark : Receipt;
+        : isVhc
+          ? 'CHI PHÍ VẬN HÀNH CHUNG'
+          : `CHI PHÍ THỰC TẾ${part === 'sx' ? ' — CHI SẢN XUẤT' : part === 'kd' ? ' — CHI KINH DOANH' : part === 'chung' ? ' — CHI PHÍ CHUNG' : part === 'alloc' ? ' — CHI PHÍ VẬN HÀNH CHUNG' : part === 'mgmt' ? ' — CHI PHÍ QUẢN LÝ' : ''}`;
+  const Icon = kind === 'revenue' ? TrendingUp : kind === 'cashIn' ? Landmark : isVhc ? PieChart : Receipt;
   const iconCls = kind === 'cost' ? 'text-rose-600' : 'text-emerald-600';
 
   const exportXlsx = () => {
+    if (isVhc) {
+      const wb = XLSX.utils.book_new();
+      const a = XLSX.utils.aoa_to_sheet([
+        ['BẢNG PHÂN BỔ CHI PHÍ VẬN HÀNH CHUNG'],
+        [title],
+        [periodText(from, to)],
+        ['Tháng', 'Khối', 'Mã công trình', 'Tên công trình', 'Chi phí mã SX (.2) trong tháng', 'Tỉ lệ', 'Chi phí VHC phân bổ'],
+        ...vhcGroups.flatMap((g) => g.allocs.map((x) => [fmtMonth(g.sheet.month), g.sheet.division, x.projectCode, x.projectName, x.cost, x.ratio, x.value])),
+        ...vhcLoose.map((e) => [fmtMonth(e.month), e.division || '', e.projectCode, e.note, '', '', e.value]),
+        ['Tổng cộng', '', '', '', '', '', vhcAllocTotal],
+      ]);
+      a['!cols'] = [10, 8, 16, 40, 18, 10, 20].map((wch) => ({ wch }));
+      const d = XLSX.utils.aoa_to_sheet([
+        ['CHI PHÍ VẬN HÀNH CHUNG — CHI TIẾT'],
+        [periodText(from, to)],
+        ['Tháng', 'Khối', 'Diễn giải', 'Số tiền', 'Tên đối tượng', 'Tên nhân viên', 'Phân bổ cho dự án'],
+        ...vhcLines.map((l) => [fmtMonth(l.month), l.division, l.description, l.amount, l.partner, l.employee, Math.round(l.alloc)]),
+        ['Cộng', '', '', vhcLinesTotal, '', '', Math.round(vhcLinesAlloc)],
+      ]);
+      d['!cols'] = [10, 8, 60, 16, 40, 24, 18].map((wch) => ({ wch }));
+      XLSX.utils.book_append_sheet(wb, a, 'Bảng phân bổ chi phí VHC');
+      XLSX.utils.book_append_sheet(wb, d, 'Chi tiết chi phí VHC');
+      XLSX.writeFile(wb, `ChiPhiVHC_${projects.length === 1 ? projects[0].masterCode : 'nhieu-du-an'}_${from}_${to}.xlsx`);
+      return;
+    }
     const rows: (string | number)[][] =
       kind === 'revenue'
         ? [
@@ -103,8 +172,11 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
           : [
               [heading],
               [periodText(from, to)],
-              ['Mã công trình', 'Tháng', 'Chi sản xuất', 'Chi kinh doanh', 'Chi phí chung', 'Chi phí quản lý', 'Chi phí phân bổ', 'Diễn giải'],
-              ...cost.map((e) => [e.projectCode, fmtMonth(e.month), e.sx, e.kd, e.chung, e.mgmt, e.alloc, e.note]),
+              showMgmt
+                ? ['Mã công trình', 'Tháng', 'Chi phí quản lý', 'Diễn giải']
+                : ['Mã công trình', 'Tháng', 'Chi sản xuất', 'Chi kinh doanh', 'Chi phí chung', 'Diễn giải'],
+              ...cost.map((e) => (showMgmt ? [e.projectCode, fmtMonth(e.month), e.mgmt, e.note] : [e.projectCode, fmtMonth(e.month), e.sx, e.kd, e.chung, e.note])),
+              ...(showMgmt ? [] : [['Tổng chi phí', '', totalCost, `gồm CP quản lý ${fmt(totalMgmt)} · CP vận hành chung ${fmt(totalAlloc)}`]]),
             ];
     const ws = XLSX.utils.aoa_to_sheet(rows);
     ws['!cols'] = (kind === 'revenue' ? [12, 60, 16, 40, 14, 36] : kind === 'cashIn' ? [12, 60, 16, 40, 14, 36, 10, 16] : [16, 12, 18, 18, 18, 18, 18, 60]).map((wch) => ({ wch }));
@@ -132,7 +204,8 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
             </h3>
             <p className="text-[12px] text-slate-600 font-semibold mt-0.5">{title}</p>
             <p className="text-[11px] text-slate-500">
-              {periodText(from, to)} · ĐVT: VNĐ · Nguồn: sổ kế toán import{kind === 'cost' ? ' (Chi thực tế + Chi phí quản lý + Chi phí vận hành)' : ''}
+              {periodText(from, to)} · ĐVT: VNĐ · Nguồn: sổ kế toán import
+              {isVhc ? ' (file chi phí vận hành chung theo khối, phân bổ theo tỉ lệ chi phí dự án trong tháng)' : kind === 'cost' ? ' (Chi thực tế + Chi phí quản lý + Chi phí vận hành chung)' : ''}
             </p>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-700 cursor-pointer">
@@ -140,23 +213,47 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
           </button>
         </div>
 
+        {kind === 'cost' && part !== 'alloc' && (
+          <div className="px-4 pt-2 border-b border-slate-200 flex gap-1" role="tablist">
+            {(
+              [
+                ['sum', 'Tổng hợp chi phí', Receipt],
+                ['vhc', 'Chi phí vận hành chung', PieChart],
+              ] as const
+            ).map(([k, label, I]) => (
+              <button
+                key={k}
+                type="button"
+                role="tab"
+                aria-selected={view === k}
+                onClick={() => setView(k)}
+                className={`-mb-px flex items-center gap-1.5 px-3 py-1.5 text-[12.5px] font-semibold border border-b-0 rounded-t-[4px] cursor-pointer ${
+                  view === k ? 'bg-white border-slate-200 text-[#1e3a5f]' : 'bg-slate-50 border-transparent text-slate-500 hover:text-slate-700'
+                }`}
+                data-testid={`cost-view-${k}`}
+              >
+                <I size={13} /> {label}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[220px] max-w-sm">
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder={isLines ? 'Tìm diễn giải, đối tượng, mã công trình...' : 'Tìm mã công trình, diễn giải...'}
+              placeholder={isVhc ? 'Tìm diễn giải, đối tượng, nhân viên...' : isLines ? 'Tìm diễn giải, đối tượng, mã công trình...' : 'Tìm mã công trình, diễn giải...'}
               className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-blue-500"
             />
           </div>
-          {kind === 'cost' && (
+          {kind === 'cost' && !isVhc && (
             <label className="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer select-none">
               <input type="checkbox" checked={hideZero} onChange={(e) => setHideZero(e.target.checked)} className="accent-blue-600" /> Ẩn dòng bằng 0
             </label>
           )}
           <span className="text-xs text-slate-500">
-            <strong className="text-slate-800">{isLines ? cash.length : cost.length}</strong> dòng · Tổng{' '}
+            <strong className="text-slate-800">{isVhc ? vhcLines.length : isLines ? cash.length : cost.length}</strong> dòng · Tổng{isVhc ? ' phân bổ cho dự án' : ''}{' '}
             <strong className="text-slate-800 font-mono">{fmt(shownTotal)}</strong>
           </span>
           <button onClick={exportXlsx} className="ml-auto flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer">
@@ -172,6 +269,9 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
         )}
 
         <div className="p-4 overflow-auto">
+          {isVhc ? (
+            <VhcView groups={vhcGroups} loose={vhcLoose} lines={vhcLines} allocTotal={vhcAllocTotal} linesTotal={vhcLinesTotal} linesAlloc={vhcLinesAlloc} />
+          ) : (
           <div className="border border-slate-300 overflow-auto">
             {isLines ? (
               <table className={erp.table}>
@@ -220,11 +320,14 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
                   <tr>
                     <th className={`${th} text-left`}>Mã công trình</th>
                     <th className={`${th} text-left`}>Tháng</th>
+                    {!showMgmt && (
+                      <>
                     <th className={`${th} text-right ${part && part !== 'sx' ? 'opacity-40' : ''}`}>Chi sản xuất</th>
                     <th className={`${th} text-right ${part && part !== 'kd' ? 'opacity-40' : ''}`}>Chi kinh doanh</th>
                     <th className={`${th} text-right ${part && part !== 'chung' ? 'opacity-40' : ''}`} title="Cột Chi phí chung của sổ Chi thực tế">Chi phí chung</th>
-                    <th className={`${th} text-right ${part && part !== 'mgmt' ? 'opacity-40' : ''}`} title="Sổ Chi phí quản lý (Kế toán phân bổ theo dự án)">Chi phí quản lý</th>
-                    <th className={`${th} text-right ${part && part !== 'alloc' ? 'opacity-40' : ''}`} title="Sổ Chi phí vận hành (Kế toán phân bổ theo dự án)">Chi phí phân bổ</th>
+                      </>
+                    )}
+                    {showMgmt && <th className={`${th} text-right`} title="Sổ Chi phí quản lý (Kế toán phân bổ theo dự án)">Chi phí quản lý</th>}
                     <th className={`${th} text-left min-w-[240px]`}>Diễn giải</th>
                   </tr>
                 </thead>
@@ -233,13 +336,13 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
                     <tr key={e.id} className={erp.tr}>
                       <td className={`${td} font-mono text-blue-600`}>{e.projectCode}</td>
                       <td className={`${td} font-mono`}>{fmtMonth(e.month)}</td>
-                      {[e.sx, e.kd, e.chung, e.mgmt, e.alloc].map((v, j) => (
+                      {(showMgmt ? [e.mgmt] : [e.sx, e.kd, e.chung]).map((v, j) => (
                         <td key={j} className={`${td} text-right font-mono ${v ? 'font-bold text-rose-700' : 'text-slate-400'}`}>{fmt(v)}</td>
                       ))}
                       <td className={`${td} text-slate-600`}>{e.note || <span className="text-slate-300">—</span>}</td>
                     </tr>
                   ))}
-                  {!cost.length && <EmptyRow cols={8} />}
+                  {!cost.length && <EmptyRow cols={showMgmt ? 4 : 6} />}
                 </tbody>
                 {cost.length > 0 && (
                   <tfoot>
@@ -247,20 +350,157 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
                       <td className={td} colSpan={2}>
                         Tổng cộng
                       </td>
-                      <td className={`${td} text-right font-mono`}>{fmt(totalSx)}</td>
-                      <td className={`${td} text-right font-mono`}>{fmt(totalKd)}</td>
-                      <td className={`${td} text-right font-mono`}>{fmt(totalChung)}</td>
-                      <td className={`${td} text-right font-mono`}>{fmt(totalMgmt)}</td>
-                      <td className={`${td} text-right font-mono`}>{fmt(totalAlloc)}</td>
-                      <td className={`${td} text-slate-500 font-semibold`}>Tổng chi phí: {fmt(totalCost)}</td>
+                      {showMgmt ? (
+                        <>
+                          <td className={`${td} text-right font-mono`}>{fmt(totalMgmt)}</td>
+                          <td className={td} />
+                        </>
+                      ) : (
+                        <>
+                          <td className={`${td} text-right font-mono`}>{fmt(totalSx)}</td>
+                          <td className={`${td} text-right font-mono`}>{fmt(totalKd)}</td>
+                          <td className={`${td} text-right font-mono`}>{fmt(totalChung)}</td>
+                          <td className={`${td} text-slate-500 font-semibold`}>
+                            Tổng chi phí: {fmt(totalCost)}
+                            {(totalMgmt > 0 || totalAlloc > 0) && (
+                              <span className="block text-[11px] font-normal">
+                                gồm CP quản lý {fmt(totalMgmt)} · CP vận hành chung {fmt(totalAlloc)}
+                              </span>
+                            )}
+                          </td>
+                        </>
+                      )}
                     </tr>
                   </tfoot>
                 )}
               </table>
             )}
           </div>
+          )}
         </div>
       </motion.div>
+    </div>
+  );
+};
+
+/** Tab "Chi phí vận hành chung": bảng phân bổ (khối → dự án) + các khoản chi chi tiết của khối. */
+const VhcView: React.FC<{
+  groups: { sheet: VhcSheet; allocs: VhcSheet['alloc']; share: number }[];
+  loose: { id: string; month: string; projectCode: string; value: number; note: string; division?: string }[];
+  lines: { key: string; month: string; division: string; description: string; amount: number; partner: string; employee: string; alloc: number }[];
+  allocTotal: number;
+  linesTotal: number;
+  linesAlloc: number;
+}> = ({ groups, loose, lines, allocTotal, linesTotal, linesAlloc }) => {
+  const th = erp.th;
+  const td = `${erp.td} align-top`;
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="text-[12px] font-bold text-slate-700 mb-1.5">Bảng phân bổ chi phí VHC</p>
+        <div className="border border-slate-300 overflow-auto">
+          <table className={erp.table} data-testid="vhc-alloc">
+            <thead>
+              <tr>
+                <th className={`${th} text-left`}>Tháng</th>
+                <th className={`${th} text-left`}>Khối</th>
+                <th className={`${th} text-right`}>Tổng chi phí VHC khối</th>
+                <th className={`${th} text-left`}>Mã công trình</th>
+                <th className={`${th} text-left min-w-[180px]`}>Tên công trình</th>
+                <th className={`${th} text-right`} title="Sổ Chi thực tế — chỉ các dòng của mã sản xuất (.2)">Chi phí mã SX (.2) trong tháng</th>
+                <th className={`${th} text-right`}>Tỉ lệ</th>
+                <th className={`${th} text-right`}>Chi phí VHC phân bổ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {groups.flatMap((g) =>
+                g.allocs.map((a, i) => (
+                  <tr key={`${g.sheet.id}-${a.projectCode}`} className={erp.tr}>
+                    <td className={`${td} font-mono`}>{fmtMonth(g.sheet.month)}</td>
+                    <td className={td}>{g.sheet.division}</td>
+                    <td className={`${td} text-right font-mono text-slate-600`}>{i === 0 ? fmt(g.sheet.pool) : ''}</td>
+                    <td className={`${td} font-mono text-blue-600`}>{a.projectCode}</td>
+                    <td className={`${td} text-slate-600`}>{a.projectName || '—'}</td>
+                    <td className={`${td} text-right font-mono`}>{fmt(a.cost)}</td>
+                    <td className={`${td} text-right font-mono`}>{(a.ratio * 100).toFixed(2)}%</td>
+                    <td className={`${td} text-right font-mono font-bold text-rose-700`}>{fmt(a.value)}</td>
+                  </tr>
+                )),
+              )}
+              {loose.map((e) => (
+                <tr key={e.id} className={erp.tr}>
+                  <td className={`${td} font-mono`}>{fmtMonth(e.month)}</td>
+                  <td className={td}>{e.division || '—'}</td>
+                  <td className={`${td} text-slate-400`}>—</td>
+                  <td className={`${td} font-mono text-blue-600`}>{e.projectCode}</td>
+                  <td className={`${td} text-slate-500 italic`} colSpan={3}>
+                    {e.note || 'Phân bổ không kèm file chi tiết'}
+                  </td>
+                  <td className={`${td} text-right font-mono font-bold text-rose-700`}>{fmt(e.value)}</td>
+                </tr>
+              ))}
+              {!groups.length && !loose.length && <EmptyRow cols={8} />}
+            </tbody>
+            {(groups.length > 0 || loose.length > 0) && (
+              <tfoot>
+                <tr className={erp.totalRow}>
+                  <td className={td} colSpan={7}>
+                    Tổng phân bổ cho dự án
+                  </td>
+                  <td className={`${td} text-right font-mono`}>{fmt(allocTotal)}</td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <p className="text-[12px] font-bold text-slate-700 mb-1.5">Các khoản chi vận hành chung của khối</p>
+        <div className="border border-slate-300 overflow-auto">
+          <table className={erp.table} data-testid="vhc-lines">
+            <thead className="sticky top-0 z-10">
+              <tr>
+                <th className={`${th} text-left`}>Tháng</th>
+                <th className={`${th} text-left`}>Khối</th>
+                <th className={`${th} text-left min-w-[260px]`}>Diễn giải</th>
+                <th className={`${th} text-right`}>Số tiền</th>
+                <th className={`${th} text-left min-w-[200px]`}>Tên đối tượng</th>
+                <th className={`${th} text-left`}>Tên nhân viên</th>
+                <th className={`${th} text-right`} title="Số tiền × tỉ lệ phân bổ của dự án">
+                  Phân bổ cho dự án
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {lines.map((l) => (
+                <tr key={l.key} className={erp.tr}>
+                  <td className={`${td} font-mono whitespace-nowrap`}>{fmtMonth(l.month)}</td>
+                  <td className={td}>{l.division}</td>
+                  <td className={`${td} text-slate-700`}>{l.description || <span className="text-slate-300">—</span>}</td>
+                  <td className={`${td} text-right font-mono text-slate-700 whitespace-nowrap`}>{fmt(l.amount)}</td>
+                  <td className={`${td} text-slate-600`}>{l.partner || <span className="text-slate-300">—</span>}</td>
+                  <td className={`${td} text-slate-600 whitespace-nowrap`}>{l.employee || <span className="text-slate-300">—</span>}</td>
+                  <td className={`${td} text-right font-mono font-bold text-rose-700 whitespace-nowrap`}>{fmt(l.alloc)}</td>
+                </tr>
+              ))}
+              {!lines.length && <EmptyRow cols={7} />}
+            </tbody>
+            {lines.length > 0 && (
+              <tfoot>
+                <tr className={erp.totalRow}>
+                  <td className={td} colSpan={3}>
+                    Cộng
+                  </td>
+                  <td className={`${td} text-right font-mono`}>{fmt(linesTotal)}</td>
+                  <td colSpan={2} />
+                  <td className={`${td} text-right font-mono`}>{fmt(linesAlloc)}</td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </div>
     </div>
   );
 };

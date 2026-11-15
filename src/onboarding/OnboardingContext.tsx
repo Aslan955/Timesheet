@@ -9,7 +9,7 @@ import { useRc } from '../recruitment/rc/RcContext';
 import { Stage, MailKind } from '../recruitment/rc/rcData';
 import {
   OnbRecord, HandoffData, FieldChange, OnbMail, OnbTask, TaskKey, ItRequest, ItReturn, SEED_RECORDS, HCNS_MAILBOX, IT_MAILBOX, MARCOM_MAILBOX, FORM_FIELDS,
-  buildChecklist, diffHandoff, todayIso, formLinkOf, missingForApprove, onboardMailAt, ONBOARD_MAIL_HOUR, dmy,
+  buildChecklist, diffHandoff, canChangeStartDate, todayIso, formLinkOf, missingForApprove, onboardMailAt, ONBOARD_MAIL_HOUR, dmy,
 } from './onboardingData';
 import { upsertEmployeeFromOnboarding, removeEmployeeFromOnboarding } from '../components/EmployeePage';
 
@@ -65,6 +65,10 @@ interface OnboardingContextValue {
   sendOnboardMail: (id: string, manual?: boolean) => void;
   /** HCNS chuyển Cancel offer khi ứng viên báo không onboard → huỷ onboard. */
   cancelOffer: (id: string, reason: string) => void;
+  /** HCNS đổi ngày onboard: dời lịch email 08:00, cập nhật Employees, báo ứng viên / IT / MarCom / TA. */
+  changeStartDate: (id: string, date: string, reason: string) => void;
+  /** HCNS sửa toàn bộ thông tin ứng viên (17 trường + email/điện thoại); đổi ngày onboard đi qua changeStartDate. */
+  hrEdit: (id: string, p: { data: HandoffData; candidateEmail: string; candidatePhone: string }, reason: string) => number;
 }
 
 const OnboardingContext = createContext<OnboardingContextValue | null>(null);
@@ -522,6 +526,95 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (r.account.employeeCode) removeEmployeeFromOnboarding(r.account.employeeCode);
   };
 
+  const changeStartDate: OnboardingContextValue['changeStartDate'] = (id, date, reason) => {
+    const r = recordsRef.current.find((x) => x.id === id);
+    if (!r || !canChangeStartDate(r) || !date || date === r.data.startDate) return;
+    const at = nowIso();
+    const from = r.data.startDate;
+    const accepted = r.status === 'Đang onboard';
+    const t = (k: TaskKey) => r.tasks?.find((x) => x.key === k)?.status || 'Chưa bắt đầu';
+    const toIt = accepted && t('itAccount') !== 'Chưa bắt đầu';
+    const toMc = accepted && t('marcom') !== 'Chưa bắt đầu';
+    const subject = `[HCNS] Đổi ngày onboard ${r.data.fullName}: ${dmy(from)} → ${dmy(date)}`;
+    const mails: OnbMail[] = [
+      ...(accepted
+        ? [{ at, kind: 'Đổi ngày onboard' as const, subject: `Xác nhận ngày nhận việc mới: ${dmy(date)} — ${r.company}`, to: r.candidateEmail, cc: [HCNS_MAILBOX], attachments: [] }]
+        : []),
+      { at, kind: 'Đổi ngày onboard', subject, to: r.taPic, cc: [HCNS_MAILBOX], attachments: [] },
+      ...(toIt ? [{ at, kind: 'Đổi ngày onboard' as const, subject: `${subject} — cập nhật hạn cấp tài khoản`, to: IT_MAILBOX, cc: [HCNS_MAILBOX], attachments: [] }] : []),
+      ...(toMc ? [{ at, kind: 'Đổi ngày onboard' as const, subject: `${subject} — dời Welcome Onboard`, to: MARCOM_MAILBOX, cc: [HCNS_MAILBOX], attachments: [] }] : []),
+    ];
+    const notified = [accepted && 'ứng viên', 'Tuyển dụng', toIt && 'IT', toMc && 'MarCom'].filter(Boolean).join(', ');
+    patch(id, (x) => ({
+      ...x,
+      data: { ...x.data, startDate: date },
+      dateChanges: [...(x.dateChanges || []), { at, by: HCNS_USER, from, to: date, reason }],
+      tasks: (x.tasks || []).map((k) => (k.key === 'onboardMail' && k.status !== 'Đã hoàn thành' ? { ...k, detail: `Lên lịch ${ONBOARD_MAIL_HOUR}:00 ${dmy(date)} tới ${x.candidateEmail}` } : k)),
+      mails: [...x.mails, ...mails],
+      history: [
+        ...x.history,
+        {
+          at, by: HCNS_USER, role: 'HCNS', action: 'Đổi ngày onboard', note: reason,
+          changes: [{ field: 'Ngày onboard', from: dmy(from), to: dmy(date) }],
+        },
+        {
+          at, by: 'Hệ thống', role: 'Hệ thống', action: 'Cập nhật theo ngày onboard mới',
+          note: [accepted && `Dời lịch email onboard sang ${ONBOARD_MAIL_HOUR}:00 ${dmy(date)}`, r.account.employeeCode && `cập nhật ngày vào làm hồ sơ ${r.account.employeeCode}`, `báo ${notified}`].filter(Boolean).join(' · '),
+        },
+      ],
+    }));
+    if (r.account.employeeCode) upsertEmployeeFromOnboarding(r.account.employeeCode, empInfo({ ...r, data: { ...r.data, startDate: date } }), { joinDate: date }, `Đổi ngày onboard ${dmy(from)} → ${dmy(date)}`);
+  };
+
+  const hrEdit: OnboardingContextValue['hrEdit'] = (id, p, reason) => {
+    const r = recordsRef.current.find((x) => x.id === id);
+    if (!r || !canChangeStartDate(r)) return 0;
+    const at = nowIso();
+    const { startDate, ...rest } = p.data;
+    const changes: FieldChange[] = diffHandoff(r.data, { ...r.data, ...rest });
+    if (p.candidateEmail !== r.candidateEmail) changes.push({ field: 'Email cá nhân', from: r.candidateEmail, to: p.candidateEmail });
+    if (p.candidatePhone !== r.candidatePhone) changes.push({ field: 'Điện thoại', from: r.candidatePhone, to: p.candidatePhone });
+    if (changes.length) {
+      const accepted = r.status === 'Đang onboard';
+      const itFields = ['Họ tên ứng viên', 'Bộ phận', 'Quản lý trực tiếp'];
+      const toIt = accepted && (r.tasks?.find((x) => x.key === 'itAccount')?.status || 'Chưa bắt đầu') === 'Đang thực hiện' && changes.some((c) => itFields.includes(c.field));
+      const subject = `[HCNS] Cập nhật thông tin onboard ${p.data.fullName} — ${changes.length} trường thay đổi`;
+      patch(id, (x) => ({
+        ...x,
+        data: { ...x.data, ...rest },
+        candidateEmail: p.candidateEmail,
+        candidatePhone: p.candidatePhone,
+        mails: [
+          ...x.mails,
+          { at, kind: 'Cập nhật thông tin onboard', subject, to: x.taPic, cc: [HCNS_MAILBOX], attachments: [] },
+          ...(toIt ? [{ at, kind: 'Cập nhật thông tin onboard' as const, subject: `${subject} — cập nhật yêu cầu cấp tài khoản`, to: IT_MAILBOX, cc: [HCNS_MAILBOX], attachments: [] }] : []),
+        ],
+        history: [...x.history, { at, by: HCNS_USER, role: 'HCNS', action: 'HCNS sửa thông tin ứng viên', note: reason || undefined, changes }],
+      }));
+      if (r.account.employeeCode) {
+        const name = p.data.fullName.trim().toUpperCase();
+        const words = name.split(/\s+/).filter(Boolean);
+        upsertEmployeeFromOnboarding(
+          r.account.employeeCode,
+          empInfo(r),
+          {
+            fullName: name, surname: words.slice(0, -1).join(' '), givenName: words[words.length - 1] || '',
+            department: p.data.department, position: p.data.position, level: p.data.level, manager: p.data.manager.toUpperCase(), techStack: p.data.techStack,
+            personalEmail: p.candidateEmail, phone: p.candidatePhone,
+          },
+          'HCNS sửa thông tin ứng viên (Onboarding Request)',
+        );
+      }
+    }
+    if (startDate && startDate !== r.data.startDate) {
+      // ref mới ngay để email xác nhận ngày mới đi tới email / họ tên vừa sửa
+      recordsRef.current = recordsRef.current.map((x) => (x.id === id ? { ...x, data: { ...x.data, ...rest }, candidateEmail: p.candidateEmail, candidatePhone: p.candidatePhone } : x));
+      changeStartDate(id, startDate, reason || 'HCNS sửa thông tin ứng viên');
+      return changes.length + 1;
+    }
+    return changes.length;
+  };
+
   const value = useMemo<OnboardingContextValue>(
     () => ({
       records,
@@ -542,6 +635,8 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       marcomDone,
       sendOnboardMail,
       cancelOffer,
+      changeStartDate,
+      hrEdit,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [records],

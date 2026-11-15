@@ -96,6 +96,21 @@ interface Allowance {
   name: string;
   amount: number;
 }
+/** 1 phụ lục 01 (các khoản hỗ trợ) của hợp đồng — dùng cho lịch sử phụ lục. */
+export interface ContractAppendix {
+  id: string;
+  effectiveDate: string; // Ngày hiệu lực
+  income: number; // Tổng thu nhập
+  baseSalary: number;
+  rate: number;
+  allowances: Allowance[];
+  perfBonus: number;
+  note: string;
+  createdAt: string;
+  createdBy: string;
+  updatedAt?: string;
+  updatedBy?: string;
+}
 interface CFile {
   id: string;
   name: string;
@@ -127,6 +142,13 @@ export interface Contract {
   allowances: Allowance[]; // 4 khoản hỗ trợ: ăn trưa, xăng xe, điện thoại, nhà ở
   perfBonus: number; // thưởng hiệu quả công việc (tạm tính)
   income?: number; // Tổng thu nhập (nhập ở Phụ lục 01)
+  /** Phụ lục 01 đang áp dụng (= các trường income / allowances / perfBonus ở trên): ngày hiệu lực — trống = ngày hiệu lực HĐ. */
+  appendixDate?: string;
+  appendixNote?: string;
+  appendixAt?: string;
+  appendixBy?: string;
+  /** Phụ lục 01 cũ (ngày hiệu lực trước phụ lục đang áp dụng) — mới nhất trước. */
+  appendixHistory?: ContractAppendix[];
   insurance: { bhxh: boolean; bhyt: boolean; bhtn: boolean };
   signerSalutation: string; // Ông / Bà
   signer: string;
@@ -235,6 +257,55 @@ const withIncome = <T extends IncomeSrc>(c: T, total = incomeOf(c)): T => {
   if (rateK(c) <= 0) return { ...c, income: total, allowances: normSupports(c.allowances), perfBonus: c.perfBonus || 0 }; // MLH = 0 → giữ nguyên các khoản đã nhập
   const p = splitIncome(Math.round(total * rateK(c)), c.baseSalary || 0);
   return { ...c, income: total, allowances: SUPPORTS.map((x) => ({ id: uid(), name: x.name, amount: p.supports[x.name] || 0 })), perfBonus: p.perf };
+};
+// ── Nhiều phụ lục 01 trên 1 hợp đồng: chỉ phụ lục có ngày hiệu lực mới nhất được hiển thị / áp dụng, phụ lục cũ vào lịch sử ──
+export const appendixDateOf = (c: Pick<Contract, 'appendixDate' | 'from'>) => c.appendixDate || c.from;
+const histOf = (c: Pick<Contract, 'appendixHistory'>) => c.appendixHistory || [];
+/** Chụp phụ lục đang áp dụng để đưa vào lịch sử. */
+const snapshotAppendix = (c: Contract): ContractAppendix => ({
+  id: uid(),
+  effectiveDate: appendixDateOf(c),
+  income: incomeOf(c),
+  baseSalary: c.baseSalary || 0,
+  rate: c.rate,
+  allowances: normSupports(c.allowances),
+  perfBonus: c.perfBonus || 0,
+  note: c.appendixNote || '',
+  createdAt: c.appendixAt || c.history[0]?.at || '',
+  createdBy: c.appendixBy || c.history[0]?.by || ME,
+});
+const sortHist = (h: ContractAppendix[]) => [...h].sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate));
+/** Thêm phụ lục: ngày hiệu lực mới nhất → thành phụ lục đang áp dụng (phụ lục đang áp dụng chuyển vào lịch sử); cũ hơn → vào thẳng lịch sử. */
+type NewAppendix = { effectiveDate: string; income: number; baseSalary: number; note: string; allowances?: Allowance[]; perfBonus?: number };
+const addAppendix = (c: Contract, a: NewAppendix, by: string, at = nowIso()): Contract => {
+  const auto = withIncome({ ...c, baseSalary: a.baseSalary }, a.income);
+  // Các khoản sửa tay trong màn Thêm phụ lục (không có → theo công thức chia tự động)
+  const x = { ...auto, allowances: a.allowances ? normSupports(a.allowances) : auto.allowances, perfBonus: a.perfBonus ?? auto.perfBonus };
+  if (a.effectiveDate > appendixDateOf(c))
+    return {
+      ...c,
+      baseSalary: a.baseSalary,
+      income: x.income,
+      allowances: x.allowances,
+      perfBonus: x.perfBonus,
+      appendixDate: a.effectiveDate,
+      appendixNote: a.note,
+      appendixAt: at,
+      appendixBy: by,
+      appendixHistory: sortHist([snapshotAppendix(c), ...histOf(c)]),
+    };
+  const entry: ContractAppendix = { id: uid(), effectiveDate: a.effectiveDate, income: x.income ?? a.income, baseSalary: a.baseSalary, rate: c.rate, allowances: x.allowances, perfBonus: x.perfBonus, note: a.note, createdAt: at, createdBy: by };
+  return { ...c, appendixHistory: sortHist([entry, ...histOf(c)]) };
+};
+/** Lỗi ngày hiệu lực phụ lục (so với thời hạn HĐ và các phụ lục khác). */
+const appendixDateErr = (date: string, c: Pick<Contract, 'from' | 'to' | 'appendixDate' | 'appendixHistory'>, asNew: boolean): string => {
+  if (!date) return 'Bắt buộc';
+  if (c.from && date < c.from) return `Trước ngày hiệu lực hợp đồng (${dmy(c.from)})`;
+  if (c.to && date > c.to) return `Sau ngày hết hạn hợp đồng (${dmy(c.to)})`;
+  const dates = asNew ? [appendixDateOf(c), ...histOf(c).map((h) => h.effectiveDate)] : histOf(c).map((h) => h.effectiveDate);
+  if (dates.includes(date)) return 'Đã có phụ lục cùng ngày hiệu lực';
+  if (!asNew && histOf(c).some((h) => h.effectiveDate > date)) return `Phải sau ngày hiệu lực phụ lục trước (${dmy(histOf(c)[0].effectiveDate)})`;
+  return '';
 };
 /** Dữ liệu tự sinh: Tổng thu nhập tối thiểu đủ trả Lương cơ bản + ăn trưa */
 const fitIncome = <T extends IncomeSrc>(c: T, total = incomeOf(c)) => withIncome(c, Math.max(total, minIncomeOf(c)));
@@ -430,7 +501,15 @@ const buildSeed = () => {
   }
   // 2 NLĐ đã nghỉ việc (HĐ đã chấm dứt)
   workers.slice(0, 2).forEach((w) => (w.working = false));
-  return { workers, contracts };
+  // Mẫu nhiều phụ lục: HĐ đã hiệu lực trên 6 tháng có thêm phụ lục điều chỉnh thu nhập (phụ lục đầu vào lịch sử)
+  const now0 = today();
+  const withApp = contracts.map((c, i) => {
+    const d6 = addMonths(c.from, 6);
+    if (isK(c.type, 'TV') || isK(c.type, 'OTHER') || d6 > now0 || (c.to && d6 > c.to) || i % 2) return c;
+    const base = fitIncome(c);
+    return addAppendix(base, { effectiveDate: d6, income: incomeOf(base) + 3_000_000, baseSalary: c.baseSalary, note: 'Điều chỉnh thu nhập sau đánh giá 6 tháng' }, ME, `${d6}T02:00:00.000Z`);
+  });
+  return { workers, contracts: withApp };
 };
 
 // ==========================================================================
@@ -472,6 +551,8 @@ const validate = (c: Contract, all: Contract[]): Record<string, string> => {
   if (c.type && c.term && !isK(c.type, 'KXD') && !termsOf(c.type).some((x) => x.label === c.term) && !(prev && prev.type === c.type && prev.term === c.term)) e.term = 'Thời hạn không thuộc danh sách cho phép của loại HĐ';
   if (!c.signer.trim()) e.signer = 'Chọn người ký';
   if (incomeOf(c) < minIncomeOf(c)) e.income = `Tối thiểu ${money(minIncomeOf(c))} — Mức lương hưởng (× ${c.rate}%) phải đủ Lương cơ bản + ăn trưa ${money(LUNCH)}`;
+  const ad = appendixDateErr(appendixDateOf(c), c, false);
+  if (ad) e.appendixDate = ad;
   if (c.ended && !c.ended.date) e.ended = 'Nhập ngày hết hiệu lực';
   else if (c.ended && c.from && c.ended.date < c.from) e.ended = 'Ngày hết hiệu lực trước ngày bắt đầu';
   else if (c.ended && c.to && c.ended.date > c.to) e.ended = 'Sau ngày kết thúc — hợp đồng sẽ tự hết hạn';
@@ -486,9 +567,9 @@ const LABELS: [keyof Contract, string][] = [
   ['companyId', 'Công ty ký HĐ'], ['no', 'Số hợp đồng'], ['type', 'Loại hợp đồng'], ['term', 'Thời hạn'], ['signDate', 'Ngày ký'], ['from', 'Ngày có hiệu lực'], ['to', 'Ngày hết hạn'],
   ['unit', 'Đơn vị ký HĐ'], ['position', 'Vị trí công việc'], ['workplace', 'Nơi làm việc'], ['workTime', 'Thời gian làm việc'], ['jobDesc', 'Mô tả công việc'],
   ['baseSalary', 'Lương cơ bản'], ['rate', 'Mức hưởng (%)'], ['income', 'Tổng thu nhập'], ['perfBonus', 'Thưởng hiệu quả (tạm tính)'], ['signerSalutation', 'Xưng hô người ký'], ['signer', 'Người ký'], ['signerTitle', 'Chức danh người ký'], ['authorization', 'Giấy uỷ quyền'],
-  ['signPlace', 'Nơi ký'], ['note', 'Ghi chú'],
+  ['signPlace', 'Nơi ký'], ['note', 'Ghi chú'], ['appendixDate', 'Ngày hiệu lực phụ lục 01'],
 ];
-const showV = (k: keyof Contract, v: unknown) => (k === 'companyId' ? companyById(String(v))?.name || '—' : k === 'signDate' || k === 'from' || k === 'to' ? dmy(String(v || '')) || '—' : k === 'baseSalary' || k === 'perfBonus' || k === 'income' ? money(Number(v)) || '—' : String(v ?? '') || '—');
+const showV = (k: keyof Contract, v: unknown) => (k === 'companyId' ? companyById(String(v))?.name || '—' : k === 'signDate' || k === 'from' || k === 'to' || k === 'appendixDate' ? dmy(String(v || '')) || '—' : k === 'baseSalary' || k === 'perfBonus' || k === 'income' ? money(Number(v)) || '—' : String(v ?? '') || '—');
 const diffC = (a: Contract, b: Contract) => {
   const out = LABELS.filter(([k]) => (a[k] ?? '') !== (b[k] ?? '')).map(([k, l]) => `${l}: ${showV(k, a[k])} → ${showV(k, b[k])}`);
   SUPPORTS.forEach((x) => supportAmt(a, x.name) !== supportAmt(b, x.name) && out.push(`${x.name}: ${money(supportAmt(a, x.name)) || 0} → ${money(supportAmt(b, x.name)) || 0}`));
@@ -1691,6 +1772,8 @@ const ContractDetail: React.FC<{
   const [tried, setTried] = useState(false);
   const [signerTouched, setSignerTouched] = useState(!isNew);
   const [confirmDel, setConfirmDel] = useState(false);
+  const [addApp, setAddApp] = useState(false);
+  const [editApp, setEditApp] = useState<ContractAppendix | null>(null);
   const [nw, setNw] = useState<NewWorker | null>(null);
   const [wi, setWi] = useState<WorkerInfo>(() => infoOf(s.workers.find((x) => x.id === (orig?.workerId || (mode.kind === 'new' ? mode.workerId : '')))));
   const [noTouched, setNoTouched] = useState(!isNew);
@@ -1730,6 +1813,8 @@ const ContractDetail: React.FC<{
       }
       // Lương cơ bản / mức hưởng đổi → giữ nguyên Tổng thu nhập, chia lại hỗ trợ + HQCV
       if (!('allowances' in patch) && (n.baseSalary !== o.baseSalary || n.rate !== o.rate)) Object.assign(n, withIncome(n, incomeOf(o)));
+      // Phụ lục 01 chưa có lịch sử và đang theo ngày hiệu lực HĐ → đi theo ngày hiệu lực mới
+      if ('from' in patch && !histOf(o).length && (!o.appendixDate || o.appendixDate === o.from)) n.appendixDate = n.from;
       // Có thời hạn → tự tính ngày kết thúc; không chọn thời hạn → ngày kết thúc nhập tay (không bắt buộc)
       if ('type' in patch || 'term' in patch || 'from' in patch) {
         if (isK(n.type, 'KXD') || n.term) n.to = endOf(n.type, n.term, n.from);
@@ -2081,7 +2166,25 @@ const ContractDetail: React.FC<{
     </span>
   );
   const capHint = (name: string) => `(tự tính, tối đa ${money(INCOME_RULE.find((x) => x.name === name)!.cap)})`;
+  const appDate = appendixDateOf(d);
+  const appHist = histOf(d);
   const appLeft = [
+    {
+      label: lb('Ngày hiệu lực', true, ed),
+      value: ed ? (
+        <>
+          <span data-testid="appendix-date">
+            <DateInput value={appDate} onChange={(v) => set({ appendixDate: v })} className={errCls(E('appendixDate'))} />
+          </span>
+          <ErrText e={E('appendixDate')} />
+        </>
+      ) : (
+        <span className="inline-flex items-center gap-2" data-testid="appendix-date">
+          <b>{dmy(appDate)}</b>
+          {appDate > today() ? <Tag cls="bg-sky-50 text-sky-700 border-sky-300">Chưa đến ngày hiệu lực</Tag> : appHist.length > 0 && <Tag cls="bg-emerald-50 text-emerald-700 border-emerald-300">Mới nhất</Tag>}
+        </span>
+      ),
+    },
     {
       label: lb('Tổng thu nhập', true, ed),
       value: ed ? (
@@ -2098,6 +2201,7 @@ const ContractDetail: React.FC<{
     { label: 'Hỗ trợ ăn trưa', value: auto(supportAmt(d, 'Hỗ trợ ăn trưa'), 'inc-lunch', '(cố định)') },
   ];
   const appRight = [
+    { label: 'Ghi chú phụ lục', value: ed ? <input value={d.appendixNote || ''} onChange={(e) => set({ appendixNote: e.target.value })} className={INPUT} placeholder="VD: Điều chỉnh thu nhập sau đánh giá" /> : d.appendixNote || <span className="text-slate-400">—</span> },
     { label: 'Hỗ trợ điện thoại', value: auto(supportAmt(d, 'Hỗ trợ điện thoại'), 'inc-phone', capHint('Hỗ trợ điện thoại')) },
     { label: 'Hỗ trợ xăng xe', value: auto(supportAmt(d, 'Hỗ trợ xăng xe'), 'inc-fuel', capHint('Hỗ trợ xăng xe')) },
     { label: 'Hỗ trợ nhà ở', value: auto(supportAmt(d, 'Hỗ trợ nhà ở'), 'inc-house', capHint('Hỗ trợ nhà ở')) },
@@ -2106,6 +2210,83 @@ const ContractDetail: React.FC<{
 
   return (
     <div className="space-y-3">
+      {editApp && orig && (
+        <AddAppendixModal
+          c={d}
+          edit={editApp}
+          onClose={() => setEditApp(null)}
+          onSave={(a) => {
+            const at = nowIso();
+            const old = editApp;
+            const auto = withIncome({ ...d, baseSalary: a.baseSalary, rate: old.rate }, a.income);
+            const nx: ContractAppendix = {
+              ...old,
+              effectiveDate: a.effectiveDate,
+              income: a.income,
+              baseSalary: a.baseSalary,
+              allowances: a.allowances ? normSupports(a.allowances) : auto.allowances,
+              perfBonus: a.perfBonus ?? auto.perfBonus,
+              note: a.note,
+              updatedAt: at,
+              updatedBy: ME,
+            };
+            const changes = [
+              ...(old.effectiveDate !== nx.effectiveDate ? [`Ngày hiệu lực: ${dmy(old.effectiveDate)} → ${dmy(nx.effectiveDate)}`] : []),
+              ...(old.income !== nx.income ? [`Tổng thu nhập: ${money(old.income) || 0} → ${money(nx.income) || 0}`] : []),
+              ...(old.baseSalary !== nx.baseSalary ? [`Lương cơ bản: ${money(old.baseSalary) || 0} → ${money(nx.baseSalary) || 0}`] : []),
+              ...SUPPORTS.filter((x) => supportAmt(old, x.name) !== supportAmt(nx, x.name)).map((x) => `${x.name}: ${money(supportAmt(old, x.name)) || 0} → ${money(supportAmt(nx, x.name)) || 0}`),
+              ...(old.perfBonus !== nx.perfBonus ? [`HQCV tạm tính: ${money(old.perfBonus) || 0} → ${money(nx.perfBonus) || 0}`] : []),
+              ...(old.note !== nx.note ? [`Ghi chú: ${old.note || '—'} → ${nx.note || '—'}`] : []),
+            ];
+            if (!changes.length) {
+              setEditApp(null);
+              return flash('Không có thay đổi');
+            }
+            const c: Contract = {
+              ...d,
+              appendixHistory: sortHist(histOf(d).map((h) => (h.id === old.id ? nx : h))),
+              history: [...d.history, { at, by: ME, action: `Sửa phụ lục 01 (lịch sử) hiệu lực ${dmy(old.effectiveDate)}`, changes }],
+            };
+            update((x) => ({ ...x, contracts: x.contracts.map((y) => (y.id === c.id ? c : y)) }));
+            setD(c);
+            setEditApp(null);
+            flash(`Đã sửa phụ lục hiệu lực ${dmy(nx.effectiveDate)}`);
+          }}
+        />
+      )}
+      {addApp && orig && (
+        <AddAppendixModal
+          c={d}
+          onClose={() => setAddApp(false)}
+          onSave={(a) => {
+            const at = nowIso();
+            const next = addAppendix(d, a, ME, at);
+            const latest = a.effectiveDate > appendixDateOf(d);
+            const c: Contract = {
+              ...next,
+              history: [
+                ...d.history,
+                {
+                  at,
+                  by: ME,
+                  action: `Thêm phụ lục 01 hiệu lực ${dmy(a.effectiveDate)}`,
+                  changes: [
+                    latest ? `Phụ lục đang áp dụng: ${dmy(appendixDateOf(d))} → ${dmy(a.effectiveDate)} (phụ lục ${dmy(appendixDateOf(d))} chuyển vào lịch sử)` : 'Ngày hiệu lực trước phụ lục đang áp dụng → lưu vào lịch sử phụ lục',
+                    `Tổng thu nhập: ${money(a.income)}`,
+                    ...(a.baseSalary !== d.baseSalary ? [`Lương cơ bản: ${money(d.baseSalary)} → ${money(a.baseSalary)}`] : []),
+                    ...(a.note ? [`Ghi chú: ${a.note}`] : []),
+                    ...(a.allowances ? [`Sửa tay các khoản: ${a.allowances.map((x) => `${x.name.replace('Hỗ trợ ', '')} ${money(x.amount) || 0}`).join(', ')}, HQCV ${money(a.perfBonus || 0) || 0}`] : []),
+                  ],
+                },
+              ],
+            };
+            update((x) => ({ ...x, contracts: x.contracts.map((y) => (y.id === c.id ? c : y)) }));
+            setD(c);
+            setAddApp(false);
+            flash(latest ? `Đã thêm phụ lục hiệu lực ${dmy(a.effectiveDate)} — phụ lục cũ chuyển vào lịch sử` : `Đã thêm phụ lục hiệu lực ${dmy(a.effectiveDate)} vào lịch sử (cũ hơn phụ lục đang áp dụng)`);
+          }}
+        />
+      )}
       <ErpTitleBar
         crumbs={isNew || editing ? CRUMBS : undefined}
         title={
@@ -2242,16 +2423,31 @@ const ContractDetail: React.FC<{
             title="Phụ lục hợp đồng — Phụ lục 01: Các khoản hỗ trợ (VNĐ/tháng)"
             icon={FilePlus2}
             noPad
-            footer={`Đính kèm hợp đồng số ${d.no || '…'} · có hiệu lực từ ngày ${dmy(d.from) || '…'}${d.to ? ` đến ngày ${dmy(d.to)}` : ''}, theo thời hạn của hợp đồng · in cùng hợp đồng (Phụ lục 01 trong mẫu Word).`}
+            actions={
+              !ed && orig ? (
+                <Btn icon={Plus} className="h-7" onClick={() => setAddApp(true)} data-testid="appendix-add">
+                  Thêm phụ lục
+                </Btn>
+              ) : undefined
+            }
+            footer={`Phụ lục đang áp dụng (ngày hiệu lực mới nhất) · có hiệu lực từ ngày ${dmy(appDate) || '…'} · đính kèm hợp đồng số ${d.no || '…'} (${dmy(d.from) || '…'}${d.to ? ` → ${dmy(d.to)}` : ' → không thời hạn'}) · in cùng hợp đồng (Phụ lục 01 trong mẫu Word).${appHist.length ? ` Phụ lục cũ: xem Lịch sử phụ lục hợp đồng (${appHist.length}).` : ''}`}
           >
             <InfoGrid left={appLeft} right={appRight} labelW={[150, 200]} />
             {ed && (
               <div className="px-3 py-2 border-t border-slate-200 bg-[#f7f9fc] text-[11.5px] text-slate-600 leading-[1.7]" data-testid="income-rule">
+                <b className="text-slate-700">Nhiều phụ lục</b>: sửa ở đây là sửa phụ lục đang áp dụng. Muốn điều chỉnh từ một ngày mới, lưu hợp đồng rồi bấm <b>Thêm phụ lục</b> — phụ lục có ngày hiệu lực mới nhất được hiển thị, phụ lục cũ chuyển vào Lịch sử phụ lục hợp đồng.
+                <br />
                 <b className="text-slate-700">Cách tính</b> (TN = Tổng thu nhập; MLH = Mức lương hưởng = TN × Mức hưởng %; LCB = Lương cơ bản khai báo đóng BHXH; mỗi khoản hỗ trợ tối thiểu 0 đ): Ăn trưa cố định <b>{money(LUNCH)}</b> · Điện thoại = MLH − LCB − ăn trưa, tối đa{' '}
                 <b>1,000,000</b> · Xăng xe = MLH − LCB − ăn trưa − điện thoại, tối đa <b>1,500,000</b> · Nhà ở = MLH − LCB − ăn trưa − điện thoại − xăng xe, tối đa <b>2,000,000</b> · HQCV tạm tính = MLH − (ăn trưa + điện thoại + xăng xe + nhà ở) − LCB.
               </div>
             )}
           </Panel>
+
+          {appHist.length > 0 && (
+            <Panel title={`Lịch sử phụ lục hợp đồng (${appHist.length})`} icon={History} noPad footer="Các phụ lục có ngày hiệu lực trước phụ lục đang áp dụng · mới nhất trước.">
+              <AppendixHistory items={appHist} nextOf={(i) => (i === 0 ? appDate : appHist[i - 1].effectiveDate)} onEdit={!ed && orig ? setEditApp : undefined} />
+            </Panel>
+          )}
 
           <Panel
             title="Người ký hợp đồng"
@@ -3152,3 +3348,236 @@ const SignerSetup: React.FC<{ s: Store; onBack: () => void; flash: (m: string) =
 };
 
 export default ContractsPage;
+
+/** Bảng lịch sử phụ lục 01 (phụ lục cũ). */
+const AppendixHistory: React.FC<{ items: ContractAppendix[]; nextOf: (i: number) => string; onEdit?: (a: ContractAppendix) => void }> = ({ items, nextOf, onEdit }) => {
+  const th = `${erp.th} whitespace-nowrap`;
+  const td = `${erp.td} whitespace-nowrap`;
+  const amt = (a: ContractAppendix, name: string) => money(a.allowances.find((x) => x.name === name)?.amount || 0) || '0';
+  return (
+    <div className="overflow-x-auto" data-testid="appendix-history">
+      <table className={erp.table}>
+        <thead>
+          <tr>
+            {['#', 'Ngày hiệu lực', 'Đến ngày', 'Tổng thu nhập', 'Mức lương hưởng', 'Lương cơ bản', ...SUPPORTS.map((x) => x.name.replace('Hỗ trợ ', '').replace(/^./, (ch) => ch.toUpperCase())), 'HQCV tạm tính', 'Ghi chú', 'Người tạo'].map((h, i, arr) => (
+              <th key={h} className={`${th} ${i >= 3 && i <= 10 ? 'text-right' : 'text-left'} ${i === 0 ? 'border-l-0' : ''} ${i === arr.length - 1 ? 'border-r-0' : ''}`}>
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((a, i) => (
+            <tr key={a.id} className={erp.tr}>
+              <td className={`${td} border-l-0 text-slate-500`}>{items.length - i}</td>
+              <td className={`${td} font-semibold`}>
+                <span className="inline-flex items-center gap-2">
+                  {dmy(a.effectiveDate)}
+                  {onEdit && (
+                    <button type="button" onClick={() => onEdit(a)} className="inline-flex items-center gap-1 h-6 px-1.5 rounded-[3px] border border-slate-300 bg-white text-[12px] font-semibold text-[#1f5fa8] hover:border-[#1f5fa8] hover:bg-[#eef4fb] cursor-pointer" title="Sửa phụ lục này" data-testid={`appendix-edit-${a.effectiveDate}`}>
+                      <Pencil size={11} /> Sửa
+                    </button>
+                  )}
+                </span>
+              </td>
+              <td className={`${td} text-slate-500`}>{dmy(addDays(nextOf(i), -1))}</td>
+              <td className={`${td} ${erp.num} font-semibold`}>{money(a.income) || '0'}</td>
+              <td className={`${td} ${erp.num}`}>{money(Math.round((a.income * (a.rate ?? 100)) / 100)) || '0'}</td>
+              <td className={`${td} ${erp.num}`}>{money(a.baseSalary) || '0'}</td>
+              {SUPPORTS.map((x) => (
+                <td key={x.name} className={`${td} ${erp.num}`}>
+                  {amt(a, x.name)}
+                </td>
+              ))}
+              <td className={`${td} ${erp.num}`}>{money(a.perfBonus) || '0'}</td>
+              <td className={`${erp.td} text-slate-600 min-w-[160px]`}>{a.note || '—'}</td>
+              <td className={`${td} border-r-0 text-slate-500`}>
+                {a.createdBy}
+                {a.createdAt ? ` · ${dmy(a.createdAt.slice(0, 10))}` : ''}
+                {a.updatedAt && <span className="block text-[11px] text-amber-700">Sửa: {a.updatedBy} · {dmy(a.updatedAt.slice(0, 10))}</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+/** Thêm phụ lục 01: ngày hiệu lực + Tổng thu nhập (tự chia các khoản hỗ trợ) + Lương cơ bản. */
+const AddAppendixModal: React.FC<{ c: Contract; onClose: () => void; onSave: (a: NewAppendix) => void; edit?: ContractAppendix }> = ({ c, onClose, onSave, edit }) => {
+  const cur = appendixDateOf(c);
+  const rate = edit ? edit.rate : c.rate;
+  const [date, setDate] = useState(edit?.effectiveDate || '');
+  const [income, setIncome] = useState(edit ? edit.income : incomeOf(c));
+  const [base, setBase] = useState(edit ? edit.baseSalary : c.baseSalary || 0);
+  const [note, setNote] = useState(edit?.note || '');
+  const [tried, setTried] = useState(false);
+  const preview = withIncome({ ...c, baseSalary: base, rate }, income);
+  // Các khoản tự tính cho phép sửa: sửa hỗ trợ → HQCV tự bằng phần còn lại; sửa HQCV → giữ số đã nhập
+  // Sửa phụ lục cũ: khoản nào khác cách chia tự động thì coi là đã sửa tay
+  const [ov, setOv] = useState<Record<string, number>>(() =>
+    edit ? Object.fromEntries(SUPPORTS.filter((x) => supportAmt(edit, x.name) !== supportAmt(preview, x.name)).map((x) => [x.name, supportAmt(edit, x.name)])) : {},
+  );
+  const [perfOv, setPerfOv] = useState<number | null>(() => (edit && edit.perfBonus !== (preview.perfBonus || 0) ? edit.perfBonus : null));
+  const resetOv = () => {
+    setOv({});
+    setPerfOv(null);
+  };
+  const mlh = salaryOf(preview);
+  const sup = (name: string) => ov[name] ?? supportAmt(preview, name);
+  const supTotal = SUPPORTS.reduce((a, x) => a + sup(x.name), 0);
+  const perf = perfOv ?? (Object.keys(ov).length ? mlh - base - supTotal : preview.perfBonus || 0);
+  const edited = Object.keys(ov).length > 0 || perfOv !== null;
+  const gap = base + supTotal + perf - mlh;
+  const dateErr = edit
+    ? !date
+      ? 'Bắt buộc'
+      : c.from && date < c.from
+        ? `Trước ngày hiệu lực hợp đồng (${dmy(c.from)})`
+        : date >= cur
+          ? `Phụ lục cũ phải có hiệu lực trước phụ lục đang áp dụng (${dmy(cur)})`
+          : histOf(c).some((h) => h.id !== edit.id && h.effectiveDate === date)
+            ? 'Đã có phụ lục cùng ngày hiệu lực'
+            : ''
+    : appendixDateErr(date, c, true);
+  const min = minIncomeOf({ baseSalary: base, rate });
+  const incErr = income < min ? `Tối thiểu ${money(min)} — Mức lương hưởng (× ${rate}%) phải đủ Lương cơ bản + ăn trưa ${money(LUNCH)}` : '';
+  const older = !edit && !!date && !dateErr && date < cur;
+  const row = (label: React.ReactNode, value: React.ReactNode) => (
+    <div className="grid grid-cols-[170px_1fr] border-b border-slate-200 last:border-b-0">
+      <div className="bg-[#f3f6fa] border-r border-slate-200 px-3 py-2 text-[13px] font-medium text-slate-600 flex items-center">{label}</div>
+      <div className="px-3 py-1.5 text-[13px] flex flex-col justify-center min-w-0">{value}</div>
+    </div>
+  );
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center overflow-auto bg-slate-900/40 p-4" role="dialog" aria-modal="true" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="w-full max-w-2xl bg-white rounded-[4px] border border-slate-300 shadow-2xl flex flex-col max-h-[92vh]" data-testid="appendix-modal">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200">
+          <h3 className="text-[14px] font-bold text-[#1e3a5f] flex items-center gap-2">
+            {edit ? <Pencil size={16} /> : <FilePlus2 size={16} />} {edit ? `Sửa phụ lục 01 hiệu lực ${dmy(edit.effectiveDate)}` : 'Thêm phụ lục 01'} — HĐ {c.no}
+          </h3>
+          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-slate-100 text-slate-500 cursor-pointer" title="Đóng">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="p-4 space-y-3 overflow-y-auto">
+          <p className="text-[12.5px] text-slate-600">
+            {edit ? (
+              <>
+                Sửa phụ lục trong lịch sử. Ngày hiệu lực phải trước phụ lục đang áp dụng (<b>{dmy(cur)}</b>); sửa không làm thay đổi phụ lục đang hiển thị.
+              </>
+            ) : (
+              <>
+                Phụ lục đang áp dụng có hiệu lực từ <b>{dmy(cur)}</b> (Tổng thu nhập {money(incomeOf(c)) || '0'}). Phụ lục có ngày hiệu lực mới nhất sẽ được hiển thị; phụ lục cũ chuyển vào Lịch sử phụ lục hợp đồng.
+              </>
+            )}
+          </p>
+          <div className="border border-slate-200 rounded-[4px]">
+            {row(
+              lb('Ngày hiệu lực', true, true),
+              <>
+                <span data-testid="appendix-new-date">
+                  <DateInput value={date} onChange={setDate} className={errCls(tried ? dateErr : '')} />
+                </span>
+                <ErrText e={tried ? dateErr : ''} />
+                {older && <span className="text-[11px] text-amber-700 mt-0.5">Trước phụ lục đang áp dụng ({dmy(cur)}) → chỉ lưu vào lịch sử, không thay phụ lục đang hiển thị.</span>}
+              </>,
+            )}
+            {row(
+              lb('Tổng thu nhập', true, true),
+              <>
+                <span data-testid="appendix-new-income">
+                  <MoneyInput
+                    value={income}
+                    onChange={(n) => {
+                      setIncome(n);
+                      resetOv();
+                    }}
+                  />
+                </span>
+                <ErrText e={tried ? incErr : ''} />
+              </>,
+            )}
+            {row(
+              'Lương cơ bản',
+              <MoneyInput
+                value={base}
+                onChange={(n) => {
+                  setBase(n);
+                  resetOv();
+                }}
+              />,
+            )}
+            {row('Ghi chú', <input value={note} onChange={(e) => setNote(e.target.value)} className={INPUT} placeholder="VD: Điều chỉnh thu nhập sau đánh giá" />)}
+          </div>
+          <div className="border border-slate-200 rounded-[4px]">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-[#f7f9fc] border-b border-slate-200">
+              <p className="text-[12px] font-bold text-slate-700">Các khoản sau khi chia (tự tính — sửa được)</p>
+              {edited && <Tag cls="bg-amber-50 text-amber-700 border-amber-300">Đã sửa tay</Tag>}
+              {edited && (
+                <button type="button" onClick={resetOv} className="ml-auto inline-flex items-center gap-1 text-[12px] font-semibold text-[#1f5fa8] hover:underline cursor-pointer" data-testid="appendix-reset">
+                  <RefreshCw size={12} /> Tính lại tự động
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 text-[12.5px]">
+              <div className="px-3 py-1.5 border-b border-r border-slate-100">
+                <p className="text-[11px] text-slate-500">Mức lương hưởng</p>
+                <p className="tabular-nums font-semibold text-slate-800 h-8 flex items-center">{money(mlh) || '0'}</p>
+                <p className="text-[10.5px] text-slate-400">= Tổng thu nhập × {rate}%</p>
+              </div>
+              {SUPPORTS.map((x) => (
+                <div key={x.name} className="px-3 py-1.5 border-b border-r border-slate-100" data-testid={`appendix-sup-${x.name}`}>
+                  <p className="text-[11px] text-slate-500">
+                    {x.name}
+                    {ov[x.name] !== undefined && <span className="text-amber-600"> · sửa tay</span>}
+                  </p>
+                  <MoneyInput value={sup(x.name)} onChange={(n) => setOv((o) => ({ ...o, [x.name]: n }))} className="h-8" />
+                </div>
+              ))}
+              <div className="px-3 py-1.5 border-b border-r border-slate-100" data-testid="appendix-perf">
+                <p className="text-[11px] text-slate-500">
+                  HQCV tạm tính{perfOv !== null ? <span className="text-amber-600"> · sửa tay</span> : <span className="text-slate-400"> · phần còn lại</span>}
+                </p>
+                <MoneyInput value={perf} onChange={(n) => setPerfOv(n)} className={`h-8 ${perf < 0 ? '!text-rose-600' : ''}`} />
+              </div>
+            </div>
+            {(gap !== 0 || perf < 0) && (
+              <p className="px-3 py-1.5 text-[11.5px] text-amber-800 bg-amber-50 border-t border-amber-200" data-testid="appendix-gap">
+                {perf < 0
+                  ? 'HQCV tạm tính đang âm — các khoản hỗ trợ + Lương cơ bản vượt Mức lương hưởng.'
+                  : `Lương cơ bản + các khoản hỗ trợ + HQCV = ${money(base + supTotal + perf)} — ${gap > 0 ? 'vượt' : 'thiếu'} ${money(Math.abs(gap))} so với Mức lương hưởng ${money(mlh)}.`}
+              </p>
+            )}
+            <p className="px-3 py-1.5 text-[11px] text-slate-400 border-t border-slate-100">
+              Sửa khoản hỗ trợ → HQCV tự bằng phần còn lại (Mức lương hưởng − Lương cơ bản − các khoản hỗ trợ). Đổi Tổng thu nhập / Lương cơ bản → chia lại tự động.
+            </p>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 px-4 py-2.5 border-t border-slate-200 bg-slate-50">
+          <Btn icon={X} onClick={onClose}>
+            Huỷ
+          </Btn>
+          <Btn
+            variant="primary"
+            icon={Save}
+            onClick={() => {
+              if (dateErr || incErr) return setTried(true);
+              onSave({
+                effectiveDate: date,
+                income,
+                baseSalary: base,
+                note: note.trim(),
+                ...(edited ? { allowances: SUPPORTS.map((x) => ({ id: uid(), name: x.name, amount: sup(x.name) })), perfBonus: perf } : {}),
+              });
+            }}
+            data-testid="appendix-save"
+          >
+            Lưu phụ lục
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+};

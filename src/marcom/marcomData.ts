@@ -54,8 +54,8 @@ export const isAllowedImage = (f: File) => IMAGE_ACCEPT.split(',').includes(f.ty
 // đồng bộ code iMIS 05/11 — MarcomRules: banner trang chủ khung 4:1, cảnh báo (không chặn) lệch > 10% hoặc rộng < 1600px
 export const BANNER_FITS = ['contain', 'cover', 'fill', 'scale-down', 'none'] as const;
 export type BannerFit = (typeof BANNER_FITS)[number];
-/** Khung banner trang chủ: tỉ lệ 16:3 (chuẩn 1600×300, nét hơn 3200×600). */
-export const BANNER_RATIO = 16 / 3;
+/** Khung banner trang chủ: tỉ lệ 32:5 (chuẩn 1600×250, nét hơn 3200×500). */
+export const BANNER_RATIO = 32 / 5;
 export const bannerSizeIssue = (w: number, h: number): 'ratio' | 'small' | null => {
   if (w <= 0 || h <= 0) return null;
   if (Math.abs(w / h - BANNER_RATIO) / BANNER_RATIO > 0.1) return 'ratio';

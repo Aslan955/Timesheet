@@ -9,8 +9,12 @@
  *      Mã công trình | Diễn giải | Sản xuất | CP bán hàng | Chi phí chung
  *      Chi thực tế của dự án = Sản xuất + CP bán hàng + Chi phí chung (file cũ không có cột Chi phí chung → coi = 0)
  *      (vẫn nhận mẫu cũ: Mã dự án | Tháng (MM/yyyy) | Chi sản xuất | Chi kinh doanh | Ghi chú)
- *  • Chi phí vận hành — "BẢNG PHÂN BỔ CHI PHÍ VẬN HÀNH THEO CÔNG TRÌNH" (Kế toán phân bổ ngoài rồi import; tháng ở dòng "Tháng M năm YYYY")
- *      Mã công trình | Diễn giải | Số tiền
+ *  • Chi phí vận hành chung (VHC) — mẫu "IP chi phí VHC", 1 file = 1 khối × 1 tháng:
+ *      "CHI PHÍ VẬN HÀNH CHUNG" · "Khối: G1" · "Tháng 9 năm 2026": Diễn giải | Số tiền | Tên đối tượng | Tên nhân viên … dòng "Cộng" (= tổng đem phân bổ)
+ *      Hệ thống tự phân bổ cho các dự án của khối: Tỉ lệ = Chi phí dự án trong tháng ÷ Tổng chi phí các dự án của khối trong tháng
+ *      (sổ Chi thực tế); Phân bổ = Tỉ lệ × Tổng. Dự án không phát sinh chi phí → 0 đ. Sheet phân bổ tính tay (nếu có) bị bỏ qua.
+ *      Import thay dữ liệu cũ cùng khối + tháng; import lại Chi thực tế → tự phân bổ lại.
+ *      (vẫn nhận mẫu cũ "BẢNG PHÂN BỔ CHI PHÍ VẬN HÀNH THEO CÔNG TRÌNH": Mã công trình | Diễn giải | Số tiền)
  *  • Chi phí quản lý — "BẢNG PHÂN BỔ CHI PHÍ QUẢN LÝ THEO CÔNG TRÌNH" — cùng cấu trúc
  *      Mã công trình | Diễn giải | Số tiền
  *
@@ -21,7 +25,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { AlertTriangle, Briefcase, CheckCircle2, Download, Eraser, FileSpreadsheet, Landmark, ListOrdered, PieChart, Receipt, RotateCcw, Search, Trash2, TrendingUp, UploadCloud, X } from 'lucide-react';
-import { BizProject, LEDGER_LABEL, LedgerEntry, LedgerKind, entryAmounts, entryTotal, isCostLike, matchProject, projectCodes, useBusinessProjects } from '../business/BusinessProjectContext';
+import { AllocEntry, BizProject, CostEntry, LEDGER_LABEL, LedgerEntry, LedgerKind, VhcSheet, allocateVhc, monthCostOf, entryAmounts, entryTotal, isCostLike, matchProject, projectCodes, useBusinessProjects } from '../business/BusinessProjectContext';
 import { Btn, FolderTabs, Tag, erp } from './erp/Erp';
 
 const norm = (s: unknown) =>
@@ -91,6 +95,8 @@ interface Parsed {
   issues: Issue[];
   /** Loại sổ nhận ra từ file (nếu khác tab đang chọn). */
   detected?: LedgerKind;
+  /** File chi phí vận hành chung (mẫu VHC 2 sheet) */
+  vhc?: Omit<VhcSheet, 'id' | 'ver' | 'at' | 'by'>;
 }
 
 /** Cấu hình sổ. amounts: tên các cột tiền (sổ Chi thực tế); single: tên cột tiền duy nhất (các sổ còn lại). */
@@ -134,15 +140,15 @@ const KINDS: { key: LedgerKind; label: string; icon: React.ElementType; title: s
   },
   {
     key: 'opex',
-    label: 'Chi phí vận hành',
+    label: 'Chi phí vận hành chung',
     icon: PieChart,
-    title: 'BẢNG PHÂN BỔ CHI PHÍ VẬN HÀNH THEO CÔNG TRÌNH',
-    sheet: 'CHI PHÍ VẬN HÀNH',
-    file: 'Mau_chi_phi_van_hanh.xlsx',
-    head: ['Mã công trình', 'Diễn giải', 'Số tiền'],
-    sample: ['022.061.2', 'Phân bổ chi phí vận hành khối G1 tháng 9.2026', 6200000],
-    cols: [16, 70, 18],
-    single: 'Chi phí vận hành',
+    title: 'CHI PHÍ VẬN HÀNH CHUNG',
+    sheet: 'Mẫu IP chi phí VHC',
+    file: 'Mau_IP_chi_phi_VHC.xlsx',
+    head: ['Diễn giải', 'Số tiền', 'Tên đối tượng', 'Tên nhân viên'],
+    sample: [],
+    cols: [68, 22, 50, 25],
+    single: 'Chi phí VHC phân bổ',
   },
   {
     key: 'mgmt',
@@ -188,7 +194,102 @@ const detectKind = (aoa: unknown[][], fallback: LedgerKind): LedgerKind | null =
   return hasUnit ? 'cashIn' : fallback === 'revenue' || fallback === 'cashIn' ? fallback : 'revenue';
 };
 
-const parseWorkbook = (wb: XLSX.WorkBook, fileName: string, projects: BizProject[], kind: LedgerKind): Parsed => {
+// --------------------------------------------------------------------------
+// Chi phí vận hành chung — mẫu "IP chi phí VHC" (2 sheet)
+// --------------------------------------------------------------------------
+const isVhcLineHead = (r: unknown[]) => {
+  const h = r.map(norm);
+  return h.some((c) => c.startsWith('dien giai')) && h.some((c) => c.startsWith('so tien')) && h.some((c) => c.startsWith('ten doi tuong')) && !hasCode(r);
+};
+const isVhcAllocHead = (r: unknown[]) => hasCode(r) && r.some((c) => norm(c).includes('nhan cong'));
+const sheetsOf = (wb: XLSX.WorkBook) =>
+  wb.SheetNames.map((name) => ({ name, aoa: XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[name], { header: 1, defval: '', blankrows: false, raw: true }) }));
+const isVhcBook = (wb: XLSX.WorkBook) => sheetsOf(wb).some(({ aoa }) => aoa.some(isVhcLineHead) || aoa.some(isVhcAllocHead));
+
+const parseVhc = (wb: XLSX.WorkBook, fileName: string, projects: BizProject[], cost: CostEntry[]): Parsed => {
+  const sheets = sheetsOf(wb);
+  const issues: Issue[] = [];
+  const fail = (msg: string): Parsed => ({ kind: 'opex', fileName, entries: [], months: [], issues: [{ row: 0, level: 'error', msg }] });
+  const ls = sheets.find(({ aoa }) => aoa.some(isVhcLineHead));
+  if (!ls) return fail('Thiếu sheet "CHI PHÍ VẬN HÀNH CHUNG" (dòng tiêu đề: Diễn giải | Số tiền | Tên đối tượng | Tên nhân viên). Hãy dùng file mẫu.');
+  const as = sheets.find(({ aoa }) => aoa.some(isVhcAllocHead));
+  if (as) issues.push({ row: 0, level: 'warn', msg: `Sheet "${as.name}" (bảng phân bổ tính tay) không dùng — hệ thống tự phân bổ theo tỉ lệ chi phí của dự án trong tháng.` });
+
+  // Khối + tháng: dòng tiêu đề đầu sheet chi tiết
+  const hi = ls.aoa.findIndex(isVhcLineHead);
+  const titleRows = ls.aoa.slice(0, hi);
+  const month = titleRows.map((r) => r.map(parsePeriodLine).find(Boolean) || null).find((m): m is string => !!m) || null;
+  const division =
+    titleRows
+      .flatMap((r) => r.map((c) => String(c ?? '').trim()))
+      .map((c) => (/^khoi\b/.test(norm(c)) ? c.replace(/^\S+\s*[:：-]?\s*/, '').trim() : ''))
+      .find(Boolean) || '';
+
+  // Các khoản chi + dòng Cộng
+  const head = ls.aoa[hi].map(norm);
+  const col = (n: string) => head.findIndex((h) => h.startsWith(n));
+  const c = { desc: col('dien giai'), amount: col('so tien'), partner: col('ten doi tuong'), employee: col('ten nhan vien') };
+  const lines: VhcSheet['lines'] = [];
+  let total: number | null = null;
+  let skipped = 0;
+  ls.aoa.slice(hi + 1).forEach((r, i) => {
+    const row = hi + 2 + i;
+    const str = (k: number) => (k >= 0 ? String(r[k] ?? '').trim() : '');
+    const amount = parseNum(r[c.amount]);
+    if (/^(cong|tong)/.test(norm(str(c.desc)))) return void (total = amount ?? 0);
+    if (amount === null) return void issues.push({ row, level: 'error', msg: `Số tiền "${r[c.amount]}" không phải số.` });
+    if (!str(c.desc) && !amount) {
+      if (str(c.partner) || str(c.employee)) skipped++;
+      return;
+    }
+    lines.push({ description: str(c.desc), amount, partner: str(c.partner), employee: str(c.employee) });
+  });
+  const sumLines = lines.reduce((a, l) => a + l.amount, 0);
+  if (skipped) issues.push({ row: 0, level: 'warn', msg: `${skipped} dòng có Tên đối tượng nhưng không có Diễn giải / Số tiền — bỏ qua.` });
+  if (total !== null && lines.length && Math.abs(sumLines - total) > 1) issues.push({ row: 0, level: 'warn', msg: `Tổng các khoản chi (${fmt(sumLines)}) khác dòng "Cộng" (${fmt(total)}) — phân bổ theo dòng Cộng.` });
+  if (!lines.length) issues.push({ row: 0, level: 'warn', msg: 'Chưa có khoản chi nào có Diễn giải / Số tiền — báo cáo chỉ hiện bảng phân bổ, không có chi tiết.' });
+  const pool = total ?? sumLines;
+
+  if (!month) issues.push({ row: 0, level: 'error', msg: 'Không xác định được tháng: cần dòng "Tháng M năm YYYY" ở đầu sheet.' });
+  if (!division) issues.push({ row: 0, level: 'error', msg: 'Không xác định được khối: cần dòng "Khối: …" ở đầu sheet.' });
+  else if (!projects.some((p) => norm(p.division) === norm(division))) issues.push({ row: 0, level: 'error', msg: `Khối "${division}" không có dự án nào trên hệ thống.` });
+  if (pool <= 0) issues.push({ row: 0, level: 'error', msg: 'Tổng chi phí vận hành chung bằng 0 (dòng "Cộng" / tổng Số tiền).' });
+  const div = projects.find((p) => norm(p.division) === norm(division))?.division || division;
+
+  // Phân bổ theo tỉ lệ chi phí dự án trong tháng (sổ Chi thực tế hiện có)
+  const alloc = month && div ? allocateVhc(pool, div, projects, monthCostOf(projects, cost, month)) : [];
+  const zero = month ? projects.filter((p) => p.division === div && !alloc.some((a) => a.projectCode === (p.productionCode || p.masterCode))).length : 0;
+  if (month && div && pool > 0 && !alloc.length)
+    issues.push({ row: 0, level: 'warn', msg: `Khối ${div} tháng ${fmtMonth(month)} chưa có chi phí dự án (sổ Chi thực tế) — chưa phân bổ được; khi import Chi thực tế của tháng này, hệ thống tự phân bổ lại.` });
+  else if (zero) issues.push({ row: 0, level: 'warn', msg: `${zero} dự án của khối ${div} không phát sinh chi phí trong tháng → chi phí vận hành chung phân bổ = 0 đ.` });
+
+  const m = month || '';
+  const mm = m ? `${+m.slice(5, 7)}/${m.slice(0, 4)}` : '';
+  const entries: AllocEntry[] = alloc.map((a, i) => ({
+    id: `OP-${Date.now()}-${i}`,
+    ver: 0,
+    projectCode: a.projectCode,
+    month: m,
+    value: a.value,
+    note: `Phân bổ chi phí vận hành chung khối ${div} tháng ${mm} (${(a.ratio * 100).toFixed(2)}% chi phí khối)`,
+    division: div,
+  }));
+  return {
+    kind: 'opex',
+    fileName,
+    entries,
+    months: month ? [month] : [],
+    issues,
+    vhc: month && div ? { division: div, month, fileName, lines, total: total ?? sumLines, pool, alloc } : undefined,
+  };
+};
+
+const parseWorkbook = (wb: XLSX.WorkBook, fileName: string, projects: BizProject[], kind: LedgerKind, cost: CostEntry[] = []): Parsed => {
+  if (isVhcBook(wb)) {
+    if (kind !== 'opex')
+      return { kind, fileName, entries: [], months: [], issues: [{ row: 0, level: 'error', msg: `File này là "${LEDGER_LABEL.opex}", không phải "${LEDGER_LABEL[kind]}". Chuyển sang tab "${LEDGER_LABEL.opex}" để import.` }], detected: 'opex' };
+    return parseVhc(wb, fileName, projects, cost);
+  }
   const sheet = wb.Sheets[wb.SheetNames[0]];
   const aoa = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '', blankrows: false, raw: true });
   const fail = (msg: string, detected?: LedgerKind): Parsed => ({ kind, fileName, entries: [], months: [], issues: [{ row: 0, level: 'error', msg }], detected });
@@ -304,7 +405,26 @@ const parseWorkbook = (wb: XLSX.WorkBook, fileName: string, projects: BizProject
   return { kind, fileName, entries, months: [...new Set(entries.map((e) => e.month))].sort(), issues };
 };
 
-const downloadTemplate = (kind: LedgerKind) => {
+/** Mẫu IP chi phí VHC (dữ liệu giả lập): 1 khối × 1 tháng — các khoản chi + dòng Cộng (hệ thống tự phân bổ cho dự án). */
+const downloadVhcTemplate = () => {
+  const lines: [string, number, string, string][] = [
+    ['Thuê văn phòng tầng 15 tháng 9.2026', 60000000, 'CÔNG TY TNHH TOÀ NHÀ MẪU', ''],
+    ['Tiền điện, nước văn phòng tháng 9.2026', 12000000, 'CÔNG TY ĐIỆN LỰC MẪU', ''],
+    ['Cước internet, đường truyền tháng 9.2026', 8000000, 'CÔNG TY VIỄN THÔNG MẪU', ''],
+    ['Văn phòng phẩm, nước uống', 5000000, 'CÔNG TY TNHH VĂN PHÒNG PHẨM MẪU', 'Trần Thị Mẫu'],
+    ['Lương bộ phận hỗ trợ chung của khối', 15000000, '', 'Nguyễn Văn Mẫu'],
+  ];
+  const total = lines.reduce((a, l) => a + l[1], 0);
+  const s1 = XLSX.utils.aoa_to_sheet([['CHI PHÍ VẬN HÀNH CHUNG'], ['Khối: G1'], ['Tháng 9 năm 2026'], ['Diễn giải', 'Số tiền', 'Tên đối tượng', 'Tên nhân viên'], ...lines, ['Cộng', total, '', '']]);
+  s1['!cols'] = [68, 22, 50, 25].map((wch) => ({ wch }));
+  s1['!merges'] = [0, 1, 2].map((r) => ({ s: { r, c: 0 }, e: { r, c: 3 } }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, s1, 'Mẫu IP chi phí VHC');
+  XLSX.writeFile(wb, 'Mau_IP_chi_phi_VHC.xlsx');
+};
+
+const downloadTemplate = (kind: LedgerKind, projects: BizProject[]) => {
+  if (kind === 'opex') return downloadVhcTemplate();
   const k = kindOf(kind);
   const rows: (string | number)[][] = [[k.title], ['Tháng 9 năm 2026'], [], k.head, k.sample];
   const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -318,7 +438,7 @@ const downloadTemplate = (kind: LedgerKind) => {
 // Modal
 // ==========================================================================
 export const LedgerImportModal: React.FC<{ onClose: () => void; onDone: (summary: string) => void; by: string; initialKind?: LedgerKind }> = ({ onClose, onDone, by, initialKind = 'revenue' }) => {
-  const { projects, ledger, importLedger, nextLedgerVer } = useBusinessProjects();
+  const { projects, ledger, importLedger, importVhc, nextLedgerVer } = useBusinessProjects();
   const inputRef = useRef<HTMLInputElement>(null);
   const [kind, setKind] = useState<LedgerKind>(initialKind);
   const [view, setView] = useState<'import' | 'list'>('import');
@@ -336,7 +456,7 @@ export const LedgerImportModal: React.FC<{ onClose: () => void; onDone: (summary
     }
     try {
       const wb = XLSX.read(await f.arrayBuffer(), { type: 'array', codepage: 65001, cellDates: true });
-      setParsed(parseWorkbook(wb, f.name, projects, forKind));
+      setParsed(parseWorkbook(wb, f.name, projects, forKind, ledger.cost));
     } catch {
       setParsed({ kind: forKind, fileName: f.name, entries: [], months: [], issues: [{ row: 0, level: 'error', msg: 'Không đọc được file.' }] });
     }
@@ -349,7 +469,7 @@ export const LedgerImportModal: React.FC<{ onClose: () => void; onDone: (summary
 
   const errors = parsed?.issues.filter((i) => i.level === 'error') || [];
   const warns = parsed?.issues.filter((i) => i.level === 'warn') || [];
-  const canApply = !!parsed && parsed.entries.length > 0 && errors.length === 0;
+  const canApply = !!parsed && (parsed.entries.length > 0 || !!parsed.vhc) && errors.length === 0;
 
   // Tổng hợp theo dự án khớp mã
   const byProject = new Map<string, { p: BizProject; lines: number; a: number; b: number; c: number }>();
@@ -361,11 +481,21 @@ export const LedgerImportModal: React.FC<{ onClose: () => void; onDone: (summary
     const cur = byProject.get(p.id) || { p, lines: 0, a: 0, b: 0, c: 0 };
     byProject.set(p.id, { p, lines: cur.lines + 1, a: cur.a + a, b: cur.b + b, c: cur.c + c });
   });
-  const oldLines = parsed ? (ledger[kind] as LedgerEntry[]).filter((e) => parsed.months.includes(e.month)).length : 0;
+  const oldLines = parsed
+    ? parsed.vhc
+      ? ledger.opex.filter((e) => e.month === parsed.vhc!.month && (e.division ? e.division === parsed.vhc!.division : parsed.vhc!.alloc.some((a) => a.projectCode.trim().toLowerCase() === e.projectCode.trim().toLowerCase()))).length
+      : (ledger[kind] as LedgerEntry[]).filter((e) => parsed.months.includes(e.month)).length
+    : 0;
   const lastImport = ledger.imports.find((i) => i.kind === kind);
 
   const apply = () => {
     if (!parsed || !canApply) return;
+    if (parsed.vhc) {
+      const v = parsed.vhc;
+      importVhc(v, by);
+      onDone(`Đã import chi phí vận hành chung khối ${v.division} tháng ${fmtMonth(v.month)}: ${fmt(v.pool)} · phân bổ cho ${v.alloc.length} dự án theo tỉ lệ chi phí trong tháng`);
+      return;
+    }
     importLedger(kind, parsed.entries, parsed.months, parsed.fileName, by);
     onDone(`Đã import ${LEDGER_LABEL[kind]}: ${parsed.entries.length} dòng, tháng ${parsed.months.map(fmtMonth).join(', ')} — cập nhật ${byProject.size} dự án`);
   };
@@ -416,7 +546,7 @@ export const LedgerImportModal: React.FC<{ onClose: () => void; onDone: (summary
           <section className="bg-white border border-slate-300 rounded-[4px] p-3">
             <p className="text-[12px] font-bold text-[#1e3a5f] uppercase tracking-wide mb-2">1. Tải file mẫu — {k.label}</p>
             <div className="flex flex-wrap items-center gap-2">
-              <Btn icon={Download} onClick={() => downloadTemplate(kind)}>
+              <Btn icon={Download} onClick={() => downloadTemplate(kind, projects)}>
                 Mẫu {k.label.toLowerCase()}
               </Btn>
               {lastImport && (
@@ -429,7 +559,9 @@ export const LedgerImportModal: React.FC<{ onClose: () => void; onDone: (summary
               <b>{k.title}</b> · cột: {k.head.join(' · ')}.{' '}
               {kind === 'cost'
                 ? 'Tháng lấy ở dòng "Tháng M năm YYYY" đầu file; Sản xuất → Chi SX, CP bán hàng → Chi KD, Chi phí chung → Chi phí chung; Chi thực tế = tổng 3 cột.'
-                : kind === 'opex' || kind === 'mgmt'
+                : kind === 'opex'
+                  ? 'Mỗi file = 1 khối × 1 tháng ("Khối: …", "Tháng M năm YYYY" ở đầu sheet), tổng ở dòng "Cộng". Hệ thống tự phân bổ cho các dự án của khối: Tỉ lệ = Chi phí mã sản xuất (.2) của dự án trong tháng ÷ Tổng chi phí mã sản xuất của các dự án trong khối (sổ Chi thực tế; không tính mã kinh doanh .1); Phân bổ = Tỉ lệ × Tổng chi phí vận hành chung. Dự án không phát sinh chi phí trong tháng → 0 đ. Import lại Chi thực tế của tháng → tự phân bổ lại. Import lại cùng khối + tháng sẽ thay dữ liệu cũ.'
+                : kind === 'mgmt'
                   ? `Kế toán phân bổ ${k.label.toLowerCase()} về từng dự án bên ngoài rồi import; tháng lấy ở dòng "Tháng M năm YYYY" đầu file. Chi phí thực tế của dự án = Chi thực tế (SX + KD) + Chi phí vận hành + Chi phí quản lý.`
                   : 'Tháng lấy theo Ngày hạch toán.'}{' '}
               Mã công trình khớp Mã tổng / Mã PAKD (.1) / Mã SX (.2) của dự án.
@@ -502,7 +634,9 @@ export const LedgerImportModal: React.FC<{ onClose: () => void; onDone: (summary
                   </div>
                 )}
 
-                {parsed.entries.length > 0 && (
+                {parsed.vhc && <VhcPreview v={parsed.vhc} />}
+
+                {parsed.entries.length > 0 && !parsed.vhc && (
                   <div className="max-h-64 overflow-auto border border-slate-300 rounded-[3px]">
                     <table className={erp.table}>
                       <thead className="sticky top-0 z-10">
@@ -573,7 +707,9 @@ export const LedgerImportModal: React.FC<{ onClose: () => void; onDone: (summary
 
                 {oldLines > 0 && (
                   <p className="text-[12px] text-amber-800 bg-amber-50 border border-amber-200 rounded-[3px] px-3 py-2">
-                    Sổ {LEDGER_LABEL[kind]} đang có {oldLines} dòng ở tháng {parsed.months.map(fmtMonth).join(', ')} — sẽ được thay bằng dữ liệu trong file này.
+                    {parsed.vhc
+                      ? `Khối ${parsed.vhc.division} tháng ${fmtMonth(parsed.vhc.month)} đã có ${oldLines} dòng phân bổ chi phí vận hành chung — sẽ được thay bằng file này.`
+                      : `Sổ ${LEDGER_LABEL[kind]} đang có ${oldLines} dòng ở tháng ${parsed.months.map(fmtMonth).join(', ')} — sẽ được thay bằng dữ liệu trong file này.`}
                   </p>
                 )}
               </div>
@@ -896,6 +1032,105 @@ const DeleteVersionDialog: React.FC<{
           </Btn>
         </div>
       </div>
+    </div>
+  );
+};
+
+/** Xem trước file chi phí vận hành chung: khối, tháng, tổng + các khoản chi. */
+const VhcPreview: React.FC<{ v: NonNullable<Parsed['vhc']> }> = ({ v }) => {
+  const [open, setOpen] = useState(false);
+  const cells: [string, React.ReactNode][] = [
+    ['Khối', <b key="d">{v.division}</b>],
+    ['Tháng', <b key="m">{fmtMonth(v.month)}</b>],
+    ['Tổng chi phí VHC (Cộng)', <b key="p" className="font-mono">{fmt(v.pool)}</b>],
+    ['Số khoản chi', <b key="l">{v.lines.length}</b>],
+    ['Tổng chi phí mã SX của khối', <b key="t" className="font-mono">{fmt(v.alloc.reduce((a, x) => a + x.cost, 0))}</b>],
+    ['Số dự án được phân bổ', <b key="a">{v.alloc.length}</b>],
+  ];
+  return (
+    <div className="border border-slate-300 rounded-[3px]" data-testid="vhc-preview">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-slate-200 bg-[#f5f8fc] text-[12px]">
+        {cells.map(([l, val]) => (
+          <div key={l} className="px-2.5 py-1.5">
+            <p className="text-[11px] text-slate-500">{l}</p>
+            <p className="text-slate-800">{val}</p>
+          </div>
+        ))}
+      </div>
+      <div className="max-h-64 overflow-auto border-t border-slate-200" data-testid="vhc-preview-alloc">
+        <table className={erp.table}>
+          <thead className="sticky top-0 z-10">
+            <tr>
+              {['Dự án', 'Chi phí mã SX (.2) trong tháng', 'Tỉ lệ', 'Chi phí VHC phân bổ'].map((h, i) => (
+                <th key={h} className={`${erp.th} ${i ? 'text-right' : 'text-left'} border-t-0 ${i === 0 ? 'border-l-0' : ''} ${i === 3 ? 'border-r-0' : ''}`}>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {v.alloc.map((a) => (
+              <tr key={a.projectCode} className={erp.tr}>
+                <td className={`${erp.td} border-l-0`}>
+                  <span className={`${erp.code} font-semibold`}>{a.projectCode}</span> <span className="text-slate-700">{a.projectName}</span>
+                </td>
+                <td className={`${erp.td} ${erp.num}`}>{fmt(a.cost)}</td>
+                <td className={`${erp.td} ${erp.num}`}>{(a.ratio * 100).toFixed(2)}%</td>
+                <td className={`${erp.td} ${erp.num} border-r-0 font-semibold`}>{fmt(a.value)}</td>
+              </tr>
+            ))}
+            {!v.alloc.length && (
+              <tr>
+                <td colSpan={4} className={`${erp.td} border-x-0 text-center text-slate-400 py-4`}>
+                  Chưa có chi phí dự án của khối trong tháng — chưa phân bổ.
+                </td>
+              </tr>
+            )}
+          </tbody>
+          {v.alloc.length > 0 && (
+            <tfoot>
+              <tr className={erp.totalRow}>
+                <td className={`${erp.td} border-l-0`}>TỔNG ({v.alloc.length} dự án)</td>
+                <td className={`${erp.td} ${erp.num}`}>{fmt(v.alloc.reduce((a, x) => a + x.cost, 0))}</td>
+                <td className={`${erp.td} ${erp.num}`}>100%</td>
+                <td className={`${erp.td} ${erp.num} border-r-0`}>{fmt(v.alloc.reduce((a, x) => a + x.value, 0))}</td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+      {v.lines.length > 0 && (
+        <>
+          <button type="button" onClick={() => setOpen((x) => !x)} className="w-full text-left px-2.5 py-1.5 border-t border-slate-200 text-[12px] font-semibold text-[#1f5fa8] hover:bg-slate-50 cursor-pointer">
+            {open ? 'Ẩn' : 'Xem'} {v.lines.length} khoản chi chi tiết
+          </button>
+          {open && (
+            <div className="max-h-56 overflow-auto border-t border-slate-200">
+              <table className={erp.table}>
+                <thead className="sticky top-0 z-10">
+                  <tr>
+                    {['Diễn giải', 'Số tiền', 'Tên đối tượng', 'Tên nhân viên'].map((h, i) => (
+                      <th key={h} className={`${erp.th} ${i === 1 ? 'text-right' : 'text-left'} border-t-0 ${i === 0 ? 'border-l-0' : ''} ${i === 3 ? 'border-r-0' : ''}`}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {v.lines.map((l, i) => (
+                    <tr key={i} className={erp.tr}>
+                      <td className={`${erp.td} border-l-0`}>{l.description || '—'}</td>
+                      <td className={`${erp.td} ${erp.num}`}>{fmt(l.amount)}</td>
+                      <td className={erp.td}>{l.partner || '—'}</td>
+                      <td className={`${erp.td} border-r-0`}>{l.employee || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 };
