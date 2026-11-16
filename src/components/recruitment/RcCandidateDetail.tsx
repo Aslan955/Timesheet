@@ -10,6 +10,7 @@ import {
 import { ErpTitleBar, Panel, Btn, erp } from '../erp/Erp';
 import { Modal } from '../../marcom/MarcomUi';
 import { useRc, DraftApp } from '../../recruitment/rc/RcContext';
+import { EMPLOYEE_TYPES } from '../../onboarding/onboardingData';
 import {
   RcCandidate, RcApplication, Stage, CatalogType, TA_OPTIONS, CURRENT_TA, emptyCandidate, validateCandidate, isReferSource, dmy, dmyhm, todayIso,
 } from '../../recruitment/rc/rcData';
@@ -418,6 +419,9 @@ export const RcCandidateDetail: React.FC<{
                   placeholder={refer ? 'Bắt buộc khi nguồn là Refer' : 'Không bắt buộc'}
                   className={`${erp.inputFull} ${errors.referrerName ? '!border-rose-400' : ''}`}
                 />
+              </Field>
+              <Field label="Đối tượng" view={!editing} text={c.employeeType}>
+                <CatSel value={draft.employeeType} options={[...EMPLOYEE_TYPES]} onChange={(v) => set('employeeType', v)} placeholder="Chọn đối tượng" />
               </Field>
             </div>
           </Panel>

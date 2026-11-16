@@ -162,6 +162,20 @@ export interface CloseStepLog {
   approve: boolean;
   note?: string;
 }
+/** Đánh giá tổng kết dự án — người yêu cầu đóng bắt buộc nhập đủ 4 mục. */
+export interface CloseReview {
+  strengths: string;
+  weaknesses: string;
+  advantages: string;
+  difficulties: string;
+}
+export const CLOSE_REVIEW_FIELDS: { key: keyof CloseReview; label: string; hint: string }[] = [
+  { key: 'strengths', label: 'Ưu điểm', hint: 'Những điểm làm tốt của dự án…' },
+  { key: 'weaknesses', label: 'Nhược điểm', hint: 'Những điểm chưa tốt, cần rút kinh nghiệm…' },
+  { key: 'advantages', label: 'Thuận lợi', hint: 'Yếu tố khách quan / chủ quan hỗ trợ dự án…' },
+  { key: 'difficulties', label: 'Khó khăn', hint: 'Vướng mắc, rủi ro đã gặp và cách xử lý…' },
+];
+export const closeReviewMissing = (r: Partial<CloseReview>) => CLOSE_REVIEW_FIELDS.filter((f) => !(r[f.key] || '').trim()).map((f) => f.key);
 /** Yêu cầu đóng dự án (lần gần nhất). Từ chối ở bất kỳ bước nào ⇒ dự án vẫn Đang thực hiện, người yêu cầu gửi lại. */
 export interface BizCloseRequest {
   state: CloseState;
@@ -169,6 +183,8 @@ export interface BizCloseRequest {
   requestedBy: string;
   role: BizRole;
   note?: string;
+  /** Ưu điểm / nhược điểm / thuận lợi / khó khăn — bắt buộc khi gửi. */
+  review?: CloseReview;
   rejectedStep?: PakdStep;
   log: CloseStepLog[];
 }
@@ -964,7 +980,7 @@ const SEED: BizProject[] = [
     // Demo: AM gửi yêu cầu đóng dự án ⇒ chờ GĐ khối duyệt
     seedWith(
       seedProject('BP-6', 'Hệ thống bán lẻ đa kênh', '045.112', 'G2', 'Bán lẻ 045', '2026-02-01', '2026-12-31', [48_000_000_000, 27_500_000_000, 5_100_000_000, 110_000_000], { revenue: 0.9, cashIn: 0.8, cost: 1.05, workload: 0.92 }, ['Bùi Quang Minh', 'Đặng Thu Trang']),
-      { closeRequest: { state: 'Chờ GĐK', requestedAt: '2026-11-10T09:00:00.000Z', requestedBy: 'Bùi Quang Minh (AM)', role: 'AM', note: 'Đã nghiệm thu tổng thể, bàn giao vận hành', log: [{ step: 'Yêu cầu', by: 'Bùi Quang Minh (AM)', at: '2026-11-10T09:00:00.000Z', approve: true, note: 'Đã nghiệm thu tổng thể, bàn giao vận hành' }] } },
+      { closeRequest: { state: 'Chờ GĐK', requestedAt: '2026-11-10T09:00:00.000Z', requestedBy: 'Bùi Quang Minh (AM)', role: 'AM', review: { strengths: 'Bám sát tiến độ triển khai 3 kênh bán hàng; đội SX ổn định nhân sự', weaknesses: 'Chi phí SX vượt kế hoạch ~5% do phát sinh tích hợp cổng thanh toán', advantages: 'Khách hàng phối hợp tốt, nghiệm thu từng giai đoạn nhanh', difficulties: 'Thu tiền chậm so với kế hoạch; yêu cầu thay đổi nhiều ở giai đoạn cuối' }, log: [{ step: 'Yêu cầu', by: 'Bùi Quang Minh (AM)', at: '2026-11-10T09:00:00.000Z', approve: true }] } },
       [{ at: '2026-11-10T09:00:00.000Z', by: 'Bùi Quang Minh (AM)', action: 'Yêu cầu đóng dự án', note: 'Chờ GĐ khối duyệt đóng · Đã nghiệm thu tổng thể, bàn giao vận hành' }],
     ),
     // Demo: dự án Đóng, yêu cầu mã bảo hành đang chờ GĐK duyệt
@@ -1071,9 +1087,9 @@ const SEED: BizProject[] = [
           requestedAt: '2026-10-08T09:00:00.000Z',
           requestedBy: 'Trần Minh Đức (AM)',
           role: 'AM',
-          note: 'Hoàn thành nghiệm thu, hết hạn hợp đồng',
+          review: { strengths: 'Hoàn thành đúng hạn hợp đồng, chất lượng nghiệm thu tốt', weaknesses: 'Tài liệu hướng dẫn vận hành bàn giao muộn', advantages: 'Tái sử dụng được nền tảng từ dự án 038.360', difficulties: 'Yêu cầu bảo mật thay đổi giữa kỳ, phải thuê ngoài kiểm thử' },
           log: [
-            { step: 'Yêu cầu', by: 'Trần Minh Đức (AM)', at: '2026-10-08T09:00:00.000Z', approve: true, note: 'Hoàn thành nghiệm thu, hết hạn hợp đồng' },
+            { step: 'Yêu cầu', by: 'Trần Minh Đức (AM)', at: '2026-10-08T09:00:00.000Z', approve: true },
             { step: 'GĐK', by: 'Đỗ Quang Huy (GĐK)', at: '2026-10-09T10:00:00.000Z', approve: true },
             { step: 'CFO', by: 'ketoan (CFO)', at: '2026-10-13T14:00:00.000Z', approve: true, note: 'Đã đối chiếu công nợ' },
             { step: 'BOD', by: 'bod (BOD)', at: '2026-10-15T16:00:00.000Z', approve: true },
@@ -1318,7 +1334,7 @@ interface Ctx {
   /** Kết thúc dự án Đang thực hiện ⇒ Đóng; KD / SX / outsource có hiệu lực Closed + Jira pending. */
   finishProject: (id: string, by: string) => void;
   /** AM / GĐKD / GĐ khối gửi yêu cầu đóng dự án (Đang thực hiện). Trả về trạng thái sau khi gửi. */
-  requestCloseProject: (id: string, role: BizRole, by: string, note: string) => CloseState | undefined;
+  requestCloseProject: (id: string, role: BizRole, by: string, review: CloseReview) => CloseState | undefined;
   /** GĐ khối / Kế toán / BOD duyệt hoặc từ chối yêu cầu đóng; BOD duyệt ⇒ dự án Đóng + mã Closed + Jira pending. */
   decideCloseProject: (id: string, approve: boolean, role: BizRole, by: string, note: string) => CloseState | undefined;
   /** Thêm / xoá tài liệu đính kèm của dự án (ghi lịch sử, không tăng version). */
@@ -1645,13 +1661,14 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
   };
 
 
-  const requestCloseProject = (id: string, role: BizRole, by: string, note: string): CloseState | undefined => {
+  const requestCloseProject = (id: string, role: BizRole, by: string, review: CloseReview): CloseState | undefined => {
     const p0 = projects.find((p) => p.id === id);
-    if (!p0 || p0.status !== 'Đang thực hiện' || !canRequestClose(role) || isClosePending(p0) || pendingOutsource(p0).length) return;
+    if (!p0 || p0.status !== 'Đang thực hiện' || !canRequestClose(role) || isClosePending(p0) || pendingOutsource(p0).length || closeReviewMissing(review).length) return;
     const state = closeEntryState(role);
     const at = now();
-    const req: BizCloseRequest = { state, requestedAt: at, requestedBy: by, role, note: note || undefined, log: [{ step: 'Yêu cầu', by, at, approve: true, note: note || undefined }] };
-    patch(id, () => ({ closeRequest: req }), by, 'Yêu cầu đóng dự án', `${closeTargetLabel(state)}${role !== 'AM' ? ' (bỏ qua bước GĐ khối)' : ''}${note ? ` · ${note}` : ''}`);
+    const rv: CloseReview = { strengths: review.strengths.trim(), weaknesses: review.weaknesses.trim(), advantages: review.advantages.trim(), difficulties: review.difficulties.trim() };
+    const req: BizCloseRequest = { state, requestedAt: at, requestedBy: by, role, review: rv, log: [{ step: 'Yêu cầu', by, at, approve: true }] };
+    patch(id, () => ({ closeRequest: req }), by, 'Yêu cầu đóng dự án', `${closeTargetLabel(state)}${role !== 'AM' ? ' (bỏ qua bước GĐ khối)' : ''} · kèm đánh giá ưu / nhược điểm, thuận lợi / khó khăn`);
     return state;
   };
 

@@ -84,6 +84,7 @@ import { RcCatalogPage } from './components/recruitment/RcCatalogPage';
 import { RcMailTemplatePage } from './components/recruitment/RcMailTemplatePage';
 import { RcReportPage } from './components/recruitment/RcReportPage';
 import { OnboardingHandoffPage } from './components/onboarding/OnboardingHandoffPage';
+import { OnbMailSettingsPage } from './components/onboarding/OnbMailSettingsPage';
 import { PeriodicEvaluationPage } from './components/PeriodicEvaluationPage';
 import { MarcomProvider } from './marcom/MarcomContext';
 import { LanguageProvider } from './i18n/LanguageContext';
@@ -286,6 +287,8 @@ export default function App() {
       // HCNS tiếp nhận "Gửi thông tin sang HCNS" từ popup Gửi mail của Tuyển dụng
       case 'Onboarding Request':
         return <OnboardingHandoffPage onNavigate={setActiveItem} />;
+      case 'Thiết lập email Onboarding':
+        return <OnbMailSettingsPage onNavigate={setActiveItem} />;
       default:
         return (
           <div className="flex flex-col items-center justify-center h-full text-gray-500 space-y-4">

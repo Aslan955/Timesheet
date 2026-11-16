@@ -300,6 +300,7 @@ export const RcSendMailModal: React.FC<{
         },
         content,
       );
+      rc.setCandidateType(candidateId, hd.data.employeeType, 'Gửi thông tin sang HCNS');
     } else if (cancelOnb && onbRecord) {
       onb.cancelOnboard(onbRecord.id, f.cancelReason.trim(), f.cancelNote.trim(), content);
     } else {

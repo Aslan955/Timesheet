@@ -1,10 +1,9 @@
 /**
  * Báo cáo tổng kết khi đóng dự án — so sánh Kế hoạch / Thực tế:
- * doanh thu, chi phí (theo khoản), lãi / lỗ, dòng tiền, thời gian hoàn thành; xuất Excel.
+ * doanh thu, chi phí (theo khoản), lãi / lỗ, dòng tiền, thời gian hoàn thành.
  * Kế hoạch = số kế hoạch theo tháng đã import; dự án chưa có kế hoạch tháng ⇒ lấy PAKD đã duyệt.
  */
-import * as XLSX from 'xlsx';
-import { BizCloseRequest, BizProject, PAKD_STEP_LABEL, closeStateLabel, plannedCost, sumRows, totalCost } from './BusinessProjectContext';
+import { BizCloseRequest, BizProject, PAKD_STEP_LABEL, plannedCost, sumRows, totalCost } from './BusinessProjectContext';
 
 export type CloseGroup = 'pl' | 'cash';
 export interface CloseLine {
@@ -145,9 +144,6 @@ export const lineTone = (l: CloseLine): 'good' | 'bad' | 'neutral' => {
 
 export const timeText = (t: CloseTime) => (t.lateDays > 0 ? `Trễ ${t.lateDays} ngày` : t.lateDays < 0 ? `Sớm ${-t.lateDays} ngày` : 'Đúng hạn');
 
-const dmy = (d: string) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '');
-const mmyy = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
-const dtv = (s: string) => new Date(s).toLocaleString('vi-VN');
 
 /** Các bước duyệt hiển thị (Yêu cầu → GĐ khối → Kế toán → BOD) kèm người / thời điểm. */
 export const closeTrack = (c?: BizCloseRequest) => {
@@ -162,73 +158,4 @@ export const closeTrack = (c?: BizCloseRequest) => {
     const cur = c.state === `Chờ ${s}`;
     return { step: s, label, state: cur ? ('current' as const) : ('todo' as const) };
   });
-};
-
-/** Xuất báo cáo tổng kết ra Excel (2 sheet: Tổng kết · Theo tháng). */
-export const exportCloseReport = (p: BizProject, s: CloseSummary) => {
-  const pct = (x: number | null) => (x === null ? '' : Math.round(x * 1000) / 10);
-  const rows: (string | number | null)[][] = [
-    ['BÁO CÁO TỔNG KẾT DỰ ÁN'],
-    [],
-    ['Mã dự án', p.masterCode],
-    ['Tên dự án', p.name],
-    ['Khách hàng', p.customerName],
-    ['Khối', p.division],
-    ['AM', p.am.join(', ')],
-    ['Giám đốc khối', p.businessDirector],
-    ['Số hợp đồng', p.contract?.number || ''],
-    ['Giá trị hợp đồng (VNĐ)', p.contract?.value ?? p.expectedRevenue],
-    ['Trạng thái đóng', p.closeRequest ? closeStateLabel(p.closeRequest) : p.status === 'Kết thúc' ? 'Đã đóng' : 'Chưa yêu cầu'],
-    ['Số liệu thực tế đến tháng', s.lastActualMonth ? mmyy(s.lastActualMonth) : 'Chưa có'],
-    ['Nguồn kế hoạch', s.planSource === 'monthly' ? 'Kế hoạch theo tháng' : 'PAKD đã duyệt'],
-    ['Ngày lập báo cáo', dmy(iso())],
-    [],
-    ['A. KẾT QUẢ KINH DOANH & DÒNG TIỀN (VNĐ)'],
-    ['Chỉ tiêu', 'Kế hoạch', 'Thực tế', 'Chênh lệch (TT − KH)', '% Thực tế / Kế hoạch'],
-  ];
-  const add = (g: string) =>
-    s.lines
-      .filter((l) => l.group === g)
-      .forEach((l) => {
-        if (l.pct) rows.push([l.label, pct(l.plan), pct(l.actual), l.plan === null ? '' : pct(l.actual - l.plan), '']);
-        else rows.push([`${l.level ? '   ' : ''}${l.label}`, l.plan, l.actual, l.plan === null ? null : l.actual - l.plan, l.plan && !l.noRatio ? pct(l.actual / l.plan) : '']);
-      });
-  add('pl');
-  rows.push(['Dòng tiền']);
-  add('cash');
-  rows.push([], ['B. THỜI GIAN HOÀN THÀNH'], ['Chỉ tiêu', 'Kế hoạch', 'Thực tế', 'Chênh lệch (ngày)']);
-  rows.push(['Ngày bắt đầu', dmy(s.time.planStart), dmy(s.time.planStart), 0]);
-  rows.push(['Ngày kết thúc', dmy(s.time.planEnd), dmy(s.time.actualEnd), s.time.lateDays]);
-  rows.push(['Số ngày thực hiện', s.time.planDays, s.time.actualDays, s.time.actualDays - s.time.planDays]);
-  rows.push(['Đánh giá', '', timeText(s.time)]);
-  if (p.closeRequest) {
-    rows.push([], ['C. QUY TRÌNH DUYỆT ĐÓNG DỰ ÁN'], ['Bước', 'Người thực hiện', 'Thời điểm', 'Kết quả', 'Ghi chú']);
-    closeTrack(p.closeRequest).forEach((t) =>
-      rows.push([t.label, 'by' in t ? t.by || '' : '', 'at' in t && t.at ? dtv(t.at) : '', t.state === 'done' ? (t.step === 'Yêu cầu' ? 'Đã gửi' : 'Đã duyệt') : t.state === 'reject' ? 'Từ chối' : t.state === 'skip' ? 'Bỏ qua' : t.state === 'current' ? 'Đang chờ' : 'Chưa đến', 'note' in t ? t.note || '' : '']),
-    );
-  }
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{ wch: 44 }, { wch: 20 }, { wch: 20 }, { wch: 22 }, { wch: 22 }];
-  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }];
-  // Định dạng số tiền
-  Object.keys(ws).forEach((k) => {
-    const c = ws[k] as XLSX.CellObject;
-    if (k[0] !== '!' && c && c.t === 'n' && Math.abs(Number(c.v)) >= 1000) c.z = '#,##0';
-  });
-
-  const head = ['Tháng', 'Doanh thu KH', 'Doanh thu TT', 'Chi phí KH', 'Chi phí TT', 'Tiền thu KH', 'Tiền thu TT', 'Dòng tiền thuần TT', 'Luỹ kế dòng tiền TT'];
-  const body = s.months.map((m) => [mmyy(m.month), m.planRevenue, m.actualRevenue, m.planCost, m.actualCost, m.planCash, m.actualCash, m.net, m.cumNet]);
-  const tot = (k: keyof CloseMonth) => s.months.reduce((a, m) => a + (m[k] as number), 0);
-  body.push(['Tổng cộng', tot('planRevenue'), tot('actualRevenue'), tot('planCost'), tot('actualCost'), tot('planCash'), tot('actualCash'), tot('net'), s.months[s.months.length - 1]?.cumNet || 0]);
-  const ws2 = XLSX.utils.aoa_to_sheet([head, ...body]);
-  ws2['!cols'] = head.map((h, i) => ({ wch: i ? 18 : 12 }));
-  Object.keys(ws2).forEach((k) => {
-    const c = ws2[k] as XLSX.CellObject;
-    if (k[0] !== '!' && c && c.t === 'n') c.z = '#,##0';
-  });
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Tong ket');
-  XLSX.utils.book_append_sheet(wb, ws2, 'Theo thang');
-  XLSX.writeFile(wb, `TongKet_${(p.masterCode || p.id).replace(/\./g, '-')}.xlsx`);
 };

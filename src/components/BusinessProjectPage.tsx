@@ -131,6 +131,7 @@ import {
   closeTargetLabel,
   closePendingStep,
   isClosePending,
+  type CloseReview,
 } from '../business/BusinessProjectContext';
 import { ProjectCloseModal, closeModeOf } from './ProjectCloseModal';
 import { BizMonthlyImportModal, fmtMonth } from './BizMonthlyImportModal';
@@ -245,8 +246,8 @@ export const BusinessProjectPage: React.FC = () => {
   };
 
   /** Đóng dự án: AM ⇒ chờ GĐ khối; GĐ khối / GĐKD ⇒ chờ Kế toán; BOD duyệt ⇒ Đóng. */
-  const requestClose = (p: BizProject, note: string) => {
-    const next = requestCloseProject(p.id, role, actor, note);
+  const requestClose = (p: BizProject, review: CloseReview) => {
+    const next = requestCloseProject(p.id, role, actor, review);
     if (next) flash(`Đã gửi yêu cầu đóng dự án ${p.masterCode} — ${closeTargetLabel(next)}`);
   };
   const decideClose = (p: BizProject, approve: boolean, note: string) => {
@@ -327,7 +328,7 @@ export const BusinessProjectPage: React.FC = () => {
           actor={actor}
           onFlash={flash}
           onDecide={(approve, note) => decide(current, approve, note)}
-          onRequestClose={(note) => requestClose(current, note)}
+          onRequestClose={(review) => requestClose(current, review)}
           onDecideClose={(approve, note) => decideClose(current, approve, note)}
           onAttachments={(files, note) => setAttachments(current.id, files, CURRENT_USER, note)}
           onSaveContract={(c) => signContract(current, c)}
@@ -840,7 +841,7 @@ const ProjectList: React.FC<{
   onCreate: () => void;
   onDecide: (p: BizProject, approve: boolean, note: string) => void;
   onSaveContract: (p: BizProject, c: Omit<BizContract, 'updatedAt' | 'updatedBy'>) => void;
-  onRequestClose: (p: BizProject, note: string) => void;
+  onRequestClose: (p: BizProject, review: CloseReview) => void;
   onDecideClose: (p: BizProject, approve: boolean, note: string) => void;
 }> = ({ projects, role, onRoleChange, onView, onCreate, onDecide, onSaveContract, onRequestClose, onDecideClose }) => {
   const [q, setQ] = useState('');
@@ -1182,8 +1183,8 @@ const ProjectList: React.FC<{
             role={role}
             mode={closeModeOf(closing, role)!}
             onClose={() => setClosingId(null)}
-            onRequest={(note) => {
-              onRequestClose(closing, note);
+            onRequest={(review) => {
+              onRequestClose(closing, review);
               setClosingId(null);
             }}
             onDecide={(approve, note) => {
@@ -2060,7 +2061,7 @@ const ProjectDetail: React.FC<{
   onCancelAdjust: () => void;
   actor: string;
   onDecide: (approve: boolean, note: string) => void;
-  onRequestClose: (note: string) => void;
+  onRequestClose: (review: CloseReview) => void;
   onDecideClose: (approve: boolean, note: string) => void;
   onFlash?: (msg: string) => void;
 }> = ({ project: p, onBack, onUpdateBasic, onDelete, onImport, onSaveContract, onAttachments, role, onRoleChange, onApproveCode, onReopen, onSubmitPakd, onSavePakd, onAdjustPakd, onCancelAdjust, actor, onDecide, onRequestClose, onDecideClose, onFlash }) => {
@@ -2374,8 +2375,8 @@ const ProjectDetail: React.FC<{
             role={role}
             mode={closeModeOf(p, role)!}
             onClose={() => setClosing(false)}
-            onRequest={(note) => {
-              onRequestClose(note);
+            onRequest={(review) => {
+              onRequestClose(review);
               setClosing(false);
             }}
             onDecide={(approve, note) => {

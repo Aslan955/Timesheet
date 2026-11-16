@@ -1,13 +1,13 @@
 /**
  * Hộp thoại Đóng dự án: bảng tổng kết lãi / lỗ (Kế hoạch vs Thực tế — doanh thu, chi phí, dòng tiền,
- * thời gian hoàn thành) + luồng duyệt Yêu cầu → GĐ khối → Kế toán → BOD; xuất Excel.
+ * thời gian hoàn thành) + luồng duyệt Yêu cầu → GĐ khối → Kế toán → BOD.
  * mode: request (AM / GĐKD / GĐ khối gửi) · decide (bước đang chờ duyệt / từ chối) · view (chỉ xem).
  */
 import React, { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import { CalendarClock, Check, CheckCircle2, ChevronRight, FileSpreadsheet, Flag, SkipForward, X, XCircle, Clock3 } from 'lucide-react';
-import { BizProject, BizRole, closeApproveTo, closeEntryState, closePendingStep, closeStateLabel, closeTargetLabel, PAKD_STEP_LABEL, pendingOutsource } from '../business/BusinessProjectContext';
-import { CloseLine, closeSummary, closeTrack, exportCloseReport, lineTone, timeText } from '../business/projectClose';
+import { CalendarClock, Check, CheckCircle2, ChevronRight, Flag, SkipForward, X, XCircle, Clock3 } from 'lucide-react';
+import { BizProject, BizRole, CLOSE_REVIEW_FIELDS, CloseReview, closeReviewMissing, closeApproveTo, closeEntryState, closePendingStep, closeStateLabel, closeTargetLabel, PAKD_STEP_LABEL, pendingOutsource } from '../business/BusinessProjectContext';
+import { CloseLine, closeSummary, closeTrack, lineTone, timeText } from '../business/projectClose';
 import { Btn, FolderTabs, KpiBox, Tag, erp } from './erp/Erp';
 
 export type CloseMode = 'request' | 'decide' | 'view';
@@ -25,13 +25,24 @@ export const ProjectCloseModal: React.FC<{
   role: BizRole;
   mode: CloseMode;
   onClose: () => void;
-  onRequest?: (note: string) => void;
+  onRequest?: (review: CloseReview) => void;
   onDecide?: (approve: boolean, note: string) => void;
 }> = ({ project: p, role, mode, onClose, onRequest, onDecide }) => {
   const s = useMemo(() => closeSummary(p), [p]);
   const [tab, setTab] = useState<'compare' | 'month'>('compare');
   const [note, setNote] = useState('');
   const [needNote, setNeedNote] = useState(false);
+  const [review, setReview] = useState<CloseReview>(() => (p.closeRequest?.state === 'Từ chối' && p.closeRequest.review) || { strengths: '', weaknesses: '', advantages: '', difficulties: '' }); // gửi lại sau khi bị từ chối ⇒ điền sẵn bản cũ
+  const [missing, setMissing] = useState<(keyof CloseReview)[]>([]);
+  const submit = () => {
+    const m = closeReviewMissing(review);
+    if (m.length) {
+      setMissing(m);
+      document.querySelector<HTMLTextAreaElement>(`[data-testid=review-${m[0]}]`)?.focus();
+      return;
+    }
+    onRequest?.(review);
+  };
   const c = p.closeRequest;
   const track = closeTrack(mode === 'request' ? undefined : c);
   const blocked = mode === 'request' && pendingOutsource(p).length ? 'Còn mã outsource chờ GĐ khối duyệt — duyệt / từ chối trước khi đóng dự án' : '';
@@ -165,10 +176,45 @@ export const ProjectCloseModal: React.FC<{
             </p>
           </div>
 
-          {mode !== 'view' && (
+          {mode === 'request' ? (
+            <div data-testid="close-review">
+              <p className="text-[12px] font-bold text-[#1e3a5f] uppercase tracking-wide mb-1.5">
+                Đánh giá dự án <span className="normal-case font-normal text-slate-500 tracking-normal">— bắt buộc nhập đủ 4 mục</span>
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                {CLOSE_REVIEW_FIELDS.map((f) => {
+                  const err = missing.includes(f.key);
+                  return (
+                    <label key={f.key} className="block">
+                      <span className="text-[12px] font-semibold text-slate-700">
+                        {f.label} <span className="text-rose-600">*</span>
+                      </span>
+                      <textarea
+                        value={review[f.key]}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setReview((r) => ({ ...r, [f.key]: v }));
+                          if (v.trim()) setMissing((m) => m.filter((k) => k !== f.key));
+                        }}
+                        rows={3}
+                        placeholder={f.hint}
+                        className={`${erp.inputFull} h-auto py-1.5 mt-1 ${err ? 'border-rose-500 bg-rose-50/40' : ''}`}
+                        data-testid={`review-${f.key}`}
+                      />
+                      {err && <span className="text-[11.5px] text-rose-600">Nhập {f.label.toLowerCase()}.</span>}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            c?.review && <ReviewView review={c.review} by={c.requestedBy} />
+          )}
+
+          {mode === 'decide' && (
             <label className="block">
               <span className="text-[12px] font-semibold text-slate-700">
-                {mode === 'request' ? 'Lý do / ghi chú đóng dự án' : 'Ý kiến'} {mode === 'decide' && <span className="font-normal text-slate-500">(bắt buộc khi từ chối)</span>}
+                Ý kiến <span className="font-normal text-slate-500">(bắt buộc khi từ chối)</span>
               </span>
               <textarea
                 value={note}
@@ -177,7 +223,7 @@ export const ProjectCloseModal: React.FC<{
                   setNeedNote(false);
                 }}
                 rows={2}
-                placeholder={mode === 'request' ? 'VD: Đã nghiệm thu tổng thể, bàn giao vận hành…' : 'Nhập ý kiến…'}
+                placeholder="Nhập ý kiến…"
                 className={`${erp.inputFull} h-auto py-1.5 mt-1 ${needNote ? 'border-rose-500' : ''}`}
                 data-testid="close-note"
               />
@@ -187,9 +233,6 @@ export const ProjectCloseModal: React.FC<{
         </div>
 
         <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-t border-slate-200 bg-slate-50 rounded-b-[3px]">
-          <Btn icon={FileSpreadsheet} onClick={() => exportCloseReport(p, s)} data-testid="close-export">
-            Xuất Excel
-          </Btn>
           <span className="flex-1 text-[12px] text-slate-500 min-w-[200px]">
             {mode === 'request' && (blocked || <>Gửi ⇒ <b>{closeTargetLabel(closeEntryState(role))}</b>{role !== 'AM' && ' (bỏ qua bước GĐ khối)'}. Luồng: GĐ khối → Kế toán → BOD; BOD duyệt ⇒ dự án Đóng.</>)}
             {mode === 'decide' && c && (
@@ -205,7 +248,7 @@ export const ProjectCloseModal: React.FC<{
           </span>
           <Btn onClick={onClose}>Đóng</Btn>
           {mode === 'request' && (
-            <Btn variant="primary" icon={Flag} disabled={!!blocked} title={blocked || undefined} onClick={() => onRequest?.(note.trim())} data-testid="close-submit">
+            <Btn variant="primary" icon={Flag} disabled={!!blocked} title={blocked || undefined} onClick={submit} data-testid="close-submit">
               Gửi yêu cầu đóng dự án
             </Btn>
           )}
@@ -224,6 +267,23 @@ export const ProjectCloseModal: React.FC<{
     </div>
   );
 };
+
+/** Đánh giá của người yêu cầu (chỉ xem) — hiện cho người duyệt và khi xem lại. */
+const ReviewView: React.FC<{ review: CloseReview; by: string }> = ({ review, by }) => (
+  <div>
+    <p className="text-[12px] font-bold text-[#1e3a5f] uppercase tracking-wide mb-1.5">
+      Đánh giá dự án <span className="normal-case font-normal text-slate-500 tracking-normal">— {by}</span>
+    </p>
+    <div className="grid grid-cols-1 md:grid-cols-2 border-l border-t border-slate-200 rounded-[3px] overflow-hidden">
+      {CLOSE_REVIEW_FIELDS.map((f) => (
+        <div key={f.key} className="border-r border-b border-slate-200">
+          <p className="px-3 py-1 bg-[#f3f6fa] text-[12px] font-semibold text-slate-600">{f.label}</p>
+          <p className="px-3 py-1.5 text-[12.5px] text-slate-800 whitespace-pre-line min-h-[44px]">{review[f.key]}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+);
 
 const CompareTable: React.FC<{ lines: CloseLine[]; time: ReturnType<typeof closeSummary>['time'] }> = ({ lines, time }) => {
   const th = `${erp.th} border-t-0`;

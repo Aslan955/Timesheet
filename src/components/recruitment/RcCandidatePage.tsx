@@ -183,6 +183,7 @@ const CandidateList: React.FC<{
       { key: 'resignDate', caption: 'Ngày nghỉ việc', width: 110, align: 'center', text: (r) => dmy(r.c.hr.resignDate || '') },
       { key: 'inputDate', caption: 'Ngày ứng tuyển', width: 110, align: 'center', text: (r) => dmy(r.c.inputDate) },
       { key: 'source', caption: 'Nguồn ứng viên', width: 120, text: (r) => r.c.source },
+      { key: 'employeeType', caption: 'Đối tượng', width: 100, text: (r) => r.c.employeeType },
       { key: 'taInput', caption: 'TA Input', width: 90, text: (r) => r.c.taInput },
       {
         key: 'note', caption: 'Ghi chú', width: 440, noSort: true, noFilter: true, text: (r) => r.c.note,

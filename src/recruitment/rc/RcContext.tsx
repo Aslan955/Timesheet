@@ -56,6 +56,8 @@ interface RcValue {
   setCandidateStage: (candidateId: string, stage: Stage) => void;
   /** Liên kết ứng viên ↔ hồ sơ nhân sự (RecruitmentHrLink) — đổi khi HCNS duyệt / TA báo huỷ. */
   setCandidateHr: (candidateId: string, hr: HrInfo) => void;
+  /** Đồng bộ Đối tượng (Nội bộ / Staffing) từ Gửi thông tin sang HCNS / Onboarding Request về hồ sơ ứng viên. */
+  setCandidateType: (candidateId: string, type: string, source: string) => void;
   assign: (candidateId: string, requestId: string) => string | null;
   unassign: (applicationId: string) => void;
   setAppStage: (applicationId: string, stage: Stage, syncCandidate?: boolean) => void;
@@ -190,6 +192,13 @@ export const RcProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     const setCandidateHr = (candidateId: string, hr: HrInfo) => setCandidates((list) => list.map((c) => (c.id === candidateId ? { ...c, hr } : c)));
 
+    const setCandidateType = (candidateId: string, type: string, source: string) => {
+      const prev = ref.current.candidates.find((c) => c.id === candidateId);
+      if (!prev || prev.employeeType === type) return;
+      setCandidates((list) => list.map((c) => (c.id === candidateId ? { ...c, employeeType: type } : c)));
+      log('candidate', candidateId, `Cập nhật Đối tượng (${source})`, [{ field: 'Đối tượng', from: prev.employeeType || '', to: type }]);
+    };
+
     const assign = (candidateId: string, requestId: string): string | null => {
       const r = ref.current.requests.find((x) => x.id === requestId);
       if (!r || r.status !== 'Đang tuyển') return 'Chỉ cho phép gán ứng viên khi yêu cầu tuyển dụng ở trạng thái Đang tuyển';
@@ -299,7 +308,7 @@ export const RcProvider: React.FC<{ children: React.ReactNode }> = ({ children }
       requestByCode: (code) => requests.find((r) => r.code === code),
       candidate: (id) => candidates.find((c) => c.id === id),
       appsOfCandidate, appsOfRequest, stats, options, isDeactivated, emailTaken,
-      saveRequest, deleteRequest, saveCandidate, deleteCandidate, updateNote, setCandidateStage, setCandidateHr, assign, unassign, setAppStage,
+      saveRequest, deleteRequest, saveCandidate, deleteCandidate, updateNote, setCandidateStage, setCandidateHr, setCandidateType, assign, unassign, setAppStage,
       saveCatalog, deleteCatalog, addMail, cancelInterview, saveTemplate, importCandidates,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -322,7 +331,7 @@ const LABELS: Record<string, string> = {
   dateReceived: 'Ngày nhận', endDate: 'Ngày kết thúc', deadline: 'Deadline', headcount: 'SL cần', note: 'Ghi chú', isStaffing: 'Staffing', salary: 'Mức lương',
   workLocation: 'Địa điểm làm việc', contractType: 'Loại hợp đồng', contractDuration: 'Thời hạn hợp đồng', jobDescription: 'JD', equipment: 'Thiết bị yêu cầu',
   inputDate: 'Ngày tiếp nhận', fullName: 'Họ và tên', appliedPosition: 'Vị trí ứng tuyển', dob: 'Ngày sinh', email: 'Email', phone: 'Điện thoại', taInput: 'TA Input',
-  address: 'Địa chỉ', linkedin: 'LinkedIn', source: 'Nguồn ứng viên', referrerName: 'Người refer', university: 'Trường đại học', major: 'Chuyên ngành',
+  address: 'Địa chỉ', linkedin: 'LinkedIn', source: 'Nguồn ứng viên', referrerName: 'Người refer', employeeType: 'Đối tượng', university: 'Trường đại học', major: 'Chuyên ngành',
   currentPosition: 'Vị trí hiện tại', currentCompany: 'Công ty hiện tại', techStack: 'Tech Stack', skills: 'Kỹ năng', cvFile: 'File CV', cvLink: 'Link CV',
 };
 const show = (v: unknown) => (Array.isArray(v) ? v.join(', ') : typeof v === 'boolean' ? (v ? 'Có' : 'Không') : v == null ? '' : String(v));
@@ -356,7 +365,7 @@ function refCount(it: CatalogItem, candidates: RcCandidate[], requests: RcReques
 function emptyFromRow(row: Partial<RcCandidate>): RcCandidate {
   return {
     id: '', code: '', inputDate: '', fullName: '', appliedPosition: '', dob: '', email: '', phone: '', taInput: '', address: '', linkedin: '', source: '',
-    referrerName: '', university: '', major: '', currentPosition: '', currentCompany: '', techStack: '', skills: [], cvFile: '', cvLink: '', note: '',
+    referrerName: '', employeeType: '', university: '', major: '', currentPosition: '', currentCompany: '', techStack: '', skills: [], cvFile: '', cvLink: '', note: '',
     stage: 'New', hr: { status: 'None' }, createdBy: '',
     ...row,
   } as RcCandidate;

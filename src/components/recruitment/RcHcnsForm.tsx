@@ -8,7 +8,7 @@ import { Paperclip, Upload, X } from 'lucide-react';
 import { erp } from '../erp/Erp';
 import { RcApplication, RcCandidate, RcRequest, MailLog, money, dmy, isReferSource, norm } from '../../recruitment/rc/rcData';
 import {
-  HandoffData, HandoffKey, OnbRecord, WORK_LOCATIONS, HR_POSITIONS, HR_LEVELS, STAFF_NAMES, HCNS_MAILBOX, departmentsOf, emptyHandoff, validateHandoff, diffHandoff, dmyhm,
+  HandoffData, HandoffKey, OnbRecord, EMPLOYEE_TYPES, WORK_LOCATIONS, HR_POSITIONS, HR_LEVELS, STAFF_NAMES, HCNS_MAILBOX, departmentsOf, emptyHandoff, validateHandoff, diffHandoff, dmyhm,
 } from '../../onboarding/onboardingData';
 import { FormField, CatalogSelect } from './rcUi';
 import { isOfferKind } from './rcMailRules';
@@ -36,13 +36,17 @@ export interface HcnsDraft {
 /** Prefill: snapshot HCNS mới nhất → Offer mới nhất → Yêu cầu / hồ sơ. */
 export const buildHcnsDraft = (cand: RcCandidate, app: RcApplication | undefined, req: RcRequest | undefined, mailLogs: MailLog[], prev: OnbRecord | undefined): HcnsDraft => {
   const o = app ? mailLogs.filter((m) => m.applicationId === app.id && m.ok && isOfferKind(m.kind) && m.offer).pop()?.offer : undefined;
-  if (prev) return { data: { ...prev.data }, prev, hasOffer: !!o };
+  // Đối tượng: hồ sơ ứng viên → cờ Staffing của Yêu cầu
+  const type = cand.employeeType || (req?.isStaffing ? 'Staffing' : 'Nội bộ');
+  // Bản gửi trước chưa có Đối tượng ⇒ lấy theo cờ Staffing của Yêu cầu
+  if (prev) return { data: { ...prev.data, employeeType: prev.data.employeeType || type }, prev, hasOffer: !!o };
   const depts = departmentsOf(req?.block || '');
   const lvl = req?.level || '';
   return {
     hasOffer: !!o,
     data: {
       ...emptyHandoff(),
+      employeeType: type,
       startDate: o?.startDate || '',
       fullName: cand.fullName,
       position: o?.position || req?.position || cand.appliedPosition,
@@ -80,6 +84,7 @@ export const hcnsVars = (d: HandoffData, cand: RcCandidate, req?: RcRequest): Re
   const attachedCv = hcnsAttachments(d, cand).includes(cand.cvFile) && cand.cvFile;
   return {
     TaPicName: req?.taPics[0] || cand.taInput,
+    EmployeeType: d.employeeType,
     StartDate: dmy(d.startDate),
     CandidateName: d.fullName,
     Position: d.position,
@@ -138,9 +143,14 @@ export const RcHcnsFields: React.FC<{
       {!draft.hasOffer && <Bar tone="warn">Lượt ứng tuyển này chưa có Offer letter trên hệ thống — vui lòng nhập tay các thông tin onboard.</Bar>}
 
       <div className="grid grid-cols-12 gap-x-4 gap-y-3">
-        <div className="col-span-12 text-[12.5px] text-slate-600">
+        <div className="col-span-6 self-end pb-1.5 text-[12.5px] text-slate-600">
           TA PIC ứng viên: <b className="text-slate-800">{req?.taPics[0] || cand.taInput || '—'}</b>
         </div>
+        <FormField label="Đối tượng" required error={err('employeeType')} className="col-span-6" hint={cand.employeeType ? `Theo hồ sơ ứng viên: ${cand.employeeType}` : req?.isStaffing ? 'Yêu cầu tuyển dụng đánh dấu Staffing' : undefined}>
+          <div data-testid="hcns-employee-type">
+            <CatalogSelect value={d.employeeType} options={[...EMPLOYEE_TYPES]} onChange={(v) => onChange({ employeeType: v })} placeholder="Chọn đối tượng" invalid={!!err('employeeType')} />
+          </div>
+        </FormField>
         <FormField label="Ngày bắt đầu làm việc" required error={err('startDate')} className="col-span-6">
           <input type="date" value={d.startDate} onChange={(e) => onChange({ startDate: e.target.value })} className={`${erp.inputFull} ${inv('startDate')}`} />
         </FormField>

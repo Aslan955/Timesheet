@@ -237,6 +237,8 @@ export interface RcCandidate {
   linkedin: string;
   source: string;
   referrerName: string;
+  /** Đối tượng: Nội bộ / Staffing — TA chọn trên hồ sơ, đồng bộ với lần "Gửi thông tin sang HCNS" / Onboarding Request. */
+  employeeType: string;
   university: string;
   major: string;
   currentPosition: string;
@@ -266,6 +268,7 @@ export const emptyCandidate = (): RcCandidate => ({
   linkedin: '',
   source: '',
   referrerName: '',
+  employeeType: '',
   university: '',
   major: '',
   currentPosition: '',
@@ -449,10 +452,10 @@ export const SEED_TEMPLATES: MailTemplate[] = [
     content: '<p>Dear {CandidateName},</p><p>Thank you for applying for {Position}. After careful review, we regret ...</p><p>{TaName}</p>' },
   { code: 'RECRUITMENT_THANKYOU_INTERVIEW', name: 'Tuyển dụng - Thư cảm ơn (sau phỏng vấn)', title: 'VTX Thank you', parameters: 'CandidateName, Position', channel: 'Email', active: true,
     content: '<p>Dear {CandidateName},</p><p>Thank you for taking the time to interview for {Position} ...</p><p>{TaName}</p>' },
-  { code: 'RECRUITMENT_HCNS_HANDOFF', name: 'Tuyển dụng - Bàn giao nhân sự mới sang HCNS', title: '[Tuyển dụng → HCNS] Bàn giao nhân sự mới: {CandidateName} - {Position}', parameters: 'TaPicName, StartDate, CandidateName, Position, TechStack, Level, Department, ManagerName, WorkLocation, OfficialSalary, ProbationMonths, ProbationSalaryPercent, Approver, ApprovalEvidence, CvLink, ReferInfo, Note', channel: 'Email', active: true,
+  { code: 'RECRUITMENT_HCNS_HANDOFF', name: 'Tuyển dụng - Bàn giao nhân sự mới sang HCNS', title: '[Tuyển dụng → HCNS] Bàn giao nhân sự mới: {CandidateName} - {Position}', parameters: 'TaPicName, EmployeeType, StartDate, CandidateName, Position, TechStack, Level, Department, ManagerName, WorkLocation, OfficialSalary, ProbationMonths, ProbationSalaryPercent, Approver, ApprovalEvidence, CvLink, ReferInfo, Note', channel: 'Email', active: true,
     content:
       '<p>Kính gửi Phòng Hành chính - Nhân sự,</p><p>Bộ phận Tuyển dụng gửi thông tin ứng viên chờ onboard như sau:</p><ol>' +
-      '<li>TA PIC ứng viên: <b>{TaPicName}</b></li><li>Ngày bắt đầu làm việc: <b>{StartDate}</b></li><li>Họ tên ứng viên: <b>{CandidateName}</b></li>' +
+      '<li>TA PIC ứng viên: <b>{TaPicName}</b></li><li>Đối tượng: <b>{EmployeeType}</b></li><li>Ngày bắt đầu làm việc: <b>{StartDate}</b></li><li>Họ tên ứng viên: <b>{CandidateName}</b></li>' +
       '<li>Vị trí chức danh: {Position}</li><li>Tech Stack: {TechStack}</li><li>Level: {Level}</li><li>Bộ phận: {Department}</li><li>Quản lý trực tiếp: {ManagerName}</li>' +
       '<li>Địa điểm làm việc: {WorkLocation}</li><li>Lương chính thức (Gross): {OfficialSalary}</li><li>Thời gian thử việc: {ProbationMonths} tháng</li>' +
       '<li>Tỉ lệ lương thử việc: {ProbationSalaryPercent}%</li><li>Người phê duyệt Offer: {Approver}</li><li>Bằng chứng phê duyệt: {ApprovalEvidence}</li>' +
@@ -492,7 +495,7 @@ export const SEED_CANDIDATES: RcCandidate[] = [
   cand({ id: 'c4', code: 'UV00004', inputDate: '2026-10-10', fullName: 'Đỗ Thảo Nguyên', email: 'nguyen.dt@gmail.com', phone: '0938 120 456', appliedPosition: 'Business Analyst', taInput: 'HungNV4', source: 'TopCV', university: 'ĐH Kinh tế Quốc dân', major: 'Hệ thống thông tin', currentPosition: 'BA Intern', currentCompany: 'CMC', techStack: 'BPMN, SQL', skills: ['BA'], stage: 'New' }),
   cand({ id: 'c5', code: 'ƯV-260005', inputDate: '2026-07-22', fullName: 'Vũ Hoàng Nam', email: 'nam.vh@gmail.com', phone: '0905 667 120', appliedPosition: 'Data Analyst', taInput: 'HienNPM', source: 'Headhunt', university: 'ĐH Kinh tế Quốc dân', major: 'Tài chính - Ngân hàng', currentPosition: 'Senior Data Analyst', currentCompany: 'Techcombank', techStack: 'SQL, Power BI, Python', skills: ['DA', 'Python'], cvFile: 'CV_VuHoangNam.pdf', stage: 'Onboarded', hr: { status: 'Probation', employeeCode: 'NV0398', employeeName: 'Vũ Hoàng Nam', startDate: '2026-09-07' } }),
   cand({ id: 'c6', code: 'UV00006', inputDate: '2026-08-25', fullName: 'Lê Quang Huy', email: 'huy.lq@gmail.com', phone: '0903 112 845', appliedPosition: 'Software Developer', taInput: 'MenTT', source: 'ITViec', university: 'ĐH Bách khoa Hà Nội', major: 'Công nghệ thông tin', currentPosition: 'Senior Java Developer', currentCompany: 'NashTech', techStack: 'Java, Kafka', skills: ['Java'], cvFile: 'CV_LeQuangHuy.pdf', stage: 'Offer Accepted' }),
-  cand({ id: 'c7', code: 'UV00007', inputDate: '2026-10-09', fullName: 'Ngô Thanh Hà', email: 'ha.nt@gmail.com', phone: '0978 220 316', appliedPosition: 'Business Analyst', taInput: 'HungNV4', source: 'Refer', referrerName: 'Hồ Tú Anh', university: 'Học viện Ngân hàng', major: 'Tài chính - Ngân hàng', currentPosition: 'Fresher BA', currentCompany: 'Tự do', techStack: 'Excel, SQL', skills: ['BA'], cvLink: 'https://drive.google.com/file/d/ngothanhha-cv', stage: 'Offer Accepted' }),
+  cand({ id: 'c7', code: 'UV00007', inputDate: '2026-10-09', fullName: 'Ngô Thanh Hà', email: 'ha.nt@gmail.com', phone: '0978 220 316', appliedPosition: 'Business Analyst', taInput: 'HungNV4', source: 'Refer', referrerName: 'Hồ Tú Anh', employeeType: 'Staffing', university: 'Học viện Ngân hàng', major: 'Tài chính - Ngân hàng', currentPosition: 'Fresher BA', currentCompany: 'Tự do', techStack: 'Excel, SQL', skills: ['BA'], cvLink: 'https://drive.google.com/file/d/ngothanhha-cv', stage: 'Offer Accepted' }),
   cand({ id: 'c8', code: 'UV00008', inputDate: '2026-09-27', fullName: 'Đặng Minh Tuấn', email: 'tuan.dm@outlook.com', phone: '0936 778 901', appliedPosition: 'DevOps Engineer', taInput: 'XuanDTT', source: 'LinkedIn', university: 'ĐH FPT', major: 'Kỹ thuật phần mềm', currentPosition: 'Senior DevOps', currentCompany: 'VNG', techStack: 'K8s, GitLab CI, GCP', skills: ['DevOps'], cvFile: 'CV_DangMinhTuan.pdf', stage: 'Offer Accepted' }),
   cand({ id: 'c9', code: 'UV00009', inputDate: '2026-08-22', fullName: 'Phan Thu Hà', email: 'ha.pt@gmail.com', phone: '0965 441 207', appliedPosition: 'Accountant', taInput: 'HangLT', source: 'TopCV', university: 'Học viện Ngân hàng', major: 'Kế toán', currentPosition: 'Kế toán viên', currentCompany: 'Deloitte', techStack: 'MISA, Excel', skills: ['Tax Accountant'], cvFile: 'CV_PhanThuHa.docx', stage: 'Offer Accepted', hr: { status: 'Probation', employeeCode: 'NV0412', employeeName: 'Phan Thu Hà', startDate: '2026-10-26' } }),
   cand({ id: 'c10', code: 'UV00010', inputDate: '2026-10-02', fullName: 'Bùi Gia Bảo', email: 'bao.bg@gmail.com', phone: '0911 095 338', appliedPosition: 'Software Developer', taInput: 'NhuPTK', source: 'Synodus Web', university: 'ĐH Bách khoa TP.HCM', major: 'Khoa học máy tính', currentPosition: 'NodeJS Developer', currentCompany: 'Tiki', techStack: 'NodeJS, NestJS, MongoDB', skills: ['NodeJS'], cvFile: 'CV_BuiGiaBao.pdf', stage: 'Offer Accepted' }),

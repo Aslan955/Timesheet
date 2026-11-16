@@ -33,6 +33,8 @@ export type OnbRole = 'TA' | 'HCNS' | 'Ứng viên' | 'IT' | 'MarCom';
 // 17 trường TA bàn giao
 // ==========================================================================
 export interface HandoffData {
+  /** Đối tượng: Nội bộ / Staffing (bắt buộc) — mặc định theo cờ Staffing của Yêu cầu tuyển dụng. */
+  employeeType: string;
   startDate: string; // 1. Ngày bắt đầu làm việc (yyyy-mm-dd)
   fullName: string; // 2
   position: string; // 3. Vị trí chức danh (danh mục HR)
@@ -55,6 +57,7 @@ export interface HandoffData {
 export type HandoffKey = keyof HandoffData;
 
 export const HANDOFF_LABELS: Record<HandoffKey, string> = {
+  employeeType: 'Đối tượng',
   startDate: 'Ngày bắt đầu làm việc',
   fullName: 'Họ tên ứng viên',
   position: 'Vị trí chức danh',
@@ -75,8 +78,11 @@ export const HANDOFF_LABELS: Record<HandoffKey, string> = {
 };
 
 export const HANDOFF_KEYS = Object.keys(HANDOFF_LABELS) as HandoffKey[];
+/** Đối tượng nhân sự bàn giao sang HCNS. */
+export const EMPLOYEE_TYPES = ['Nội bộ', 'Staffing'] as const;
 
 export const emptyHandoff = (): HandoffData => ({
+  employeeType: '',
   startDate: '',
   fullName: '',
   position: '',
@@ -203,11 +209,14 @@ export interface OnbMail {
   kind:
     | 'Gửi thông tin sang HCNS' | 'Cập nhật thông tin onboard' | 'Báo huỷ onboard' | 'HCNS từ chối'
     | 'Form onboarding cho ứng viên' | 'Nhắc điền form thông tin' | 'Mail IT cấp tài khoản' | 'IT trả thông tin tài khoản' | 'Thông báo MarCom'
-    | 'Email onboard cho ứng viên' | 'Cancel offer' | 'Đổi ngày onboard';
+    | 'Email onboard cho ứng viên' | 'Cancel offer' | 'Đổi ngày onboard' | 'Email onboard theo mẫu';
   subject: string;
   to: string;
   cc: string[];
   attachments: string[];
+  /** Tên mẫu ở màn Thiết lập email Onboarding */
+  template?: string;
+  body?: string;
 }
 export interface OnbAccount {
   status: 'Chưa tạo' | 'Đang tạo' | 'Đã tạo';
@@ -224,9 +233,11 @@ export interface OnbAccount {
 //  4. MarCom chuẩn bị Welcome Onboard
 // ==========================================================================
 export type TaskStatus = 'Chưa bắt đầu' | 'Đang thực hiện' | 'Đã hoàn thành';
-export type TaskKey = 'employee' | 'personalForm' | 'itAccount' | 'marcom' | 'onboardMail';
-export const TASK_ORDER: TaskKey[] = ['employee', 'personalForm', 'itAccount', 'marcom', 'onboardMail'];
-/** Giờ gửi email onboard tới ứng viên vào ngày onboard. */
+export type TaskKey = 'employee' | 'personalForm' | 'itAccount' | 'marcom' | 'docsMail' | 'onboardMail';
+export const TASK_ORDER: TaskKey[] = ['employee', 'personalForm', 'itAccount', 'marcom', 'docsMail', 'onboardMail'];
+/** Việc của 1 phiếu: email bộ tài liệu trước ngày onboard chỉ áp dụng Staffing. */
+export const taskKeysOf = (r: Pick<OnbRecord, 'data'>): TaskKey[] => TASK_ORDER.filter((k) => k !== 'docsMail' || r.data.employeeType === 'Staffing');
+/** Giờ mặc định (dữ liệu mẫu) — giờ gửi thật lấy theo màn Thiết lập email Onboarding. */
 export const ONBOARD_MAIL_HOUR = '08';
 export const onboardMailAt = (startDate: string) => `${startDate}T${ONBOARD_MAIL_HOUR}:00:00`;
 export const TASK_DEFS: Record<TaskKey, { name: string; owner: string; done: string }> = {
@@ -234,7 +245,8 @@ export const TASK_DEFS: Record<TaskKey, { name: string; owner: string; done: str
   personalForm: { name: 'Form thông tin cá nhân trước onboard', owner: 'Ứng viên', done: 'Ứng viên submit form — dữ liệu đổ vào hồ sơ Employees' },
   itAccount: { name: 'IT cấp tài khoản', owner: 'Phòng IT', done: 'IT trả email, tên tài khoản, mật khẩu' },
   marcom: { name: 'Welcome Onboard', owner: 'Phòng MarCom', done: 'MarCom xác nhận đã chuẩn bị Welcome' },
-  onboardMail: { name: `Email onboard gửi ứng viên ${ONBOARD_MAIL_HOUR}:00 ngày onboard`, owner: 'Hệ thống', done: 'Gửi xong → phiếu chuyển Đã onboard' },
+  docsMail: { name: 'Email bộ tài liệu trước ngày onboard (Staffing)', owner: 'Hệ thống', done: 'Gửi theo mẫu "Bộ tài liệu Staffing"' },
+  onboardMail: { name: 'Email ngày onboard (theo đối tượng)', owner: 'Hệ thống', done: 'Gửi xong các email ngày onboard → phiếu chuyển Đã onboard' },
 };
 export const IT_MAILBOX = 'it@company.vn';
 export const MARCOM_MAILBOX = 'marcom@company.vn';
@@ -314,7 +326,7 @@ export interface OnbTask {
   itRet?: ItReturn;
 }
 export const taskOf = (r: Pick<OnbRecord, 'tasks'>, k: TaskKey): OnbTask => r.tasks?.find((t) => t.key === k) || { key: k, status: 'Chưa bắt đầu' };
-export const tasksDone = (r: Pick<OnbRecord, 'tasks'>) => TASK_ORDER.filter((k) => taskOf(r, k).status === 'Đã hoàn thành').length;
+export const tasksDone = (r: Pick<OnbRecord, 'tasks' | 'data'>) => taskKeysOf(r).filter((k) => taskOf(r, k).status === 'Đã hoàn thành').length;
 
 export interface OnbRecord {
   id: string; // ONB-yyyy-NNN
@@ -354,6 +366,8 @@ export interface OnbRecord {
   tasks?: OnbTask[];
   mails: OnbMail[];
   history: OnbHistory[];
+  /** Mẫu email onboard đã gửi: key mẫu → thời điểm gửi (chống gửi trùng) */
+  sentMails?: Record<string, string>;
 }
 
 // ==========================================================================
@@ -403,7 +417,7 @@ export const probationSalary = (d: HandoffData) =>
 /** Kiểm trường bắt buộc phía TA — trả về { key: thông báo }. */
 export const validateHandoff = (d: HandoffData, opts: { hasCvFile: boolean; refer: boolean }): Partial<Record<HandoffKey, string>> => {
   const e: Partial<Record<HandoffKey, string>> = {};
-  const req: HandoffKey[] = ['startDate', 'fullName', 'position', 'techStack', 'level', 'department', 'manager', 'workLocation', 'officialSalary', 'probationMonths', 'approver'];
+  const req: HandoffKey[] = ['employeeType', 'startDate', 'fullName', 'position', 'techStack', 'level', 'department', 'manager', 'workLocation', 'officialSalary', 'probationMonths', 'approver'];
   req.forEach((k) => {
     if (d[k] === '' || d[k] == null || (typeof d[k] === 'string' && !(d[k] as string).trim())) e[k] = 'Bắt buộc';
   });
@@ -436,7 +450,7 @@ export const ONB_STEPS = [
   { code: '02', name: 'Accept / Reject', owner: 'HCNS' },
   { code: '03', name: 'Điền form thông tin', owner: 'Ứng viên' },
   { code: '04', name: 'Cấp tài khoản', owner: 'IT' },
-  { code: '05', name: `Welcome & email onboard ${ONBOARD_MAIL_HOUR}:00`, owner: 'MarCom · Hệ thống' },
+  { code: '05', name: 'Welcome & email ngày onboard', owner: 'MarCom · Hệ thống' },
 ];
 const ok = (r: OnbRecord, k: TaskKey) => taskOf(r, k).status === 'Đã hoàn thành';
 export const stepIndex = (r: OnbRecord): number => {
@@ -449,7 +463,7 @@ export const stepIndex = (r: OnbRecord): number => {
 export const waitingOf = (r: OnbRecord): { text: string; owner: string } | null => {
   const i = stepIndex(r);
   if (i < 1 || i > 4) return null;
-  if (i === 4) return ok(r, 'marcom') ? { text: `Chờ email onboard ${ONBOARD_MAIL_HOUR}:00`, owner: 'Hệ thống' } : { text: 'Chờ MarCom Welcome', owner: 'MarCom' };
+  if (i === 4) return ok(r, 'marcom') ? { text: 'Chờ email ngày onboard', owner: 'Hệ thống' } : { text: 'Chờ MarCom Welcome', owner: 'MarCom' };
   return { 1: { text: 'Chờ HCNS Accept', owner: 'HCNS' }, 2: { text: 'Chờ ứng viên điền form', owner: 'Ứng viên' }, 3: { text: 'Chờ IT cấp tài khoản', owner: 'IT' } }[i as 1];
 };
 
@@ -497,7 +511,7 @@ export const inRange = (iso: string, r: [string, string] | null) => !r || (!!iso
 // ==========================================================================
 // Dữ liệu mẫu (giả lập) — ngày onboard tính theo hôm nay để bộ lọc tuần / tháng luôn có dữ liệu
 // ==========================================================================
-const baseData = (p: Partial<HandoffData>): HandoffData => ({ ...emptyHandoff(), ...p });
+const baseData = (p: Partial<HandoffData>): HandoffData => ({ ...emptyHandoff(), employeeType: 'Nội bộ', ...p });
 const dayFromToday = (n: number) => {
   const d = new Date(`${todayIso()}T00:00:00`);
   d.setDate(d.getDate() + n);
@@ -565,7 +579,7 @@ const accepted = (r: SeedIn, code: string, upTo: 1 | 2 | 3 | 4 | 5, acc: { user:
         : { key: 'marcom', status: 'Chưa bắt đầu', detail: 'Tự báo MarCom khi IT trả tài khoản' },
     upTo >= 5
       ? { key: 'onboardMail', status: 'Đã hoàn thành', startedAt: t1, doneAt: onboardMailAt(r.data.startDate), doneBy: 'Hệ thống', detail: `Đã gửi tới ${r.candidateEmail}` }
-      : { key: 'onboardMail', status: 'Đang thực hiện', startedAt: t1, detail: `Lên lịch ${ONBOARD_MAIL_HOUR}:00 ${dmy(r.data.startDate)} tới ${r.candidateEmail}` },
+      : { key: 'onboardMail', status: 'Đang thực hiện', startedAt: t1, detail: `Lên lịch ngày onboard ${dmy(r.data.startDate)} — theo Thiết lập email Onboarding` },
   ];
   const mails: OnbMail[] = [
     ...base.mails,
@@ -618,7 +632,7 @@ export const SEED_RECORDS: OnbRecord[] = [
     id: 'ONB-2026-042', candidateId: 'c7', candidateEmail: 'ha.nt@gmail.com', candidatePhone: '0978 220 316', candidateSource: 'Refer', cvFile: '',
     requestId: 'rq2', block: 'Khối BFSI', company: 'AEQUITAS', taPic: 'HungNV4', sentAt: at(dayFromToday(-2), '08:15'), version: 2, contractType: 'Thử việc',
     data: baseData({
-      startDate: weekDay(1, 0), fullName: 'Ngô Thanh Hà', position: 'Business Analyst', techStack: 'BA', level: 'Fresher',
+      employeeType: 'Staffing', startDate: weekDay(1, 0), fullName: 'Ngô Thanh Hà', position: 'Business Analyst', techStack: 'BA', level: 'Fresher',
       department: 'BFSI · Phòng Phân tích nghiệp vụ', manager: 'Lương Minh Đức', workLocation: 'HN - BIDV', officialSalary: 14000000,
       probationMonths: 2, probationPercent: 85, approver: 'Lương Minh Đức', cvLink: 'https://drive.google.com/file/d/ngothanhha-cv', referBonus: 3000000, referRecipient: 'Hồ Tú Anh',
     }),

@@ -17,15 +17,16 @@ import { Modal, TAG, useToast } from '../../marcom/MarcomUi';
 import { useOnboarding } from '../../onboarding/OnboardingContext';
 import { useRc } from '../../recruitment/rc/RcContext';
 import {
-  OnbRecord, HandoffData, HANDOFF_LABELS, CONTRACT_TYPES, COMPANIES, departmentsOf, HR_POSITIONS, HR_LEVELS, STAFF_NAMES, DATE_RANGES, DateRangeKey,
+  OnbRecord, HandoffData, HANDOFF_LABELS, EMPLOYEE_TYPES, CONTRACT_TYPES, COMPANIES, departmentsOf, HR_POSITIONS, HR_LEVELS, STAFF_NAMES, DATE_RANGES, DateRangeKey,
   missingForApprove, taskOf, fieldText, money, probationSalary, dmy, dmyhm, daysUntil, isRefer, ChecklistOwner, stepIndex, rangeOf, inRange, todayIso,
-  IT_MAILBOX, MARCOM_MAILBOX, ONBOARD_MAIL_HOUR, START_DATE_REASONS, validateHandoff, diffHandoff,
+  IT_MAILBOX, MARCOM_MAILBOX, START_DATE_REASONS, OnbMail, validateHandoff, diffHandoff,
 } from '../../onboarding/onboardingData';
 import { OnbStatusTag, DaysTag, OnbStepper, ChangeList, CatalogSelect, FormField } from './onbUi';
 import { OnbProgressPanel, ProgressTag, WaitTag, Secret, ItReturnModal, MarcomDoneModal, TASK_STATUS_CLS } from './OnbProgressPanel';
 import { CandidateFormPage } from './CandidateFormPage';
 import { RcHcnsFields } from '../recruitment/RcHcnsForm';
 import type { RcCandidate, RcRequest } from '../../recruitment/rc/rcData';
+import { templatesFor, timingText } from '../../onboarding/onbMailTemplates';
 
 type Nav = (menuTitle: string) => void;
 type Toast = (m: string) => void;
@@ -67,9 +68,16 @@ export const OnboardingHandoffPage: React.FC<{ onNavigate?: Nav }> = ({ onNaviga
             crumbs={['Nhân sự', 'Onboarding Request']}
             title="Onboarding Request"
             actions={
-              <Btn icon={FileSpreadsheet} onClick={() => toast(`Đã xuất ${inSpan.length} ứng viên ra Excel (mô phỏng)`)}>
-                Xuất Excel
-              </Btn>
+              <>
+                {onNavigate && (
+                  <Btn icon={Mail} onClick={() => onNavigate('Thiết lập email Onboarding')} data-testid="open-mail-settings">
+                    Thiết lập email
+                  </Btn>
+                )}
+                <Btn icon={FileSpreadsheet} onClick={() => toast(`Đã xuất ${inSpan.length} ứng viên ra Excel (mô phỏng)`)}>
+                  Xuất Excel
+                </Btn>
+              </>
             }
           />
           <FlowStrip />
@@ -112,7 +120,7 @@ const FlowStrip: React.FC = () => {
     { who: 'Ứng viên', what: 'Điền form thông tin cá nhân', cls: 'bg-blue-50 border-blue-200 text-blue-800' },
     { who: 'IT', what: 'Trả email, tài khoản, mật khẩu', cls: 'bg-amber-50 border-amber-200 text-amber-800' },
     { who: 'MarCom', what: 'Chuẩn bị Welcome Onboard', cls: 'bg-rose-50 border-rose-200 text-rose-800' },
-    { who: 'Hệ thống', what: `Email onboard ${ONBOARD_MAIL_HOUR}:00 ngày onboard`, cls: 'bg-emerald-50 border-emerald-200 text-emerald-800' },
+    { who: 'Hệ thống', what: 'Email theo đối tượng (Nội bộ / Staffing)', cls: 'bg-emerald-50 border-emerald-200 text-emerald-800' },
   ];
   return (
     <div className="flex flex-wrap items-stretch gap-1.5 text-[12px]">
@@ -167,6 +175,11 @@ const DateFilter: React.FC<{
   </div>
 );
 
+/** Nhãn Đối tượng: Staffing (xanh lá) / Nội bộ (xám) — bản ghi cũ chưa có ⇒ Nội bộ. */
+const EmployeeTypeTag: React.FC<{ type?: string }> = ({ type }) => (
+  <Tag cls={type === 'Staffing' ? TAG.green : TAG.slate}>{type || 'Nội bộ'}</Tag>
+);
+
 // ==========================================================================
 // HCNS — danh sách, chọn nhiều Accept / Reject
 // ==========================================================================
@@ -178,6 +191,7 @@ const HcnsList: React.FC<{ rows: OnbRecord[]; onOpen: (id: string) => void; toas
   const [q, setQ] = useState('');
   const [block, setBlock] = useState('');
   const [company, setCompany] = useState('');
+  const [etype, setEtype] = useState('');
   const [sel, setSel] = useState<string[]>([]);
   const [modal, setModal] = useState<'' | 'accept' | 'reject'>('');
   const [cancelId, setCancelId] = useState('');
@@ -190,10 +204,11 @@ const HcnsList: React.FC<{ rows: OnbRecord[]; onOpen: (id: string) => void; toas
       .filter((r) => !step || stepKeyOf(r) === step)
       .filter((r) => !block || r.block === block)
       .filter((r) => !company || r.company === company)
+      .filter((r) => !etype || (r.data.employeeType || 'Nội bộ') === etype)
       .filter((r) => !kw || [r.id, r.data.fullName, r.candidateEmail, reqCode(r.requestId), r.data.position, r.taPic, r.data.manager].some((s) => s.toLowerCase().includes(kw)))
       .sort((a, b) => (a.status === 'Chờ HCNS duyệt' ? 0 : 1) - (b.status === 'Chờ HCNS duyệt' ? 0 : 1) || a.data.startDate.localeCompare(b.data.startDate));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [all, step, q, block, company]);
+  }, [all, step, q, block, company, etype]);
 
   const selectable = rows.filter((r) => r.status === 'Chờ HCNS duyệt');
   const selected = sel.filter((id) => selectable.some((r) => r.id === id));
@@ -207,7 +222,7 @@ const HcnsList: React.FC<{ rows: OnbRecord[]; onOpen: (id: string) => void; toas
     { label: 'Chờ ứng viên điền form', key: 'form', tone: 'neutral', sub: 'Đã gửi link form' },
     { label: 'Chờ IT cấp tài khoản', key: 'it', tone: count('it') ? 'bad' : 'neutral', sub: `Yêu cầu tới ${IT_MAILBOX}` },
     { label: 'Chờ MarCom Welcome', key: 'marcom', tone: 'neutral', sub: `Đã báo ${MARCOM_MAILBOX}` },
-    { label: `Chờ email onboard ${ONBOARD_MAIL_HOUR}:00`, key: 'ready', tone: 'good', sub: 'Gửi sáng ngày onboard' },
+    { label: 'Chờ email ngày onboard', key: 'ready', tone: 'good', sub: 'Theo Thiết lập email' },
     { label: 'Đã onboard', key: 'done', tone: 'good', sub: 'Đã gửi email onboard' },
     { label: 'Reject / Cancel offer', key: 'closed', tone: 'neutral', sub: 'HCNS reject · cancel offer' },
   ];
@@ -264,6 +279,12 @@ const HcnsList: React.FC<{ rows: OnbRecord[]; onOpen: (id: string) => void; toas
                 <option key={b}>{b}</option>
               ))}
             </select>
+            <select value={etype} onChange={(e) => setEtype(e.target.value)} className={`${erp.input} h-7 w-32 text-[12px] cursor-pointer`} data-testid="filter-employee-type">
+              <option value="">Mọi đối tượng</option>
+              {EMPLOYEE_TYPES.map((t) => (
+                <option key={t}>{t}</option>
+              ))}
+            </select>
             <select value={company} onChange={(e) => setCompany(e.target.value)} className={`${erp.input} h-7 w-32 text-[12px] cursor-pointer`}>
               <option value="">Mọi công ty</option>
               {COMPANIES.map((b) => (
@@ -289,7 +310,7 @@ const HcnsList: React.FC<{ rows: OnbRecord[]; onOpen: (id: string) => void; toas
                     data-testid="select-all"
                   />
                 </th>
-                {['Mã phiếu', 'Ứng viên', 'Vị trí · Level', 'Khối · Công ty', 'Cấp trên trực tiếp', 'Ngày onboard', 'Trạng thái', 'Bước hiện tại', 'Tiến độ', 'TA gửi', 'Thao tác'].map((h) => (
+                {['Mã phiếu', 'Ứng viên', 'Đối tượng', 'Vị trí · Level', 'Khối · Công ty', 'Cấp trên trực tiếp', 'Ngày onboard', 'Trạng thái', 'Bước hiện tại', 'Tiến độ', 'TA gửi', 'Thao tác'].map((h) => (
                   <th key={h} className={`${erp.th} text-left`}>
                     {h}
                   </th>
@@ -299,7 +320,7 @@ const HcnsList: React.FC<{ rows: OnbRecord[]; onOpen: (id: string) => void; toas
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={12} className={`${erp.td} text-center text-slate-400 py-6`}>
+                  <td colSpan={13} className={`${erp.td} text-center text-slate-400 py-6`}>
                     Không có ứng viên phù hợp bộ lọc.
                   </td>
                 </tr>
@@ -317,6 +338,9 @@ const HcnsList: React.FC<{ rows: OnbRecord[]; onOpen: (id: string) => void; toas
                     <td className={`${erp.td} whitespace-nowrap`}>
                       <p className="font-semibold text-slate-800">{r.data.fullName}</p>
                       <p className="text-[11px] text-slate-500">{r.candidateEmail}</p>
+                    </td>
+                    <td className={`${erp.td} whitespace-nowrap`} data-testid={`etype-${r.id}`}>
+                      <EmployeeTypeTag type={r.data.employeeType} />
                     </td>
                     <td className={`${erp.td} whitespace-nowrap`}>
                       <p>{r.data.position}</p>
@@ -603,6 +627,7 @@ const DetailView: React.FC<{ id: string; onBack: () => void; toast: Toast; onNav
   const { find, hrApprove, hrReject, toggleChecklist, hrSave } = useOnboarding();
   const r = find(id);
   const [tab, setTab] = useState<Tab>('info');
+  const [mailView, setMailView] = useState<OnbMail | null>(null);
   const [modal, setModal] = useState<'' | 'approve' | 'reject' | 'cancel' | 'date' | 'edit'>('');
   if (!r) return null;
 
@@ -723,6 +748,7 @@ const DetailView: React.FC<{ id: string; onBack: () => void; toast: Toast; onNav
                 <FieldTable
                   rows={[
                     { label: 'Họ tên ứng viên', value: f('fullName') },
+                    { label: 'Đối tượng', value: mark(HANDOFF_LABELS.employeeType, <EmployeeTypeTag type={r.data.employeeType} />) },
                     { label: 'Email cá nhân', value: r.candidateEmail },
                     { label: 'Điện thoại', value: r.candidatePhone },
                     { label: 'Nguồn', value: r.candidateSource },
@@ -828,10 +854,18 @@ const DetailView: React.FC<{ id: string; onBack: () => void; toast: Toast; onNav
                                 : TAG.blue
                         }
                       >
-                        {m.kind}
+                        {m.template || m.kind}
                       </Tag>
                     </td>
-                    <td className={erp.td}>{m.subject}</td>
+                    <td className={erp.td}>
+                      {m.body ? (
+                        <button type="button" onClick={() => setMailView(m)} className="text-left text-[#1f5fa8] hover:underline cursor-pointer" title="Xem nội dung email">
+                          {m.subject}
+                        </button>
+                      ) : (
+                        m.subject
+                      )}
+                    </td>
                     <td className={`${erp.td} font-mono text-[12px]`}>{m.to}</td>
                     <td className={erp.td}>{m.cc.join(', ') || <span className="text-slate-400">—</span>}</td>
                     <td className={erp.td}>{m.attachments.join(', ') || <span className="text-slate-400">—</span>}</td>
@@ -840,6 +874,23 @@ const DetailView: React.FC<{ id: string; onBack: () => void; toast: Toast; onNav
               </tbody>
             </table>
           )}
+          <Modal open={!!mailView} onClose={() => setMailView(null)} title={mailView?.template || mailView?.kind || ''} width="max-w-2xl" footer={<Btn onClick={() => setMailView(null)}>Đóng</Btn>}>
+            {mailView && (
+              <div className="space-y-2.5">
+                <FieldTable
+                  labelWidth="18%"
+                  rows={[
+                    { label: 'Thời gian', value: dmyhm(mailView.at) },
+                    { label: 'Đến', value: <span className="font-mono">{mailView.to}</span> },
+                    { label: 'CC', value: mailView.cc.join(', ') },
+                    { label: 'Tiêu đề', value: <b>{mailView.subject}</b> },
+                    { label: 'Đính kèm', value: mailView.attachments.length ? <span className="inline-flex flex-wrap gap-1.5">{mailView.attachments.map((a) => <span key={a} className="inline-flex items-center gap-1 px-1.5 py-px border border-slate-300 rounded-[3px] bg-slate-50 text-[12px]"><Paperclip size={11} /> {a}</span>)}</span> : '' },
+                  ]}
+                />
+                <div className="border border-slate-200 rounded-[3px] px-3 py-2.5 text-[13px] leading-relaxed whitespace-pre-line bg-white">{mailView.body}</div>
+              </div>
+            )}
+          </Modal>
         </div>
       </div>
 
@@ -996,10 +1047,29 @@ const AcceptEffects: React.FC<{ emails: string[] }> = ({ emails }) => (
       <li>Gửi email kèm link form thông tin cá nhân tới {emails.length === 1 ? emails[0] : `${emails.length} ứng viên`}.</li>
       <li>Khi ứng viên submit form: đổ dữ liệu vào Employees và gửi yêu cầu tới {IT_MAILBOX} (Họ và tên, Khối, Cấp trên trực tiếp, Công ty).</li>
       <li>Khi IT trả email, tên tài khoản, mật khẩu: tự báo {MARCOM_MAILBOX} chuẩn bị Welcome Onboard.</li>
-      <li>{ONBOARD_MAIL_HOUR}:00 sáng ngày onboard: tự gửi email onboard tới ứng viên → phiếu chuyển Đã onboard.</li>
+      <MailPlan />
+      <li>Gửi xong các email ngày onboard → phiếu chuyển Đã onboard.</li>
     </ul>
   </div>
 );
+/** Lịch email gửi ứng viên theo đối tượng — lấy từ màn Thiết lập email Onboarding. */
+const MailPlan: React.FC = () => {
+  const { mailTemplates } = useOnboarding();
+  return (
+    <>
+      {(['Nội bộ', 'Staffing'] as const).map((t) => (
+        <li key={t}>
+          <b>{t}</b>:{' '}
+          {templatesFor(mailTemplates, t)
+            .filter((x) => x.trigger !== 'accept')
+            .map((x) => `${x.name} (${timingText(x)} → ${x.to === 'company' ? 'email công ty' : 'email cá nhân'})`)
+            .join(' · ') || 'chưa bật email nào'}
+          .
+        </li>
+      ))}
+    </>
+  );
+};
 
 /** Accept 1 phiếu — cho bổ sung trường bắt buộc. */
 const ApproveModal: React.FC<{
@@ -1045,6 +1115,7 @@ const ApproveModal: React.FC<{
           labelWidth="34%"
           rows={[
             { label: 'Ứng viên', value: `${r.data.fullName} · ${r.candidateEmail}` },
+            { label: 'Đối tượng', value: <EmployeeTypeTag type={r.data.employeeType} /> },
             { label: 'Lương chính thức / thử việc', value: `${fieldText('officialSalary', r.data)} · ${fieldText('probationMonths', r.data)} × ${fieldText('probationPercent', r.data)}` },
           ]}
         />
@@ -1217,6 +1288,7 @@ const EditCandidateModal: React.FC<{ record: OnbRecord; onClose: () => void; toa
       return toast('Không có thay đổi');
     }
     const n = hrEdit(r.id, { data: { ...data, fullName: data.fullName.trim() }, candidateEmail: email.trim(), candidatePhone: phone.trim() }, reason.trim());
+    rc.setCandidateType(r.candidateId, data.employeeType, 'Onboarding Request');
     onClose();
     toast(`Đã lưu ${n} thay đổi thông tin ${data.fullName.trim()}`);
   };
@@ -1244,7 +1316,7 @@ const EditCandidateModal: React.FC<{ record: OnbRecord; onClose: () => void; toa
           <span>
             Thay đổi được ghi vào Lịch sử và báo Tuyển dụng ({r.taPic}).
             {r.account.employeeCode && <> Hồ sơ {r.account.employeeCode} trong Employees cập nhật theo.</>}
-            {accepted && <> Đổi ngày onboard sẽ dời email {ONBOARD_MAIL_HOUR}:00 và báo ứng viên / IT / MarCom.</>}
+            {accepted && <> Đổi ngày onboard sẽ dời lịch các email onboard và báo ứng viên / IT / MarCom.</>}
           </span>
         </div>
         <div className="grid grid-cols-12 gap-x-4 gap-y-3">
@@ -1348,7 +1420,7 @@ const ChangeStartDateModal: React.FC<{ record: OnbRecord; onClose: () => void; t
         <div className="border border-slate-200 bg-slate-50 rounded-[4px] px-3 py-2">
           <p className="text-[12px] font-bold text-slate-700 mb-1">Khi lưu, hệ thống sẽ:</p>
           <ul className="list-disc pl-5 text-[12px] text-slate-600 space-y-0.5">
-            {accepted && <li>Dời email onboard sang {ONBOARD_MAIL_HOUR}:00 ngày mới và gửi email xác nhận ngày mới tới {r.candidateEmail}.</li>}
+            {accepted && <li>Dời lịch các email onboard (bộ tài liệu, tài khoản, Welcome Kit) theo ngày mới và gửi email xác nhận ngày mới tới {r.candidateEmail}.</li>}
             {r.account.employeeCode && <li>Cập nhật ngày vào làm của hồ sơ {r.account.employeeCode} trong Employees.</li>}
             {it && <li>Báo IT ({IT_MAILBOX}) hạn cấp tài khoản mới.</li>}
             {mc && <li>Báo MarCom ({MARCOM_MAILBOX}) dời Welcome Onboard.</li>}
@@ -1397,7 +1469,7 @@ const CancelOfferModal: React.FC<{ record: OnbRecord; onClose: () => void; toast
           Ứng viên báo không onboard ngày <b>{dmy(r.data.startDate)}</b>. Chuyển trạng thái <b>Cancel offer</b> sẽ huỷ onboard ứng viên này:
         </p>
         <ul className="list-disc pl-5 text-[12px] text-slate-600 space-y-0.5">
-          <li>Huỷ lịch email onboard {ONBOARD_MAIL_HOUR}:00 ngày onboard; dừng các việc đang chờ.</li>
+          <li>Huỷ lịch các email onboard chưa gửi; dừng các việc đang chờ.</li>
           {r.account.employeeCode && <li>Xoá hồ sơ {r.account.employeeCode} khỏi Employees.</li>}
           {it && <li>Báo IT {r.account.status === 'Đã tạo' ? `khoá tài khoản ${r.account.companyEmail || ''}` : 'huỷ yêu cầu cấp tài khoản'}.</li>}
           {mc && <li>Báo MarCom huỷ Welcome Onboard.</li>}

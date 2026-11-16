@@ -9,8 +9,9 @@ import { useRc } from '../recruitment/rc/RcContext';
 import { Stage, MailKind } from '../recruitment/rc/rcData';
 import {
   OnbRecord, HandoffData, FieldChange, OnbMail, OnbTask, TaskKey, ItRequest, ItReturn, SEED_RECORDS, HCNS_MAILBOX, IT_MAILBOX, MARCOM_MAILBOX, FORM_FIELDS,
-  buildChecklist, diffHandoff, canChangeStartDate, todayIso, formLinkOf, missingForApprove, onboardMailAt, ONBOARD_MAIL_HOUR, dmy,
+  buildChecklist, diffHandoff, canChangeStartDate, todayIso, formLinkOf, missingForApprove, dmy, dmyhm,
 } from './onboardingData';
+import { OnbMailTemplate, OnbMailTrigger, SEED_ONB_TEMPLATES, fillTemplate, scheduledAt, templatesFor, varsOf } from './onbMailTemplates';
 import { upsertEmployeeFromOnboarding, removeEmployeeFromOnboarding } from '../components/EmployeePage';
 
 /** Người dùng giả lập theo vai trò (prototype chưa có đăng nhập). */
@@ -61,8 +62,14 @@ interface OnboardingContextValue {
   /** IT trả email, tên tài khoản, mật khẩu → báo MarCom. */
   itReturn: (id: string, ret: { email: string; accountName: string; password: string; by: string; note?: string }) => void;
   marcomDone: (id: string, by: string, note?: string) => void;
-  /** Gửi email onboard tới ứng viên (job 08:00 ngày onboard) → Đã onboard. */
+  /** Gửi ngay các email ngày onboard (và email trước ngày onboard còn chờ) theo mẫu → Đã onboard. */
   sendOnboardMail: (id: string, manual?: boolean) => void;
+  /** Gửi ngay email bộ tài liệu trước ngày onboard (Staffing). */
+  sendDocsMail: (id: string) => void;
+  /** Mẫu email onboard (màn Thiết lập email Onboarding). */
+  mailTemplates: OnbMailTemplate[];
+  saveMailTemplate: (t: OnbMailTemplate) => void;
+  removeMailTemplate: (key: string) => void;
   /** HCNS chuyển Cancel offer khi ứng viên báo không onboard → huỷ onboard. */
   cancelOffer: (id: string, reason: string) => void;
   /** HCNS đổi ngày onboard: dời lịch email 08:00, cập nhật Employees, báo ứng viên / IT / MarCom / TA. */
@@ -91,6 +98,7 @@ const seedEmployees = () => {
 };
 
 const nowIso = () => new Date().toISOString();
+const TPL_KEY = 'imis-onb-mail-templates-v1';
 
 export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [records, setRecords] = useState<OnbRecord[]>(() => (seedEmployees(), SEED_RECORDS));
@@ -99,6 +107,56 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const rc = useRc();
   const rcRef = useRef(rc);
   rcRef.current = rc;
+
+  // Mẫu email onboard — lưu trình duyệt để giữ thiết lập khi tải lại trang (tệp đính kèm chỉ giữ tên)
+  const [mailTemplates, setMailTemplates] = useState<OnbMailTemplate[]>(() => {
+    try {
+      const raw = localStorage.getItem(TPL_KEY);
+      if (raw) return JSON.parse(raw) as OnbMailTemplate[];
+    } catch {
+      /* bỏ qua */
+    }
+    return SEED_ONB_TEMPLATES;
+  });
+  const tplRef = useRef(mailTemplates);
+  tplRef.current = mailTemplates;
+  const persistTpl = (list: OnbMailTemplate[]) => {
+    tplRef.current = list;
+    setMailTemplates(list);
+    try {
+      localStorage.setItem(TPL_KEY, JSON.stringify(list.map((t) => ({ ...t, attachments: t.attachments.map(({ url: _u, ...a }) => a) }))));
+    } catch {
+      /* bỏ qua */
+    }
+  };
+  const saveMailTemplate: OnboardingContextValue['saveMailTemplate'] = (t) =>
+    persistTpl(tplRef.current.some((x) => x.key === t.key) ? tplRef.current.map((x) => (x.key === t.key ? { ...t, updatedAt: nowIso(), updatedBy: HCNS_USER } : x)) : [...tplRef.current, { ...t, updatedAt: nowIso(), updatedBy: HCNS_USER }]);
+  const removeMailTemplate: OnboardingContextValue['removeMailTemplate'] = (key) => persistTpl(tplRef.current.filter((x) => x.key !== key || x.system));
+
+  /** Dòng mô tả lịch gửi của 1 nhóm email (để hiện ở cột Việc). */
+  const scheduleText = (r: OnbRecord, trig: OnbMailTrigger, startDate = r.data.startDate) => {
+    const list = templatesFor(tplRef.current, r.data.employeeType, trig);
+    if (!list.length) return trig === 'onboardDay' ? `Không có email ngày onboard đang bật — tự chuyển Đã onboard ${dmy(startDate)}` : 'Không có email đang bật';
+    return list
+      .map((t) => `${t.name} → ${t.to === 'company' ? 'email công ty' : r.candidateEmail} lúc ${dmyhm(scheduledAt(t, startDate))}`)
+      .join(' · ');
+  };
+  /** Dựng email từ mẫu cho 1 phiếu. */
+  const mailFrom = (r: OnbRecord, t: OnbMailTemplate, at: string, extra: { formLink?: string } = {}): OnbMail => {
+    const vars = varsOf(r, { ...extra, hcns: r.decidedBy || HCNS_USER });
+    const company = r.account.companyEmail || r.tasks?.find((k) => k.key === 'itAccount')?.itRet?.email;
+    const to = t.to === 'company' && company ? company : r.candidateEmail;
+    return {
+      at,
+      kind: 'Email onboard theo mẫu',
+      template: t.name + (t.to === 'company' && !company ? ' (chưa có email công ty → gửi email cá nhân)' : ''),
+      subject: fillTemplate(t.subject, vars),
+      body: fillTemplate(t.body, vars),
+      to,
+      cc: t.cc.split(',').map((x) => x.trim()).filter(Boolean),
+      attachments: t.attachments.map((a) => a.name),
+    };
+  };
 
   const appOf = (candidateId: string, requestId: string) => rcRef.current.applications.find((a) => a.candidateId === candidateId && a.requestId === requestId);
   const codeOf = (requestId: string) => rcRef.current.request(requestId)?.code || requestId;
@@ -284,7 +342,13 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const company = p.company || cur.company;
     upsertEmployeeFromOnboarding(code, { ...empInfo({ ...cur, data }) }, { company });
     const link = formLinkOf(cur.id);
-    const formMail: OnbMail = { at, kind: 'Form onboarding cho ứng viên', subject: 'Chào mừng bạn gia nhập — vui lòng điền thông tin cá nhân trước ngày nhận việc', to: cur.candidateEmail, cc: [HCNS_MAILBOX], attachments: [] };
+    const staffing = data.employeeType === 'Staffing';
+    const preview = { ...cur, data, company, decidedBy: HCNS_USER };
+    // Email "Ngay khi HCNS Accept" theo đối tượng (mặc định: Form thông tin cá nhân)
+    const acceptTpl = templatesFor(tplRef.current, data.employeeType, 'accept');
+    const acceptMails: OnbMail[] = acceptTpl.length
+      ? acceptTpl.map((t) => ({ ...mailFrom(preview, t, at, { formLink: link }), kind: t.key === 'FORM_LINK' ? ('Form onboarding cho ứng viên' as const) : ('Email onboard theo mẫu' as const) }))
+      : [{ at, kind: 'Form onboarding cho ứng viên', subject: 'Chào mừng bạn gia nhập — vui lòng điền thông tin cá nhân trước ngày nhận việc', to: cur.candidateEmail, cc: [HCNS_MAILBOX], attachments: [], body: link }];
     patch(cur.id, (r) => {
       const changes = hrChanges(r, p);
       return {
@@ -304,18 +368,22 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           { key: 'personalForm', status: 'Đang thực hiện', startedAt: at, formLink: link, reminders: 0, detail: `Đã gửi link form tới ${r.candidateEmail} — chờ ứng viên submit` },
           { key: 'itAccount', status: 'Chưa bắt đầu', detail: 'Tự gửi IT khi ứng viên submit form' },
           { key: 'marcom', status: 'Chưa bắt đầu', detail: 'Tự báo MarCom khi IT trả tài khoản' },
-          { key: 'onboardMail', status: 'Đang thực hiện', startedAt: at, detail: `Lên lịch ${ONBOARD_MAIL_HOUR}:00 ${dmy(data.startDate)} tới ${r.candidateEmail}` },
+          ...(staffing ? [{ key: 'docsMail' as const, status: 'Đang thực hiện' as const, startedAt: at, detail: `Lên lịch: ${scheduleText(preview, 'before')}` }] : []),
+          { key: 'onboardMail', status: 'Đang thực hiện', startedAt: at, detail: `Lên lịch: ${scheduleText(preview, 'onboardDay')}` },
         ],
-        mails: [...r.mails, formMail],
+        sentMails: Object.fromEntries(acceptTpl.map((t) => [t.key, at])),
+        mails: [...r.mails, ...acceptMails],
         history: [
           ...r.history,
           ...(changes.length ? [{ at, by: HCNS_USER, role: 'HCNS' as const, action: 'HCNS bổ sung thông tin', changes }] : []),
           { at, by: HCNS_USER, role: 'HCNS', action: bulk ? 'Accept ứng viên (chọn nhiều)' : 'Accept ứng viên', note: [p.contractType && `Loại HĐ: ${p.contractType}`, p.hrNote].filter(Boolean).join(' · ') || undefined },
           { at, by: 'Hệ thống', role: 'Hệ thống', action: `Tạo nhân viên ${code} trong Employees (Thử việc)` },
-          { at, by: 'Hệ thống', role: 'Hệ thống', action: `Gửi link form thông tin cá nhân tới ${r.candidateEmail}`, note: link },
+          { at, by: 'Hệ thống', role: 'Hệ thống', action: `Gửi link form thông tin cá nhân tới ${r.candidateEmail}`, note: `${link}${acceptTpl.length ? ` · mẫu: ${acceptTpl.map((t) => t.name).join(', ')}` : ''}` },
+          { at, by: 'Hệ thống', role: 'Hệ thống', action: `Lên lịch email onboard — đối tượng ${data.employeeType || 'Nội bộ'}`, note: [staffing && scheduleText(preview, 'before'), scheduleText(preview, 'onboardDay')].filter(Boolean).join(' · ') },
         ],
       };
     });
+    window.setTimeout(() => dispatch(cur.id, 'auto'), 0); // ngày onboard quá gần ⇒ gửi ngay email đã tới giờ
   };
 
   const hrApprove: OnboardingContextValue['hrApprove'] = (id, p) => {
@@ -445,34 +513,68 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       checklist: r.checklist.map((c) => (c.id === itemId ? (c.done ? { ...c, done: false, doneBy: undefined, doneAt: undefined } : { ...c, done: true, doneBy: HCNS_USER, doneAt: nowIso() }) : c)),
     }));
 
-  /** Email onboard 08:00 ngày onboard → phiếu Đã onboard, Stage Onboarded. */
-  const sendOnboardMail: OnboardingContextValue['sendOnboardMail'] = (id, manual = false) => {
+  /**
+   * Gửi email onboard theo mẫu (trước ngày onboard / ngày onboard) cho 1 phiếu Đang onboard.
+   * auto: chỉ gửi mẫu đã tới giờ · docs: gửi ngay email trước ngày onboard · all: gửi ngay tất cả còn chờ.
+   * Gửi xong mọi email ngày onboard ⇒ phiếu Đã onboard, Stage Onboarded.
+   */
+  const dispatch = (id: string, mode: 'auto' | 'docs' | 'all') => {
     const r = recordsRef.current.find((x) => x.id === id);
-    if (!r || r.status !== 'Đang onboard') return;
-    const at = manual ? nowIso() : onboardMailAt(r.data.startDate);
-    const acc = r.account.companyEmail ? ` · email công ty ${r.account.companyEmail}` : '';
-    // cập nhật ref ngay để job không gửi trùng
-    recordsRef.current = recordsRef.current.map((x) => (x.id === id ? { ...x, status: 'Đã onboard' } : x));
-    patch(id, (x) => ({
-      ...x,
-      status: 'Đã onboard',
-      tasks: setTask(x, 'onboardMail', { status: 'Đã hoàn thành', doneAt: at, doneBy: 'Hệ thống', detail: `Đã gửi tới ${x.candidateEmail}${acc}` }),
-      mails: [...x.mails, { at, kind: 'Email onboard cho ứng viên', subject: `Chào mừng ${x.data.fullName} — hôm nay là ngày đầu tiên của bạn`, to: x.candidateEmail, cc: [HCNS_MAILBOX, x.data.manager], attachments: [] }],
-      history: [
-        ...x.history,
-        { at, by: 'Hệ thống', role: 'Hệ thống', action: `Gửi email onboard tới ${x.candidateEmail}`, note: `${manual ? 'Gửi thủ công (mô phỏng)' : `Job ${ONBOARD_MAIL_HOUR}:00 ngày onboard`} → Đã onboard · Stage Onboarded` },
-      ],
-    }));
-    setStage(r.candidateId, r.requestId, 'Onboarded');
-    if (r.account.employeeCode) rcRef.current.setCandidateHr(r.candidateId, { status: 'Probation', employeeCode: r.account.employeeCode, employeeName: r.data.fullName, startDate: r.data.startDate });
-  };
-
-  // Job gửi email onboard: chạy khi mở app và mỗi phút
-  useEffect(() => {
-    const tick = () => {
-      const now = nowIso();
-      recordsRef.current.filter((r) => r.status === 'Đang onboard' && r.data.startDate && new Date(onboardMailAt(r.data.startDate)).toISOString() <= now).forEach((r) => sendOnboardMail(r.id));
+    if (!r || r.status !== 'Đang onboard' || !r.data.startDate) return;
+    const now = nowIso();
+    const sent = r.sentMails || {};
+    const before = templatesFor(tplRef.current, r.data.employeeType, 'before');
+    const day = templatesFor(tplRef.current, r.data.employeeType, 'onboardDay');
+    const due = (t: OnbMailTemplate) => new Date(scheduledAt(t, r.data.startDate)).toISOString() <= now;
+    const pick = [...before, ...day].filter((t) => !sent[t.key] && (mode === 'all' || (mode === 'docs' ? t.trigger === 'before' : due(t))));
+    // Không có email ngày onboard nào bật ⇒ vẫn chuyển Đã onboard khi tới ngày
+    const noDayMail = !day.length && (mode === 'all' || new Date(`${r.data.startDate}T08:00:00`).toISOString() <= now);
+    if (!pick.length && !noDayMail) return;
+    const stamp = (t: OnbMailTemplate) => {
+      const s0 = scheduledAt(t, r.data.startDate);
+      return mode === 'auto' && new Date(s0).toISOString() >= (r.decidedAt || '') ? s0 : now;
     };
+    const mails = pick.map((t) => mailFrom(r, t, stamp(t)));
+    const nextSent = { ...sent, ...Object.fromEntries(pick.map((t, i) => [t.key, mails[i].at])) };
+    const docsDone = before.every((t) => nextSent[t.key]);
+    const dayDone = day.every((t) => nextSent[t.key]);
+    const finish = dayDone && (day.length > 0 || noDayMail);
+    const lastAt = mails.length ? mails[mails.length - 1].at : now;
+    // cập nhật ref ngay để job không gửi trùng
+    recordsRef.current = recordsRef.current.map((x) => (x.id === id ? { ...x, sentMails: nextSent, status: finish ? 'Đã onboard' : x.status } : x));
+    const how = mode === 'auto' ? 'Job gửi theo lịch' : 'Gửi thủ công (mô phỏng)';
+    patch(id, (x) => {
+      let tasks = x.tasks || [];
+      const upd = (k: TaskKey, t: Partial<OnbTask>) => (tasks = tasks.map((y) => (y.key === k ? { ...y, ...t } : y)));
+      const of = (trig: OnbMailTrigger) => mails.filter((m, i) => pick[i].trigger === trig).map((m) => `${m.template} → ${m.to}`).join(' · ');
+      if (r.data.employeeType === 'Staffing' && docsDone && pick.some((t) => t.trigger === 'before'))
+        upd('docsMail', { status: 'Đã hoàn thành', doneAt: lastAt, doneBy: 'Hệ thống', detail: `Đã gửi: ${of('before')}` });
+      if (finish) upd('onboardMail', { status: 'Đã hoàn thành', doneAt: lastAt, doneBy: 'Hệ thống', detail: day.length ? `Đã gửi: ${of('onboardDay') || 'các email ngày onboard'}` : 'Không có email ngày onboard đang bật' });
+      else if (pick.some((t) => t.trigger === 'onboardDay')) upd('onboardMail', { detail: `Đã gửi: ${of('onboardDay')} · còn chờ: ${day.filter((t) => !nextSent[t.key]).map((t) => t.name).join(', ')}` });
+      return {
+        ...x,
+        status: finish ? 'Đã onboard' : x.status,
+        sentMails: nextSent,
+        tasks,
+        mails: [...x.mails, ...mails],
+        history: [
+          ...x.history,
+          ...mails.map((m) => ({ at: m.at, by: 'Hệ thống', role: 'Hệ thống' as const, action: `Gửi email "${m.template}" tới ${m.to}`, note: `${how}${m.attachments.length ? ` · đính kèm ${m.attachments.length} tệp` : ''}` })),
+          ...(finish ? [{ at: lastAt, by: 'Hệ thống', role: 'Hệ thống' as const, action: 'Hoàn tất email ngày onboard → Đã onboard', note: 'Stage Onboarded' }] : []),
+        ],
+      };
+    });
+    if (finish) {
+      setStage(r.candidateId, r.requestId, 'Onboarded');
+      if (r.account.employeeCode) rcRef.current.setCandidateHr(r.candidateId, { status: 'Probation', employeeCode: r.account.employeeCode, employeeName: r.data.fullName, startDate: r.data.startDate });
+    }
+  };
+  const sendOnboardMail: OnboardingContextValue['sendOnboardMail'] = (id, manual = false) => dispatch(id, manual ? 'all' : 'auto');
+  const sendDocsMail: OnboardingContextValue['sendDocsMail'] = (id) => dispatch(id, 'docs');
+
+  // Job gửi email onboard theo lịch: chạy khi mở app và mỗi phút
+  useEffect(() => {
+    const tick = () => recordsRef.current.filter((r) => r.status === 'Đang onboard').forEach((r) => dispatch(r.id, 'auto'));
     tick();
     const t = window.setInterval(tick, 60000);
     return () => window.clearInterval(t);
@@ -501,7 +603,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       cancelledBy: HCNS_USER,
       cancelledAt: at,
       tasks: (x.tasks || []).map((k) =>
-        k.status === 'Đã hoàn thành' ? k : { ...k, detail: k.key === 'onboardMail' ? 'Đã huỷ lịch gửi email onboard' : `${k.detail || ''} — dừng do Cancel offer` },
+        k.status === 'Đã hoàn thành' ? k : { ...k, detail: k.key === 'onboardMail' || k.key === 'docsMail' ? 'Đã huỷ lịch gửi email onboard' : `${k.detail || ''} — dừng do Cancel offer` },
       ),
       hrNote: [x.hrNote, `[Cancel offer] ${HCNS_USER} lúc ${new Date(at).toLocaleString('vi-VN')} – Lý do: ${reason}`].filter(Boolean).join('\n'),
       mails: [...x.mails, ...mails],
@@ -549,7 +651,9 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       ...x,
       data: { ...x.data, startDate: date },
       dateChanges: [...(x.dateChanges || []), { at, by: HCNS_USER, from, to: date, reason }],
-      tasks: (x.tasks || []).map((k) => (k.key === 'onboardMail' && k.status !== 'Đã hoàn thành' ? { ...k, detail: `Lên lịch ${ONBOARD_MAIL_HOUR}:00 ${dmy(date)} tới ${x.candidateEmail}` } : k)),
+      tasks: (x.tasks || []).map((k) =>
+        (k.key === 'onboardMail' || k.key === 'docsMail') && k.status !== 'Đã hoàn thành' ? { ...k, detail: `Lên lịch: ${scheduleText(x, k.key === 'docsMail' ? 'before' : 'onboardDay', date)}` } : k,
+      ),
       mails: [...x.mails, ...mails],
       history: [
         ...x.history,
@@ -559,7 +663,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         },
         {
           at, by: 'Hệ thống', role: 'Hệ thống', action: 'Cập nhật theo ngày onboard mới',
-          note: [accepted && `Dời lịch email onboard sang ${ONBOARD_MAIL_HOUR}:00 ${dmy(date)}`, r.account.employeeCode && `cập nhật ngày vào làm hồ sơ ${r.account.employeeCode}`, `báo ${notified}`].filter(Boolean).join(' · '),
+          note: [accepted && `Dời lịch email onboard theo ngày mới ${dmy(date)}`, r.account.employeeCode && `cập nhật ngày vào làm hồ sơ ${r.account.employeeCode}`, `báo ${notified}`].filter(Boolean).join(' · '),
         },
       ],
     }));
@@ -634,12 +738,16 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       itReturn,
       marcomDone,
       sendOnboardMail,
+      sendDocsMail,
+      mailTemplates,
+      saveMailTemplate,
+      removeMailTemplate,
       cancelOffer,
       changeStartDate,
       hrEdit,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [records],
+    [records, mailTemplates],
   );
 
   return <OnboardingContext.Provider value={value}>{children}</OnboardingContext.Provider>;

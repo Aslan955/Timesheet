@@ -11,8 +11,8 @@ import { Panel, Btn, erp, Tag, FieldTable, FormRow } from '../erp/Erp';
 import { Modal, TAG } from '../../marcom/MarcomUi';
 import { useOnboarding } from '../../onboarding/OnboardingContext';
 import {
-  OnbRecord, OnbTask, TaskKey, TaskStatus, TASK_ORDER, TASK_DEFS, IT_MAILBOX, MARCOM_MAILBOX, IT_STAFF, MARCOM_STAFF, FORM_FIELDS, FORM_GROUPS,
-  taskOf, tasksDone, dmy, dmyhm, accountNameOf, domainOf, genPassword, waitingOf, ONBOARD_MAIL_HOUR,
+  OnbRecord, OnbTask, TaskKey, TaskStatus, TASK_DEFS, taskKeysOf, IT_MAILBOX, MARCOM_MAILBOX, IT_STAFF, MARCOM_STAFF, FORM_FIELDS, FORM_GROUPS,
+  taskOf, tasksDone, dmy, dmyhm, accountNameOf, domainOf, genPassword, waitingOf,
 } from '../../onboarding/onboardingData';
 
 export const TASK_STATUS_CLS: Record<TaskStatus, string> = {
@@ -24,7 +24,8 @@ export const TASK_STATUS_CLS: Record<TaskStatus, string> = {
 /** Nhãn tiến độ x/4 cho lưới. */
 export const ProgressTag: React.FC<{ record: OnbRecord }> = ({ record }) => {
   const n = tasksDone(record);
-  return <Tag cls={n === TASK_ORDER.length ? TAG.green : TAG.amber}>{`${n}/${TASK_ORDER.length}`}</Tag>;
+  const total = taskKeysOf(record).length;
+  return <Tag cls={n === total ? TAG.green : TAG.amber}>{`${n}/${total}`}</Tag>;
 };
 
 /** Bước đang chờ (ai đang giữ việc). */
@@ -36,7 +37,7 @@ export const WaitTag: React.FC<{ record: OnbRecord }> = ({ record }) => {
 };
 
 /** Việc còn dở (để hiện ở dải thông báo). */
-export const pendingTaskNames = (r: OnbRecord) => TASK_ORDER.filter((k) => taskOf(r, k).status !== 'Đã hoàn thành').map((k) => TASK_DEFS[k].name);
+export const pendingTaskNames = (r: OnbRecord) => taskKeysOf(r).filter((k) => taskOf(r, k).status !== 'Đã hoàn thành').map((k) => TASK_DEFS[k].name);
 
 /** Ô bí mật (mật khẩu): ẩn mặc định, bấm mắt để xem, nút sao chép. */
 export const Secret: React.FC<{ value: string; onCopy?: () => void }> = ({ value, onCopy }) => {
@@ -73,11 +74,13 @@ export const OnbProgressPanel: React.FC<{
   onOpenWelcome?: () => void;
   toast: (m: string) => void;
 }> = ({ record: r, onOpenEmployee, onOpenForm, onOpenWelcome, toast }) => {
-  const { remindForm, sendOnboardMail } = useOnboarding();
+  const { remindForm, sendOnboardMail, sendDocsMail } = useOnboarding();
   const [modal, setModal] = useState<'' | 'formData' | 'it' | 'marcom'>('');
   const started = (r.tasks || []).length > 0;
   const stopped = r.status === 'Huỷ onboard' || r.status === 'Cancel offer';
   const n = tasksDone(r);
+  const keys = taskKeysOf(r);
+  const total = keys.length;
   const link = 'text-[#1f5fa8] underline cursor-pointer whitespace-nowrap inline-flex items-center gap-1';
   const act = 'text-emerald-700 font-semibold underline cursor-pointer whitespace-nowrap';
 
@@ -135,6 +138,20 @@ export const OnbProgressPanel: React.FC<{
             )}
           </span>
         ) : null;
+      case 'docsMail':
+        return t.status === 'Đang thực hiện' ? (
+          <button
+            type="button"
+            className={act}
+            onClick={() => {
+              sendDocsMail(r.id);
+              toast(`Đã gửi email bộ tài liệu tới ${r.candidateEmail}`);
+            }}
+            data-testid="send-docs-mail"
+          >
+            Gửi ngay (mô phỏng)
+          </button>
+        ) : null;
       case 'onboardMail':
         return t.status === 'Đang thực hiện' ? (
           <button
@@ -142,7 +159,7 @@ export const OnbProgressPanel: React.FC<{
             className={act}
             onClick={() => {
               sendOnboardMail(r.id, true);
-              toast(`Đã gửi email onboard tới ${r.candidateEmail} — ${r.data.fullName} Đã onboard`);
+              toast(`Đã gửi các email ngày onboard (${r.data.employeeType || 'Nội bộ'}) — ${r.data.fullName} Đã onboard`);
             }}
             data-testid="send-onboard-mail"
           >
@@ -162,17 +179,17 @@ export const OnbProgressPanel: React.FC<{
           started ? (
             <span className="flex items-center gap-2">
               <span className="w-28 h-1.5 rounded-full bg-slate-200 overflow-hidden">
-                <span className={`block h-full ${n === TASK_ORDER.length ? 'bg-emerald-600' : 'bg-amber-500'}`} style={{ width: `${(n / TASK_ORDER.length) * 100}%` }} />
+                <span className={`block h-full ${n === total ? 'bg-emerald-600' : 'bg-amber-500'}`} style={{ width: `${(n / total) * 100}%` }} />
               </span>
               <b className="text-[12px] tabular-nums text-[#1e3a5f]">
-                {n}/{TASK_ORDER.length} hoàn thành
+                {n}/{total} hoàn thành
               </b>
             </span>
           ) : (
             <span className="text-[12px] text-slate-500">Bắt đầu khi HCNS Accept</span>
           )
         }
-        footer={`Các việc nối tiếp: ứng viên submit form → tự gửi yêu cầu IT (Họ và tên, Khối, Cấp trên trực tiếp, Công ty) → IT trả tài khoản → tự báo MarCom → ${ONBOARD_MAIL_HOUR}:00 ngày onboard tự gửi email onboard cho ứng viên.`}
+        footer={`Các việc nối tiếp: ứng viên submit form → tự gửi yêu cầu IT (Họ và tên, Khối, Cấp trên trực tiếp, Công ty) → IT trả tài khoản → tự báo MarCom. Email gửi ứng viên theo đối tượng ${r.data.employeeType || 'Nội bộ'} — ${r.data.employeeType === 'Staffing' ? 'bộ tài liệu trước ngày onboard, email tài khoản sáng ngày onboard' : 'email tài khoản (email cá nhân) và bộ Welcome Kit (email công ty) ngày onboard'}; nội dung / giờ gửi / tệp đính kèm ở màn Thiết lập email Onboarding.`}
       >
         <div className="overflow-x-auto">
           <table className={erp.table}>
@@ -186,7 +203,7 @@ export const OnbProgressPanel: React.FC<{
               </tr>
             </thead>
             <tbody>
-              {TASK_ORDER.map((k, i) => {
+              {keys.map((k, i) => {
                 const t = taskOf(r, k);
                 return (
                   <tr key={k} className={erp.tr} data-testid={`task-${k}`}>

@@ -195,6 +195,7 @@ export const NAVIGATION: NavItem[] = [
       { title: 'Template hợp đồng', icon: Settings },
       { title: 'Salary History', icon: Wallet },
       { title: 'Onboarding Request', icon: UserCheck },
+      { title: 'Thiết lập email Onboarding', icon: MailCheck },
       { title: 'Certificate Management', icon: Award },
       { title: 'Thông tin người phụ thuộc', icon: Users },
     ]
