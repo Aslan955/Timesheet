@@ -234,28 +234,7 @@ export const NAVIGATION: NavItem[] = [
       },
     ]
   },
-  {
-    title: 'Recruitment 2',
-    icon: IdCard,
-    children: [
-      { title: 'Yêu cầu tuyển dụng · V2', icon: Briefcase },
-      { title: 'Quản lý ứng viên · V2', icon: Users },
-      { title: 'Mẫu email · V2', icon: Mail },
-      {
-        title: 'Danh mục tuyển dụng · V2',
-        icon: ListChecks,
-        children: [
-          { title: 'Nguồn ứng viên · V2', icon: Award },
-          { title: 'Trường đại học · V2', icon: Building },
-          { title: 'Chuyên ngành · V2', icon: Layers },
-          { title: 'Level ứng tuyển · V2', icon: Hash },
-          { title: 'Khối ứng tuyển · V2', icon: Users2 },
-          { title: 'Vị trí · V2', icon: Briefcase },
-          { title: 'Kỹ năng · V2', icon: ClipboardList },
-        ],
-      },
-    ]
-  },
+  // Đã ẩn module 'Recruitment 2' (các màn · V2) khỏi menu theo yêu cầu 16/11/2026 — route trong App.tsx vẫn giữ.
   {
     title: 'Sale',
     icon: ShoppingCart,

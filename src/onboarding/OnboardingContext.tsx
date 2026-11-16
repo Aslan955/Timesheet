@@ -70,8 +70,10 @@ interface OnboardingContextValue {
   mailTemplates: OnbMailTemplate[];
   saveMailTemplate: (t: OnbMailTemplate) => void;
   removeMailTemplate: (key: string) => void;
-  /** HCNS chuyển Cancel offer khi ứng viên báo không onboard → huỷ onboard. */
+  /** HCNS chuyển Cancel offer khi ứng viên báo không onboard → huỷ onboard, email IT huỷ tài khoản / huỷ yêu cầu. */
   cancelOffer: (id: string, reason: string) => void;
+  /** IT xác nhận đã huỷ tài khoản (hoặc đã huỷ yêu cầu cấp tài khoản) sau Cancel offer. */
+  itCancelDone: (id: string, by: string, note?: string) => void;
   /** HCNS đổi ngày onboard: dời lịch email 08:00, cập nhật Employees, báo ứng viên / IT / MarCom / TA. */
   changeStartDate: (id: string, date: string, reason: string) => void;
   /** HCNS sửa toàn bộ thông tin ứng viên (17 trường + email/điện thoại); đổi ngày onboard đi qua changeStartDate. */
@@ -591,9 +593,19 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const toMc = t('marcom') !== 'Chưa bắt đầu';
     const hasAcc = r.account.status === 'Đã tạo';
     const subject = `[HCNS] Cancel offer — ${r.data.fullName} không onboard ngày ${dmy(r.data.startDate)}`;
+    const itTask = r.tasks?.find((x) => x.key === 'itAccount');
+    const accEmail = r.account.companyEmail || itTask?.itRet?.email || '';
+    const accName = r.account.userName || itTask?.itRet?.accountName || '';
+    const sign = `\n\nTrân trọng,\n${HCNS_USER} — Phòng Hành chính Nhân sự`;
+    const head = `Chào IT,\n\nỨng viên ${r.data.fullName} (${r.block} · ${r.company}) đã huỷ offer, không nhận việc ngày ${dmy(r.data.startDate)}.\nLý do: ${reason}\n\n`;
+    const itBody = hasAcc
+      ? `${head}Đề nghị IT huỷ tài khoản đã cấp cho ứng viên này:\n- Email công ty: ${accEmail}\n- Tên tài khoản: ${accName}\n\nSau khi huỷ, vui lòng bấm "Đã huỷ tài khoản" trên Onboarding Request (tab IT).${sign}`
+      : `${head}Đề nghị IT huỷ yêu cầu cấp tài khoản đã gửi${itTask?.itReq ? ` lúc ${dmyhm(itTask.itReq.sentAt)}` : ''} và không tạo tài khoản cho ứng viên này.\n\nVui lòng bấm "Đã huỷ yêu cầu" trên Onboarding Request (tab IT).${sign}`;
     const mails: OnbMail[] = [
       { at, kind: 'Cancel offer', subject, to: r.taPic, cc: [HCNS_MAILBOX], attachments: [] },
-      ...(toIt ? [{ at, kind: 'Cancel offer' as const, subject: `${subject}${hasAcc ? ' — đề nghị khoá tài khoản ' + (r.account.companyEmail || '') : ' — huỷ yêu cầu cấp tài khoản'}`, to: IT_MAILBOX, cc: [HCNS_MAILBOX], attachments: [] }] : []),
+      ...(toIt
+        ? [{ at, kind: 'Cancel offer' as const, template: hasAcc ? 'Báo IT huỷ tài khoản' : 'Báo IT huỷ yêu cầu cấp tài khoản', subject: `[HCNS] Cancel offer — đề nghị ${hasAcc ? `huỷ tài khoản ${accEmail}` : 'huỷ yêu cầu cấp tài khoản'} của ${r.data.fullName}`, body: itBody, to: IT_MAILBOX, cc: [HCNS_MAILBOX], attachments: [] }]
+        : []),
       ...(toMc ? [{ at, kind: 'Cancel offer' as const, subject: `${subject} — huỷ Welcome Onboard`, to: MARCOM_MAILBOX, cc: [HCNS_MAILBOX], attachments: [] }] : []),
     ];
     patch(id, (x) => ({
@@ -602,6 +614,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       cancelReason: reason,
       cancelledBy: HCNS_USER,
       cancelledAt: at,
+      itCancel: toIt ? { status: 'Chờ IT huỷ', kind: hasAcc ? 'account' : 'request', email: accEmail || undefined, accountName: accName || undefined, requestedAt: at } : undefined,
       tasks: (x.tasks || []).map((k) =>
         k.status === 'Đã hoàn thành' ? k : { ...k, detail: k.key === 'onboardMail' || k.key === 'docsMail' ? 'Đã huỷ lịch gửi email onboard' : `${k.detail || ''} — dừng do Cancel offer` },
       ),
@@ -615,7 +628,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           note: [
             'Huỷ lịch email onboard',
             r.account.employeeCode && `xoá hồ sơ ${r.account.employeeCode} khỏi Employees`,
-            toIt && (hasAcc ? 'báo IT khoá tài khoản' : 'báo IT huỷ yêu cầu'),
+            toIt && (hasAcc ? `email IT huỷ tài khoản ${accEmail}` : 'email IT huỷ yêu cầu cấp tài khoản'),
             toMc && 'báo MarCom huỷ Welcome',
             'báo Tuyển dụng',
             'Stage → Offer Rejected',
@@ -626,6 +639,23 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setStage(r.candidateId, r.requestId, 'Offer Rejected');
     rcRef.current.setCandidateHr(r.candidateId, { status: 'None' });
     if (r.account.employeeCode) removeEmployeeFromOnboarding(r.account.employeeCode);
+  };
+
+  const itCancelDone: OnboardingContextValue['itCancelDone'] = (id, by, note) => {
+    const r = recordsRef.current.find((x) => x.id === id);
+    if (!r?.itCancel || r.itCancel.status !== 'Chờ IT huỷ') return;
+    const at = nowIso();
+    const acc = r.itCancel.kind === 'account';
+    patch(id, (x) => ({
+      ...x,
+      itCancel: { ...x.itCancel!, status: 'Đã huỷ', doneAt: at, doneBy: by, note: note || undefined },
+      account: acc ? { ...x.account, status: 'Chưa tạo' } : x.account,
+      mails: [
+        ...x.mails,
+        { at, kind: 'IT đã huỷ tài khoản', subject: `[IT] ${acc ? `Đã huỷ tài khoản ${x.itCancel!.email || ''}` : 'Đã huỷ yêu cầu cấp tài khoản'} — ${x.data.fullName}`, to: HCNS_MAILBOX, cc: [IT_MAILBOX, x.taPic], attachments: [], body: note || undefined },
+      ],
+      history: [...x.history, { at, by, role: 'IT', action: acc ? `Đã huỷ tài khoản ${x.itCancel!.email || ''}` : 'Đã huỷ yêu cầu cấp tài khoản', note: note || undefined }],
+    }));
   };
 
   const changeStartDate: OnboardingContextValue['changeStartDate'] = (id, date, reason) => {
@@ -743,6 +773,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       saveMailTemplate,
       removeMailTemplate,
       cancelOffer,
+      itCancelDone,
       changeStartDate,
       hrEdit,
     }),

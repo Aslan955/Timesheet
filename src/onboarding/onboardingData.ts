@@ -209,7 +209,7 @@ export interface OnbMail {
   kind:
     | 'Gửi thông tin sang HCNS' | 'Cập nhật thông tin onboard' | 'Báo huỷ onboard' | 'HCNS từ chối'
     | 'Form onboarding cho ứng viên' | 'Nhắc điền form thông tin' | 'Mail IT cấp tài khoản' | 'IT trả thông tin tài khoản' | 'Thông báo MarCom'
-    | 'Email onboard cho ứng viên' | 'Cancel offer' | 'Đổi ngày onboard' | 'Email onboard theo mẫu';
+    | 'Email onboard cho ứng viên' | 'Cancel offer' | 'Đổi ngày onboard' | 'Email onboard theo mẫu' | 'IT đã huỷ tài khoản';
   subject: string;
   to: string;
   cc: string[];
@@ -368,6 +368,18 @@ export interface OnbRecord {
   history: OnbHistory[];
   /** Mẫu email onboard đã gửi: key mẫu → thời điểm gửi (chống gửi trùng) */
   sentMails?: Record<string, string>;
+  /** Cancel offer: yêu cầu IT huỷ tài khoản (đã cấp) / huỷ yêu cầu cấp tài khoản (chưa cấp) */
+  itCancel?: OnbItCancel;
+}
+export interface OnbItCancel {
+  status: 'Chờ IT huỷ' | 'Đã huỷ';
+  kind: 'account' | 'request';
+  email?: string;
+  accountName?: string;
+  requestedAt: string;
+  doneAt?: string;
+  doneBy?: string;
+  note?: string;
 }
 
 // ==========================================================================

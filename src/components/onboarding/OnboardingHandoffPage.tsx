@@ -19,7 +19,7 @@ import { useRc } from '../../recruitment/rc/RcContext';
 import {
   OnbRecord, HandoffData, HANDOFF_LABELS, EMPLOYEE_TYPES, CONTRACT_TYPES, COMPANIES, departmentsOf, HR_POSITIONS, HR_LEVELS, STAFF_NAMES, DATE_RANGES, DateRangeKey,
   missingForApprove, taskOf, fieldText, money, probationSalary, dmy, dmyhm, daysUntil, isRefer, ChecklistOwner, stepIndex, rangeOf, inRange, todayIso,
-  IT_MAILBOX, MARCOM_MAILBOX, START_DATE_REASONS, OnbMail, validateHandoff, diffHandoff,
+  IT_MAILBOX, MARCOM_MAILBOX, IT_STAFF, START_DATE_REASONS, OnbMail, validateHandoff, diffHandoff,
 } from '../../onboarding/onboardingData';
 import { OnbStatusTag, DaysTag, OnbStepper, ChangeList, CatalogSelect, FormField } from './onbUi';
 import { OnbProgressPanel, ProgressTag, WaitTag, Secret, ItReturnModal, MarcomDoneModal, TASK_STATUS_CLS } from './OnbProgressPanel';
@@ -56,7 +56,7 @@ export const OnboardingHandoffPage: React.FC<{ onNavigate?: Nav }> = ({ onNaviga
 
   const span = rangeOf(range, month);
   const inSpan = records.filter((r) => inRange(r.data.startDate, span));
-  const itWaiting = inSpan.filter((r) => taskOf(r, 'itAccount').status === 'Đang thực hiện' && !isClosed(r)).length;
+  const itWaiting = inSpan.filter((r) => (taskOf(r, 'itAccount').status === 'Đang thực hiện' && !isClosed(r)) || r.itCancel?.status === 'Chờ IT huỷ').length;
   const mcWaiting = inSpan.filter((r) => taskOf(r, 'marcom').status === 'Đang thực hiện' && !isClosed(r)).length;
   const hcnsWaiting = inSpan.filter((r) => r.status === 'Chờ HCNS duyệt').length;
 
@@ -442,8 +442,62 @@ const ItList: React.FC<{ rows: OnbRecord[]; onOpen: (id: string) => void; toast:
   const done = reqs.filter((r) => taskOf(r, 'itAccount').status === 'Đã hoàn thành');
   const rows = (tab === 'wait' ? waiting : tab === 'done' ? done : reqs).sort((a, b) => a.data.startDate.localeCompare(b.data.startDate));
   const rec = all.find((r) => r.id === open);
+  const cancels = all.filter((r) => r.itCancel).sort((a, b) => (a.itCancel!.status === 'Chờ IT huỷ' ? 0 : 1) - (b.itCancel!.status === 'Chờ IT huỷ' ? 0 : 1) || b.itCancel!.requestedAt.localeCompare(a.itCancel!.requestedAt));
+  const [cancelOf, setCancelOf] = useState('');
+  const cancelRec = all.find((r) => r.id === cancelOf);
   return (
     <>
+      {cancels.length > 0 && (
+        <Panel title={`Yêu cầu huỷ tài khoản — ứng viên Cancel offer (${cancels.filter((r) => r.itCancel!.status === 'Chờ IT huỷ').length} chờ xử lý)`} icon={XCircle} noPad>
+          <div className="overflow-x-auto">
+            <table className={erp.table}>
+              <thead>
+                <tr>
+                  {['Mã phiếu', 'Họ và tên', 'Khối · Công ty', 'Cần huỷ', 'Email', 'Tên tài khoản', 'Lý do Cancel offer', 'Nhận yêu cầu', 'Trạng thái', 'Thao tác'].map((h) => (
+                    <th key={h} className={`${erp.th} text-left`}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {cancels.map((r) => {
+                  const c = r.itCancel!;
+                  return (
+                    <tr key={r.id} className={erp.tr} data-testid={`it-cancel-row-${r.id}`}>
+                      <td className={`${erp.td} ${erp.code} whitespace-nowrap`}>{r.id}</td>
+                      <td className={`${erp.td} whitespace-nowrap font-semibold text-slate-800`}>{r.data.fullName}</td>
+                      <td className={`${erp.td} whitespace-nowrap`}>
+                        {r.block} · {r.company}
+                      </td>
+                      <td className={`${erp.td} whitespace-nowrap`}>{c.kind === 'account' ? 'Tài khoản đã cấp' : 'Yêu cầu cấp tài khoản'}</td>
+                      <td className={`${erp.td} font-mono text-[12px]`}>{c.email || <span className="text-slate-400">—</span>}</td>
+                      <td className={`${erp.td} font-mono text-[12px]`}>{c.accountName || <span className="text-slate-400">—</span>}</td>
+                      <td className={`${erp.td} text-[12px] max-w-[240px]`}>{r.cancelReason || '—'}</td>
+                      <td className={`${erp.td} whitespace-nowrap text-slate-600`}>{dmyhm(c.requestedAt)}</td>
+                      <td className={erp.td}>
+                        <Tag cls={c.status === 'Đã huỷ' ? TAG.green : TAG.rose}>{c.status === 'Đã huỷ' ? (c.kind === 'account' ? 'Đã huỷ tài khoản' : 'Đã huỷ yêu cầu') : 'Chờ IT huỷ'}</Tag>
+                        {c.doneAt && <p className="text-[11px] text-slate-500">{c.doneBy} · {dmyhm(c.doneAt)}</p>}
+                      </td>
+                      <td className={`${erp.td} whitespace-nowrap`}>
+                        {c.status === 'Chờ IT huỷ' && (
+                          <button type="button" onClick={() => setCancelOf(r.id)} className="text-rose-600 font-bold underline cursor-pointer mr-2" data-testid={`it-cancel-${r.id}`}>
+                            {c.kind === 'account' ? 'Đã huỷ tài khoản' : 'Đã huỷ yêu cầu'}
+                          </button>
+                        )}
+                        <button type="button" onClick={() => onOpen(r.id)} className="text-slate-500 underline cursor-pointer">
+                          Phiếu
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      )}
+      {cancelRec && <ItCancelModal record={cancelRec} onClose={() => setCancelOf('')} toast={toast} />}
       <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-slate-600">
         <ShieldCheck size={15} className="text-[#1f5fa8]" />
         <span className="flex-1">
@@ -628,6 +682,7 @@ const DetailView: React.FC<{ id: string; onBack: () => void; toast: Toast; onNav
   const r = find(id);
   const [tab, setTab] = useState<Tab>('info');
   const [mailView, setMailView] = useState<OnbMail | null>(null);
+  const [itCancelOpen, setItCancelOpen] = useState(false);
   const [modal, setModal] = useState<'' | 'approve' | 'reject' | 'cancel' | 'date' | 'edit'>('');
   if (!r) return null;
 
@@ -714,8 +769,32 @@ const DetailView: React.FC<{ id: string; onBack: () => void; toast: Toast; onNav
         <OnbProgressPanel record={r} toast={toast} onOpenEmployee={() => onNavigate?.('Employees')} onOpenForm={() => onOpenForm(r.id)} onOpenWelcome={onNavigate ? () => onNavigate('Welcome Onboard') : undefined} />
       )}
 
+      {r.itCancel && (
+        <div className={`flex flex-wrap items-center gap-3 px-3 py-2 rounded-[4px] border text-[12.5px] ${r.itCancel.status === 'Đã huỷ' ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-rose-50 border-rose-300 text-rose-800'}`} data-testid="it-cancel-notice">
+          <XCircle size={15} className="shrink-0" />
+          <span className="flex-1 min-w-[240px]">
+            {r.itCancel.status === 'Đã huỷ' ? (
+              <>
+                IT đã {r.itCancel.kind === 'account' ? <>huỷ tài khoản <b className="font-mono">{r.itCancel.email}</b></> : 'huỷ yêu cầu cấp tài khoản'} — {r.itCancel.doneBy} · {dmyhm(r.itCancel.doneAt || '')}
+                {r.itCancel.note ? ` · ${r.itCancel.note}` : ''}.
+              </>
+            ) : (
+              <>
+                Đã email {IT_MAILBOX} lúc {dmyhm(r.itCancel.requestedAt)} đề nghị {r.itCancel.kind === 'account' ? <>huỷ tài khoản <b className="font-mono">{r.itCancel.email}</b>{r.itCancel.accountName ? ` (${r.itCancel.accountName})` : ''}</> : 'huỷ yêu cầu cấp tài khoản'} — chờ IT xác nhận.
+              </>
+            )}
+          </span>
+          {r.itCancel.status === 'Chờ IT huỷ' && (
+            <Btn variant="danger" icon={XCircle} className="h-7" onClick={() => setItCancelOpen(true)} data-testid="detail-it-cancel">
+              IT xác nhận đã huỷ
+            </Btn>
+          )}
+        </div>
+      )}
+      {itCancelOpen && <ItCancelModal record={r} onClose={() => setItCancelOpen(false)} toast={toast} />}
+
       {itTask.itRet && (
-        <Panel title="Tài khoản IT đã cấp" icon={KeyRound}>
+        <Panel title={r.itCancel?.status === 'Đã huỷ' && r.itCancel.kind === 'account' ? 'Tài khoản IT đã cấp (đã huỷ)' : 'Tài khoản IT đã cấp'} icon={KeyRound}>
           <FieldTable
             labelWidth="30%"
             rows={[
@@ -1432,6 +1511,58 @@ const ChangeStartDateModal: React.FC<{ record: OnbRecord; onClose: () => void; t
   );
 };
 
+/** IT xác nhận đã huỷ tài khoản / huỷ yêu cầu cấp tài khoản sau Cancel offer. */
+const ItCancelModal: React.FC<{ record: OnbRecord; onClose: () => void; toast: Toast }> = ({ record: r, onClose, toast }) => {
+  const { itCancelDone } = useOnboarding();
+  const [by, setBy] = useState(IT_STAFF[0]);
+  const [note, setNote] = useState('');
+  const c = r.itCancel!;
+  const acc = c.kind === 'account';
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`${acc ? 'Huỷ tài khoản' : 'Huỷ yêu cầu cấp tài khoản'} — ${r.data.fullName}`}
+      footer={
+        <>
+          <Btn onClick={onClose}>Đóng</Btn>
+          <Btn
+            variant="danger"
+            icon={CheckCircle2}
+            onClick={() => {
+              itCancelDone(r.id, by, note.trim());
+              onClose();
+              toast(acc ? `IT đã huỷ tài khoản ${c.email || ''} — đã báo HCNS và Tuyển dụng` : 'IT đã huỷ yêu cầu cấp tài khoản — đã báo HCNS');
+            }}
+            data-testid="it-cancel-confirm"
+          >
+            {acc ? 'Xác nhận đã huỷ tài khoản' : 'Xác nhận đã huỷ yêu cầu'}
+          </Btn>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <FieldTable
+          labelWidth="34%"
+          rows={[
+            { label: 'Ứng viên', value: `${r.data.fullName} · ${r.block} · ${r.company}` },
+            { label: 'Lý do Cancel offer', value: r.cancelReason || '' },
+            ...(acc ? [{ label: 'Email công ty', value: <span className="font-mono">{c.email}</span> }, { label: 'Tên tài khoản', value: <span className="font-mono">{c.accountName}</span> }] : []),
+            { label: 'HCNS yêu cầu lúc', value: dmyhm(c.requestedAt) },
+          ]}
+        />
+        <FormRow label="Người thực hiện" required>
+          <CatalogSelect value={by} options={IT_STAFF} onChange={setBy} />
+        </FormRow>
+        <FormRow label="Ghi chú">
+          <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder={acc ? 'VD: Đã xoá mailbox, thu hồi license' : 'VD: Đã đóng ticket cấp tài khoản'} className={`${erp.inputFull} h-auto py-1.5 resize-none`} />
+        </FormRow>
+        <p className="text-[12px] text-slate-500">Xác nhận sẽ gửi email báo HCNS ({'hcns@company.vn'}) và Tuyển dụng ({r.taPic}).</p>
+      </div>
+    </Modal>
+  );
+};
+
 /** Cancel offer — ứng viên báo không onboard; HCNS chuyển trạng thái để huỷ onboard. */
 const CancelOfferModal: React.FC<{ record: OnbRecord; onClose: () => void; toast: Toast }> = ({ record: r, onClose, toast }) => {
   const { cancelOffer } = useOnboarding();
@@ -1471,7 +1602,13 @@ const CancelOfferModal: React.FC<{ record: OnbRecord; onClose: () => void; toast
         <ul className="list-disc pl-5 text-[12px] text-slate-600 space-y-0.5">
           <li>Huỷ lịch các email onboard chưa gửi; dừng các việc đang chờ.</li>
           {r.account.employeeCode && <li>Xoá hồ sơ {r.account.employeeCode} khỏi Employees.</li>}
-          {it && <li>Báo IT {r.account.status === 'Đã tạo' ? `khoá tài khoản ${r.account.companyEmail || ''}` : 'huỷ yêu cầu cấp tài khoản'}.</li>}
+          {it ? (
+            <li>
+              Email {IT_MAILBOX} đề nghị <b>{r.account.status === 'Đã tạo' ? `huỷ tài khoản ${r.account.companyEmail || ''}` : 'huỷ yêu cầu cấp tài khoản'}</b>; IT xác nhận đã huỷ ở tab IT.
+            </li>
+          ) : (
+            <li>IT chưa nhận yêu cầu cấp tài khoản (ứng viên chưa submit form) — không cần báo IT.</li>
+          )}
           {mc && <li>Báo MarCom huỷ Welcome Onboard.</li>}
           <li>Báo Tuyển dụng ({r.taPic}); lượt ứng tuyển chuyển Offer Rejected.</li>
         </ul>
