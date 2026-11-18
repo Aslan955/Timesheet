@@ -103,8 +103,6 @@ const HealthBadge: React.FC<{ h: Health }> = ({ h }) => (
 );
 
 const METRIC_OPTIONS = REPORT_METRICS.map((m) => ({ key: m.key, label: m.label }));
-/** Bảng "Chi tiết theo dự án": đủ 4 chỉ tiêu (Chi phí chỉ Kế hoạch / Thực tế / Chênh lệch — không tách CP quản lý, CP vận hành chung). */
-const TABLE_METRICS = REPORT_METRICS;
 
 /** Nhãn + ô lọc trên cùng 1 dòng. */
 const FilterField: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
@@ -573,7 +571,7 @@ const ALL = 'Toàn công ty';
  * Tab "Chi phí vận hành chung": bảng phân bổ theo khối + tháng (không vẽ biểu đồ).
  *   Tỉ lệ = Chi phí dự án trong tháng ÷ Tổng chi phí các dự án của khối trong tháng · Phân bổ = Tỉ lệ × Tổng chi phí VHC của khối.
  */
-const VhcAllocTable: React.FC<{ projects: BizProject[]; from: string; to: string; onDrill: OnDrill }> = ({ projects, from, to, onDrill }) => {
+const VhcAllocTable: React.FC<{ projects: BizProject[]; from: string; to: string; onDrill: OnDrill; toolbar?: React.ReactNode }> = ({ projects, from, to, onDrill, toolbar }) => {
   const { ledger } = useBusinessProjects();
   const single = projects.length === 1 ? projects[0] : null;
   const divisions = new Set(projects.map((p) => p.division));
@@ -589,14 +587,8 @@ const VhcAllocTable: React.FC<{ projects: BizProject[]; from: string; to: string
       return { v, khoiCost, rows };
     })
     .filter((g) => g.rows.length);
-  const totalAlloc = groups.reduce((a, g) => a + g.rows.reduce((b, x) => b + x.a.value, 0), 0);
-  const totalPool = groups.reduce((a, g) => a + g.v.pool, 0);
-  const totalKhoiCost = groups.reduce((a, g) => a + g.khoiCost, 0);
-  const shownCost = groups.reduce((a, g) => a + g.rows.reduce((b, x) => b + x.a.cost, 0), 0);
-  const allocated = new Set(groups.flatMap((g) => g.rows.filter((x) => x.a.value > 0).map((x) => x.p!.id)));
-  const khois = [...new Set(groups.map((g) => g.v.division))];
-  const months = new Set(groups.map((g) => g.v.month)).size;
-  const th = `${erp.th} whitespace-nowrap`;
+  const khois = [...new Set<string>(groups.map((g) => g.v.division))];
+  const th =`${erp.th} whitespace-nowrap`;
   const td = `${erp.td} whitespace-nowrap`;
   const num = `${td} ${erp.num}`;
   const open = (g: (typeof groups)[number]) =>
@@ -609,40 +601,89 @@ const VhcAllocTable: React.FC<{ projects: BizProject[]; from: string; to: string
       expected: g.rows.reduce((b, x) => b + x.a.value, 0),
       title: `Khối ${g.v.division} · ${fmtMonth(g.v.month)}${single ? ` · ${single.masterCode} — ${single.name}` : ''}`,
     });
-  const scopeText = khois.length === 1 ? `Khối ${khois[0]}` : `${khois.length} khối`;
+  // Kỳ của thông tin nhanh: '' = mặc định tháng mới nhất có số; 'ALL' = cả kỳ của bộ lọc
+  const monthList = [...new Set<string>(groups.map((g) => g.v.month))].sort();
+  const [pickMonth, setPickMonth] = useState('');
+  const isAll = pickMonth === 'ALL';
+  const curMonth = isAll ? '' : monthList.includes(pickMonth) ? pickMonth : monthList[monthList.length - 1] || '';
+  const sel = isAll ? groups : groups.filter((g) => g.v.month === curMonth);
+  const selKhois = khois.filter((k) => sel.some((g) => g.v.division === k));
+  const selMonths = new Set(sel.map((g) => g.v.month)).size;
+  const selPool = sel.reduce((a, g) => a + g.v.pool, 0);
+  const selKhoiCost = sel.reduce((a, g) => a + g.khoiCost, 0);
+  const selPrj = new Set(sel.flatMap((g) => g.rows.filter((x) => x.a.value > 0).map((x) => x.p!.id)));
+  // Dòng Tổng cộng của bảng (theo kỳ chọn)
+  const totalAlloc = sel.reduce((a, g) => a + g.rows.reduce((b, x) => b + x.a.value, 0), 0);
+  const shownCost = sel.reduce((a, g) => a + g.rows.reduce((b, x) => b + x.a.cost, 0), 0);
+  const scopeText = selKhois.length === 1 ? `Khối ${selKhois[0]}` : `${selKhois.length} khối`;
+  const periodText = isAll ? `${selMonths} tháng (${fmtMonth(from)} → ${fmtMonth(to)})` : `tháng ${fmtMonth(curMonth)}`;
+  // Diễn giải công thức dưới từng ô thông tin nhanh (kèm số thật của kỳ đang chọn)
+  const byKhoi = (f: (g: (typeof groups)[number]) => number) => selKhois.map((k) => ({ k, v: sel.filter((g) => g.v.division === k).reduce((a, g) => a + f(g), 0) }));
+  const F: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <div className="px-2.5 py-1.5 border border-dashed border-slate-300 rounded-[3px] bg-white text-[11.5px] leading-snug text-slate-600 min-w-0 break-words">{children}</div>
+  );
+  const plus = (xs: { k: string; v: number }[]) => xs.map((x) => `${x.k} ${val('opex', x.v)}`).join(' + ');
   return (
     <div className="space-y-3" data-testid="vhc-alloc-table">
-      {/* Thông tin nhanh */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5" data-testid="vhc-kpis">
+      {/* Hàng công cụ: cùng bố cục các tab khác (chú thích · tab · tuỳ chọn) */}
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-[11.5px] text-slate-500">ĐVT: VNĐ</span>
+        {toolbar}
+        {monthList.length > 0 && (
+          <label className="flex items-center gap-1.5 text-[12px] text-slate-600">
+            Kỳ xem
+            <select value={isAll ? 'ALL' : curMonth} onChange={(e) => setPickMonth(e.target.value)} className={`${erp.input} w-auto`} data-testid="vhc-month-pick">
+              <option value="ALL">
+                Cả kỳ ({fmtMonth(from)} → {fmtMonth(to)})
+              </option>
+              {[...monthList].reverse().map((m) => (
+                <option key={m} value={m}>
+                  Tháng {fmtMonth(m)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5" data-testid="vhc-kpis">
         <KpiBox
           label="Tổng chi phí vận hành chung"
-          value={val('opex', totalPool)}
-          valueText={val('opex', totalPool)}
-          sub={groups.length ? `${scopeText} · ${months} tháng (${fmtMonth(from)} → ${fmtMonth(to)})` : 'Chưa có file VHC trong kỳ'}
+          value={<span data-testid="vhc-pool-total">{val('opex', selPool)}</span>}
+          valueText={val('opex', selPool)}
+          sub={sel.length ? `${scopeText} · ${periodText}` : 'Chưa có file VHC trong kỳ'}
         />
-        <KpiBox label="Tổng chi phí mã SX (.2) của khối" value={val('opex', totalKhoiCost)} valueText={val('opex', totalKhoiCost)} sub="Mẫu số để tính tỉ lệ phân bổ" />
+        <KpiBox label="Tổng chi phí sản xuất (mã .2)" value={val('opex', selKhoiCost)} valueText={val('opex', selKhoiCost)} sub={`${scopeText} · ${periodText} · mẫu số tính tỉ lệ phân bổ`} />
         <KpiBox
           label="Số dự án được phân bổ"
-          value={allocated.size}
-          sub={single ? `${single.masterCode} — ${allocated.size ? 'có phát sinh chi phí mã .2' : 'không phát sinh chi phí mã .2 → 0 đ'}` : `/ ${projects.length} dự án trong phạm vi · dự án không có chi phí mã .2 → 0 đ`}
-        />
-        <KpiBox
-          label={single ? `VHC phân bổ cho ${single.masterCode}` : 'Chi phí VHC đã phân bổ'}
-          value={val('opex', totalAlloc)}
-          valueText={val('opex', totalAlloc)}
-          badge={totalPool ? pct(totalAlloc / totalPool, 1) : undefined}
-          sub={single ? `Chi phí mã SX của dự án: ${val('opex', shownCost)}` : 'Bằng tổng chi phí vận hành chung của khối'}
+          value={selPrj.size}
+          sub={single ? `${single.masterCode} — ${selPrj.size ? 'có phát sinh chi phí mã .2' : 'không phát sinh chi phí mã .2 → 0 đ'}` : `/ ${projects.length} dự án trong phạm vi · ${periodText}`}
         />
       </div>
+      {sel.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 -mt-1" data-testid="vhc-formulas">
+          <F>
+            <b className="text-slate-700">= Σ file VHC Kế toán upload</b> ({sel.length} file = {selKhois.length} khối × {selMonths} tháng)
+            <br />= {plus(byKhoi((g) => g.v.pool))}
+          </F>
+          <F>
+            <b className="text-slate-700">= Σ chi phí mã SX (.2)</b> của mọi dự án trong khối, {isAll ? 'cộng các tháng trong kỳ' : `tháng ${fmtMonth(curMonth)}`} (không tính mã KD .1)
+            <br />= {plus(byKhoi((g) => g.khoiCost))}
+          </F>
+          <F>
+            <b className="text-slate-700">= Số dự án có chi phí mã .2 &gt; 0</b> {isAll ? 'trong ít nhất 1 tháng của kỳ' : `trong tháng ${fmtMonth(curMonth)}`}
+            <br />= {selPrj.size} dự án{!single && ` · ${projects.length - selPrj.size} dự án còn lại không phát sinh → 0 đ`}
+          </F>
+        </div>
+      )}
 
       <p className="text-[12px] text-slate-600 bg-[#f5f8fc] border border-slate-200 rounded-[3px] px-3 py-2">
         <b className="text-slate-700">Công thức:</b> Tỉ lệ = Chi phí mã sản xuất (.2) của dự án trong tháng ÷ Tổng chi phí mã sản xuất của các dự án trong khối · Chi phí VHC phân bổ = Tỉ lệ × Tổng chi phí
         vận hành chung của khối (file Kế toán upload). Không tính mã kinh doanh (.1); dự án không phát sinh chi phí → 0 đ.
       </p>
 
-      <div className="overflow-x-auto border border-slate-300">
+      <div className="overflow-auto max-h-[560px] border border-slate-300" data-testid="vhc-table-wrap">
         <table className={erp.table}>
-          <thead>
+          <thead className="sticky top-0 z-[1]">
             <tr>
               <th className={`${th} text-left border-t-0 border-l-0`}>Tháng</th>
               <th className={`${th} text-left border-t-0`}>Khối</th>
@@ -654,7 +695,7 @@ const VhcAllocTable: React.FC<{ projects: BizProject[]; from: string; to: string
             </tr>
           </thead>
           <tbody>
-            {groups.map((g) => (
+            {sel.map((g) => (
               <React.Fragment key={g.v.id}>
                 {g.rows.map(({ a, p }, i) => (
                   <tr key={`${g.v.id}-${a.projectCode}`} className={erp.tr}>
@@ -692,7 +733,7 @@ const VhcAllocTable: React.FC<{ projects: BizProject[]; from: string; to: string
                 ))}
               </React.Fragment>
             ))}
-            {!groups.length && (
+            {!sel.length && (
               <tr>
                 <td colSpan={7} className={`${erp.td} border-x-0 text-center text-slate-400 py-8`}>
                   Chưa có chi phí vận hành chung trong kỳ / phạm vi đang xem.
@@ -700,14 +741,14 @@ const VhcAllocTable: React.FC<{ projects: BizProject[]; from: string; to: string
               </tr>
             )}
           </tbody>
-          {groups.length > 0 && (
+          {sel.length > 0 && (
             <tfoot>
               <tr className={erp.totalRow}>
                 <td className={`${td} border-l-0`} colSpan={3}>
                   Tổng cộng
                 </td>
                 <td className={num}>{val('opex', shownCost)}</td>
-                <td className={`${td} text-right`}>{totalPool ? pct(totalAlloc / totalPool, 2) : '—'}</td>
+                <td className={`${td} text-right`}>{selPool ? pct(totalAlloc / selPool, 2) : '—'}</td>
                 <td className={num}>{val('opex', totalAlloc)}</td>
                 <td className={`${td} border-r-0`} />
               </tr>
@@ -734,19 +775,15 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
   const [metric, setMetric] = useState<ChartMetric | 'overview'>('overview');
   const [kind, setKind] = useState<'actual' | 'plan'>('actual'); // dùng cho chỉ tiêu "Tổng quan"
   const [axis, setAxis] = useState<'month' | 'project'>('month');
-  const [health, setHealth] = useState<Health | 'all'>('all');
 
   const inScope = useMemo(() => projects.filter((p) => scope === ALL || p.division === scope), [projects, scope]);
   const scoped = useMemo(() => (projectId === ALL ? inScope : inScope.filter((p) => p.id === projectId)), [inScope, projectId]);
   const perfs = useMemo(() => scoped.map((p) => projectPerf(p, from, to, cutoff)), [scoped, from, to, cutoff]);
   const planT = perfs.reduce((t, x) => addTotals(t, x.plan), { revenue: 0, cost: 0, cashIn: 0, workload: 0 });
   const actualT = perfs.reduce((t, x) => addTotals(t, x.actual), { revenue: 0, cost: 0, cashIn: 0, workload: 0 });
-  const counts = HEALTHS.reduce((m, h) => ({ ...m, [h]: perfs.filter((x) => x.health === h).length }), {} as Record<Health, number>);
-  const shown = health === 'all' ? perfs : perfs.filter((x) => x.health === health);
   const compareEnd = cutoff && cutoff < to ? cutoff : to;
   const drillFor = (k: ReportMetric, list: BizProject[], expected: number, title: string, part?: LedgerDrill['part']) =>
     onDrill({ kind: ledgerKindOf(k)!, part, projects: list, from, to: compareEnd, expected, title });
-  const costTip = costTipOf;
   const scopeTitle = projectId !== ALL && scoped[0] ? `${scoped[0].masterCode} — ${scoped[0].name}` : scope === ALL ? 'Toàn công ty' : `Khối ${scope}`;
 
   const groups: ChartGroup[] =
@@ -772,6 +809,9 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
             .filter((x) => x[kind].revenue || x[kind].cost)
             .map((x) => ({ key: x.project.id, label: x.project.masterCode, revenue: x[kind].revenue, cost: x[kind].cost }));
 
+  const metricTabs = (
+    <Segmented options={[{ key: 'overview' as const, label: 'Tổng quan' }, ...CHART_METRICS.map((m) => ({ key: m.key, label: m.label }))]} value={metric} onChange={setMetric} />
+  );
   return (
     <>
       <MetricCards plan={planT} actual={actualT} onDrillMetric={(k) => drillFor(k, scoped, actualT[k], `${scopeTitle} · ${scoped.length} dự án`)} />
@@ -830,9 +870,10 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
             </FilterCell>
           </FilterBar>
         </div>
-        <div className="flex flex-wrap items-center gap-3 mb-3">
-          {metric === 'overview' ? <PnlLegend /> : metric !== 'opex' && <ChartLegend metric={metric} />}
-          <Segmented options={[{ key: 'overview' as const, label: 'Tổng quan' }, ...CHART_METRICS.map((m) => ({ key: m.key, label: m.label }))]} value={metric} onChange={setMetric} />
+        {metric !== 'opex' && (
+          <div className="flex flex-wrap items-center gap-3 mb-3">
+            {metric === 'overview' ? <PnlLegend /> : <ChartLegend metric={metric} />}
+            {metricTabs}
           {metric === 'overview' && (
             <Segmented
               options={[
@@ -853,158 +894,15 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
               onChange={setAxis}
             />
           )}
-        </div>
+          </div>
+        )}
         {metric === 'overview' ? (
           <PnlChart groups={pnlGroups} />
         ) : metric === 'opex' ? (
-          <VhcAllocTable projects={scoped} from={from} to={compareEnd} onDrill={onDrill} />
+          <VhcAllocTable projects={scoped} from={from} to={compareEnd} onDrill={onDrill} toolbar={metricTabs} />
         ) : (
           <PlanActualChart groups={groups} metric={metric} />
         )}
-      </Panel>
-
-      <Panel
-        title="Chi tiết theo dự án"
-        icon={Table2}
-        noPad
-        actions={
-          <>
-            <span className="text-[12px] text-slate-600">Sức khoẻ:</span>
-            <Segmented
-              options={[{ key: 'all' as const, label: `Tất cả (${perfs.length})` }, ...HEALTHS.map((h) => ({ key: h, label: `${h} (${counts[h]})` }))]}
-              value={health}
-              onChange={setHealth}
-            />
-          </>
-        }
-        footer="Bấm vào 1 dòng để xem Tổng quan dự án · Bấm vào con số thực tế của Doanh thu / Chi phí / Dòng tiền thu để xem chi tiết sổ kế toán · ĐVT: VNĐ (KLCV: SP)"
-      >
-        <div className="overflow-x-auto">
-          <table className={erp.table}>
-            <thead>
-              <tr>
-                <th rowSpan={2} className={`${erp.th} sticky left-0 z-10 text-center min-w-[230px] border-t-0 border-l-0`}>
-                  Mã dự án
-                </th>
-                <th rowSpan={2} className={`${erp.th} text-center border-t-0`}>
-                  Start
-                </th>
-                <th rowSpan={2} className={`${erp.th} text-center border-t-0`}>
-                  End
-                </th>
-                <th rowSpan={2} className={`${erp.th} text-center border-t-0`}>
-                  Sức khoẻ
-                </th>
-                {TABLE_METRICS.map((m) => (
-                  <th key={m.key} colSpan={3} className={`${erp.th} text-center border-t-0 last:border-r-0`}>
-                    {m.label}
-                  </th>
-                ))}
-              </tr>
-              <tr>
-                {TABLE_METRICS.map((m) => (
-                  <React.Fragment key={m.key}>
-                    <th className={`${erp.th} text-center font-medium`}>Kế hoạch</th>
-                    <th className={`${erp.th} text-center font-medium`} title={m.key === 'cost' ? 'Chi phí thực tế = Chi thực tế import (SX + KD + Chi phí chung) + CP quản lý + CP vận hành chung' : undefined}>
-                      Thực tế
-                    </th>
-                    <th className={`${erp.th} text-center font-medium`}>Chênh lệch (%)</th>
-                  </React.Fragment>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((x) => (
-                <tr key={x.project.id} onClick={() => onOpenProject(x.project.id)} className={`${erp.tr} cursor-pointer group`}>
-                  <td className={`${erp.td} sticky left-0 z-10 bg-white group-hover:bg-[#eaf2fc] border-l-0`}>
-                    <p className={`${erp.code} font-semibold`}>{x.project.masterCode}</p>
-                    <p className="text-[11px] text-slate-500 truncate max-w-[240px]">
-                      {x.project.division} · {x.project.name}
-                    </p>
-                  </td>
-                  <td className={`${erp.td} whitespace-nowrap text-slate-600`}>{dmy(x.project.startDate)}</td>
-                  <td className={`${erp.td} whitespace-nowrap text-slate-600`}>{dmy(x.project.endDate)}</td>
-                  <td className={erp.td}>
-                    <HealthBadge h={x.health} />
-                  </td>
-                  {TABLE_METRICS.map(({ key }) => {
-                    const pl = x.plan[key];
-                    const act = x.actual[key];
-                    const d = act - pl;
-                    const noData = x.health === 'Chưa phát sinh';
-                    const diffPct = pl ? (d / pl) * 100 : null;
-                    const title = `${x.project.masterCode} — ${x.project.name}`;
-                    return (
-                      <React.Fragment key={key}>
-                        <td className={`${erp.td} ${erp.num} text-slate-600`}>{val(key, pl)}</td>
-                        <td className={`${erp.td} ${erp.num} font-semibold`} title={key === 'cost' && !noData ? costTip(x.cost) : undefined}>
-                          {noData ? '–' : <DrillVal k={key} value={act} onClick={() => drillFor(key, [x.project], act, title)} />}
-                        </td>
-                        <td
-                          title={noData ? undefined : `Chênh lệch: ${d > 0 ? '+' : ''}${val(key, d)} ${unitOf(key)}`}
-                          className={`${erp.td} ${erp.num} last:border-r-0 font-medium ${
-                            noData || Math.round(d) === 0 ? 'text-slate-400' : goodTone(key, act, pl) ? 'text-emerald-700' : 'text-rose-600'
-                          }`}
-                        >
-                          {noData || diffPct === null
-                            ? '–'
-                            : Math.abs(diffPct) < 0.05
-                            ? '0.0%'
-                            : `${diffPct > 0 ? '+' : ''}${diffPct.toFixed(1)}%`}
-                        </td>
-                      </React.Fragment>
-                    );
-                  })}
-                </tr>
-              ))}
-              {!shown.length && (
-                <tr>
-                  <td colSpan={18} className={`${erp.td} text-center text-slate-400 py-6`}>
-                    Không có dự án nào ở mức này.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-            {shown.length > 0 && (
-              <tfoot>
-                <tr className={erp.totalRow}>
-                  <td className={`${erp.td} sticky left-0 z-10 bg-[#fff6d6] border-l-0`} colSpan={4}>
-                    Tổng cộng ({shown.length} dự án)
-                  </td>
-                  {TABLE_METRICS.map(({ key }) => {
-                    const p = shown.reduce((s, x) => s + x.plan[key], 0);
-                    const a = shown.reduce((s, x) => s + x.actual[key], 0);
-                    const d = a - p;
-                    const diffPct = p ? (d / p) * 100 : null;
-                    const list = shown.map((x) => x.project);
-                    const title = `${scopeTitle} · ${shown.length} dự án`;
-                    const parts: CostParts = shown.reduce((t, x) => ({ direct: t.direct + x.cost.direct, alloc: t.alloc + x.cost.alloc, mgmt: t.mgmt + x.cost.mgmt }), { direct: 0, alloc: 0, mgmt: 0 });
-                    return (
-                      <React.Fragment key={key}>
-                        <td className={`${erp.td} ${erp.num}`}>{val(key, p)}</td>
-                        <td className={`${erp.td} ${erp.num}`} title={key === 'cost' ? costTip(parts) : undefined}>
-                          <DrillVal k={key} value={a} onClick={() => drillFor(key, list, a, title)} />
-                        </td>
-                        <td
-                          title={`Chênh lệch: ${d > 0 ? '+' : ''}${val(key, d)} ${unitOf(key)}`}
-                          className={`${erp.td} ${erp.num} last:border-r-0 font-medium ${
-                            Math.round(d) === 0 ? 'text-slate-500' : goodTone(key, a, p) ? 'text-emerald-700' : 'text-rose-600'
-                          }`}
-                        >
-                          {diffPct === null
-                            ? '–'
-                            : Math.abs(diffPct) < 0.05
-                            ? '0.0%'
-                            : `${diffPct > 0 ? '+' : ''}${diffPct.toFixed(1)}%`}
-                        </td>
-                      </React.Fragment>
-                    );
-                  })}
-                </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
       </Panel>
 
       <Panel title="Định nghĩa về mức sức khoẻ" icon={BookOpen} noPad footer="Khối lượng công việc chưa tham gia xếp mức (chờ chốt ngưỡng).">

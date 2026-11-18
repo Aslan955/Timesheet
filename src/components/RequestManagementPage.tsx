@@ -28,6 +28,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { HRAdminCenter } from './HRAdminCenter';
+import { OnsiteRequestPanel, onsiteRequestCounts } from './OnsitePage';
+import { useOnsite } from '../onsite/OnsiteContext';
 
 // Request type definitions
 interface RequestType {
@@ -56,6 +58,10 @@ interface RequestInstance {
 }
 
 export const RequestManagementPage: React.FC = () => {
+  // Đơn onsite dùng kho + logic theo code thật (OnsiteRequestComponent), không dùng dữ liệu mock của trang này
+  const { records: onsiteRecords, role: onsiteRole } = useOnsite();
+  const onsiteCounts = onsiteRequestCounts(onsiteRecords, onsiteRole);
+  const [onsiteCreateTick, setOnsiteCreateTick] = useState(0);
   // States
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'my-requests' | 'pending-approval' | 'hr-admin'>('all');
@@ -278,7 +284,7 @@ export const RequestManagementPage: React.FC = () => {
     {
       id: 'onsite',
       title: 'Đơn đăng ký đi onsite',
-      code: 'DOS',
+      code: 'DCT',
       icon: (
         <div className="w-14 h-14 bg-[#f0fdf4] border border-[#bbf7d0] rounded-2xl flex items-center justify-center text-[#16a34a] relative group-hover:scale-105 transition-transform duration-300">
           <MapPin size={24} />
@@ -288,7 +294,7 @@ export const RequestManagementPage: React.FC = () => {
       bgIconColor: 'bg-[#22c55e]',
       myCount: 4,
       approvalCount: 1,
-      description: 'Đăng ký công tác, làm việc tại văn phòng đối tác/khách hàng hoặc ngoài trụ sở công ty.',
+      description: 'Đăng ký làm việc tại site khách hàng hoặc đi công tác.',
     }
   ];
 
@@ -951,6 +957,7 @@ export const RequestManagementPage: React.FC = () => {
 
   const filteredInstances = useMemo(() => {
     return instances.filter(inst => {
+      if (inst.typeId === 'onsite') return false; // đơn onsite hiển thị ở panel theo code
       // 1. Filter by card selection click to highlight selected type
       if (selectedTypeFilter) {
         if (selectedTypeFilter === 'ot') {
@@ -1044,13 +1051,18 @@ export const RequestManagementPage: React.FC = () => {
                 {/* Submit New button "+" */}
                 <button 
                   onClick={() => {
-                    if (type.id === 'ot') {
+                    if (type.id === 'onsite') {
+                      setSelectedTypeFilter('onsite');
+                      setActiveFilter('all');
+                      setOnsiteCreateTick((t) => t + 1);
+                    } else if (type.id === 'ot') {
                       setActiveCreateModal('ot');
                       setOtMode('hourly');
                     } else {
                       setActiveCreateModal(type.id);
                     }
                   }}
+                  style={type.id === 'onsite' && !onsiteCounts.canCreate ? { visibility: 'hidden' } : undefined}
                   className="p-2 py-1.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-650 shadow-sm transition-all flex items-center justify-center font-bold"
                   title="Tạo đơn mới"
                 >
@@ -1066,7 +1078,7 @@ export const RequestManagementPage: React.FC = () => {
                     }}
                     className="px-3 py-1.5 bg-[#17a2b8] hover:bg-[#138496] text-white text-[10px] font-bold rounded-lg transition-colors flex items-center space-x-1"
                   >
-                    <span>{dynamicCounts[type.id]?.myCount ?? 0} Y/c của tôi</span>
+                    <span>{type.id === 'onsite' ? onsiteCounts.my : dynamicCounts[type.id]?.myCount ?? 0} Y/c của tôi</span>
                   </button>
 
                   {/* Pending approvals count badge */}
@@ -1082,7 +1094,7 @@ export const RequestManagementPage: React.FC = () => {
                     }}
                     className="px-3 py-1.5 bg-[#495057] hover:bg-[#343a40] text-white text-[10px] font-bold rounded-lg transition-colors flex items-center space-x-1"
                   >
-                    <span>{dynamicCounts[type.id]?.approvalCount ?? 0} Cần phê duyệt</span>
+                    <span>{type.id === 'onsite' ? onsiteCounts.pending : dynamicCounts[type.id]?.approvalCount ?? 0} Cần phê duyệt</span>
                   </button>
                 </div>
               </div>
@@ -1137,7 +1149,14 @@ export const RequestManagementPage: React.FC = () => {
       </div>
 
       {/* 4. Requests Tracker Table Below */}
-      {activeFilter === 'hr-admin' ? (
+      {selectedTypeFilter === 'onsite' && activeFilter !== 'hr-admin' ? (
+        <OnsiteRequestPanel
+          embedded
+          initialScope={activeFilter === 'my-requests' ? 'mine' : activeFilter === 'pending-approval' ? 'pending' : 'all'}
+          createTick={onsiteCreateTick}
+          onClose={() => { setSelectedTypeFilter(null); setActiveFilter('all'); }}
+        />
+      ) : activeFilter === 'hr-admin' ? (
         <div className="space-y-6">
           {/* Tracker Header */}
           <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

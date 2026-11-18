@@ -46,6 +46,8 @@ export interface OnbMailTemplate {
   body: string;
   attachments: OnbMailAttachment[];
   active: boolean;
+  /** Điều kiện gửi: formPending = chỉ gửi khi ứng viên chưa submit form thông tin (email nhắc). */
+  condition?: 'formPending';
   /** Mẫu hệ thống (không xoá, chỉ tắt) */
   system?: boolean;
   updatedAt?: string;
@@ -87,6 +89,10 @@ export const scheduledAt = (t: Pick<OnbMailTemplate, 'trigger' | 'daysBefore' | 
 /** "Ngay khi HCNS Accept" / "Trước 3 ngày · 08:00" / "Ngày onboard · 07:00". */
 export const timingText = (t: Pick<OnbMailTemplate, 'trigger' | 'daysBefore' | 'time'>) =>
   t.trigger === 'accept' ? 'Ngay khi HCNS Accept' : t.trigger === 'before' ? `Trước ${t.daysBefore} ngày onboard · ${t.time}` : `Ngày onboard · ${t.time}`;
+
+export const conditionText = (t: Pick<OnbMailTemplate, 'condition'>) => (t.condition === 'formPending' ? 'chỉ khi ứng viên chưa gửi form' : '');
+/** Ghép mẫu đã lưu với mẫu hệ thống mới bổ sung (giữ thiết lập cũ của người dùng). */
+export const mergeSeedTemplates = (saved: OnbMailTemplate[]) => [...saved, ...SEED_ONB_TEMPLATES.filter((s) => !saved.some((x) => x.key === s.key))];
 
 /** Mẫu áp dụng cho 1 đối tượng (gồm mẫu Chung), đang bật. */
 export const templatesFor = (all: OnbMailTemplate[], type: string, trigger?: OnbMailTrigger) =>
@@ -133,6 +139,23 @@ export const SEED_ONB_TEMPLATES: OnbMailTemplate[] = [
       'Chào {HoTen},\n\nChúc mừng bạn đã chính thức nhận lời mời làm việc tại {CongTy} ở vị trí {ViTri} ({PhongBan}).\n\nĐể chuẩn bị hồ sơ và tài khoản cho ngày nhận việc {NgayOnboard}, bạn vui lòng điền thông tin cá nhân tại đường dẫn sau:\n{LinkForm}\n\nThông tin gồm: thông tin cơ bản, CCCD, mã số thuế, địa chỉ, tài khoản nhận lương và học vấn.\n\nNếu cần hỗ trợ, bạn vui lòng phản hồi email này.\n\nTrân trọng,\n{HCNS} — Phòng Hành chính Nhân sự',
     attachments: [],
     active: true,
+    system: true,
+  },
+  {
+    key: 'FORM_REMIND',
+    name: 'Nhắc điền form thông tin',
+    audience: 'Chung',
+    trigger: 'before',
+    daysBefore: 1,
+    time: '08:00',
+    to: 'personal',
+    cc: 'hcns@company.vn',
+    subject: '[Nhắc] {HoTen} ơi, vui lòng hoàn thiện thông tin cá nhân trước ngày nhận việc {NgayOnboard}',
+    body:
+      'Chào {HoTen},\n\nNgày mai ({NgayOnboard}) là ngày bạn bắt đầu làm việc tại {CongTy}, nhưng hệ thống chưa nhận được form thông tin cá nhân của bạn.\n\nBạn vui lòng điền form trong hôm nay tại đường dẫn:\n{LinkForm}\n\nThông tin này cần để hoàn thiện hồ sơ nhân sự, hợp đồng và tài khoản làm việc của bạn.\n\nNếu gặp khó khăn khi điền form, bạn vui lòng phản hồi email này.\n\nTrân trọng,\n{HCNS} — Phòng Hành chính Nhân sự',
+    attachments: [],
+    active: true,
+    condition: 'formPending',
     system: true,
   },
   {

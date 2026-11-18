@@ -209,7 +209,7 @@ export const closeTargetLabel = (s: CloseState) => closeStateLabel({ state: s } 
 /** Mục tiêu giá trị hợp đồng ký theo năm → khối (VNĐ). */
 export type SignTargets = Record<string, Record<string, number>>;
 const SEED_TARGETS: SignTargets = {
-  '2026': { G1: 1_500_000_000_000, G2: 70_000_000_000, G3: 20_000_000_000, G4: 150_000_000_000, BFSI: 500_000_000_000, GPDV: 2_000_000_000 },
+  '2026': { G1: 26_000_000_000, G2: 6_000_000_000, G3: 2_500_000_000, G4: 3_500_000_000, BFSI: 10_000_000_000, GPDV: 1_000_000_000 },
 };
 /** Ngày ký HĐ: theo thông tin hợp đồng; dự án đã ký nhưng chưa nhập HĐ thì lấy ngày dự kiến ký / ngày bắt đầu. */
 export const signedDate = (p: Pick<BizProject, 'contract' | 'contractSigned' | 'expectedSignDate' | 'startDate'>) =>
@@ -836,9 +836,9 @@ const SEED: BizProject[] = [
     am: ['Nguyễn Đằng Giang', 'Nguyễn Thị Huyền'],
     startDate: '2026-12-01',
     endDate: '2028-12-12',
-    expectedRevenue: 145_000_000_000,
-    plannedBusinessCost: 18_966_430_357,
-    plannedProductionCost: 48_371_000_000,
+    expectedRevenue: 6_000_000_000,
+    plannedBusinessCost: 780_000_000,
+    plannedProductionCost: 2_000_000_000,
     contractSigned: false,
     phases: seedPhases([
       ['2026-01-12', '2026-03-31', 'Phạm Hữu Trường'],
@@ -848,7 +848,7 @@ const SEED: BizProject[] = [
       ['2026-12-01', '2027-12-01', 'Phạm Hữu Trường'],
     ]),
     currentPhase: 'KH05',
-    plan: seedPlan('2026-12-01', '2028-12-12', 145_000_000_000, 48_371_000_000, 18_966_430_357, 120_000_000),
+    plan: seedPlan('2026-12-01', '2028-12-12', 6_000_000_000, 2_000_000_000, 780_000_000, 5_000_000),
     planImport: { fileName: 'KeHoach_022.688.xlsx', at: '2026-09-15T10:30:00.000Z', by: 'namnv' },
     actual: [],
     createdAt: '2026-09-01T09:00:00.000Z',
@@ -881,14 +881,14 @@ const SEED: BizProject[] = [
     am: ['Trần Minh Đức'],
     startDate: '2026-03-01',
     endDate: '2027-02-28',
-    expectedRevenue: 12_500_000_000,
-    plannedBusinessCost: 1_200_000_000,
-    plannedProductionCost: 7_800_000_000,
+    expectedRevenue: 1_800_000_000,
+    plannedBusinessCost: 170_000_000,
+    plannedProductionCost: 1_100_000_000,
     contractSigned: true,
     contract: {
       number: 'HĐ-038/2026/TM',
       signDate: '2026-02-25',
-      value: 12_500_000_000,
+      value: 1_800_000_000,
       from: '2026-03-01',
       to: '2027-02-28',
       deviationReason: '',
@@ -911,9 +911,9 @@ const SEED: BizProject[] = [
       ['2026-03-01', '2027-02-28', 'Vũ Thị Lan'],
     ]),
     currentPhase: 'KH05',
-    plan: seedPlan('2026-03-01', '2027-02-28', 12_500_000_000, 7_800_000_000, 1_200_000_000, 30_000_000),
+    plan: seedPlan('2026-03-01', '2027-02-28', 1_800_000_000, 1_100_000_000, 170_000_000, 4_200_000),
     planImport: { fileName: 'KeHoach_038.360.xlsx', at: '2026-02-20T08:00:00.000Z', by: 'namnv' },
-    actual: seedActual(seedPlan('2026-03-01', '2027-02-28', 12_500_000_000, 7_800_000_000, 1_200_000_000, 30_000_000), {
+    actual: seedActual(seedPlan('2026-03-01', '2027-02-28', 1_800_000_000, 1_100_000_000, 170_000_000, 4_200_000), {
       revenue: 0.96,
       cashIn: 0.9,
       cost: 1.04,
@@ -948,9 +948,9 @@ const SEED: BizProject[] = [
     am: ['Lý Thu Hà', 'Mai Văn Tùng'],
     startDate: '2026-10-01',
     endDate: '2027-09-30',
-    expectedRevenue: 38_000_000_000,
-    plannedBusinessCost: 4_100_000_000,
-    plannedProductionCost: 21_600_000_000,
+    expectedRevenue: 2_500_000_000,
+    plannedBusinessCost: 270_000_000,
+    plannedProductionCost: 1_420_000_000,
     contractSigned: false,
     phases: seedPhases([
       ['2026-06-01', '2026-07-15', 'Lý Thu Hà'],
@@ -969,33 +969,33 @@ const SEED: BizProject[] = [
   // prettier-ignore
   ...[
     seedWith(
-      seedProject('BP-4', 'Nền tảng chuyển đổi số quốc gia', '022.061', 'G1', 'Bộ 022', '2026-01-01', '2027-12-31', [1_000_000_000_000, 520_000_000_000, 90_000_000_000, 2_400_000_000], { revenue: 1.02, cashIn: 0.97, cost: 0.92, workload: 1 }, ['Nguyễn Đằng Giang', 'Phạm Hữu Trường']),
+      seedProject('BP-4', 'Nền tảng chuyển đổi số quốc gia', '022.061', 'G1', 'Bộ 022', '2026-01-01', '2027-12-31', [16_000_000_000, 9_000_000_000, 1_500_000_000, 42_000_000], { revenue: 1.02, cashIn: 0.97, cost: 0.92, workload: 1 }, ['Nguyễn Đằng Giang', 'Phạm Hữu Trường']),
       {
         outsourceCodes: [{ code: '022.061.2.1', content: 'Thuê ngoài kiểm thử hiệu năng', pm: 'Phạm Hữu Trường', state: 'Có hiệu lực', createdAt: '2026-03-10T08:00:00.000Z', createdBy: 'Nguyễn Đằng Giang (GĐK)', decidedAt: '2026-03-10T08:00:00.000Z', decidedBy: 'Nguyễn Đằng Giang (GĐK)' }],
         jira: { '022.061.2.1': 'Đang gửi' },
       },
       [{ at: '2026-03-10T08:00:00.000Z', by: 'Nguyễn Đằng Giang (GĐK)', action: 'Tạo mã outsource', note: '022.061.2.1 · PM Phạm Hữu Trường · Nội dung: Thuê ngoài kiểm thử hiệu năng · Có hiệu lực' }],
     ),
-    seedProject('BP-5', 'ERP Tập đoàn 022', '022.070', 'G1', 'Tập đoàn 022', '2026-01-01', '2027-06-30', [250_000_000_000, 150_000_000_000, 25_000_000_000, 600_000_000], { revenue: 0.78, cashIn: 0.6, cost: 1.12, workload: 0.85 }, ['Lê Hoài Thanh', 'Nguyễn Thị Huyền']),
+    seedProject('BP-5', 'ERP Tập đoàn 022', '022.070', 'G1', 'Tập đoàn 022', '2026-01-01', '2027-06-30', [5_000_000_000, 3_000_000_000, 500_000_000, 12_000_000], { revenue: 0.78, cashIn: 0.6, cost: 1.12, workload: 0.85 }, ['Lê Hoài Thanh', 'Nguyễn Thị Huyền']),
     // Demo: AM gửi yêu cầu đóng dự án ⇒ chờ GĐ khối duyệt
     seedWith(
-      seedProject('BP-6', 'Hệ thống bán lẻ đa kênh', '045.112', 'G2', 'Bán lẻ 045', '2026-02-01', '2026-12-31', [48_000_000_000, 27_500_000_000, 5_100_000_000, 110_000_000], { revenue: 0.9, cashIn: 0.8, cost: 1.05, workload: 0.92 }, ['Bùi Quang Minh', 'Đặng Thu Trang']),
+      seedProject('BP-6', 'Hệ thống bán lẻ đa kênh', '045.112', 'G2', 'Bán lẻ 045', '2026-02-01', '2026-12-31', [2_100_000_000, 1_200_000_000, 220_000_000, 4_800_000], { revenue: 0.9, cashIn: 0.8, cost: 1.05, workload: 0.92 }, ['Bùi Quang Minh', 'Đặng Thu Trang']),
       { closeRequest: { state: 'Chờ GĐK', requestedAt: '2026-11-10T09:00:00.000Z', requestedBy: 'Bùi Quang Minh (AM)', role: 'AM', review: { strengths: 'Bám sát tiến độ triển khai 3 kênh bán hàng; đội SX ổn định nhân sự', weaknesses: 'Chi phí SX vượt kế hoạch ~5% do phát sinh tích hợp cổng thanh toán', advantages: 'Khách hàng phối hợp tốt, nghiệm thu từng giai đoạn nhanh', difficulties: 'Thu tiền chậm so với kế hoạch; yêu cầu thay đổi nhiều ở giai đoạn cuối' }, log: [{ step: 'Yêu cầu', by: 'Bùi Quang Minh (AM)', at: '2026-11-10T09:00:00.000Z', approve: true }] } },
       [{ at: '2026-11-10T09:00:00.000Z', by: 'Bùi Quang Minh (AM)', action: 'Yêu cầu đóng dự án', note: 'Chờ GĐ khối duyệt đóng · Đã nghiệm thu tổng thể, bàn giao vận hành' }],
     ),
     // Demo: dự án Đóng, yêu cầu mã bảo hành đang chờ GĐK duyệt
     seedWith(
-      seedProject('BP-7', 'Data Lake phân tích khách hàng', '045.118', 'G2', 'Bán lẻ 045', '2026-01-01', '2026-10-31', [6_500_000_000, 3_400_000_000, 650_000_000, 15_000_000], { revenue: 0.98, cashIn: 0.96, cost: 0.95, workload: 1 }, ['Bùi Quang Minh', 'Hoàng Gia Bảo']),
+      seedProject('BP-7', 'Data Lake phân tích khách hàng', '045.118', 'G2', 'Bán lẻ 045', '2026-01-01', '2026-10-31', [950_000_000, 500_000_000, 95_000_000, 2_200_000], { revenue: 0.98, cashIn: 0.96, cost: 0.95, workload: 1 }, ['Bùi Quang Minh', 'Hoàng Gia Bảo']),
       { status: 'Kết thúc', closedAt: '2026-10-27', warranty: { state: 'Chờ HOD duyệt', code: '', pm: 'Hoàng Gia Bảo', requestedAt: '2026-10-28T09:00:00.000Z', requestedBy: 'namnv (SM)' } },
       [
         ...closeHistory('2026-10-27T16:00:00.000Z', 'namnv (SM)', ['045.118.1', '045.118.2']),
         { at: '2026-10-28T09:00:00.000Z', by: 'namnv (SM)', action: 'Yêu cầu mã bảo hành', note: '045.118.3 · Chờ HOD duyệt' },
       ],
     ),
-    seedProject('BP-8', 'Nền tảng IoT nhà máy', '061.020', 'G4', 'Sản xuất 061', '2026-01-01', '2027-03-31', [120_000_000_000, 68_000_000_000, 10_000_000_000, 280_000_000], { revenue: 0.92, cashIn: 0.9, cost: 1.35, workload: 1.1 }, ['Trịnh Văn Long', 'Phí Thị Mai']),
+    seedProject('BP-8', 'Nền tảng IoT nhà máy', '061.020', 'G4', 'Sản xuất 061', '2026-01-01', '2027-03-31', [2_800_000_000, 1_600_000_000, 240_000_000, 6_600_000], { revenue: 0.92, cashIn: 0.9, cost: 1.35, workload: 1.1 }, ['Trịnh Văn Long', 'Phí Thị Mai']),
     // Demo: 1 mã outsource chờ GĐK duyệt + 1 mã bị từ chối
     seedWith(
-      seedProject('BP-9', 'Hệ thống chấm điểm tín dụng', '010.530', 'BFSI', 'Ngân hàng 010', '2026-01-01', '2026-12-31', [520_000_000_000, 280_000_000_000, 48_000_000_000, 1_100_000_000], { revenue: 1, cashIn: 0.99, cost: 0.9, workload: 0.98 }, ['Lý Thu Hà', 'Ngô Bá Khá']),
+      seedProject('BP-9', 'Hệ thống chấm điểm tín dụng', '010.530', 'BFSI', 'Ngân hàng 010', '2026-01-01', '2026-12-31', [8_000_000_000, 4_500_000_000, 750_000_000, 17_700_000], { revenue: 1, cashIn: 0.99, cost: 0.9, workload: 0.98 }, ['Lý Thu Hà', 'Ngô Bá Khá']),
       {
         outsourceCodes: [
           { code: '010.530.2.1', content: 'Thuê ngoài phát triển module eKYC', pm: 'Ngô Bá Khá', state: 'Từ chối', createdAt: '2026-09-02T08:00:00.000Z', createdBy: 'namnv (SM)', decidedAt: '2026-09-03T09:00:00.000Z', decidedBy: 'Lý Thu Hà (GĐK)', rejectReason: 'Nhân sự nội bộ đáp ứng được' },
@@ -1009,11 +1009,11 @@ const SEED: BizProject[] = [
       ],
     ),
     // Mã khớp với file mẫu của kế toán (Mẫu dòng tiền thu / Chi thực tế 02.2026)
-    seedProject('BP-11', 'HDBank Staffing', '818.111', 'BFSI', 'CÔNG TY CỔ PHẦN GALAXY TECHNOLOGY SERVICES', '2026-01-01', '2026-12-31', [4_800_000_000, 3_600_000_000, 240_000_000, 24_000_000], { revenue: 0.97, cashIn: 0.93, cost: 0.98, workload: 1 }, ['Lý Thu Hà', 'Ngô Bá Khá']),
-    seedProject('BP-12', 'LPB Staffing', '868.222', 'BFSI', 'CÔNG TY CỔ PHẦN ATOMI DIGITAL', '2026-01-01', '2026-12-31', [1_200_000_000, 850_000_000, 60_000_000, 9_600_000], { revenue: 1, cashIn: 0.96, cost: 0.95, workload: 1 }, ['Lý Thu Hà', 'Mai Văn Tùng']),
-    seedProject('BP-13', 'Digilend', '993.993', 'GPDV', 'CÔNG TY CỔ PHẦN CÔNG NGHỆ TÀI CHÍNH DIGILEND', '2026-01-01', '2026-12-31', [600_000_000, 420_000_000, 30_000_000, 4_800_000], { revenue: 0.95, cashIn: 0.9, cost: 1.02, workload: 1 }, ['Vương Đình Khôi', 'Tạ Minh Châu']),
+    seedProject('BP-11', 'HDBank Staffing', '818.111', 'BFSI', 'CÔNG TY CỔ PHẦN GALAXY TECHNOLOGY SERVICES', '2026-01-01', '2026-12-31', [800_000_000, 600_000_000, 40_000_000, 4_000_000], { revenue: 0.97, cashIn: 0.93, cost: 0.98, workload: 1 }, ['Lý Thu Hà', 'Ngô Bá Khá']),
+    seedProject('BP-12', 'LPB Staffing', '868.222', 'BFSI', 'CÔNG TY CỔ PHẦN ATOMI DIGITAL', '2026-01-01', '2026-12-31', [360_000_000, 250_000_000, 18_000_000, 2_800_000], { revenue: 1, cashIn: 0.96, cost: 0.95, workload: 1 }, ['Lý Thu Hà', 'Mai Văn Tùng']),
+    seedProject('BP-13', 'Digilend', '993.993', 'GPDV', 'CÔNG TY CỔ PHẦN CÔNG NGHỆ TÀI CHÍNH DIGILEND', '2026-01-01', '2026-12-31', [300_000_000, 200_000_000, 15_000_000, 2_300_000], { revenue: 0.95, cashIn: 0.9, cost: 1.02, workload: 1 }, ['Vương Đình Khôi', 'Tạ Minh Châu']),
     {
-      ...seedProject('BP-14', 'Cổng thanh toán điện tử tỉnh', '022.072', 'G1', 'Sở Tài chính 022', '2026-11-01', '2027-10-31', [15_000_000_000, 8_000_000_000, 1_500_000_000, 36_000_000], { revenue: 1, cashIn: 1, cost: 1, workload: 1 }, ['Nguyễn Đằng Giang', 'Phạm Hữu Trường']),
+      ...seedProject('BP-14', 'Cổng thanh toán điện tử tỉnh', '022.072', 'G1', 'Sở Tài chính 022', '2026-11-01', '2027-10-31', [1_200_000_000, 640_000_000, 120_000_000, 2_900_000], { revenue: 1, cashIn: 1, cost: 1, workload: 1 }, ['Nguyễn Đằng Giang', 'Phạm Hữu Trường']),
       status: 'Chờ duyệt mã' as BizStatus,
       expectedSignDate: '2026-10-25',
       pakd: [],
@@ -1026,7 +1026,7 @@ const SEED: BizProject[] = [
       history: [{ at: '2026-09-28T08:00:00.000Z', by: 'Nguyễn Đằng Giang', action: 'Tạo dự án', note: 'Version 1 · chờ GĐK duyệt mã' }],
     },
     {
-      ...seedProject('BP-15', 'Chuyển đổi số kho bạc', '045.120', 'G2', 'Kho bạc 045', '2026-12-01', '2027-11-30', [26_000_000_000, 14_300_000_000, 2_600_000_000, 52_000_000], { revenue: 1, cashIn: 1, cost: 1, workload: 1 }, ['Bùi Quang Minh', 'Đặng Thu Trang']),
+      ...seedProject('BP-15', 'Chuyển đổi số kho bạc', '045.120', 'G2', 'Kho bạc 045', '2026-12-01', '2027-11-30', [1_600_000_000, 880_000_000, 160_000_000, 3_200_000], { revenue: 1, cashIn: 1, cost: 1, workload: 1 }, ['Bùi Quang Minh', 'Đặng Thu Trang']),
       status: 'PAKD chờ duyệt' as BizStatus,
       expectedSignDate: '2026-11-20',
       pakdDeadline: '2026-09-18',
@@ -1040,7 +1040,7 @@ const SEED: BizProject[] = [
     },
     // Demo: dự án Bảo hành — mã .3 Open, KD / SX Closed; PAKD bảo hành V2 (SM lập, GĐK đã duyệt) chờ Kế toán duyệt
     seedWith(
-      seedProject('BP-16', 'Triển khai ERP giai đoạn 1', '061.015', 'G4', 'Sản xuất 061', '2025-10-01', '2026-06-30', [4_500_000_000, 2_600_000_000, 400_000_000, 12_000_000], { revenue: 1, cashIn: 1, cost: 0.97, workload: 1 }, ['Trịnh Văn Long', 'Phí Thị Mai']),
+      seedProject('BP-16', 'Triển khai ERP giai đoạn 1', '061.015', 'G4', 'Sản xuất 061', '2025-10-01', '2026-06-30', [700_000_000, 400_000_000, 60_000_000, 1_800_000], { revenue: 1, cashIn: 1, cost: 0.97, workload: 1 }, ['Trịnh Văn Long', 'Phí Thị Mai']),
       {
         status: 'Bảo hành',
         closedAt: '2026-10-05',
@@ -1060,7 +1060,7 @@ const SEED: BizProject[] = [
     ),
     // Demo: Đang thực hiện — giai đoạn bảo hành (PAKD bảo hành V2 đã duyệt; .3 Open, KD / SX Closed)
     seedWith(
-      seedProject('BP-18', 'Hệ thống quản lý văn bản điện tử', '077.010', 'GPDV', 'Tổng công ty 077', '2025-06-01', '2026-03-31', [900_000_000, 520_000_000, 80_000_000, 2_400_000], { revenue: 1, cashIn: 0.95, cost: 0.98, workload: 1 }, ['Vương Đình Khôi', 'Tạ Minh Châu']),
+      seedProject('BP-18', 'Hệ thống quản lý văn bản điện tử', '077.010', 'GPDV', 'Tổng công ty 077', '2025-06-01', '2026-03-31', [430_000_000, 250_000_000, 40_000_000, 1_200_000], { revenue: 1, cashIn: 0.95, cost: 0.98, workload: 1 }, ['Vương Đình Khôi', 'Tạ Minh Châu']),
       {
         warranty: { state: 'Đã cấp mã', code: '077.010.3', pm: 'Tạ Minh Châu', requestedAt: '2026-04-02T08:00:00.000Z', requestedBy: 'Vương Đình Khôi (GĐK)', decidedAt: '2026-04-02T08:00:00.000Z', decidedBy: 'Vương Đình Khôi (GĐK)', mainClosedAt: '2026-04-01' },
         pakd: [
@@ -1078,7 +1078,7 @@ const SEED: BizProject[] = [
     ),
     // Demo: dự án Đóng chưa có yêu cầu bảo hành (KD / SX / outsource Closed) — tích để thử
     seedWith(
-      seedProject('BP-17', 'Cổng dịch vụ công trực tuyến', '038.355', 'G3', 'Tổng công ty 038', '2025-10-01', '2026-09-30', [3_200_000_000, 1_900_000_000, 300_000_000, 8_000_000], { revenue: 1, cashIn: 0.97, cost: 0.96, workload: 1 }, ['Trần Minh Đức', 'Vũ Thị Lan']),
+      seedProject('BP-17', 'Cổng dịch vụ công trực tuyến', '038.355', 'G3', 'Tổng công ty 038', '2025-10-01', '2026-09-30', [500_000_000, 300_000_000, 50_000_000, 1_300_000], { revenue: 1, cashIn: 0.97, cost: 0.96, workload: 1 }, ['Trần Minh Đức', 'Vũ Thị Lan']),
       {
         status: 'Kết thúc',
         closedAt: '2026-10-15',
@@ -1104,7 +1104,7 @@ const SEED: BizProject[] = [
     ),
     // Demo chuỗi duyệt PAKD: SM lập ⇒ chờ GĐ khối duyệt
     {
-      ...seedProject('BP-19', 'Cổng chăm sóc khách hàng đa kênh', '045.125', 'G2', 'Bán lẻ 045', '2027-01-01', '2027-12-31', [18_000_000_000, 9_800_000_000, 1_700_000_000, 40_000_000], { revenue: 1, cashIn: 1, cost: 1, workload: 1 }, ['Bùi Quang Minh', 'Đặng Thu Trang']),
+      ...seedProject('BP-19', 'Cổng chăm sóc khách hàng đa kênh', '045.125', 'G2', 'Bán lẻ 045', '2027-01-01', '2027-12-31', [1_200_000_000, 650_000_000, 110_000_000, 2_700_000], { revenue: 1, cashIn: 1, cost: 1, workload: 1 }, ['Bùi Quang Minh', 'Đặng Thu Trang']),
       status: 'PAKD chờ duyệt' as BizStatus,
       expectedSignDate: '2026-12-10',
       codeIssuedAt: '2026-10-20',
@@ -1121,7 +1121,7 @@ const SEED: BizProject[] = [
     },
     // Demo chuỗi duyệt PAKD: GĐK lập (⇒ chờ Kế toán), Kế toán duyệt ⇒ chờ BOD
     {
-      ...seedProject('BP-20', 'Hệ thống quản trị rủi ro tín dụng', '010.545', 'BFSI', 'Ngân hàng 010', '2027-01-01', '2027-12-31', [62_000_000_000, 33_000_000_000, 5_500_000_000, 150_000_000], { revenue: 1, cashIn: 1, cost: 1, workload: 1 }, ['Lý Thu Hà', 'Ngô Bá Khá']),
+      ...seedProject('BP-20', 'Hệ thống quản trị rủi ro tín dụng', '010.545', 'BFSI', 'Ngân hàng 010', '2027-01-01', '2027-12-31', [3_000_000_000, 1_600_000_000, 270_000_000, 7_300_000], { revenue: 1, cashIn: 1, cost: 1, workload: 1 }, ['Lý Thu Hà', 'Ngô Bá Khá']),
       status: 'PAKD chờ duyệt' as BizStatus,
       expectedSignDate: '2026-12-20',
       codeIssuedAt: '2026-10-12',
@@ -1138,7 +1138,7 @@ const SEED: BizProject[] = [
     },
     // Demo chuỗi duyệt PAKD: Kế toán từ chối ⇒ trả về GĐ khối duyệt lại (Duyệt ⇒ chờ Kế toán / Từ chối ⇒ SM sửa)
     {
-      ...seedProject('BP-21', 'Số hoá hồ sơ bệnh án', '022.075', 'G1', 'Sở Y tế 022', '2027-02-01', '2027-11-30', [9_500_000_000, 5_600_000_000, 900_000_000, 22_000_000], { revenue: 1, cashIn: 1, cost: 1, workload: 1 }, ['Nguyễn Đằng Giang', 'Phạm Hữu Trường']),
+      ...seedProject('BP-21', 'Số hoá hồ sơ bệnh án', '022.075', 'G1', 'Sở Y tế 022', '2027-02-01', '2027-11-30', [900_000_000, 530_000_000, 85_000_000, 2_100_000], { revenue: 1, cashIn: 1, cost: 1, workload: 1 }, ['Nguyễn Đằng Giang', 'Phạm Hữu Trường']),
       status: 'Reject' as BizStatus,
       expectedSignDate: '2026-12-15',
       codeIssuedAt: '2026-10-15',
@@ -1157,7 +1157,7 @@ const SEED: BizProject[] = [
         { at: '2026-10-29T16:00:00.000Z', by: 'ketoan (CFO)', action: 'CFO từ chối PAKD', note: 'V1 · trả về: GĐ khối duyệt lại · Chi phí thuê ngoài chưa có báo giá, bổ sung trước khi trình BOD' },
       ],
     },
-    seedProject('BP-10', 'Dịch vụ vận hành hạ tầng', '077.004', 'GPDV', 'Tổng công ty 077', '2026-01-01', '2026-12-31', [500_000_000, 300_000_000, 50_000_000, 1_200_000], { revenue: 0.88, cashIn: 0.75, cost: 1, workload: 0.9 }, ['Vương Đình Khôi', 'Tạ Minh Châu']),
+    seedProject('BP-10', 'Dịch vụ vận hành hạ tầng', '077.004', 'GPDV', 'Tổng công ty 077', '2026-01-01', '2026-12-31', [250_000_000, 150_000_000, 25_000_000, 600_000], { revenue: 0.88, cashIn: 0.75, cost: 1, workload: 0.9 }, ['Vương Đình Khôi', 'Tạ Minh Châu']),
   ],
 ];
 
@@ -1185,10 +1185,19 @@ const VHC_SAMPLE: [string, number, string, string][] = [
 ];
 /** Mẫu: mỗi khối + tháng 1 file VHC (tổng = chi phí vận hành chung mẫu của khối), phân bổ theo tỉ lệ chi phí dự án trong tháng.
  *  Ghi lại costAlloc của dữ liệu mẫu theo đúng công thức phân bổ. */
+/** Chi phí vận hành chung mẫu của khối / tháng: ≈ 6–16 triệu đồng (toàn công ty ≈ 500 triệu / 8 tháng) (dao động nhẹ theo tháng, làm tròn nghìn đồng). */
+const VHC_BASE: Record<string, number> = { BFSI: 13_000_000, G1: 16_000_000, G2: 10_000_000, G3: 6_500_000, G4: 11_000_000, GPDV: 6_000_000 };
+const vhcPoolOf = (division: string, month: string) => {
+  const i = +month.slice(5, 7) + division.length;
+  return Math.round(((VHC_BASE[division] || 10_000_000) * (1 + 0.07 * Math.sin(i * 1.3))) / 1000) * 1000;
+};
 const seedVhc = (projects: BizProject[]): VhcSheet[] => {
-  const pools = new Map<string, number>();
-  projects.forEach((p) => p.actual.forEach((r) => r.costAlloc && pools.set(`${p.division}|${r.month}`, (pools.get(`${p.division}|${r.month}`) || 0) + r.costAlloc)));
-  return [...pools.entries()].map(([key, pool]) => {
+  // Khối + tháng có số thực tế ⇒ 1 file VHC mẫu
+  const keys = new Set<string>();
+  projects.forEach((p) => p.actual.forEach((r) => keys.add(`${p.division}|${r.month}`)));
+  return [...keys].map((key) => {
+    const [division0, month0] = key.split('|');
+    const pool = vhcPoolOf(division0, month0);
     const [division, month] = key.split('|');
     const mm = `${+month.slice(5, 7)}.${month.slice(0, 4)}`;
     const amounts = splitAmount(pool, VHC_SAMPLE.map((x) => x[1]));

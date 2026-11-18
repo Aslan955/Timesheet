@@ -56,6 +56,7 @@ import {
 } from '../business/pakd';
 import { Btn, KpiBox, Panel, Tag, erp } from './erp/Erp';
 import { MonthPickerButton } from './erp/MonthPicker';
+import { PakdImportBar } from './PakdImport';
 
 const money = (n: number) => Math.round(n || 0).toLocaleString('en-US');
 
@@ -209,7 +210,7 @@ const SX_GROUPS = COST_GROUPS.filter(isSxGroup);
 const KD_GROUPS = COST_GROUPS.filter((g) => !isSxGroup(g));
 const mShort = (ym: string) => `T${+ym.slice(5)}/${ym.slice(2, 4)}`;
 
-const CostPlan: React.FC<{ f: PakdFormData; setCosts: (c: PakdFormData['costs']) => void }> = ({ f, setCosts }) => {
+const CostPlan: React.FC<{ f: PakdFormData; setCosts: (c: PakdFormData['costs']) => void; code: string }> = ({ f, setCosts, code }) => {
   const [fill, setFill] = useState<{ id: string; total: number } | null>(null);
   // Kỳ kế hoạch = Bắt đầu → Kết thúc (mục 2); chưa nhập thì mặc định 12 tháng của năm hiện tại.
   const hasPeriod = !!f.startMonth && !!f.endMonth && f.endMonth >= f.startMonth;
@@ -337,8 +338,11 @@ const CostPlan: React.FC<{ f: PakdFormData; setCosts: (c: PakdFormData['costs'])
     <Section
       title="4. Kế hoạch chi phí theo tháng"
       action={
-        <span className="text-[12px] text-slate-500">
-          Kỳ kế hoạch: <b className="text-slate-700">{my(period[0])} – {my(period[period.length - 1])}</b> ({period.length} tháng) · ĐVT: VNĐ
+        <span className="flex flex-wrap items-center justify-end gap-3">
+          <span className="text-[12px] text-slate-500">
+            Kỳ kế hoạch: <b className="text-slate-700">{my(period[0])} – {my(period[period.length - 1])}</b> ({period.length} tháng) · ĐVT: VNĐ
+          </span>
+          <PakdImportBar kind="costs" costs={f.costs} period={period} code={code} onApplyCosts={setCosts} />
         </span>
       }
     >
@@ -1133,11 +1137,11 @@ export const PakdForm: React.FC<{
             </Section>
 
             {/* 4. Kế hoạch chi phí theo tháng */}
-            <CostPlan f={f} setCosts={(costs) => set('costs', costs)} />
+            <CostPlan f={f} setCosts={(costs) => set('costs', costs)} code={p.masterCode} />
           </>
         ) : (
           /* 3. Mốc kế hoạch và mục tiêu (chưa ký) */
-          <Section title="3. Mốc kế hoạch và mục tiêu">
+          <Section title="3. Mốc kế hoạch và mục tiêu" action={<PakdImportBar kind="phases" phases={f.phases} code={p.masterCode} onApplyPhases={(rows) => set('phases', rows)} />}>
             <div className="overflow-x-auto border border-slate-200 rounded-[3px]">
               <table className={`${erp.table} min-w-[1000px]`}>
                 <thead>

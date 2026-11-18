@@ -26,7 +26,7 @@ import { OnbProgressPanel, ProgressTag, WaitTag, Secret, ItReturnModal, MarcomDo
 import { CandidateFormPage } from './CandidateFormPage';
 import { RcHcnsFields } from '../recruitment/RcHcnsForm';
 import type { RcCandidate, RcRequest } from '../../recruitment/rc/rcData';
-import { templatesFor, timingText } from '../../onboarding/onbMailTemplates';
+import { conditionText, templatesFor, timingText } from '../../onboarding/onbMailTemplates';
 
 type Nav = (menuTitle: string) => void;
 type Toast = (m: string) => void;
@@ -1141,7 +1141,7 @@ const MailPlan: React.FC = () => {
           <b>{t}</b>:{' '}
           {templatesFor(mailTemplates, t)
             .filter((x) => x.trigger !== 'accept')
-            .map((x) => `${x.name} (${timingText(x)} → ${x.to === 'company' ? 'email công ty' : 'email cá nhân'})`)
+            .map((x) => `${x.name} (${timingText(x)} → ${x.to === 'company' ? 'email công ty' : 'email cá nhân'}${x.condition ? `, ${conditionText(x)}` : ''})`)
             .join(' · ') || 'chưa bật email nào'}
           .
         </li>

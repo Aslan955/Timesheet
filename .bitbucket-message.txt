@@ -1,0 +1,24 @@
+[Prototype Timesheet] Danh sách dự án › PAKD — import Excel mục 3 & 4 · Báo cáo hiệu quả dự án — thông tin nhanh chi phí VHC theo kỳ, giảm số liệu mẫu
+
+THÊM MỚI
+- PAKD › 3. Mốc kế hoạch và mục tiêu (dự án chưa ký): nút "File mẫu" (tải Excel đúng bố cục, kèm dữ liệu đang có) và "Import Excel" (Giai đoạn · Từ · Đến · Sản xuất · Kinh doanh · Kết quả đầu ra); xem trước, báo lỗi từng dòng (tháng sai, số âm / không phải số, thiếu tên), chọn Thay thế toàn bộ hoặc Thêm vào sau.
+- PAKD › 4. Kế hoạch chi phí theo tháng (đã ký): "File mẫu" + "Import Excel" (Nhóm chi phí · Khoản mục · các cột tháng MM/YYYY · Kết quả đầu ra); kiểm tra nhóm chi phí hợp lệ, số tiền; mặc định cập nhật theo Nhóm + Khoản mục (khớp thì thay số tháng, giữ file đính kèm; chưa có thì thêm mới) hoặc Thay thế toàn bộ; cảnh báo chi phí ngoài kỳ thực hiện.
+- Đọc được tháng dạng 12/2026, T12/26, 2026-12, ô ngày Excel; số tiền dạng 1,200,000 / 1.200.000; bỏ qua dòng Tổng / Cộng.
+- Import chỉ đổi dữ liệu trên form — vẫn bấm Lưu nháp / Gửi duyệt như nhập tay; nút import bị khoá khi PAKD không được sửa.
+
+- Báo cáo hiệu quả dự án › tab Chi phí vận hành chung: thêm ô "Kỳ xem" nằm cùng hàng với các tab (mặc định tháng mới nhất, chọn từng tháng hoặc Cả kỳ của bộ lọc).
+- Báo cáo hiệu quả dự án › tab Chi phí vận hành chung: thêm dòng diễn giải công thức (kèm số thật theo kỳ chọn) dưới từng ô thông tin nhanh — Tổng CP VHC = Σ file Kế toán theo khối; Tổng CP sản xuất (.2) theo khối; Số dự án có chi phí mã .2 > 0.
+
+THAY ĐỔI
+- Báo cáo hiệu quả dự án › tab Chi phí vận hành chung: thông tin nhanh còn 3 ô — Tổng chi phí vận hành chung, Tổng chi phí sản xuất (mã .2), Số dự án được phân bổ; cả 3 ô tính theo kỳ chọn.
+- Báo cáo hiệu quả dự án › tab Chi phí vận hành chung: bảng phân bổ chi tiết lọc theo kỳ chọn (mặc định chỉ tháng mới nhất); xem Cả kỳ thì bảng cuộn trong khung, dòng tiêu đề cố định — trang không còn kéo dài.
+- Dữ liệu mẫu chi phí vận hành chung: tổng toàn công ty ≈ 500 triệu cho kỳ 01–08/2026 (mỗi khối mỗi tháng ≈ 6–17 triệu); phân bổ cho dự án tính lại theo công thức.
+- Dữ liệu mẫu dự án (Danh sách dự án, Báo cáo hiệu quả dự án, Sổ theo dõi): giảm giá trị doanh thu / chi phí / khối lượng của các dự án mẫu — tổng chi phí mã sản xuất (.2) 01–08/2026 ≈ 11,6 tỷ; mục tiêu ký HĐ năm 2026 của các khối giảm tương ứng.
+
+XOÁ / BỎ
+- Báo cáo hiệu quả dự án › tab Chi phí vận hành chung: bỏ ô "Chi phí VHC đã phân bổ" / "Phân bổ trong tháng" khỏi thông tin nhanh (số phân bổ từng dự án vẫn xem ở bảng bên dưới).
+- Báo cáo hiệu quả dự án (tab Tổng quan cả khối / công ty): bỏ khung "Chi tiết theo dự án" (bảng KH / TT / chênh lệch từng dự án và bộ lọc Sức khoẻ); giữ khung "Định nghĩa về mức sức khoẻ".
+SỬA LỖI
+- Báo cáo hiệu quả dự án › tab Chi phí vận hành chung: hàng tab bị lệch so với các tab khác (mất chú thích ĐVT, tab nhảy chỗ) — nay cùng bố cục.
+
+File chính: src/components/PakdImport.tsx (mới), src/components/PakdForm.tsx, src/components/BizReportPage.tsx, src/business/BusinessProjectContext.tsx

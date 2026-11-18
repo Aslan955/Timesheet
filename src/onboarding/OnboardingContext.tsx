@@ -11,7 +11,7 @@ import {
   OnbRecord, HandoffData, FieldChange, OnbMail, OnbTask, TaskKey, ItRequest, ItReturn, SEED_RECORDS, HCNS_MAILBOX, IT_MAILBOX, MARCOM_MAILBOX, FORM_FIELDS,
   buildChecklist, diffHandoff, canChangeStartDate, todayIso, formLinkOf, missingForApprove, dmy, dmyhm,
 } from './onboardingData';
-import { OnbMailTemplate, OnbMailTrigger, SEED_ONB_TEMPLATES, fillTemplate, scheduledAt, templatesFor, varsOf } from './onbMailTemplates';
+import { OnbMailTemplate, OnbMailTrigger, SEED_ONB_TEMPLATES, fillTemplate, mergeSeedTemplates, scheduledAt, templatesFor, varsOf } from './onbMailTemplates';
 import { upsertEmployeeFromOnboarding, removeEmployeeFromOnboarding } from '../components/EmployeePage';
 
 /** Người dùng giả lập theo vai trò (prototype chưa có đăng nhập). */
@@ -114,7 +114,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [mailTemplates, setMailTemplates] = useState<OnbMailTemplate[]>(() => {
     try {
       const raw = localStorage.getItem(TPL_KEY);
-      if (raw) return JSON.parse(raw) as OnbMailTemplate[];
+      if (raw) return mergeSeedTemplates(JSON.parse(raw) as OnbMailTemplate[]);
     } catch {
       /* bỏ qua */
     }
@@ -136,13 +136,16 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const removeMailTemplate: OnboardingContextValue['removeMailTemplate'] = (key) => persistTpl(tplRef.current.filter((x) => x.key !== key || x.system));
 
   /** Dòng mô tả lịch gửi của 1 nhóm email (để hiện ở cột Việc). */
-  const scheduleText = (r: OnbRecord, trig: OnbMailTrigger, startDate = r.data.startDate) => {
-    const list = templatesFor(tplRef.current, r.data.employeeType, trig);
+  const scheduleText = (r: OnbRecord, trig: OnbMailTrigger | 'remind', startDate = r.data.startDate) => {
+    const list = trig === 'remind' ? remindTpl(r) : templatesFor(tplRef.current, r.data.employeeType, trig).filter((t) => !t.condition);
+    if (trig === 'remind') return list.length ? `Tự nhắc nếu chưa submit: ${list.map((t) => dmyhm(scheduledAt(t, startDate))).join(', ')}` : '';
     if (!list.length) return trig === 'onboardDay' ? `Không có email ngày onboard đang bật — tự chuyển Đã onboard ${dmy(startDate)}` : 'Không có email đang bật';
     return list
       .map((t) => `${t.name} → ${t.to === 'company' ? 'email công ty' : r.candidateEmail} lúc ${dmyhm(scheduledAt(t, startDate))}`)
       .join(' · ');
   };
+  /** Mẫu nhắc điền form (chỉ gửi khi ứng viên chưa submit). */
+  const remindTpl = (r: Pick<OnbRecord, 'data'>) => templatesFor(tplRef.current, r.data.employeeType).filter((t) => t.condition === 'formPending' && t.trigger !== 'accept');
   /** Dựng email từ mẫu cho 1 phiếu. */
   const mailFrom = (r: OnbRecord, t: OnbMailTemplate, at: string, extra: { formLink?: string } = {}): OnbMail => {
     const vars = varsOf(r, { ...extra, hcns: r.decidedBy || HCNS_USER });
@@ -367,7 +370,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         checklist: buildChecklist(0),
         tasks: [
           { key: 'employee', status: 'Đã hoàn thành', startedAt: at, doneAt: at, doneBy: 'Hệ thống', detail: `Mã NV ${code} · Thử việc · ${company}` },
-          { key: 'personalForm', status: 'Đang thực hiện', startedAt: at, formLink: link, reminders: 0, detail: `Đã gửi link form tới ${r.candidateEmail} — chờ ứng viên submit` },
+          { key: 'personalForm', status: 'Đang thực hiện', startedAt: at, formLink: link, reminders: 0, detail: [`Đã gửi link form tới ${r.candidateEmail} — chờ ứng viên submit`, scheduleText(preview, 'remind')].filter(Boolean).join(' · ') },
           { key: 'itAccount', status: 'Chưa bắt đầu', detail: 'Tự gửi IT khi ứng viên submit form' },
           { key: 'marcom', status: 'Chưa bắt đầu', detail: 'Tự báo MarCom khi IT trả tài khoản' },
           ...(staffing ? [{ key: 'docsMail' as const, status: 'Đang thực hiện' as const, startedAt: at, detail: `Lên lịch: ${scheduleText(preview, 'before')}` }] : []),
@@ -441,7 +444,15 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return {
         ...r,
         tasks: setTask(r, 'personalForm', { reminders: n, detail: `Đã gửi link form tới ${r.candidateEmail} — chờ ứng viên submit (đã nhắc ${n} lần)` }),
-        mails: [...r.mails, { at, kind: 'Nhắc điền form thông tin', subject: `[Nhắc] Vui lòng hoàn thiện thông tin cá nhân trước ngày nhận việc`, to: r.candidateEmail, cc: [HCNS_MAILBOX], attachments: [] }],
+        mails: [
+          ...r.mails,
+          (() => {
+            const t = tplRef.current.find((x) => x.key === 'FORM_REMIND');
+            return t
+              ? { ...mailFrom(r, t, at), kind: 'Nhắc điền form thông tin' as const, template: `${t.name} (HCNS gửi tay)` }
+              : { at, kind: 'Nhắc điền form thông tin' as const, subject: `[Nhắc] Vui lòng hoàn thiện thông tin cá nhân trước ngày nhận việc`, to: r.candidateEmail, cc: [HCNS_MAILBOX], attachments: [] };
+          })(),
+        ],
         history: [...r.history, { at, by: HCNS_USER, role: 'HCNS', action: `Gửi nhắc điền form (lần ${n})` }],
       };
     });
@@ -525,10 +536,13 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (!r || r.status !== 'Đang onboard' || !r.data.startDate) return;
     const now = nowIso();
     const sent = r.sentMails || {};
-    const before = templatesFor(tplRef.current, r.data.employeeType, 'before');
-    const day = templatesFor(tplRef.current, r.data.employeeType, 'onboardDay');
+    const before = templatesFor(tplRef.current, r.data.employeeType, 'before').filter((t) => !t.condition);
+    const day = templatesFor(tplRef.current, r.data.employeeType, 'onboardDay').filter((t) => !t.condition);
     const due = (t: OnbMailTemplate) => new Date(scheduledAt(t, r.data.startDate)).toISOString() <= now;
-    const pick = [...before, ...day].filter((t) => !sent[t.key] && (mode === 'all' || (mode === 'docs' ? t.trigger === 'before' : due(t))));
+    // Email nhắc điền form: chỉ chạy theo lịch, chỉ khi ứng viên chưa submit, bỏ qua nếu Accept sau giờ nhắc
+    const formPending = r.tasks?.find((k) => k.key === 'personalForm')?.status !== 'Đã hoàn thành';
+    const reminds = mode === 'auto' ? remindTpl(r).filter((t) => !sent[t.key] && due(t) && formPending && new Date(scheduledAt(t, r.data.startDate)).toISOString() >= (r.decidedAt || '')) : [];
+    const pick = [...reminds, ...[...before, ...day].filter((t) => !sent[t.key] && (mode === 'all' || (mode === 'docs' ? t.trigger === 'before' : due(t))))];
     // Không có email ngày onboard nào bật ⇒ vẫn chuyển Đã onboard khi tới ngày
     const noDayMail = !day.length && (mode === 'all' || new Date(`${r.data.startDate}T08:00:00`).toISOString() <= now);
     if (!pick.length && !noDayMail) return;
@@ -536,7 +550,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const s0 = scheduledAt(t, r.data.startDate);
       return mode === 'auto' && new Date(s0).toISOString() >= (r.decidedAt || '') ? s0 : now;
     };
-    const mails = pick.map((t) => mailFrom(r, t, stamp(t)));
+    const mails = pick.map((t) => ({ ...mailFrom(r, t, stamp(t)), ...(t.condition === 'formPending' ? { kind: 'Nhắc điền form thông tin' as const } : {}) }));
     const nextSent = { ...sent, ...Object.fromEntries(pick.map((t, i) => [t.key, mails[i].at])) };
     const docsDone = before.every((t) => nextSent[t.key]);
     const dayDone = day.every((t) => nextSent[t.key]);
@@ -548,8 +562,13 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     patch(id, (x) => {
       let tasks = x.tasks || [];
       const upd = (k: TaskKey, t: Partial<OnbTask>) => (tasks = tasks.map((y) => (y.key === k ? { ...y, ...t } : y)));
-      const of = (trig: OnbMailTrigger) => mails.filter((m, i) => pick[i].trigger === trig).map((m) => `${m.template} → ${m.to}`).join(' · ');
-      if (r.data.employeeType === 'Staffing' && docsDone && pick.some((t) => t.trigger === 'before'))
+      const of = (trig: OnbMailTrigger) => mails.filter((m, i) => pick[i].trigger === trig && !pick[i].condition).map((m) => `${m.template} → ${m.to}`).join(' · ');
+      if (reminds.length) {
+        const pf = tasks.find((y) => y.key === 'personalForm');
+        const n = (pf?.reminders || 0) + reminds.length;
+        upd('personalForm', { reminders: n, detail: `Đã gửi link form tới ${x.candidateEmail} — chờ ứng viên submit (đã nhắc ${n} lần, lần cuối hệ thống tự nhắc ${dmyhm(mails[0].at)})` });
+      }
+      if (r.data.employeeType === 'Staffing' && docsDone && pick.some((t) => t.trigger === 'before' && !t.condition))
         upd('docsMail', { status: 'Đã hoàn thành', doneAt: lastAt, doneBy: 'Hệ thống', detail: `Đã gửi: ${of('before')}` });
       if (finish) upd('onboardMail', { status: 'Đã hoàn thành', doneAt: lastAt, doneBy: 'Hệ thống', detail: day.length ? `Đã gửi: ${of('onboardDay') || 'các email ngày onboard'}` : 'Không có email ngày onboard đang bật' });
       else if (pick.some((t) => t.trigger === 'onboardDay')) upd('onboardMail', { detail: `Đã gửi: ${of('onboardDay')} · còn chờ: ${day.filter((t) => !nextSent[t.key]).map((t) => t.name).join(', ')}` });
@@ -682,7 +701,11 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       data: { ...x.data, startDate: date },
       dateChanges: [...(x.dateChanges || []), { at, by: HCNS_USER, from, to: date, reason }],
       tasks: (x.tasks || []).map((k) =>
-        (k.key === 'onboardMail' || k.key === 'docsMail') && k.status !== 'Đã hoàn thành' ? { ...k, detail: `Lên lịch: ${scheduleText(x, k.key === 'docsMail' ? 'before' : 'onboardDay', date)}` } : k,
+        (k.key === 'onboardMail' || k.key === 'docsMail') && k.status !== 'Đã hoàn thành'
+          ? { ...k, detail: `Lên lịch: ${scheduleText(x, k.key === 'docsMail' ? 'before' : 'onboardDay', date)}` }
+          : k.key === 'personalForm' && k.status === 'Đang thực hiện' && !x.sentMails?.FORM_REMIND
+            ? { ...k, detail: [`Đã gửi link form tới ${x.candidateEmail} — chờ ứng viên submit`, scheduleText(x, 'remind', date)].filter(Boolean).join(' · ') }
+            : k,
       ),
       mails: [...x.mails, ...mails],
       history: [

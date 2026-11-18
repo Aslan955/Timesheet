@@ -28,6 +28,7 @@ import { CompanyOverviewPage } from './components/CompanyOverviewPage';
 import { PayrollApprovalPage } from './components/PayrollApprovalPage';
 import { PayrollListPage } from './components/PayrollListPage';
 import { PayrollProvider } from './payroll/PayrollContext';
+import { OnsiteProvider } from './onsite/OnsiteContext';
 import { ProjectLaborCostPage } from './components/ProjectLaborCostPage';
 import { FinancePlanProvider } from './finance/FinancePlanContext';
 import { BusinessProjectPage } from './components/BusinessProjectPage';
@@ -64,6 +65,7 @@ import { BlockPlanProvider } from './business/BlockPlanContext';
 import { OverviewPage } from './components/OverviewPage';
 import { BusinessProjectProvider } from './business/BusinessProjectContext';
 import { OnsiteReportPage } from './components/OnsiteReportPage';
+import { OnsitePage } from './components/OnsitePage';
 import { LeaveReportPage } from './components/LeaveReportPage';
 import { CandidatePage } from './components/CandidatePage';
 import { CandidateDetailV2Page } from './components/CandidateDetailV2Page';
@@ -222,6 +224,8 @@ export default function App() {
         return <AttendancePage />;
       case 'Tổng hợp công':
         return <AttendanceSummaryPage />;
+      case 'Onsite':
+        return <OnsitePage />;
       case 'Báo cáo Onsite':
         return <OnsiteReportPage />;
       case 'Phép cá nhân':
@@ -319,6 +323,7 @@ export default function App() {
               <BusinessProjectProvider>
                 <BizTargetProvider>
                   <PayrollProvider>
+                  <OnsiteProvider>
                     <BlockPlanProvider>
                       <PmoProvider>
                         <MarcomProvider>
@@ -328,6 +333,7 @@ export default function App() {
                         </MarcomProvider>
                       </PmoProvider>
                     </BlockPlanProvider>
+                  </OnsiteProvider>
                   </PayrollProvider>
                 </BizTargetProvider>
               </BusinessProjectProvider>

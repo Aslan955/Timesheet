@@ -9,7 +9,7 @@ import { Modal, TAG, useToast } from '../../marcom/MarcomUi';
 import { Tag } from '../erp/Erp';
 import { useOnboarding } from '../../onboarding/OnboardingContext';
 import {
-  OnbMailAudience, OnbMailTemplate, ONB_MAIL_AUDIENCES, ONB_MAIL_TO, ONB_MAIL_TRIGGERS, ONB_MAIL_VARS, fillTemplate, fmtSize, sampleVars, timingText,
+  OnbMailAudience, OnbMailTemplate, ONB_MAIL_AUDIENCES, ONB_MAIL_TO, ONB_MAIL_TRIGGERS, ONB_MAIL_VARS, conditionText, fillTemplate, fmtSize, sampleVars, timingText,
 } from '../../onboarding/onbMailTemplates';
 
 const AUD_CLS: Record<OnbMailAudience, string> = { Chung: TAG.slate, 'Nội bộ': TAG.blue, Staffing: TAG.green };
@@ -134,6 +134,7 @@ export const OnbMailSettingsPage: React.FC<{ onNavigate?: (p: string) => void }>
                     <span className="block text-[11px] text-slate-500 no-underline">
                       {timingText(t)} · {t.to === 'company' ? 'email công ty' : 'email cá nhân'}
                       {t.attachments.length > 0 && ` · ${t.attachments.length} tệp`}
+                      {t.condition && ` · ${conditionText(t)}`}
                     </span>
                   </button>
                 </React.Fragment>
@@ -174,6 +175,7 @@ export const OnbMailSettingsPage: React.FC<{ onNavigate?: (p: string) => void }>
                     <span className="block text-[11.5px] text-slate-500">
                       {timingText(t)} · {t.to === 'company' ? 'Email công ty' : 'Email cá nhân'}
                     </span>
+                    {t.condition && <span className="block text-[11px] text-amber-700">Điều kiện: {conditionText(t)}</span>}
                     {t.attachments.length > 0 && (
                       <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
                         <Paperclip size={11} /> {t.attachments.length} tệp đính kèm
@@ -252,11 +254,17 @@ export const OnbMailSettingsPage: React.FC<{ onNavigate?: (p: string) => void }>
                     ))}
                   </select>
                 </L>
+                {draft.trigger !== 'accept' && (
+                  <label className="col-span-12 -mt-1 inline-flex items-center gap-2 text-[12.5px] text-slate-700 cursor-pointer">
+                    <input type="checkbox" checked={draft.condition === 'formPending'} onChange={(e) => set('condition', e.target.checked ? 'formPending' : undefined)} className="w-4 h-4 accent-[#1f5fa8]" data-testid="tpl-cond" />
+                    Chỉ gửi khi ứng viên <b>chưa gửi form thông tin cá nhân</b> (dùng cho email nhắc — ứng viên đã submit thì không gửi)
+                  </label>
+                )}
                 <p className="col-span-12 -mt-1.5 text-[11.5px] text-slate-500">
                   {draft.trigger === 'accept'
                     ? 'Gửi ngay khi HCNS Accept ứng viên.'
                     : draft.trigger === 'before'
-                      ? `Gửi lúc ${draft.time} ngày D-${draft.daysBefore || '?'} (VD onboard 23/11 ⇒ gửi ${draft.daysBefore >= 1 ? new Date(2026, 10, 23 - draft.daysBefore).toLocaleDateString('vi-VN') : '—'}). Accept sau thời điểm này ⇒ gửi ngay.`
+                      ? `Gửi lúc ${draft.time} ngày D-${draft.daysBefore || '?'} (VD onboard 23/11 ⇒ gửi ${draft.daysBefore >= 1 ? new Date(2026, 10, 23 - draft.daysBefore).toLocaleDateString('vi-VN') : '—'}). ${draft.condition ? 'Accept sau thời điểm này ⇒ không nhắc.' : 'Accept sau thời điểm này ⇒ gửi ngay.'}`
                       : `Gửi lúc ${draft.time} sáng ngày onboard. Gửi xong tất cả email ngày onboard ⇒ phiếu chuyển Đã onboard.`}
                   {draft.to === 'company' && ' Nếu tới giờ gửi IT chưa cấp email công ty, hệ thống gửi vào email cá nhân.'}
                 </p>

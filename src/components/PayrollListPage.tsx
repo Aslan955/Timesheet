@@ -8,10 +8,11 @@
  */
 import React, { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { CalendarPlus, Check, FileUp, Lock, Search, Send, Table2, Users } from 'lucide-react';
+import { CalendarPlus, Check, Code2, FileUp, Lock, Search, Send, Table2, Users } from 'lucide-react';
 import { BlockStatus, KHOIS, KHOI_DIRECTOR, Khoi, PayPeriod, PeriodStatus, latestVersion, periodLabel, periodStatus, rowsOf, sumRows, usePayroll } from '../payroll/PayrollContext';
 import { PayrollImportModal } from './PayrollImportModal';
-import { Btn, ErpPage, ErpTitleBar, Panel, Tag, erp } from './erp/Erp';
+import { Btn, ErpPage, ErpTitleBar, FolderTabs, Panel, Tag, erp } from './erp/Erp';
+import { SalaryCodePage } from './payroll/SalaryCodePage';
 
 const HR = 'HR - Lý Trịnh Hương';
 const money = (n: number) => Math.round(n || 0).toLocaleString('en-US');
@@ -40,6 +41,7 @@ export const PayrollListPage: React.FC<{ onNavigate?: (item: string) => void }> 
   const { periods, createPeriod } = usePayroll();
   const [openId, setOpenId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [view, setView] = useState<'code' | 'periods'>('code');
   const flash = (m: string) => {
     setToast(m);
     setTimeout(() => setToast(null), 3200);
@@ -76,11 +78,24 @@ export const PayrollListPage: React.FC<{ onNavigate?: (item: string) => void }> 
             crumbs={['PayRoll', 'Payroll']}
             title="Bảng lương"
             actions={
-              <Btn variant="primary" icon={CalendarPlus} onClick={newPeriod}>
-                Tạo kỳ lương
-              </Btn>
+              view === 'periods' && (
+                <Btn variant="primary" icon={CalendarPlus} onClick={newPeriod}>
+                  Tạo kỳ lương
+                </Btn>
+              )
             }
           />
+          <FolderTabs
+            tabs={[
+              { key: 'code', label: 'Bảng lương', icon: Code2 },
+              { key: 'periods', label: 'Bảng lương import (bản cũ)', icon: Table2 },
+            ]}
+            value={view}
+            onChange={setView}
+          />
+          {view === 'code' ? (
+            <div className="pt-3"><SalaryCodePage /></div>
+          ) : (
           <Panel title="Danh sách kỳ lương" icon={Table2} noPad footer="Bấm vào 1 dòng để xem chi tiết">
             <div className="overflow-x-auto">
               <table className={erp.table}>
@@ -119,6 +134,7 @@ export const PayrollListPage: React.FC<{ onNavigate?: (item: string) => void }> 
               </table>
             </div>
           </Panel>
+          )}
         </>
       )}
     </ErpPage>
