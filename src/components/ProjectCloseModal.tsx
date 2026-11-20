@@ -6,9 +6,10 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { CalendarClock, Check, CheckCircle2, ChevronRight, Flag, SkipForward, X, XCircle, Clock3 } from 'lucide-react';
-import { BizProject, BizRole, CLOSE_REVIEW_FIELDS, CloseReview, closeReviewMissing, closeApproveTo, closeEntryState, closePendingStep, closeStateLabel, closeTargetLabel, PAKD_STEP_LABEL, pendingOutsource } from '../business/BusinessProjectContext';
-import { CloseLine, closeSummary, closeTrack, lineTone, timeText } from '../business/projectClose';
+import { BizProject, BizRole, CLOSE_EXTRA_FIELDS, CLOSE_REVIEW_FIELDS, CloseExtraCost, CloseExtraKey, CloseReview, closeReviewMissing, closeApproveTo, closeEntryState, closePendingStep, closeStateLabel, closeTargetLabel, PAKD_STEP_LABEL, pendingOutsource } from '../business/BusinessProjectContext';
+import { CASH_SPEED_RULE, CashSpeed, CloseLine, closeSummary, closeTrack, lineTone, timeText } from '../business/projectClose';
 import { Btn, FolderTabs, KpiBox, Tag, erp } from './erp/Erp';
+import { parseAmount } from '../business/blockPlan';
 
 export type CloseMode = 'request' | 'decide' | 'view';
 
@@ -19,6 +20,13 @@ const dmy = (d: string) => (d ? d.slice(0, 10).split('-').reverse().join('/') : 
 const mmyy = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
 const dt = (s: string) => new Date(s).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 const TONE_TXT = { good: 'text-emerald-700', bad: 'text-rose-600', neutral: 'text-slate-700' } as const;
+const speedTxt = (c: CashSpeed) => (c.label === 'Nhanh' ? 'text-emerald-700' : c.label === 'Chậm' ? 'text-rose-600' : 'text-slate-400');
+const SpeedTag: React.FC<{ ratio: number | null }> = ({ ratio }) =>
+  ratio === null ? (
+    <span className="text-slate-300">—</span>
+  ) : (
+    <span className={`inline-block px-1.5 py-px rounded-[3px] border text-[11px] font-semibold ${ratio >= 1 ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-rose-300 bg-rose-50 text-rose-700'}`}>{ratio >= 1 ? 'Nhanh' : 'Chậm'}</span>
+  );
 
 export const ProjectCloseModal: React.FC<{
   project: BizProject;
@@ -26,10 +34,34 @@ export const ProjectCloseModal: React.FC<{
   mode: CloseMode;
   onClose: () => void;
   onRequest?: (review: CloseReview) => void;
-  onDecide?: (approve: boolean, note: string) => void;
+  onDecide?: (approve: boolean, note: string, extra?: Pick<CloseExtraCost, CloseExtraKey>) => void;
 }> = ({ project: p, role, mode, onClose, onRequest, onDecide }) => {
-  const s = useMemo(() => closeSummary(p), [p]);
-  const [tab, setTab] = useState<'compare' | 'month'>('compare');
+  // Bước Kế toán: nhập Chi phí tài chính / quản lý / khác (CP quản lý gợi ý = sổ CP quản lý phân bổ)
+  const acctStep = mode === 'decide' && closePendingStep(p.closeRequest) === 'CFO';
+  const base = useMemo(() => closeSummary(p, undefined, null), [p]);
+  const [draft, setDraft] = useState<Record<CloseExtraKey, string>>(() => {
+    const e = p.closeRequest?.extraCost;
+    return { finance: e ? money(e.finance) : '', mgmt: money(e ? e.mgmt : base.mgmtLedger), other: e ? money(e.other) : '' };
+  });
+  const [extraErr, setExtraErr] = useState<CloseExtraKey[]>([]);
+  const parsed = (k: CloseExtraKey) => (draft[k].trim() ? parseAmount(draft[k]) : null);
+  const draftNums = { finance: parsed('finance') ?? 0, mgmt: parsed('mgmt') ?? 0, other: parsed('other') ?? 0 };
+  const s = useMemo(() => (acctStep ? closeSummary(p, undefined, draftNums) : closeSummary(p)), [p, acctStep, draft]); // eslint-disable-line react-hooks/exhaustive-deps
+  const approve = () => {
+    if (!acctStep) return onDecide?.(true, note.trim());
+    const bad = CLOSE_EXTRA_FIELDS.map((f) => f.key).filter((k) => {
+      const v = parsed(k);
+      return v === null || v < 0;
+    });
+    if (bad.length) {
+      setExtraErr(bad);
+      setTab('compare');
+      setTimeout(() => document.querySelector<HTMLInputElement>(`[data-testid=extra-${bad[0]}]`)?.focus(), 0);
+      return;
+    }
+    onDecide?.(true, note.trim(), draftNums);
+  };
+  const [tab, setTab] = useState<'compare' | 'month' | 'speed'>('compare');
   const [note, setNote] = useState('');
   const [needNote, setNeedNote] = useState(false);
   const [review, setReview] = useState<CloseReview>(() => (p.closeRequest?.state === 'Từ chối' && p.closeRequest.review) || { strengths: '', weaknesses: '', advantages: '', difficulties: '' }); // gửi lại sau khi bị từ chối ⇒ điền sẵn bản cũ
@@ -138,7 +170,7 @@ export const ProjectCloseModal: React.FC<{
           )}
 
           {/* KPI */}
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2.5">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
             <KpiBox label="Doanh thu thực tế" value={money(s.revenue.actual)} valueText={money(s.revenue.actual)} badge={s.revenue.plan ? pct1(s.revenue.actual / s.revenue.plan) : undefined} tone={s.revenue.actual >= s.revenue.plan ? 'good' : 'bad'} sub={`Kế hoạch ${money(s.revenue.plan)}`} />
             <KpiBox label="Chi phí thực tế" value={money(s.cost.actual)} valueText={money(s.cost.actual)} badge={s.cost.plan ? pct1(s.cost.actual / s.cost.plan) : undefined} tone={s.cost.actual <= s.cost.plan ? 'good' : 'bad'} sub={`Kế hoạch ${money(s.cost.plan)}`} />
             <KpiBox
@@ -157,6 +189,15 @@ export const ProjectCloseModal: React.FC<{
               tone={s.time.lateDays > 0 ? 'bad' : 'good'}
               sub={`KH ${dmy(s.time.planEnd)} · TT ${dmy(s.time.actualEnd)}`}
             />
+            <KpiBox
+              label="Tốc độ dòng tiền về"
+              value={<span className={speedTxt(s.cashSpeed)} data-testid="cash-speed">{s.cashSpeed.label}</span>}
+              valueText={s.cashSpeed.label}
+              badge={s.cashSpeed.avg === null ? undefined : pct1(s.cashSpeed.avg)}
+              tone={s.cashSpeed.label === 'Chậm' ? 'bad' : 'good'}
+              sub={s.cashSpeed.months ? `TB ${s.cashSpeed.months} tháng · ${s.cashSpeed.fast} nhanh / ${s.cashSpeed.slow} chậm` : 'Chưa có số thu thực tế'}
+              onClick={() => setTab('speed')}
+            />
           </div>
 
           <div className="border border-slate-300 rounded-[3px]">
@@ -165,14 +206,43 @@ export const ProjectCloseModal: React.FC<{
                 tabs={[
                   { key: 'compare', label: 'Tổng kết Kế hoạch – Thực tế' },
                   { key: 'month', label: 'Dòng tiền theo tháng' },
+                  { key: 'speed', label: 'Tốc độ dòng tiền về' },
                 ]}
                 value={tab}
                 onChange={setTab}
               />
             </div>
-            {tab === 'compare' ? <CompareTable lines={s.lines} time={s.time} /> : <MonthTable s={s} />}
+            {tab === 'compare' ? (
+              <CompareTable
+                lines={s.lines}
+                time={s.time}
+                cashSpeed={s.cashSpeed}
+                edit={
+                  acctStep
+                    ? {
+                        draft,
+                        err: extraErr,
+                        onChange: (k, v) => {
+                          setDraft((d) => ({ ...d, [k]: v }));
+                          setExtraErr((e) => e.filter((x) => x !== k));
+                        },
+                      }
+                    : undefined
+                }
+              />
+            ) : tab === 'month' ? (
+              <MonthTable s={s} />
+            ) : (
+              <SpeedTable s={s} />
+            )}
+            {acctStep && tab === 'compare' && (
+              <p className="px-3 py-1.5 border-t border-amber-200 bg-amber-50 text-[12px] text-amber-800" data-testid="extra-hint">
+                <b>Kế toán nhập</b> Chi phí tài chính, Chi phí quản lý, Chi phí khác (bắt buộc, không có thì nhập 0) — cộng vào Tổng chi phí thực tế, lãi / lỗ và dòng tiền. Chi phí quản lý điền sẵn theo sổ CP quản lý phân bổ: <b>{money(base.mgmtLedger)}</b>.
+                {extraErr.length > 0 && <span className="text-rose-600 font-semibold"> Nhập đủ {extraErr.map((k) => CLOSE_EXTRA_FIELDS.find((f) => f.key === k)!.label.toLowerCase()).join(', ')}.</span>}
+              </p>
+            )}
             <p className="px-3 py-1.5 border-t border-slate-200 text-[11.5px] text-slate-500">
-              Kế hoạch: {s.planSource === 'monthly' ? 'kế hoạch theo tháng đã import' : 'PAKD đã duyệt (chưa có kế hoạch tháng)'} · Thực tế: số Kế toán import{s.lastActualMonth ? ` đến tháng ${mmyy(s.lastActualMonth)}` : ''} · Đơn vị: VNĐ. Chi phí chung không có trong kế hoạch; Tổng chi phí thực tế đã gồm chi phí quản lý và chi phí vận hành chung phân bổ.
+              Kế hoạch: {s.planSource === 'monthly' ? 'kế hoạch theo tháng đã import' : 'PAKD đã duyệt (chưa có kế hoạch tháng)'} · Thực tế: số Kế toán import{s.lastActualMonth ? ` đến tháng ${mmyy(s.lastActualMonth)}` : ''} · Đơn vị: VNĐ. Chi phí chung{s.hasExtra ? ', chi phí tài chính / quản lý / khác (Kế toán nhập)' : ''} không có trong kế hoạch; Tổng chi phí thực tế đã gồm chi phí vận hành chung phân bổ và {s.hasExtra ? 'các khoản Kế toán nhập' : 'chi phí quản lý phân bổ'}.
             </p>
           </div>
 
@@ -257,7 +327,7 @@ export const ProjectCloseModal: React.FC<{
               <Btn variant="danger" icon={XCircle} onClick={() => (note.trim() ? onDecide?.(false, note.trim()) : setNeedNote(true))} data-testid="close-reject">
                 Từ chối
               </Btn>
-              <Btn variant="primary" icon={CheckCircle2} onClick={() => onDecide?.(true, note.trim())} data-testid="close-approve">
+              <Btn variant="primary" icon={CheckCircle2} onClick={approve} data-testid="close-approve">
                 {closeApproveTo(c!.state) === 'Đã duyệt' ? 'Duyệt & đóng dự án' : 'Duyệt'}
               </Btn>
             </>
@@ -285,7 +355,8 @@ const ReviewView: React.FC<{ review: CloseReview; by: string }> = ({ review, by 
   </div>
 );
 
-const CompareTable: React.FC<{ lines: CloseLine[]; time: ReturnType<typeof closeSummary>['time'] }> = ({ lines, time }) => {
+type ExtraEdit = { draft: Record<CloseExtraKey, string>; err: CloseExtraKey[]; onChange: (k: CloseExtraKey, v: string) => void };
+const CompareTable: React.FC<{ lines: CloseLine[]; time: ReturnType<typeof closeSummary>['time']; cashSpeed: CashSpeed; edit?: ExtraEdit }> = ({ lines, time, cashSpeed, edit }) => {
   const th = `${erp.th} border-t-0`;
   const group = (label: string) => (
     <tr>
@@ -300,10 +371,35 @@ const CompareTable: React.FC<{ lines: CloseLine[]; time: ReturnType<typeof close
     const neg = (n: number) => (n < 0 ? 'text-rose-600' : '');
     return (
       <tr key={l.key} className={`${erp.tr} ${l.key === 'profit' || l.key === 'net' ? 'bg-[#fffbea]' : ''}`}>
-        <td className={`${erp.td} border-l-0 ${l.level ? 'pl-7 text-slate-600' : ''} ${l.bold ? 'font-bold text-slate-900' : ''}`}>{l.label}</td>
+        <td className={`${erp.td} border-l-0 ${l.level ? 'pl-7 text-slate-600' : ''} ${l.bold ? 'font-bold text-slate-900' : ''}`}>
+          {l.label}
+          {l.extra && (
+            <span className="ml-1.5 text-[10.5px] px-1 py-px rounded-[2px] border border-amber-300 bg-amber-50 text-amber-700 align-middle">
+              Kế toán nhập{edit ? ' *' : ''}
+            </span>
+          )}
+        </td>
         <td className={`${erp.td} ${erp.num} ${l.bold ? 'font-semibold' : ''} ${l.plan !== null && !l.pct ? neg(l.plan) : ''}`}>{l.plan === null ? <span className="text-slate-300">—</span> : l.pct ? pct1(l.plan) : money(l.plan)}</td>
-        <td className={`${erp.td} ${erp.num} ${l.bold ? 'font-bold' : ''} ${!l.pct ? neg(l.actual) : ''}`}>{l.pct ? pct1(l.actual) : money(l.actual)}</td>
-        <td className={`${erp.td} ${erp.num} font-semibold ${TONE_TXT[tone]}`}>{d === null ? '—' : l.pct ? `${d > 0 ? '+' : ''}${(d * 100).toFixed(1)} điểm` : signed(d)}</td>
+        {l.extra && edit ? (
+          <td className={`${erp.td} p-1`}>
+            <input
+              value={edit.draft[l.extra]}
+              onChange={(e) => edit.onChange(l.extra!, e.target.value)}
+              onBlur={(e) => {
+                const v = parseAmount(e.target.value);
+                if (e.target.value.trim() && v !== null) edit.onChange(l.extra!, money(v));
+              }}
+              inputMode="numeric"
+              placeholder="Nhập số tiền"
+              className={`${erp.inputFull} !h-7 text-right tabular-nums ${edit.err.includes(l.extra) ? 'border-rose-500 bg-rose-50/50' : 'border-amber-400 bg-amber-50/40'}`}
+              title="Gõ số, vd 12500000 · 12,500,000 · 12.5tr · 1.2 tỷ"
+              data-testid={`extra-${l.extra}`}
+            />
+          </td>
+        ) : (
+          <td className={`${erp.td} ${erp.num} ${l.bold ? 'font-bold' : ''} ${!l.pct ? neg(l.actual) : ''}`}>{l.pct ? pct1(l.actual) : money(l.actual)}</td>
+        )}
+        <td className={`${erp.td} ${erp.num} font-semibold ${TONE_TXT[tone]}`}>{d === null ? '—' : l.pct ? `${d > 0 ? '+' : d < 0 ? '−' : ''}${Math.abs(d * 100).toFixed(1)}%` : signed(d)}</td>
         <td className={`${erp.td} ${erp.num} border-r-0 ${TONE_TXT[tone]}`}>{l.pct || l.noRatio || !l.plan ? '—' : pct1(l.actual / l.plan)}</td>
       </tr>
     );
@@ -325,6 +421,17 @@ const CompareTable: React.FC<{ lines: CloseLine[]; time: ReturnType<typeof close
           {lines.filter((l) => l.group === 'pl').map(row)}
           {group('B. Dòng tiền')}
           {lines.filter((l) => l.group === 'cash').map(row)}
+          <tr className={erp.tr} data-testid="cash-speed-row">
+            <td className={`${erp.td} border-l-0 font-semibold`} title={CASH_SPEED_RULE}>
+              Tốc độ dòng tiền về <span className="text-slate-400 text-[11px] font-normal">(TB % thu luỹ kế TT ÷ KH {cashSpeed.months} tháng)</span>
+            </td>
+            <td className={`${erp.td} ${erp.num}`}>100.0%</td>
+            <td className={`${erp.td} ${erp.num} font-bold ${speedTxt(cashSpeed)}`}>{pct1(cashSpeed.avg)}</td>
+            <td className={`${erp.td} ${erp.num} font-semibold ${speedTxt(cashSpeed)}`}>{cashSpeed.avg === null ? '—' : `${cashSpeed.avg >= 1 ? '+' : '−'}${Math.abs((cashSpeed.avg - 1) * 100).toFixed(1)}%`}</td>
+            <td className={`${erp.td} border-r-0 text-right`}>
+              <SpeedTag ratio={cashSpeed.avg} />
+            </td>
+          </tr>
           {group('C. Thời gian hoàn thành')}
           <tr className={erp.tr}>
             <td className={`${erp.td} border-l-0`}>Ngày bắt đầu</td>
@@ -421,6 +528,77 @@ const MonthTable: React.FC<{ s: ReturnType<typeof closeSummary> }> = ({ s }) => 
           </tfoot>
         )}
       </table>
+    </div>
+  );
+};
+
+/** Tab Tốc độ dòng tiền về: tiền thu luỹ kế TT so với KH từng tháng → TB cộng các tháng ⇒ Nhanh / Chậm. */
+const SpeedTable: React.FC<{ s: ReturnType<typeof closeSummary> }> = ({ s }) => {
+  const th = `${erp.th} border-t-0 text-right`;
+  const rows = s.months.filter((m) => m.month <= s.lastActualMonth);
+  const tone = (r: number | null) => (r === null ? 'text-slate-400' : r >= 1 ? 'text-emerald-700' : 'text-rose-600');
+  return (
+    <div>
+      <div className="overflow-auto max-h-[360px]">
+        <table className={erp.table} data-testid="cash-speed-table">
+          <thead className="sticky top-0 z-[1]">
+            <tr>
+              <th rowSpan={2} className={`${erp.th} border-t-0 border-l-0 text-left`}>Tháng</th>
+              <th colSpan={2} className={`${erp.th} border-t-0`}>Tiền thu trong tháng</th>
+              <th colSpan={2} className={`${erp.th} border-t-0`}>Tiền thu luỹ kế</th>
+              <th rowSpan={2} className={th}>% luỹ kế TT ÷ KH</th>
+              <th rowSpan={2} className={`${erp.th} border-t-0 border-r-0 text-center`}>Đánh giá tháng</th>
+            </tr>
+            <tr>
+              {['Kế hoạch', 'Thực tế', 'Kế hoạch', 'Thực tế'].map((h, i) => (
+                <th key={i} className={th}>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((m) => (
+              <tr key={m.month} className={erp.tr}>
+                <td className={`${erp.td} border-l-0 tabular-nums`}>{mmyy(m.month)}</td>
+                <td className={`${erp.td} ${erp.num} text-slate-500`}>{money(m.planCash)}</td>
+                <td className={`${erp.td} ${erp.num}`}>{money(m.actualCash)}</td>
+                <td className={`${erp.td} ${erp.num} text-slate-500`}>{money(m.cumPlanCash)}</td>
+                <td className={`${erp.td} ${erp.num} font-semibold`}>{money(m.cumActualCash)}</td>
+                <td className={`${erp.td} ${erp.num} font-semibold ${tone(m.cashRatio)}`}>{m.cashRatio === null ? 'Không tính' : pct1(m.cashRatio)}</td>
+                <td className={`${erp.td} border-r-0 text-center`}>
+                  <SpeedTag ratio={m.cashRatio} />
+                </td>
+              </tr>
+            ))}
+            {!rows.length && (
+              <tr>
+                <td colSpan={7} className={`${erp.td} border-x-0 py-6 text-center text-slate-400`}>
+                  Chưa có số tiền thu thực tế.
+                </td>
+              </tr>
+            )}
+          </tbody>
+          {rows.length > 0 && (
+            <tfoot>
+              <tr className={erp.totalRow}>
+                <td colSpan={5} className={`${erp.td} border-l-0 text-right`}>
+                  Trung bình cộng {s.cashSpeed.months} tháng ({s.cashSpeed.fast} tháng nhanh · {s.cashSpeed.slow} tháng chậm)
+                </td>
+                <td className={`${erp.td} ${erp.num} ${speedTxt(s.cashSpeed)}`} data-testid="cash-speed-avg">
+                  {pct1(s.cashSpeed.avg)}
+                </td>
+                <td className={`${erp.td} border-r-0 text-center`}>
+                  <SpeedTag ratio={s.cashSpeed.avg} />
+                </td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+      <p className="px-3 py-1.5 border-t border-slate-200 text-[11.5px] text-slate-600 bg-[#f6faf6]">
+        <b>Cách đánh giá:</b> {CASH_SPEED_RULE} Tiền về sớm hơn kế hoạch ⇒ luỹ kế thực tế vượt kế hoạch ⇒ % ≥ 100%.
+      </p>
     </div>
   );
 };

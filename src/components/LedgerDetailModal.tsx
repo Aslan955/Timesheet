@@ -14,7 +14,7 @@ import React, { useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { motion } from 'motion/react';
 import { X, Search, FileSpreadsheet, AlertTriangle, Landmark, Receipt, TrendingUp, PieChart } from 'lucide-react';
-import { BizProject, LedgerKind, VhcSheet, projectCodes, useBusinessProjects } from '../business/BusinessProjectContext';
+import { BizProject, LedgerKind, VhcSheet, isProdCode, projectCodes, useBusinessProjects } from '../business/BusinessProjectContext';
 import { erp } from './erp/Erp';
 
 export interface LedgerDrill {
@@ -41,7 +41,9 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
   const [view, setView] = useState<'sum' | 'vhc'>(part === 'alloc' ? 'vhc' : 'sum');
   const isVhc = kind === 'cost' && view === 'vhc';
   const codes = useMemo(() => new Set(projects.flatMap(projectCodes)), [projects]);
-  const inScope = (e: { projectCode: string; month: string }) => codes.has(e.projectCode.trim().toLowerCase()) && e.month >= from && e.month <= to;
+  // Mã của dự án, gồm cả mã con của Mã SX (.2.x)
+  const owned = (code: string) => codes.has(code.trim().toLowerCase()) || projects.some((p) => isProdCode(p, code));
+  const inScope = (e: { projectCode: string; month: string }) => owned(e.projectCode) && e.month >= from && e.month <= to;
   const needle = q.trim().toLowerCase();
 
   const isLines = kind !== 'cost'; // doanh thu & dòng tiền thu: cùng dạng dòng chứng từ
@@ -135,7 +137,7 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
         ['BẢNG PHÂN BỔ CHI PHÍ VẬN HÀNH CHUNG'],
         [title],
         [periodText(from, to)],
-        ['Tháng', 'Khối', 'Mã công trình', 'Tên công trình', 'Chi phí mã SX (.2) trong tháng', 'Tỉ lệ', 'Chi phí VHC phân bổ'],
+        ['Tháng', 'Khối', 'Mã công trình', 'Tên công trình', 'Chi phí mã SX (.2 + .2.x) trong tháng', 'Tỉ lệ', 'Chi phí VHC phân bổ'],
         ...vhcGroups.flatMap((g) => g.allocs.map((x) => [fmtMonth(g.sheet.month), g.sheet.division, x.projectCode, x.projectName, x.cost, x.ratio, x.value])),
         ...vhcLoose.map((e) => [fmtMonth(e.month), e.division || '', e.projectCode, e.note, '', '', e.value]),
         ['Tổng cộng', '', '', '', '', '', vhcAllocTotal],
@@ -407,7 +409,7 @@ const VhcView: React.FC<{
                 <th className={`${th} text-right`}>Tổng chi phí VHC khối</th>
                 <th className={`${th} text-left`}>Mã công trình</th>
                 <th className={`${th} text-left min-w-[180px]`}>Tên công trình</th>
-                <th className={`${th} text-right`} title="Sổ Chi thực tế — chỉ các dòng của mã sản xuất (.2)">Chi phí mã SX (.2) trong tháng</th>
+                <th className={`${th} text-right`} title="Sổ Chi thực tế — các dòng của mã sản xuất (.2) và mã con (.2.x)">Chi phí mã SX (.2 + .2.x) trong tháng</th>
                 <th className={`${th} text-right`}>Tỉ lệ</th>
                 <th className={`${th} text-right`}>Chi phí VHC phân bổ</th>
               </tr>

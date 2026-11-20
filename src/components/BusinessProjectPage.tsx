@@ -134,6 +134,8 @@ import {
   type CloseReview,
 } from '../business/BusinessProjectContext';
 import { ProjectCloseModal, closeModeOf } from './ProjectCloseModal';
+import type { CloseExtraCost, CloseExtraKey } from '../business/BusinessProjectContext';
+type CloseExtraInput = Pick<CloseExtraCost, CloseExtraKey>;
 import { BizMonthlyImportModal, fmtMonth } from './BizMonthlyImportModal';
 import { LedgerDetailModal, LedgerDrill, drillCls } from './LedgerDetailModal';
 import { AttachmentList, ContractModal } from './ContractModal';
@@ -250,8 +252,8 @@ export const BusinessProjectPage: React.FC = () => {
     const next = requestCloseProject(p.id, role, actor, review);
     if (next) flash(`Đã gửi yêu cầu đóng dự án ${p.masterCode} — ${closeTargetLabel(next)}`);
   };
-  const decideClose = (p: BizProject, approve: boolean, note: string) => {
-    const next = decideCloseProject(p.id, approve, role, actor, note);
+  const decideClose = (p: BizProject, approve: boolean, note: string, extra?: CloseExtraInput) => {
+    const next = decideCloseProject(p.id, approve, role, actor, note, extra);
     if (!next) return;
     flash(!approve ? `${role} đã từ chối đóng dự án ${p.masterCode} — trả về người yêu cầu` : next === 'Đã duyệt' ? `BOD đã duyệt — dự án ${p.masterCode} Đóng, các mã đã Closed` : `${role} đã duyệt đóng dự án ${p.masterCode} — ${closeTargetLabel(next)}`);
   };
@@ -329,7 +331,7 @@ export const BusinessProjectPage: React.FC = () => {
           onFlash={flash}
           onDecide={(approve, note) => decide(current, approve, note)}
           onRequestClose={(review) => requestClose(current, review)}
-          onDecideClose={(approve, note) => decideClose(current, approve, note)}
+          onDecideClose={(approve, note, extra) => decideClose(current, approve, note, extra)}
           onAttachments={(files, note) => setAttachments(current.id, files, CURRENT_USER, note)}
           onSaveContract={(c) => signContract(current, c)}
           onImport={(kind, rows, fileName, summary) => {
@@ -842,7 +844,7 @@ const ProjectList: React.FC<{
   onDecide: (p: BizProject, approve: boolean, note: string) => void;
   onSaveContract: (p: BizProject, c: Omit<BizContract, 'updatedAt' | 'updatedBy'>) => void;
   onRequestClose: (p: BizProject, review: CloseReview) => void;
-  onDecideClose: (p: BizProject, approve: boolean, note: string) => void;
+  onDecideClose: (p: BizProject, approve: boolean, note: string, extra?: CloseExtraInput) => void;
 }> = ({ projects, role, onRoleChange, onView, onCreate, onDecide, onSaveContract, onRequestClose, onDecideClose }) => {
   const [q, setQ] = useState('');
   const [division, setDivision] = useState('');
@@ -1187,8 +1189,8 @@ const ProjectList: React.FC<{
               onRequestClose(closing, review);
               setClosingId(null);
             }}
-            onDecide={(approve, note) => {
-              onDecideClose(closing, approve, note);
+            onDecide={(approve, note, extra) => {
+              onDecideClose(closing, approve, note, extra);
               setClosingId(null);
             }}
           />
@@ -2062,7 +2064,7 @@ const ProjectDetail: React.FC<{
   actor: string;
   onDecide: (approve: boolean, note: string) => void;
   onRequestClose: (review: CloseReview) => void;
-  onDecideClose: (approve: boolean, note: string) => void;
+  onDecideClose: (approve: boolean, note: string, extra?: CloseExtraInput) => void;
   onFlash?: (msg: string) => void;
 }> = ({ project: p, onBack, onUpdateBasic, onDelete, onImport, onSaveContract, onAttachments, role, onRoleChange, onApproveCode, onReopen, onSubmitPakd, onSavePakd, onAdjustPakd, onCancelAdjust, actor, onDecide, onRequestClose, onDecideClose, onFlash }) => {
   const files = p.attachments || [];
@@ -2379,8 +2381,8 @@ const ProjectDetail: React.FC<{
               onRequestClose(review);
               setClosing(false);
             }}
-            onDecide={(approve, note) => {
-              onDecideClose(approve, note);
+            onDecide={(approve, note, extra) => {
+              onDecideClose(approve, note, extra);
               setClosing(false);
             }}
           />

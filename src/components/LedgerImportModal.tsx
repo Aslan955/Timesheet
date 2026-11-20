@@ -22,10 +22,11 @@
  * thay thế dữ liệu cũ cùng loại sổ; Doanh thu / Thu / Chi thực tế của dự án được tính lại = tổng các dòng.
  * Dòng không có mã / không khớp dự án vẫn lưu nhưng không tính vào dự án. ĐVT: VNĐ.
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { AlertTriangle, Briefcase, CheckCircle2, Download, Eraser, FileSpreadsheet, Landmark, ListOrdered, PieChart, Receipt, RotateCcw, Search, Trash2, TrendingUp, UploadCloud, X } from 'lucide-react';
-import { AllocEntry, BizProject, CostEntry, LEDGER_LABEL, LedgerEntry, LedgerKind, VhcSheet, allocateVhc, monthCostOf, entryAmounts, entryTotal, isCostLike, matchProject, projectCodes, useBusinessProjects } from '../business/BusinessProjectContext';
+import { ColumnFilterBar, useColumnFilters } from './erp/ColumnFilter';
+import { AllocEntry, BizProject, CashInEntry, CostEntry, LEDGER_LABEL, LedgerEntry, LedgerKind, VhcSheet, allocateVhc, monthCostOf, entryAmounts, entryTotal, isCostLike, matchProject, ownsCode, useBusinessProjects } from '../business/BusinessProjectContext';
 import { Btn, FolderTabs, Tag, erp } from './erp/Erp';
 
 const norm = (s: unknown) =>
@@ -560,11 +561,11 @@ export const LedgerImportModal: React.FC<{ onClose: () => void; onDone: (summary
               {kind === 'cost'
                 ? 'Tháng lấy ở dòng "Tháng M năm YYYY" đầu file; Sản xuất → Chi SX, CP bán hàng → Chi KD, Chi phí chung → Chi phí chung; Chi thực tế = tổng 3 cột.'
                 : kind === 'opex'
-                  ? 'Mỗi file = 1 khối × 1 tháng ("Khối: …", "Tháng M năm YYYY" ở đầu sheet), tổng ở dòng "Cộng". Hệ thống tự phân bổ cho các dự án của khối: Tỉ lệ = Chi phí mã sản xuất (.2) của dự án trong tháng ÷ Tổng chi phí mã sản xuất của các dự án trong khối (sổ Chi thực tế; không tính mã kinh doanh .1); Phân bổ = Tỉ lệ × Tổng chi phí vận hành chung. Dự án không phát sinh chi phí trong tháng → 0 đ. Import lại Chi thực tế của tháng → tự phân bổ lại. Import lại cùng khối + tháng sẽ thay dữ liệu cũ.'
+                  ? 'Mỗi file = 1 khối × 1 tháng ("Khối: …", "Tháng M năm YYYY" ở đầu sheet), tổng ở dòng "Cộng". Hệ thống tự phân bổ cho các dự án của khối: Tỉ lệ = Chi phí mã sản xuất (.2, gồm mã con .2.x) của dự án trong tháng ÷ Tổng chi phí mã sản xuất của các dự án trong khối (sổ Chi thực tế; không tính mã kinh doanh .1); Phân bổ = Tỉ lệ × Tổng chi phí vận hành chung. Dự án không phát sinh chi phí trong tháng → 0 đ. Import lại Chi thực tế của tháng → tự phân bổ lại. Import lại cùng khối + tháng sẽ thay dữ liệu cũ.'
                 : kind === 'mgmt'
                   ? `Kế toán phân bổ ${k.label.toLowerCase()} về từng dự án bên ngoài rồi import; tháng lấy ở dòng "Tháng M năm YYYY" đầu file. Chi phí thực tế của dự án = Chi thực tế (SX + KD) + Chi phí vận hành + Chi phí quản lý.`
                   : 'Tháng lấy theo Ngày hạch toán.'}{' '}
-              Mã công trình khớp Mã tổng / Mã PAKD (.1) / Mã SX (.2) của dự án.
+              Mã công trình khớp Mã tổng / Mã PAKD (.1) / Mã SX (.2) của dự án; mã con của Mã SX (.2.x, vd 022.061.2.2) cũng được ghép vào dự án và tính là chi phí sản xuất.
             </p>
           </section>
 
@@ -756,29 +757,59 @@ const LedgerList: React.FC<{ kind: LedgerKind; projects: BizProject[]; by: strin
   const vers = [...new Set(all.map((e) => e.ver))].sort((a, b) => b - a);
   const months = [...new Set(all.map((e) => e.month))].sort().reverse();
   const needle = q.trim().toLowerCase();
-  const rows = all
+  const baseRows = all
     .filter((e) => (ver === 'all' || e.ver === +ver) && (month === 'all' || e.month === month))
     .map((e) => ({ e, p: matchProject(projects, e.projectCode) }))
     .filter(({ e, p }) => !needle || [e.projectCode, p?.masterCode, p?.name, 'description' in e ? e.description : e.note, 'partner' in e ? e.partner : ''].some((v) => (v || '').toLowerCase().includes(needle)))
     .sort((a, b) => b.e.ver - a.e.ver || b.e.month.localeCompare(a.e.month) || a.e.projectCode.localeCompare(b.e.projectCode));
-  const total = rows.reduce((s, { e }) => s + entryTotal(e), 0);
   const logs = ledger.imports.filter((i) => i.kind === kind);
-  // Cột đúng theo file import của từng sổ + Tháng + Ver
-  const cols: { h: string; num?: boolean; center?: boolean }[] =
-    kind === 'cost'
-      ? [{ h: 'Mã công trình' }, { h: 'Diễn giải' }, { h: 'Sản xuất', num: true }, { h: 'CP bán hàng', num: true }, { h: 'Chi phí chung', num: true }]
-      : kind === 'opex' || kind === 'mgmt'
-      ? [{ h: 'Mã công trình' }, { h: 'Diễn giải' }, { h: 'Số tiền', num: true }]
-      : [
-          { h: 'Ngày hạch toán', center: true },
-          { h: 'Diễn giải' },
-          { h: 'Số tiền', num: true },
-          { h: 'Tên đối tượng' },
-          { h: 'Mã công trình' },
-          { h: 'Tên công trình' },
-          ...(kind === 'cashIn' ? [{ h: 'Mã đơn vị' }, { h: 'Tên đơn vị' }] : []),
-        ];
+  // Cột đúng theo file import của từng sổ + Tháng + Ver; get = giá trị dùng cho lọc / cộng tổng
+  type Row = { e: LedgerEntry; p?: BizProject };
+  type Col = { h: string; num?: boolean; center?: boolean; get: (r: Row) => string | number };
   const dmy = (d: string) => d.split('-').reverse().join('/');
+  const amt = (i: number) => (r: Row) => entryAmounts(r.e)[i];
+  const codeOf = ({ e }: Row) => e.projectCode;
+  const noteOf = ({ e }: Row) => ('description' in e ? e.description : e.note) || '';
+  const cash = (r: Row) => r.e as CashInEntry;
+  const cols: Col[] =
+    kind === 'cost'
+      ? [
+          { h: 'Mã công trình', get: codeOf },
+          { h: 'Diễn giải', get: noteOf },
+          { h: 'Sản xuất', num: true, get: amt(0) },
+          { h: 'CP bán hàng', num: true, get: amt(1) },
+          { h: 'Chi phí chung', num: true, get: amt(2) },
+        ]
+      : kind === 'opex' || kind === 'mgmt'
+      ? [{ h: 'Mã công trình', get: codeOf }, { h: 'Diễn giải', get: noteOf }, { h: 'Số tiền', num: true, get: amt(0) }]
+      : [
+          { h: 'Ngày hạch toán', center: true, get: (r) => dmy(cash(r).date) },
+          { h: 'Diễn giải', get: noteOf },
+          { h: 'Số tiền', num: true, get: amt(0) },
+          { h: 'Tên đối tượng', get: (r) => cash(r).partner || '' },
+          { h: 'Mã công trình', get: codeOf },
+          { h: 'Tên công trình', get: (r) => cash(r).projectName || r.p?.name || '' },
+          ...(kind === 'cashIn' ? [{ h: 'Mã đơn vị', get: (r: Row) => cash(r).unitCode || '' }, { h: 'Tên đơn vị', get: (r: Row) => cash(r).unitName || '' }] : []),
+        ];
+  // Phễu lọc ở tiêu đề từng cột (chọn giá trị, kiểu Excel) — lọc liên hoàn giữa các cột
+  const getters = useMemo(() => {
+    const g: Record<string, (r: Row) => string> = {};
+    cols.forEach((c) => (g[c.h] = (r) => (c.num ? fmt(Number(c.get(r))) : String(c.get(r) || ''))));
+    g['Tháng'] = (r) => fmtMonth(r.e.month);
+    g['Ver'] = (r) => `v${r.e.ver}`;
+    return g;
+  }, [kind, projects]); // eslint-disable-line react-hooks/exhaustive-deps
+  const colF = useColumnFilters<Row>(baseRows, getters);
+  const rows = colF.rows;
+  const total = rows.reduce((s, { e }) => s + entryTotal(e), 0);
+  const colSum = (c: Col) => rows.reduce((a, r) => a + Number(c.get(r)), 0);
+  const colNz = (c: Col) => rows.filter((r) => Number(c.get(r)) !== 0).length;
+  const headCell = (h: string) => (
+    <div className="flex items-center gap-1">
+      <span className="flex-1 min-w-0">{h}</span>
+      {colF.funnel(h, h)}
+    </div>
+  );
   const codeCell = (e: LedgerEntry, p?: BizProject) => (
     <span className="font-mono whitespace-nowrap" title={p ? `Khớp dự án ${p.masterCode} — ${p.name}` : 'Chưa khớp dự án nào trên hệ thống'}>
       {e.projectCode ? <span className={p ? 'text-[#1f5fa8]' : 'text-amber-700'}>{e.projectCode}</span> : <span className="text-slate-300">—</span>}
@@ -846,18 +877,19 @@ const LedgerList: React.FC<{ kind: LedgerKind; projects: BizProject[]; by: strin
           ))}
         </p>
       )}
+      <ColumnFilterBar active={colF.active} filters={colF.filters} labelOf={(k) => k} onRemove={(k) => colF.set(k, [])} onClear={colF.clear} className="border border-slate-200 rounded-[3px]" />
       <div className="max-h-[58vh] overflow-auto border border-slate-300 rounded-[3px] bg-white">
         <table className={erp.table}>
           <thead className="sticky top-0 z-10">
             <tr>
               <th className={`${erp.th} border-t-0 border-l-0 text-center w-10`}>#</th>
               {cols.map((c) => (
-                <th key={c.h} className={`${erp.th} border-t-0 ${c.num ? 'text-right' : c.center ? 'text-center' : 'text-left'}`}>
-                  {c.h}
+                <th key={c.h} className={`${erp.th} border-t-0 whitespace-nowrap ${c.num ? 'text-right' : c.center ? 'text-center' : 'text-left'}`}>
+                  {headCell(c.h)}
                 </th>
               ))}
-              <th className={`${erp.th} border-t-0 text-center`}>Tháng</th>
-              <th className={`${erp.th} border-t-0 text-center`}>Ver</th>
+              <th className={`${erp.th} border-t-0 text-center whitespace-nowrap`}>{headCell('Tháng')}</th>
+              <th className={`${erp.th} border-t-0 text-center whitespace-nowrap`}>{headCell('Ver')}</th>
               <th className={`${erp.th} border-t-0 border-r-0 text-center`}>Thao tác</th>
             </tr>
           </thead>
@@ -923,9 +955,32 @@ const LedgerList: React.FC<{ kind: LedgerKind; projects: BizProject[]; by: strin
               </tr>
             )}
           </tbody>
+          {rows.length > 0 && (
+            <tfoot className="sticky bottom-0 z-10" data-testid="ledger-totals">
+              <tr className={erp.totalRow}>
+                <td className={`${erp.td} border-l-0 text-center`} />
+                {cols.map((c, i) =>
+                  c.num ? (
+                    <td key={c.h} className={`${erp.td} ${erp.num} whitespace-nowrap`} title={`${colNz(c)} / ${rows.length} dòng có số khác 0`}>
+                      {fmt(colSum(c))}
+                    </td>
+                  ) : i === 0 ? (
+                    <td key={c.h} className={`${erp.td} whitespace-nowrap`}>
+                      Tổng · {rows.length} dòng
+                    </td>
+                  ) : (
+                    <td key={c.h} className={erp.td} />
+                  ),
+                )}
+                <td className={erp.td} />
+                <td className={erp.td} />
+                <td className={`${erp.td} border-r-0`} />
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
-      <p className="text-[11.5px] text-slate-500">Cột đúng theo file import, thêm Tháng và Ver. Mã công trình màu xanh = đã khớp dự án, màu cam = chưa khớp. Mỗi lần import 1 file là 1 phiên bản (v1, v2…); import lại tháng nào thì dòng cũ của tháng đó được thay bằng file mới.</p>
+      <p className="text-[11.5px] text-slate-500">Cột đúng theo file import, thêm Tháng và Ver. Mã công trình màu xanh = đã khớp dự án, màu cam = chưa khớp. Bấm biểu tượng phễu ở tiêu đề cột để lọc theo giá trị (có ô tìm, chọn nhiều); dòng Tổng cộng tính theo kết quả đang lọc. Mỗi lần import 1 file là 1 phiên bản (v1, v2…); import lại tháng nào thì dòng cũ của tháng đó được thay bằng file mới.</p>
     </div>
   );
 };
@@ -947,15 +1002,12 @@ const DeleteVersionDialog: React.FC<{
   const [mode, setMode] = useState<'all' | 'project'>('all');
   const [pid, setPid] = useState('');
   const inVer = entries.filter((e) => e.ver === ver);
-  const projIn = projects.filter((p) => {
-    const codes = projectCodes(p);
-    return inVer.some((e) => codes.includes(e.projectCode.trim().toLowerCase()));
-  });
+  const projIn = projects.filter((p) => inVer.some((e) => ownsCode(p, e.projectCode)));
   const nProj = (v: number) => new Set(entries.filter((e) => e.ver === v).map((e) => matchProject(projects, e.projectCode)?.id).filter(Boolean)).size;
   const log = logs.find((l) => l.ver === ver);
   const when = (iso?: string) => (iso ? new Date(iso).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
   const selP = projects.find((p) => p.id === pid);
-  const nDel = mode === 'all' ? inVer.length : selP ? inVer.filter((e) => projectCodes(selP).includes(e.projectCode.trim().toLowerCase())).length : 0;
+  const nDel = mode === 'all' ? inVer.length : selP ? inVer.filter((e) => ownsCode(selP, e.projectCode)).length : 0;
   const canDelete = !!ver && (mode === 'all' || !!selP) && nDel > 0;
 
   return (
@@ -1012,7 +1064,7 @@ const DeleteVersionDialog: React.FC<{
                 <option value="">— Chọn dự án —</option>
                 {projIn.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.masterCode} — {p.name} ({inVer.filter((e) => projectCodes(p).includes(e.projectCode.trim().toLowerCase())).length} dòng)
+                    {p.masterCode} — {p.name} ({inVer.filter((e) => ownsCode(p, e.projectCode)).length} dòng)
                   </option>
                 ))}
               </select>
@@ -1061,7 +1113,7 @@ const VhcPreview: React.FC<{ v: NonNullable<Parsed['vhc']> }> = ({ v }) => {
         <table className={erp.table}>
           <thead className="sticky top-0 z-10">
             <tr>
-              {['Dự án', 'Chi phí mã SX (.2) trong tháng', 'Tỉ lệ', 'Chi phí VHC phân bổ'].map((h, i) => (
+              {['Dự án', 'Chi phí mã SX (.2 + .2.x) trong tháng', 'Tỉ lệ', 'Chi phí VHC phân bổ'].map((h, i) => (
                 <th key={h} className={`${erp.th} ${i ? 'text-right' : 'text-left'} border-t-0 ${i === 0 ? 'border-l-0' : ''} ${i === 3 ? 'border-r-0' : ''}`}>
                   {h}
                 </th>
