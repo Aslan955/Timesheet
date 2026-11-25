@@ -1,7 +1,7 @@
 /**
  * Dữ liệu + hàm nghiệp vụ onsite dùng chung cho 3 màn — luồng đơn theo code iMIS, cách tính tiền theo đề xuất mới:
  *  - Quản lý Đơn từ › Đơn công tác  (TotalRequests/OnsiteRequestComponent.razor + TotalRequestsService)
- *  - PayRoll › Báo cáo Onsite        — ĐỀ XUẤT: HCNS duyệt & chốt onsite theo tháng tại đây
+ *  - PayRoll › Báo cáo Onsite        — ĐỀ XUẤT: HCNS chốt từng dòng tại đây, chốt là vào Payroll ngay (không có bước hoàn tất tháng)
  *  - PayRoll › Payroll               — ĐỀ XUẤT: chỉ đọc số đã chốt, không tự tính / gắn đơn
  *  Mức hỗ trợ theo Phụ lục 03 (Hà Nội: < 30km 100.000 đ, ≥ 30km 180.000 đ / ngày công).
  * Tên người / dự án đều là dữ liệu giả lập.
@@ -14,7 +14,13 @@ export type RoleKey = 'emp' | 'pm' | 'hod' | 'pmo' | 'hr' | 'admin';
 export type SiteZone = 'HN_LT30' | 'HN_GE30' | 'OUT_HN';
 export type Contract = 'Thử việc' | 'Chính thức' | 'Thực tập' | 'Cộng tác viên';
 
-export interface Slot { date: string; start: string; end: string; hours: number; coef: number }
+export interface TimeSlot { date: string; start: string; end: string; hours: number; coef: number }
+/** Một dòng lịch trình = một ngày onsite: địa điểm + khoảng cách riêng từng ngày ⇒ một đơn đi được nhiều địa điểm. */
+export interface Slot extends TimeSlot {
+  address: string;
+  /** Phụ lục 03: khoảng cách từ trụ sở của ngày đó quyết định mức hỗ trợ. */
+  zone: SiteZone;
+}
 export interface LogItem { at: string; by: string; action: string; detail: string }
 export interface OnsiteRec {
   id: string; code: string; projectId: string; employeeId: string;
@@ -24,9 +30,6 @@ export interface OnsiteRec {
   isLocked: boolean;
   /** Đã chốt ở Báo cáo Onsite (kỳ chốt OC-yyyy-mm) — thay cho việc gắn SalaryApprovalId khi duyệt lương. */
   closingId?: string;
-  address: string;
-  /** Phụ lục 03: địa bàn / khoảng cách từ trụ sở quyết định mức hỗ trợ. */
-  zone: SiteZone;
   regType: 0 | 1 | 2; description: string; hodId: string; attachment?: string;
   note?: string; slots: Slot[]; history: LogItem[];
 }
@@ -120,7 +123,10 @@ export const log = (at: string, by: string, action: string, detail: string): Log
 /** HodStatusName (TotalRequestsService): APPROVED_PM hiển thị "Requested", REJECTED_PM hiển thị "Rejected". */
 export const HOD_LABEL: Record<HodSt, string> = { DRAFT: 'Draft', REQUESTED: 'Requested', APPROVED_PM: 'Requested', APPROVED: 'Approved', REJECTED_PM: 'Rejected', REJECTED: 'Rejected' };
 
-const full = (d: string, s = '08:00', e = '17:30'): Slot => ({ date: d, start: s, end: e, ...calcHours(s, e) });
+const full = (d: string, s = '08:00', e = '17:30'): TimeSlot => ({ date: d, start: s, end: e, ...calcHours(s, e) });
+/** Dữ liệu mẫu khai địa điểm / khoảng cách chung cho đơn; dòng nào khai riêng thì ghi đè. */
+type SeedRec = Omit<OnsiteRec, 'slots'> & { address: string; zone: SiteZone; slots: (TimeSlot | Slot)[] };
+const SOC_SON = { address: 'Trung tâm dữ liệu dự phòng Ngân hàng A, Sóc Sơn, Hà Nội', zone: 'HN_GE30' as SiteZone };
 
 // ───────────────────────── Dữ liệu mẫu ─────────────────────────
 export const INIT_PERIODS: Period[] = [
@@ -131,7 +137,7 @@ export const INIT_PERIODS: Period[] = [
   { id: 'SA-2026-11', year: 2026, month: 11, status: 'REQUESTED', locked: false },
 ];
 
-export const INIT_RECORDS: OnsiteRec[] = [
+const SEED_RECORDS: SeedRec[] = [
   {
     id: 'r1', code: 'ONS_20261001_0001', projectId: 'P1', employeeId: 'E1', hodStatus: 'APPROVED', hodApprovedAt: '2026-10-02T09:12', hodApprovedBy: 'Phạm Thu Hà',
     status: 'APPROVED', approvedAt: '2026-10-02T09:12', approveBy: 'Phạm Thu Hà', createdAt: '2026-10-01T08:40', createdBy: 'Trần Minh Quân', creatorId: 'u-pm',
@@ -149,8 +155,8 @@ export const INIT_RECORDS: OnsiteRec[] = [
   {
     id: 'r3', code: 'ONS_20261028_0001', projectId: 'P1', employeeId: 'E1', hodStatus: 'APPROVED', hodApprovedAt: '2026-10-30T16:45', hodApprovedBy: 'Lê Hoàng Long',
     status: 'APPROVED', approvedAt: '2026-10-30T16:45', approveBy: 'Lê Hoàng Long', createdAt: '2026-10-28T09:00', createdBy: 'Trần Minh Quân', creatorId: 'u-pm',
-    isLocked: false, address: 'Hội sở Ngân hàng A, Hà Nội', zone: 'HN_LT30', regType: 1, description: 'Go-live phân hệ cho vay', hodId: 'u-hod',
-    slots: [full('2026-11-02', '08:30', '17:30'), full('2026-11-03'), full('2026-11-04'), full('2026-11-05'), full('2026-11-06')],
+    isLocked: false, address: 'Hội sở Ngân hàng A, Hà Nội', zone: 'HN_LT30', regType: 1, description: 'Go-live phân hệ cho vay (hội sở + trung tâm dữ liệu dự phòng)', hodId: 'u-hod',
+    slots: [full('2026-11-02', '08:30', '17:30'), full('2026-11-03'), full('2026-11-04'), { ...full('2026-11-05'), ...SOC_SON }, { ...full('2026-11-06'), ...SOC_SON }],
     history: [log('2026-10-28T09:00', 'Trần Minh Quân', 'Gửi yêu cầu', 'Tạo đơn và gửi yêu cầu (chờ HOD duyệt)'), log('2026-10-30T16:45', 'Lê Hoàng Long', 'Duyệt', 'Đã được phê duyệt cấp 2 (HOD/Admin) bởi PMO')],
   },
   {
@@ -232,6 +238,7 @@ export const INIT_RECORDS: OnsiteRec[] = [
     history: [log('2026-11-10T09:00', 'Trần Minh Quân', 'Gửi yêu cầu', 'Tạo đơn và gửi yêu cầu (chờ HOD duyệt)'), log('2026-11-11T10:30', 'Phạm Thu Hà', 'Duyệt', 'Đã được phê duyệt cấp 2 (HOD/Admin)')],
   },
 ];
+export const INIT_RECORDS: OnsiteRec[] = SEED_RECORDS.map(({ address, zone, ...r }) => ({ ...r, slots: r.slots.map((x) => ({ address, zone, ...x })) }));
 
 // ───────────────────────── Phụ lục 03 — mức hỗ trợ onsite Hà Nội ─────────────────────────
 /** Phụ lục 03 áp dụng cho ngày onsite từ 01/11/2026 (đã xác nhận). Trước đó: 100.000 đ/ngày cho mọi đơn. */
@@ -245,23 +252,42 @@ export const ZONE_SHORT: Record<SiteZone, string> = { HN_LT30: '< 30km', HN_GE30
 export const ELIGIBLE_CONTRACTS: Contract[] = ['Thử việc', 'Chính thức'];
 export const HCNS_MAIL = 'hcns@vtxgroup.vn';
 
-/** Mức hỗ trợ / ngày công của một đơn cho một ngày onsite; rate = 0 kèm lý do khi không được hưởng. */
-export function rateOf(r: OnsiteRec, date: string): { rate: number; why?: string } {
+/** Mức hỗ trợ / ngày công cho một nhân viên tại một khoảng cách trong một ngày; rate = 0 kèm lý do khi không được hưởng. */
+export function rateFor(employeeId: string, zone: SiteZone, date: string): { rate: number; why?: string } {
   if (date.slice(0, 7) < RULE_FROM) return { rate: OLD_RATE, why: 'Trước ngày áp dụng Phụ lục 03 — mức cũ 100.000 đ' };
-  const c = emp(r.employeeId).contract;
+  const c = emp(employeeId).contract;
   if (!ELIGIBLE_CONTRACTS.includes(c)) return { rate: 0, why: `Hợp đồng ${c} — chỉ HĐ thử việc / chính thức được hỗ trợ` };
-  if (r.zone === 'OUT_HN') return { rate: 0, why: 'Ngoài Hà Nội — không thuộc Phụ lục 03' };
-  return { rate: RATE[r.zone] };
+  if (zone === 'OUT_HN') return { rate: 0, why: 'Ngoài Hà Nội — không thuộc Phụ lục 03' };
+  return { rate: RATE[zone] };
 }
-/** Mức áp cho đơn (theo ngày đầu) — dùng hiển thị trên grid / form. */
-export const recRate = (r: OnsiteRec) => rateOf(r, startDate(r));
+export const slotOf = (r: OnsiteRec, date: string) => r.slots.find((s) => s.date === date);
+/** Mức của đơn trong một ngày = theo khoảng cách của dòng lịch trình ngày đó. */
+export function rateOf(r: OnsiteRec, date: string): { rate: number; why?: string } {
+  const s = slotOf(r, date);
+  return s ? rateFor(r.employeeId, s.zone, date) : { rate: 0, why: 'Không có lịch onsite ngày này' };
+}
+/** Các mức của đơn gom theo (khoảng cách, mức) — grid / xem chi tiết; đơn nhiều khoảng cách có nhiều dòng. */
+export function recRates(r: OnsiteRec) {
+  const m = new Map<string, { zone: SiteZone; rate: number; why?: string; days: number }>();
+  r.slots.forEach((s) => {
+    const x = rateFor(r.employeeId, s.zone, s.date), k = `${s.zone}|${x.rate}`;
+    const cur = m.get(k);
+    if (cur) cur.days += 1; else m.set(k, { zone: s.zone, ...x, days: 1 });
+  });
+  return [...m.values()];
+}
+export const recAddresses = (r: OnsiteRec) => [...new Set(r.slots.map((s) => s.address))];
 
 // ───────────────────────── Chốt onsite (Báo cáo Onsite › Approve) ─────────────────────────
 /** Kỳ chốt onsite theo tháng — chốt ở Báo cáo Onsite; Payroll chỉ đọc số đã chốt. */
-export interface ClosingDay { date: string; hours: number; leave: number; valid: number; unit: number; rate: number; amount: number; carry: boolean; recIds: string[] }
+export interface ClosingDay {
+  date: string; hours: number; leave: number; valid: number; unit: number; rate: number; amount: number; carry: boolean; recIds: string[];
+  /** Khoảng cách của ngày (dòng lịch trình có mức cao nhất) — phân cột ngày công < 30km / ≥ 30km. */
+  zone?: SiteZone;
+}
 export interface ClosingLine {
   employeeId: string;
-  /** Ngày công trong tháng theo mức */
+  /** Ngày công được hưởng trong tháng, phân theo khoảng cách của ngày (không theo mức tiền) */
   unitsLT30: number; unitsGE30: number;
   /** Ngày công tháng trước duyệt muộn, chốt bổ sung vào tháng này */
   carryUnits: number; carryAmount: number;
@@ -271,9 +297,11 @@ export interface ClosingLine {
 }
 export interface OnsiteClosing {
   id: string; year: number; month: number;
+  /** APPROVED = kỳ lương cùng tháng đã duyệt ⇒ tháng onsite khoá (không chốt / bỏ chốt); OPEN = còn chốt được. Suy từ Payroll (liveClosings). */
   status: 'OPEN' | 'APPROVED';
+  /** Lúc duyệt kỳ lương (khoá tháng onsite). */
   approvedAt?: string; approvedBy?: string;
-  /** Số đã chốt — Payroll đọc thẳng. */
+  /** Số của các đơn ĐÃ CHỐT — tính lại mỗi lần chốt / bỏ chốt; Payroll đọc thẳng. */
   saved?: ClosingLine[];
 }
 export const closingName = (c: { month: number; year: number }) => `${String(c.month).padStart(2, '0')}/${c.year}`;
@@ -301,7 +329,7 @@ const seedDays = (dates: string[], recId: string): ClosingDay[] =>
 export const INIT_CLOSINGS: OnsiteClosing[] = [
   { id: 'OC-2026-09', year: 2026, month: 9, status: 'APPROVED', approvedAt: '2026-10-04T16:00', approvedBy: 'Đỗ Mai Anh',
     saved: [{ employeeId: 'E4', unitsLT30: 5, unitsGE30: 0, carryUnits: 0, carryAmount: 0, noPayDays: 0, units: 5, amount: 500_000, detail: seedDays(['2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24', '2026-09-25'], 'r8') }] },
-  { id: 'OC-2026-10', year: 2026, month: 10, status: 'APPROVED', approvedAt: '2026-11-04T17:00', approvedBy: 'Đỗ Mai Anh',
+  { id: 'OC-2026-10', year: 2026, month: 10, status: 'OPEN',
     saved: [{ employeeId: 'E1', unitsLT30: 5, unitsGE30: 0, carryUnits: 0, carryAmount: 0, noPayDays: 0, units: 5, amount: 500_000, detail: seedDays(['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09'], 'r1') }] },
   { id: 'OC-2026-11', year: 2026, month: 11, status: 'OPEN' },
 ];
@@ -309,7 +337,7 @@ export const INIT_CLOSINGS: OnsiteClosing[] = [
 const ymOf = (y: number, m: number) => `${y}-${String(m).padStart(2, '0')}`;
 export const recMonth = (r: OnsiteRec) => startDate(r).slice(0, 7);
 
-/** Một đơn có vào kỳ chốt tháng (y, m) không: đơn trong tháng, hoặc đơn tháng trước duyệt muộn sau khi tháng đó đã chốt. */
+/** Một đơn có vào kỳ chốt tháng (y, m) không: đơn trong tháng, hoặc đơn tháng trước duyệt muộn sau khi tháng đó đã khoá (kỳ lương đã duyệt). */
 export function evalClosing(r: OnsiteRec, closings: OnsiteClosing[], y: number, m: number) {
   const ym = ymOf(y, m), id = closingIdOf(y, m), rm = recMonth(r);
   if (r.closingId && r.closingId !== id) return { ok: false, carry: false, why: `Đã chốt ở kỳ ${r.closingId.slice(3).split('-').reverse().join('/')}` };
@@ -317,22 +345,27 @@ export function evalClosing(r: OnsiteRec, closings: OnsiteClosing[], y: number, 
   if (rm > ym) return { ok: false, carry: false, why: 'Thuộc tháng sau' };
   if (rm === ym) return { ok: true, carry: false, why: 'Onsite trong tháng' };
   const own = closings.find((c) => c.id === closingIdOf(Number(rm.slice(0, 4)), Number(rm.slice(5, 7))));
-  if (!own || own.status !== 'APPROVED') return { ok: false, carry: false, why: `Tháng ${rm.slice(5)}/${rm.slice(0, 4)} chưa chốt — đơn thuộc kỳ chốt của tháng đó` };
-  return { ok: true, carry: true, why: `Duyệt muộn sau khi đã chốt tháng ${rm.slice(5)}/${rm.slice(0, 4)} ⇒ chốt bổ sung vào kỳ này` };
+  if (!own || own.status !== 'APPROVED') return { ok: false, carry: false, why: `Kỳ lương ${rm.slice(5)}/${rm.slice(0, 4)} chưa duyệt — đơn chốt vào kỳ của tháng đó` };
+  return { ok: true, carry: true, why: `Duyệt muộn sau khi kỳ lương ${rm.slice(5)}/${rm.slice(0, 4)} đã duyệt ⇒ chốt bổ sung vào kỳ này` };
 }
 
+/** Cùng mức thì ưu tiên khoảng cách xa hơn khi một ngày có nhiều đơn. */
+const ZONE_RANK: Record<SiteZone, number> = { HN_GE30: 2, HN_LT30: 1, OUT_HN: 0 };
 /** Tính bảng chốt: gộp (nhân viên, ngày) → trừ giờ phép → đủ 8h = 1 ngày công, chưa đủ 1 ngày công thì không tính tiền
- *  (áp cho mọi ngày, kể cả ngày trước RULE_FROM tính bổ sung) → × mức hỗ trợ cao nhất trong ngày. */
+ *  (áp cho mọi ngày, kể cả ngày trước RULE_FROM tính bổ sung) → × mức hỗ trợ cao nhất trong ngày; khoảng cách của ngày theo dòng có mức đó. */
 export function computeClosing(records: OnsiteRec[], closings: OnsiteClosing[], y: number, m: number): ClosingLine[] {
   const inc = records.filter((r) => evalClosing(r, closings, y, m).ok);
-  const byEmp = new Map<string, Map<string, { hours: number; rate: number; carry: boolean; recIds: string[]; paid: boolean }>>();
+  const byEmp = new Map<string, Map<string, { hours: number; rate: number; zone?: SiteZone; carry: boolean; recIds: string[]; paid: boolean }>>();
   inc.forEach((r) => {
     const days = byEmp.get(r.employeeId) || new Map();
     const carry = recMonth(r) !== ymOf(y, m);
     r.slots.forEach((s) => {
       const { rate } = rateOf(r, s.date);
       const d = days.get(s.date) || { hours: 0, rate: 0, carry, recIds: [], paid: false };
-      if (rate > 0) { d.hours += s.hours; d.rate = Math.max(d.rate, rate); d.paid = true; }
+      if (rate > 0) {
+        d.hours += s.hours; d.paid = true;
+        if (rate > d.rate || (rate === d.rate && (!d.zone || ZONE_RANK[s.zone] > ZONE_RANK[d.zone]))) { d.rate = rate; d.zone = s.zone; }
+      }
       d.recIds.push(r.id);
       days.set(s.date, d);
     });
@@ -343,14 +376,14 @@ export function computeClosing(records: OnsiteRec[], closings: OnsiteClosing[], 
       const leave = LEAVES.filter((l) => l.employeeId === eid).reduce((s, l) => s + leaveHoursOnDate(l.start, l.end, l.totalHours, date), 0);
       const valid = Math.min(d.hours, Math.max(0, 8 - leave));
       const unit = !d.paid ? 0 : valid >= 8 ? 1 : 0;
-      return { date, hours: d.hours, leave, valid, unit, rate: d.rate, amount: unit * d.rate, carry: d.carry, recIds: d.recIds };
+      return { date, hours: d.hours, leave, valid, unit, rate: d.rate, amount: unit * d.rate, carry: d.carry, recIds: d.recIds, zone: d.zone };
     });
     const cur = detail.filter((d) => !d.carry), car = detail.filter((d) => d.carry);
     const sum = (a: ClosingDay[], f: (d: ClosingDay) => number) => a.reduce((s, d) => s + f(d), 0);
     return {
       employeeId: eid,
-      unitsLT30: sum(cur.filter((d) => d.rate > 0 && d.rate < RATE.HN_GE30), (d) => d.unit),
-      unitsGE30: sum(cur.filter((d) => d.rate >= RATE.HN_GE30), (d) => d.unit),
+      unitsLT30: sum(cur.filter((d) => d.zone === 'HN_LT30'), (d) => d.unit),
+      unitsGE30: sum(cur.filter((d) => d.zone === 'HN_GE30'), (d) => d.unit),
       carryUnits: sum(car, (d) => d.unit), carryAmount: sum(car, (d) => d.amount),
       noPayDays: detail.filter((d) => d.amount === 0).length,
       units: sum(detail, (d) => d.unit), amount: sum(detail, (d) => d.amount), detail,
@@ -359,10 +392,18 @@ export function computeClosing(records: OnsiteRec[], closings: OnsiteClosing[], 
 }
 
 // ───────────────────────── Payroll ─────────────────────────
-/** Phụ cấp onsite trong bảng lương = số đã chốt ở Báo cáo Onsite cùng tháng (không tự tính, không gắn đơn). */
+/** Phụ cấp onsite trong bảng lương = số các dòng đã chốt ở Báo cáo Onsite cùng tháng (chốt là vào ngay, không chờ hoàn tất tháng). */
 export function payrollFromClosing(closings: OnsiteClosing[], y: number, m: number): { closing?: OnsiteClosing; lines: ClosingLine[] } {
   const c = closings.find((x) => x.id === closingIdOf(y, m));
-  return { closing: c, lines: c?.status === 'APPROVED' ? c.saved || [] : [] };
+  return { closing: c, lines: c?.saved || [] };
+}
+/** Kỳ chốt "sống": khoá theo kỳ lương đã duyệt + số tính lại từ các đơn đã chốt (closingId). */
+export function liveClosings(raw: OnsiteClosing[], records: OnsiteRec[], payApprovedAt: (y: number, m: number) => string | null | undefined): OnsiteClosing[] {
+  const st = raw.map((c): OnsiteClosing => {
+    const at = payApprovedAt(c.year, c.month);
+    return { ...c, status: at === undefined ? 'OPEN' : 'APPROVED', approvedAt: at ?? undefined, approvedBy: at === undefined ? undefined : 'Duyệt kỳ lương' };
+  });
+  return st.map((c) => ({ ...c, saved: computeClosing(records.filter((r) => r.closingId === c.id), st, c.year, c.month) }));
 }
 
 // ───────────────────────── Báo cáo Onsite: trạng thái đơn ─────────────────────────

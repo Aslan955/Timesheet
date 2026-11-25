@@ -7,11 +7,12 @@
  *  - Mỗi mục N giây (mặc định 5), di chuột vào thì dừng, bấm chấm / mũi tên để chuyển. Không còn slide nào → ẩn Box.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { Cake, ChevronLeft, ChevronRight, Hand, PartyPopper, X, EyeOff } from 'lucide-react';
+import { Cake, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Hand, Megaphone, PartyPopper, X, EyeOff } from 'lucide-react';
 import { useMarcom, BoxConfig, BoxLayout, BoxTheme, HomeBanner } from './MarcomContext';
 import { Avatar } from './MarcomUi';
-import { COUNT_VAR, MarcomEmployee, isBirthdayToday, fmtDayMonth, inWelcomeBatch, shownBatchTuesday, welcomeBatchMembers } from './marcomData';
+import { COUNT_VAR, MarcomEmployee, SlideEffect, normalizeEffect, normalizeOverlay, isBirthdayToday, fmtDayMonth, inWelcomeBatch, shownBatchTuesday, welcomeBatchMembers } from './marcomData';
 import { useMarcomLang } from './i18n';
+import { SlideOverlay } from './SlideOverlay';
 
 const DISMISS_KEY = 'marcom_bday_box_hidden';
 
@@ -121,9 +122,11 @@ export const designPatch = (kind: PeopleKind, p: Partial<SlideDesign>): Partial<
   return Object.fromEntries(Object.entries(p).map(([k, v]) => [map[k as keyof SlideDesign], v])) as Partial<BoxConfig>;
 };
 
-/** Khung Box ở chế độ gọn (trang chủ): tỉ lệ 32:5 theo bề rộng — banner 1600×250 luôn hiện trọn, không bị thu nhỏ;
- *  thấp nhất 140px trên màn hẹp. Mọi slide cùng khung nên không giật khi chuyển. */
-export const COMPACT_H = 'w-full aspect-[32/5] min-h-[140px]';
+/** Khung Box ở chế độ gọn (trang chủ): mọi slide cao cố định 240px — đồng bộ code iMIS 18/11 (.mce-compact --mce-cp-h).
+ *  Banner 8:1 hiện trọn nhờ object-fit + nền mờ của chính ảnh lấp phần trống. Mọi slide cùng khung nên không giật khi chuyển. */
+export const COMPACT_H = 'w-full h-[240px]';
+/** Thanh thu gọn: hiện tối đa ngần này tên, còn lại "+N" — đồng bộ code iMIS (PeekMaxNames). */
+const PEEK_MAX_NAMES = 3;
 /** Trên số người này thì danh sách trên banner chạy ngang; mỗi người ~3 giây. */
 export const MARQUEE_FROM = 5;
 const marqueeSeconds = (n: number) => Math.max(12, n * 3);
@@ -140,7 +143,8 @@ const PeopleSlide: React.FC<{
   batch?: Date; // đợt thứ 3 của slide Chào mừng
   sample?: boolean; // xem trước bằng nhân sự mẫu (đợt hiện tại không có ai)
   compact?: boolean; // bản gọn cho trang chủ (cao cố định 1 hàng)
-}> = ({ box, people, preview, onClose, kind, batch, sample, compact }) => {
+  fx?: React.ReactNode; // hiệu ứng trên màn — đặt giữa nền và nội dung để hạt chạy phía sau thẻ / chữ
+}> = ({ box, people, preview, onClose, kind, batch, sample, compact, fx }) => {
   const { tr, wdLong } = useMarcomLang();
   const d = designOf(box, kind); // CR-20261105-001 thiết kế riêng 05/11
   const theme = BOX_THEMES[d.theme];
@@ -224,6 +228,7 @@ const PeopleSlide: React.FC<{
             )}
           </>
         )}
+        {fx}
 
         <div className="relative h-full flex items-center gap-6 pl-16 pr-16">
           {/* Lời chào */}
@@ -275,12 +280,13 @@ const PeopleSlide: React.FC<{
 
   if (people.length === 0) {
     return (
-      <div className={`relative h-full rounded-2xl border bg-gradient-to-r ${theme.bg} px-5 py-4 flex items-center gap-3 ${compact ? COMPACT_H : ''}`}>
-        <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center">
+      <div className={`relative overflow-hidden h-full rounded-2xl border bg-gradient-to-r ${theme.bg} px-5 py-4 flex items-center gap-3 ${compact ? COMPACT_H : ''}`}>
+        {fx}
+        <div className="relative w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center">
           <Cake size={20} className={theme.accent} />
         </div>
         {/* đồng bộ code iMIS 05/11 — nội dung mặc định là chữ thường */}
-        <div className="text-sm font-semibold text-slate-600 whitespace-pre-line">{box.emptyText}</div>
+        <div className="relative text-sm font-semibold text-slate-600 whitespace-pre-line">{box.emptyText}</div>
       </div>
     );
   }
@@ -335,6 +341,7 @@ const PeopleSlide: React.FC<{
           <div className={`absolute inset-0 bg-gradient-to-br ${theme.icon}`} />
         )}
         <div className="absolute inset-0 bg-slate-900/35" />
+        {fx}
         <div className="relative px-5 pt-4 pb-5">
           {header(true)}
           <div className="mt-4 flex flex-wrap gap-4">
@@ -372,6 +379,7 @@ const PeopleSlide: React.FC<{
           />
         ))}
       </div>
+      {fx}
       <div className="relative px-5 pt-4 pb-5">
         {header()}
         {d.layout === 'list' ? (
@@ -411,21 +419,28 @@ const PeopleSlide: React.FC<{
 };
 
 /** 1 banner MarCom trong slide — có link thì bấm mở trang mới. */
-// đồng bộ code iMIS 05/11 — khung 4:1, nền mờ phía sau, ảnh theo cách hiển thị (object-fit) cấu hình, mặc định contain
+// đồng bộ code iMIS 18/11 — khung 8:1, nền mờ phía sau, ảnh theo cách hiển thị (object-fit) cấu hình, mặc định contain;
+// video MP4/WebM: chỉ 1 video (không nền mờ), tự chạy, tắt tiếng, lặp
 // Bản gọn (trang chủ): cao cố định COMPACT_H, đổ bóng mềm, rê chuột phóng nhẹ, có link thì hiện nút "Xem chi tiết"
 const BannerSlide: React.FC<{ b: HomeBanner; fit: BoxConfig['bannerFit']; compact?: boolean }> = ({ b, fit, compact }) => {
   const img = (
     <div
-      className={`group/bn relative overflow-hidden rounded-2xl bg-slate-100 ${compact ? `${COMPACT_H} shadow-[0_1px_2px_rgba(15,23,42,.06),0_8px_24px_-12px_rgba(15,23,42,.25)]` : 'h-full min-h-[120px] aspect-[4/1] shadow-sm'}`}
+      className={`group/bn relative overflow-hidden rounded-2xl ${b.video ? 'bg-slate-900' : 'bg-slate-100'} ${compact ? `${COMPACT_H} shadow-[0_1px_2px_rgba(15,23,42,.06),0_8px_24px_-12px_rgba(15,23,42,.25)]` : 'h-full min-h-[120px] aspect-[8/1] shadow-sm'}`}
     >
-      <img src={b.url} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover blur-[24px] brightness-[0.8] scale-[1.15]" draggable={false} />
-      <img
-        src={b.url}
-        alt={b.name}
-        className={`absolute inset-0 w-full h-full ${compact ? 'transition-transform duration-700 group-hover/bn:scale-[1.02]' : ''}`}
-        style={{ objectFit: fit || 'contain' }}
-        draggable={false}
-      />
+      {b.video ? (
+        <video src={b.url} className="absolute inset-0 w-full h-full" style={{ objectFit: fit || 'contain' }} muted playsInline autoPlay loop preload="metadata" disablePictureInPicture aria-hidden />
+      ) : (
+        <>
+          <img src={b.url} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover blur-[24px] brightness-[0.8] scale-[1.15]" draggable={false} />
+          <img
+            src={b.url}
+            alt={b.name}
+            className={`absolute inset-0 w-full h-full ${compact ? 'transition-transform duration-700 group-hover/bn:scale-[1.02]' : ''}`}
+            style={{ objectFit: fit || 'contain' }}
+            draggable={false}
+          />
+        </>
+      )}
       {compact && <span className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-inset ring-black/5" />}
       {compact && b.link && (
         <span className="absolute right-4 bottom-4 inline-flex items-center gap-1 h-7 px-3 rounded-full bg-white/90 text-[13px] font-semibold text-slate-700 shadow opacity-0 group-hover/bn:opacity-100 transition-opacity">
@@ -456,14 +471,24 @@ export const SlidePreview: React.FC<{ kind: PeopleKind; cfg: BoxConfig }> = ({ k
 
 type Slide = { kind: 'bday'; id: string } | { kind: 'welcome'; id: string } | { kind: 'banner'; id: string; b: HomeBanner };
 
-/** compact: bản gọn cho trang chủ (cao cố định, 1 hàng). */
-export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean; simulateNoNewcomers?: boolean; cfg?: BoxConfig; compact?: boolean }> = ({
-  preview = false,
-  simulateEmpty = false,
-  simulateNoNewcomers = false,
-  cfg,
-  compact = false,
-}) => {
+/** Hiệu ứng của 1 slide: banner lưu ở HomeBanner.effect, slide Sinh nhật / Chào mừng ở BoxConfig. */
+const effectOf = (box: BoxConfig, x: Slide): SlideEffect =>
+  normalizeEffect(x.kind === 'banner' ? x.b.effect : x.kind === 'bday' ? box.birthdayEffect : box.welcomeEffect);
+const overlayOf = (box: BoxConfig, x: Slide) =>
+  normalizeOverlay(x.kind === 'banner' ? x.b.overlay : x.kind === 'bday' ? box.birthdayOverlay : box.welcomeOverlay);
+/** Id slide dùng cho "Xem thử hiệu ứng" ở editor: 'bday' | 'welcome' | id banner. */
+export const slotId = (s: BoxSlot) => (s.kind === 'banner' ? s.b.id : s.kind);
+
+/** compact: bản gọn cho trang chủ (cao cố định, 1 hàng). replay: editor bấm "Xem thử" → nhảy tới slide id và chạy lại hiệu ứng (n tăng mỗi lần bấm). */
+export const BirthdayBox: React.FC<{
+  preview?: boolean;
+  simulateEmpty?: boolean;
+  simulateNoNewcomers?: boolean;
+  cfg?: BoxConfig;
+  compact?: boolean;
+  replay?: { id: string; n: number };
+  onReplayMissing?: () => void;
+}> = ({ preview = false, simulateEmpty = false, simulateNoNewcomers = false, cfg, compact = false, replay, onReplayMissing }) => {
   const { config, employees } = useMarcom();
   const { tr } = useMarcomLang();
   const box = cfg ?? config.box;
@@ -509,13 +534,27 @@ export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean;
     setIdx(((i % n) + n) % n);
     setElapsed(0);
   };
+  // Đếm số lần chạy lại theo slide → đổi key của riêng slide đó để hiệu ứng chạy lại (slide khác giữ nguyên)
+  const [replays, setReplays] = useState<Record<string, number>>({});
+  useEffect(() => {
+    if (!replay) return;
+    const i = slides.findIndex((x) => x.id === replay.id);
+    if (i < 0) return onReplayMissing?.();
+    setReplays((r) => ({ ...r, [replay.id]: (r[replay.id] || 0) + 1 }));
+    go(i);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [replay?.n]);
 
   if (!preview && !box.showOnHome) return null;
-  // Đã bấm X ẩn trong hôm nay → trang chủ vẫn còn thanh nhỏ để hiện lại
-  if (!preview && dismissed)
-    return compact && n ? (
+  // đồng bộ code iMIS 18/11 — bấm "Thu gọn" → box thành 1 thanh mỏng (nhớ trong ngày), bấm thanh để mở lại; không có gì để hiện thì không có thanh
+  if (!preview && dismissed) {
+    if (!n) return null;
+    const names = people.map((e) => e.name).filter(Boolean);
+    const peek = names.slice(0, PEEK_MAX_NAMES).join(', ') + (names.length > PEEK_MAX_NAMES ? ` +${names.length - PEEK_MAX_NAMES}` : '');
+    return (
       <button
         type="button"
+        aria-expanded={false}
         onClick={() => {
           setDismissed(false);
           try {
@@ -524,12 +563,34 @@ export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean;
             /* bỏ qua */
           }
         }}
-        className="w-full h-8 rounded-lg border border-dashed border-slate-300 bg-white/70 text-[13px] text-slate-500 hover:text-[#011b64] hover:border-[#011b64]/40 inline-flex items-center justify-center gap-1.5 cursor-pointer"
+        className="w-full min-h-[44px] px-3.5 py-1.5 flex items-center gap-2.5 rounded-xl border border-[#f3d3e3] bg-gradient-to-r from-[#fdf2f8] to-white to-70% text-[13px] text-slate-700 text-left cursor-pointer transition-[border-color,box-shadow] hover:border-pink-300 hover:shadow-[0_2px_8px_rgba(190,24,93,.08)]"
         data-testid="home-banner-restore"
       >
-        <EyeOff size={14} /> {tr('Bạn đã ẩn banner hôm nay — bấm để hiện lại', 'Banner hidden for today — click to show it again')}
+        {people.length > 0 ? (
+          <>
+            <span className="w-7 h-7 shrink-0 grid place-items-center rounded-lg bg-pink-100 text-pink-700">
+              <Cake size={14} />
+            </span>
+            <span className="flex-1 min-w-0 truncate">
+              <b className="font-semibold text-slate-900">{tr('Sinh nhật hôm nay', "Today's birthdays")}</b> · {peek}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="w-7 h-7 shrink-0 grid place-items-center rounded-lg bg-sky-100 text-sky-700">
+              <Megaphone size={14} />
+            </span>
+            <span className="flex-1 min-w-0 truncate">
+              <b className="font-semibold text-slate-900">{tr('Bảng tin MarCom', 'MarCom news')}</b>
+            </span>
+          </>
+        )}
+        <span className="shrink-0 inline-flex items-center gap-1.5 font-semibold text-pink-700">
+          {tr('Mở lại', 'Expand')} <ChevronDown size={14} />
+        </span>
       </button>
-    ) : null;
+    );
+  }
   const dismiss = () => {
     setDismissed(true);
     try {
@@ -549,11 +610,12 @@ export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean;
         )}
       </div>
     ) : null;
-  const renderSlide = (x: Slide, onClose?: () => void) =>
+  // Hiệu ứng trên màn: slide người → chạy sau thẻ / chữ (fx); banner ảnh → phủ trên ảnh (ở khung slide bên dưới)
+  const renderSlide = (x: Slide, onClose?: () => void, on = false) =>
     x.kind === 'bday' ? (
-      <PeopleSlide kind="bday" box={box} people={people} preview={preview} onClose={onClose} compact={compact} />
+      <PeopleSlide kind="bday" box={box} people={people} preview={preview} onClose={onClose} compact={compact} fx={on && <SlideOverlay type={overlayOf(box, x)} behind />} />
     ) : x.kind === 'welcome' ? (
-      <PeopleSlide kind="welcome" box={box} people={welcomePeople} batch={tuesday} sample={welcomeSample} preview={preview} onClose={onClose} compact={compact} />
+      <PeopleSlide kind="welcome" box={box} people={welcomePeople} batch={tuesday} sample={welcomeSample} preview={preview} onClose={onClose} compact={compact} fx={on && <SlideOverlay type={overlayOf(box, x)} behind />} />
     ) : (
       <BannerSlide b={x.b} fit={box.bannerFit} compact={compact} />
     );
@@ -561,7 +623,12 @@ export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean;
     x.kind === 'bday' ? tr('Sinh nhật hôm nay', "Today's birthdays") : x.kind === 'welcome' ? tr('Chào mừng thành viên mới', 'Welcome new members') : x.b.name;
   // Chỉ có 1 slide sinh nhật / chào mừng → hiển thị tĩnh, không chạy slide
   // (bản gọn luôn dùng khung slide bên dưới để có nút ẩn ở góc)
-  if (n === 1 && slides[0].kind !== 'banner' && !compact) return renderSlide(slides[0], dismiss);
+  if (n === 1 && slides[0].kind !== 'banner' && !compact)
+    return (
+      <div className="relative" key={`${slides[0].id}-${replays[slides[0].id] || 0}`}>
+        {renderSlide(slides[0], dismiss, true)}
+      </div>
+    );
 
   return (
     <div
@@ -572,26 +639,36 @@ export const BirthdayBox: React.FC<{ preview?: boolean; simulateEmpty?: boolean;
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
-      <div className="grid grid-cols-[minmax(0,1fr)]">
-        {slides.map((x, i) => (
-          <div
-            key={x.id}
-            aria-hidden={i !== cur}
-            data-slide={x.kind === 'bday' ? 'birthday' : x.kind === 'welcome' ? 'welcome' : x.b.name}
-            className={`[grid-area:1/1] min-w-0 transition-opacity duration-500 ${i === cur ? 'opacity-100 z-[1]' : 'opacity-0 pointer-events-none'}`}
-          >
-            {renderSlide(x)}
-          </div>
-        ))}
+      {/* Hiệu ứng theo từng slide: slide đang hiện chạy hiệu ứng vào (mbx-fx-*), slide vừa rời mờ đi; khung cắt phần trượt / lật ra ngoài */}
+      <div className="grid grid-cols-[minmax(0,1fr)] overflow-hidden rounded-2xl [perspective:1200px]">
+        {slides.map((x, i) => {
+          const on = i === cur;
+          const fx = effectOf(box, x);
+          const style = { '--fx-dur': baseDur <= 2000 ? '250ms' : fx === 'fade' ? '500ms' : '700ms', '--slide-dur': `${dur}ms` } as React.CSSProperties;
+          return (
+            <div
+              key={`${x.id}-${replays[x.id] || 0}`}
+              aria-hidden={!on}
+              data-slide={x.kind === 'bday' ? 'birthday' : x.kind === 'welcome' ? 'welcome' : x.b.name}
+              data-effect={fx}
+              style={style}
+              className={`relative [grid-area:1/1] min-w-0 ${on ? `opacity-100 z-[1] mbx-in mbx-fx-${fx}` : `opacity-0 pointer-events-none transition-opacity ${effectOf(box, slides[cur]) === 'none' ? 'duration-0' : 'duration-300'}`}`}
+            >
+              {renderSlide(x, undefined, on)}
+              {on && x.kind === 'banner' && <SlideOverlay type={overlayOf(box, x)} />}
+            </div>
+          );
+        })}
       </div>
       {!preview && (
         <button
           type="button"
           onClick={dismiss}
           className={`absolute z-[2] rounded-lg cursor-pointer bg-white/70 text-slate-500 hover:bg-white hover:text-slate-700 shadow-sm ${compact ? 'top-2 right-2 p-1' : 'top-3 right-3 p-1.5'}`}
-          title={tr('Ẩn trong hôm nay', 'Hide for today')}
+          title={tr('Thu gọn', 'Collapse')}
+          aria-label={tr('Thu gọn', 'Collapse')}
         >
-          <X size={15} />
+          <ChevronUp size={15} />
         </button>
       )}
       {n > 1 && (

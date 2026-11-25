@@ -8,17 +8,17 @@
  * Giao diện: khung ERP (src/components/erp/Erp.tsx) như màn Báo cáo hiệu quả dự án.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, GalleryHorizontal, Cake, Hand, LayoutTemplate, History, Upload, Trash2, Send, Save, RotateCcw, Image as ImageIcon, Settings2, FileText, Eye, Clock, UserSquare2, AlertTriangle, Megaphone, Maximize2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, GalleryHorizontal, Cake, Hand, LayoutTemplate, History, Upload, Trash2, Send, Save, RotateCcw, Image as ImageIcon, Settings2, FileText, Eye, Clock, UserSquare2, AlertTriangle, Megaphone, Maximize2, X, Play, Ban, Blend, ChevronDown, FlipHorizontal2, MoveRight, MoveUp, Scan, WandSparkles, ZoomIn } from 'lucide-react';
 import { useMarcom, MailConfig, BoxConfig, BoxTheme, HomeBanner } from '../../marcom/MarcomContext';
 import { Avatar, FilterBar, FilterCell, Switch, TAG, useToast } from '../../marcom/MarcomUi';
 import { useMarcomLang } from '../../marcom/i18n';
 import { MailHtml, RichTextEditor, RichTextHandle } from '../../marcom/RichText';
-import { BirthdayBox, BOX_THEMES, BoxSlot, PeopleKind, SlideDesign, SlidePreview, boxSlots, designOf, designPatch, slotsToConfig, useTodayBirthdays, useWelcomeNewcomers } from '../../marcom/BirthdayBox';
+import { BirthdayBox, BOX_THEMES, BoxSlot, slotId, PeopleKind, SlideDesign, boxSlots, designOf, designPatch, slotsToConfig, useTodayBirthdays, useWelcomeNewcomers } from '../../marcom/BirthdayBox';
 import { TeamsBirthdayPost, TEAMS_PLACEHOLDERS, TEAMS_DIRECTORY, TEAMS_SENDER, SenderAvatar } from '../../marcom/TeamsBirthdayPost';
 import { Btn, ErpPage, ErpTitleBar, FieldTable, FolderTabs, FormRow, Panel, Segmented, Tag, erp } from '../erp/Erp';
 import {
-  BANNER_FITS, BannerFit, COUNT_VAR, IMAGE_ACCEPT, MAX_IMAGE_BYTES, MailKind, MarcomEmployee, SLIDE_SECONDS, TEAMS_POST_ENABLED, VAR_ONLY, VAR_SPLIT, addDays, batchTuesdayOf, batchWindow,
-  bannerSizeIssue, birthdayThisYear, fillTemplate, fmtDate, fmtDateTime, fmtDayMonth, fromKey, inWelcomeBatch, isAllowedImage, isBirthdayToday, isPastTimeToday, startOfDay, toKey,
+  BANNER_ACCEPT, BANNER_FITS, BannerFit, COUNT_VAR, SLIDE_EFFECTS, SLIDE_EFFECT_LABEL, SlideEffect, normalizeEffect, SLIDE_OVERLAY_GROUPS, SLIDE_OVERLAY_LABEL, SlideOverlay, normalizeOverlay, IMAGE_ACCEPT, MAX_IMAGE_BYTES, MailKind, MarcomEmployee, SLIDE_SECONDS, TEAMS_POST_ENABLED, VAR_ONLY, VAR_SPLIT, addDays, batchTuesdayOf, batchWindow,
+  bannerSizeIssue, birthdayThisYear, isAllowedBanner, isVideoType, fillTemplate, fmtDate, fmtDateTime, fmtDayMonth, fromKey, inWelcomeBatch, isBirthdayToday, isPastTimeToday, startOfDay, toKey,
 } from '../../marcom/marcomData';
 
 /** Tài khoản gửi mail của hệ thống (MarcomEmailComponent.SenderAddress) — đồng bộ code iMIS 05/11. */
@@ -636,6 +636,8 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
   const [target, setTarget] = useState<'home' | 'teams'>('home');
   const [simulateEmpty, setSimulateEmpty] = useState(false);
   const [simulateNoNewcomers, setSimulateNoNewcomers] = useState(false);
+  // "Xem thử" hiệu ứng: khung xem trước nhảy tới slide đó và chạy lại hiệu ứng
+  const [replay, setReplay] = useState<{ id: string; n: number }>();
   const { tuesday: welcomeTue, people: newcomers } = useWelcomeNewcomers(simulateNoNewcomers);
   const bgRef = useRef<HTMLInputElement>(null);
   const welcomeBgRef = useRef<HTMLInputElement>(null); // CR-20261105-001 thiết kế riêng 05/11
@@ -669,7 +671,97 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
     setSlots(n);
   };
   const removeBanner = (id: string) => setSlots(slots.filter((s) => s.kind !== 'banner' || s.b.id !== id));
-  // Kích thước thật của ảnh banner (đo trên trình duyệt, không lưu) → cảnh báo lệch 32:5 / nhỏ hơn 1600px
+  // Hiệu ứng khi slide xuất hiện — riêng từng slide: banner lưu HomeBanner.effect, Sinh nhật / Chào mừng lưu BoxConfig
+  const effectOfSlot = (s: BoxSlot): SlideEffect => normalizeEffect(s.kind === 'banner' ? s.b.effect : s.kind === 'bday' ? draft.birthdayEffect : draft.welcomeEffect);
+  const setEffect = (s: BoxSlot, fx: SlideEffect) =>
+    s.kind === 'banner' ? patchBanner(s.b.id, { effect: fx }) : set(s.kind === 'bday' ? { birthdayEffect: fx } : { welcomeEffect: fx });
+  // Hiệu ứng trên màn (pháo giấy, tuyết…) chạy suốt lúc slide hiển thị
+  const overlayOfSlot = (s: BoxSlot): SlideOverlay => normalizeOverlay(s.kind === 'banner' ? s.b.overlay : s.kind === 'bday' ? draft.birthdayOverlay : draft.welcomeOverlay);
+  const setOverlay = (s: BoxSlot, o: SlideOverlay) =>
+    s.kind === 'banner' ? patchBanner(s.b.id, { overlay: o }) : set(s.kind === 'bday' ? { birthdayOverlay: o } : { welcomeOverlay: o });
+  // Thanh hiệu ứng của 1 slide: thu gọn = 2 nhãn tóm tắt + nút Xem thử; bấm mở bảng chọn dạng ô (chọn là chạy thử ngay)
+  const [fxOpen, setFxOpen] = useState<string | null>(null);
+  const play = (s: BoxSlot) => setReplay((r) => ({ id: slotId(s), n: (r?.n || 0) + 1 }));
+  const FX_ICON: Record<SlideEffect, React.ElementType> = { fade: Blend, slide: MoveRight, 'slide-up': MoveUp, zoom: ZoomIn, flip: FlipHorizontal2, kenburns: Scan, none: Ban };
+  const fxChip = (active: boolean) =>
+    `h-7 px-2.5 inline-flex items-center gap-1.5 rounded-full border text-[12px] whitespace-nowrap transition-colors cursor-pointer ${
+      active ? 'bg-violet-600 border-violet-600 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:border-violet-300 hover:text-violet-700'
+    }`;
+  const effectPicker = (s: BoxSlot) => {
+    const id = slotId(s);
+    const open = fxOpen === id;
+    const fx = effectOfSlot(s);
+    const ov = overlayOfSlot(s);
+    const FxIcon = FX_ICON[fx];
+    const ovLabel = tr(SLIDE_OVERLAY_LABEL[ov][0], SLIDE_OVERLAY_LABEL[ov][1]);
+    return (
+      <div className={`mt-1.5 rounded-md border transition-colors ${open ? 'border-violet-200 bg-violet-50/50' : 'border-transparent'}`} data-testid="slide-effect">
+        <div className="flex items-center gap-1.5 px-1 py-0.5">
+          <button
+            type="button"
+            onClick={() => setFxOpen(open ? null : id)}
+            aria-expanded={open}
+            className="flex-1 min-w-0 flex items-center gap-1.5 rounded-md px-1 py-0.5 text-left cursor-pointer hover:bg-violet-50"
+            title={tr('Chọn hiệu ứng cho slide này', 'Choose effects for this slide')}
+          >
+            <WandSparkles size={13} className="text-violet-500 shrink-0" />
+            <span className="text-[11px] font-semibold text-slate-500 shrink-0">{tr('Hiệu ứng', 'Effects')}</span>
+            <span className="inline-flex items-center gap-1 h-[22px] px-2 rounded-full bg-violet-100 text-violet-700 text-[11px] font-medium whitespace-nowrap">
+              <FxIcon size={11} /> {tr(SLIDE_EFFECT_LABEL[fx][0], SLIDE_EFFECT_LABEL[fx][1])}
+            </span>
+            <span className={`inline-flex items-center h-[22px] px-2 rounded-full text-[11px] font-medium truncate ${ov === 'none' ? 'bg-slate-100 text-slate-400' : 'bg-amber-100 text-amber-800'}`}>
+              {ov === 'none' ? tr('Trên màn: không', 'On screen: none') : ovLabel}
+            </span>
+            <ChevronDown size={13} className={`ml-auto shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+          </button>
+          <button
+            type="button"
+            onClick={() => play(s)}
+            className="w-7 h-7 shrink-0 grid place-items-center rounded-full bg-violet-600 text-white shadow-sm hover:bg-violet-700 cursor-pointer"
+            title={tr('Xem thử ở khung Xem trước', 'Play in the Preview panel')}
+            aria-label={tr('Xem thử', 'Try')}
+          >
+            <Play size={11} className="translate-x-px" fill="currentColor" />
+          </button>
+        </div>
+        {open && (
+          <div className="px-2 pb-2 pt-1 space-y-2">
+            <div>
+              <div className="mb-1 text-[11px] font-semibold text-slate-500">{tr('Khi slide xuất hiện', 'When the slide appears')}</div>
+              <div className="flex flex-wrap gap-1.5">
+                {SLIDE_EFFECTS.map((k) => {
+                  const Icon = FX_ICON[k];
+                  return (
+                    <button key={k} type="button" className={fxChip(fx === k)} onClick={() => (setEffect(s, k), play(s))}>
+                      <Icon size={13} /> {tr(SLIDE_EFFECT_LABEL[k][0], SLIDE_EFFECT_LABEL[k][1])}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div>
+              <div className="mb-1 text-[11px] font-semibold text-slate-500">{tr('Trên màn — chạy suốt lúc slide hiển thị', 'On screen — runs while the slide is shown')}</div>
+              <div className="space-y-1.5">
+                {SLIDE_OVERLAY_GROUPS.map((g) => (
+                  <div key={g.key} className="flex items-start gap-2">
+                    <span className="w-[74px] shrink-0 pt-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">{tr(g.label[0], g.label[1])}</span>
+                    <div className="flex-1 min-w-0 flex flex-wrap gap-1.5">
+                      {g.items.map((k) => (
+                        <button key={k} type="button" className={fxChip(ov === k)} onClick={() => (setOverlay(s, k), play(s))}>
+                          {k === 'none' && <Ban size={13} />} {tr(SLIDE_OVERLAY_LABEL[k][0], SLIDE_OVERLAY_LABEL[k][1])}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+  // Kích thước thật của ảnh banner (đo trên trình duyệt, không lưu) → cảnh báo lệch 8:1 / nhỏ hơn 1600px; video không đo
   const [sizes, setSizes] = useState<Record<string, [number, number]>>({});
   const measure = (url: string) =>
     new Promise<[number, number]>((resolve) => {
@@ -679,22 +771,24 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
       img.src = url;
     });
   useEffect(() => {
-    banners.filter((b) => b.url && !sizes[b.url]).forEach((b) => measure(b.url).then((s) => setSizes((m) => ({ ...m, [b.url]: s }))));
+    banners.filter((b) => b.url && !b.video && !sizes[b.url]).forEach((b) => measure(b.url).then((s) => setSizes((m) => ({ ...m, [b.url]: s }))));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [banners]);
   const addBanners = async (files: FileList | null) => {
     const list = [...(files || [])];
-    const imgs = list.filter(isAllowedImage);
-    if (imgs.length < list.length) toast(tr('Chỉ nhận file ảnh PNG/JPG/WebP tối đa 5MB — đã bỏ qua file khác', 'Only PNG/JPG/WebP images up to 5MB are accepted — other files were skipped'));
+    // đồng bộ code iMIS 18/11 — ảnh PNG/JPG/WebP ≤ 5MB, GIF ≤ 10MB, video MP4/WebM ≤ 20MB; file khác bị bỏ qua, báo chung 1 lần
+    const imgs = list.filter(isAllowedBanner);
+    if (imgs.length < list.length)
+      toast(tr('Chỉ nhận ảnh PNG/JPG/WebP (tối đa 5MB), GIF (10MB) hoặc video MP4/WebM (20MB) — đã bỏ qua file khác', 'Only PNG/JPG/WebP images (max 5MB), GIF (10MB) or MP4/WebM video (20MB) are accepted — other files were skipped'));
     if (!imgs.length) return;
-    const added = imgs.map((f, k) => ({ id: `bn-${Date.now()}-${k}`, name: f.name.replace(/\.[^.]+$/, ''), url: URL.createObjectURL(f), link: '', active: true }));
+    const added: HomeBanner[] = imgs.map((f, k) => ({ id: `bn-${Date.now()}-${k}`, name: f.name.replace(/\.[^.]+$/, ''), url: URL.createObjectURL(f), link: '', active: true, video: isVideoType(f.type) }));
     setBanners((l) => [...l, ...added]);
-    // Cảnh báo (không chặn) từng file sai tỉ lệ 32:5 / nhỏ hơn 1600px
-    for (const b of added) {
+    // Cảnh báo (không chặn) từng ảnh sai tỉ lệ 8:1 / nhỏ hơn 1600px (video không đo)
+    for (const b of added.filter((x) => !x.video)) {
       const [w, h] = await measure(b.url);
       const issue = bannerSizeIssue(w, h);
-      if (issue === 'ratio') toast(tr(`${b.name}: ảnh ${w}×${h} không đúng tỉ lệ 32:5 — banner sẽ có nền mờ hai bên hoặc trên dưới (hoặc bị méo nếu chọn fill). Nên dùng 1600×250 (nét hơn: 3200×500).`, `${b.name}: ${w}×${h} is not 32:5 — the banner gets blurred side/top bars (or is stretched with fill). Use 1600×250 (sharper: 3200×500).`));
-      if (issue === 'small') toast(tr(`${b.name}: ảnh ${w}×${h} nhỏ hơn khuyến nghị — có thể mờ trên màn hình lớn. Nên dùng 1600×250 trở lên (nét hơn: 3200×500).`, `${b.name}: ${w}×${h} is smaller than recommended — may look blurry on large screens. Use at least 1600×250 (sharper: 3200×500).`));
+      if (issue === 'ratio') toast(tr(`${b.name}: ảnh ${w}×${h} không đúng tỉ lệ 8:1 — banner sẽ có nền mờ hai bên hoặc trên dưới (hoặc bị méo nếu chọn fill). Nên dùng 3200×400.`, `${b.name}: ${w}×${h} is not 8:1 — the banner gets blurred side/top bars (or is stretched with fill). Use 3200×400.`));
+      if (issue === 'small') toast(tr(`${b.name}: ảnh ${w}×${h} nhỏ hơn khuyến nghị — có thể mờ trên màn hình lớn. Nên dùng 3200×400 (tối thiểu 1600×200).`, `${b.name}: ${w}×${h} is smaller than recommended — may look blurry on large screens. Use 3200×400 (min 1600×200).`));
     }
   };
   const activeBanners = banners.filter((b) => b.active).length;
@@ -735,7 +829,7 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
       </Btn>
     );
 
-  // CR-20261105-001 thiết kế riêng 05/11 — bộ control thiết kế theo slide (designOf / designPatch) + xem trước đúng slide đó
+  // CR-20261105-001 thiết kế riêng 05/11 — bộ control thiết kế theo slide (designOf / designPatch)
   const slideDesignFields = (kind: PeopleKind) => {
     const d = designOf(draft, kind);
     const setD = (p: Partial<SlideDesign>) => set(designPatch(kind, p));
@@ -815,10 +909,6 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
         <FormRow label={tr('Ký tên', 'Signature')}>
           <input value={d.signature} onChange={(e) => setD({ signature: e.target.value })} className={erp.inputFull} />
         </FormRow>
-        <div className="pt-1">
-          <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">{wel ? tr('Xem trước slide Chào mừng', 'Welcome slide preview') : tr('Xem trước slide Sinh nhật', 'Birthday slide preview')}</div>
-          <SlidePreview kind={kind} cfg={draft} />
-        </div>
       </div>
     );
   };
@@ -896,15 +986,15 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
                 icon={GalleryHorizontal}
                 actions={
                   <>
-                    <input ref={bannerRef} type="file" accept={IMAGE_ACCEPT} multiple className="hidden" onChange={(e) => (addBanners(e.target.files), (e.target.value = ''))} data-testid="banner-input" />
+                    <input ref={bannerRef} type="file" accept={BANNER_ACCEPT} multiple className="hidden" onChange={(e) => (addBanners(e.target.files), (e.target.value = ''))} data-testid="banner-input" />
                     <Btn icon={Upload} className="h-7" onClick={() => bannerRef.current?.click()}>
                       {tr('Tải banner', 'Upload banner')}
                     </Btn>
                   </>
                 }
                 footer={tr(
-                  `Slide chạy lần lượt theo thứ tự danh sách (Chúc mừng sinh nhật${draft.welcomeEnabled ? ' + Chào mừng thành viên mới' : ''} + ${activeBanners ? `${activeBanners} banner đang bật` : 'banner'}) · mỗi mục ${draft.slideSeconds || 5} giây · di chuột vào thì dừng. Ảnh khuyến nghị 1600×250 px (nét hơn: 3200×500), tỉ lệ 32:5 — khung tự co theo bề rộng màn hình nên ảnh luôn hiện trọn, không bị thu nhỏ.`,
-                  `Slides run in list order (Birthday${draft.welcomeEnabled ? ' + Welcome new members' : ''} + ${activeBanners ? `${activeBanners} active banner(s)` : 'banners'}) · ${draft.slideSeconds || 5} seconds each · pauses on hover. Recommended image 1600×250 px (sharper: 3200×500), ratio 32:5 — the frame scales with the screen width so the image always fills it.`,
+                  `Slide chạy lần lượt theo thứ tự danh sách (Chúc mừng sinh nhật${draft.welcomeEnabled ? ' + Chào mừng thành viên mới' : ''} + ${activeBanners ? `${activeBanners} banner đang bật` : 'banner'}) · mỗi mục ${draft.slideSeconds || 5} giây · di chuột vào thì dừng. Ảnh khuyến nghị 3200×400 px (tối thiểu 1600×200), tỉ lệ 8:1. Nhận cả GIF động (tối đa 10MB) và video ngắn MP4/WebM (tối đa 20MB, tự chạy, tắt tiếng, lặp lại).`,
+                  `Slides run in list order (Birthday${draft.welcomeEnabled ? ' + Welcome new members' : ''} + ${activeBanners ? `${activeBanners} active banner(s)` : 'banners'}) · ${draft.slideSeconds || 5} seconds each · pauses on hover. Recommended image 3200×400 px (min 1600×200), ratio 8:1. Animated GIF (max 10MB) and short MP4/WebM video (max 20MB, autoplay, muted, looped) are also accepted.`,
                 )}
               >
                 <div className="space-y-2.5">
@@ -952,7 +1042,8 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
                         const bday = s.kind === 'bday';
                         const off = !bday && !draft.welcomeEnabled;
                         return (
-                          <div key={s.kind} data-slot={s.kind} className={`flex items-center gap-2 border border-dashed rounded-[3px] p-1.5 ${bday ? 'border-pink-300 bg-pink-50/60' : 'border-sky-300 bg-sky-50/60'} ${off ? 'opacity-60' : ''}`}>
+                          <div key={s.kind} data-slot={s.kind} className={`border border-dashed rounded-[3px] p-1.5 ${bday ? 'border-pink-300 bg-pink-50/60' : 'border-sky-300 bg-sky-50/60'} ${off ? 'opacity-60' : ''}`}>
+                           <div className="flex items-center gap-2">
                             <span className={`w-[136px] h-[34px] shrink-0 rounded-[2px] flex items-center justify-center ${bday ? 'bg-pink-100 text-pink-600' : 'bg-sky-100 text-sky-700'}`}>
                               {bday ? <Cake size={16} /> : <Hand size={16} />}
                             </span>
@@ -970,6 +1061,8 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
                               <span className="text-[11px] text-slate-500">{i + 1}</span>
                               {tools}
                             </span>
+                           </div>
+                           {effectPicker(s)}
                           </div>
                         );
                       }
@@ -977,29 +1070,38 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
                       const size = sizes[b.url];
                       const issue = size ? bannerSizeIssue(size[0], size[1]) : null;
                       return (
-                        <div key={b.id} className={`flex items-start gap-2 border rounded-[3px] p-1.5 ${b.active ? 'border-slate-300 bg-white' : 'border-slate-200 bg-slate-50 opacity-70'}`}>
-                          <img src={b.url} alt="" className="w-[136px] h-[34px] object-cover rounded-[2px] border border-slate-200 shrink-0" />
+                        <div key={b.id} data-slot="banner" className={`border rounded-[3px] p-1.5 ${b.active ? 'border-slate-300 bg-white' : 'border-slate-200 bg-slate-50 opacity-70'}`}>
+                         <div className="flex items-start gap-2">
+                          <div className="shrink-0 w-[136px] space-y-0.5">
+                            {b.video ? (
+                              <video src={b.url} muted playsInline preload="metadata" className="w-[136px] h-[34px] object-cover rounded-[2px] border border-slate-200 shrink-0 bg-slate-900" />
+                            ) : (
+                              <img src={b.url} alt="" className="w-[136px] h-[34px] object-cover rounded-[2px] border border-slate-200 shrink-0" />
+                            )}
+                            {size && size[0] > 0 && (
+                              <span
+                                className={`text-[11px] tabular-nums inline-flex items-center gap-0.5 ${issue ? 'text-amber-700' : 'text-slate-400'}`}
+                                title={issue === 'ratio' ? tr('Không đúng tỉ lệ 8:1 (khuyến nghị 3200×400)', 'Not 8:1 (recommended 3200×400)') : issue === 'small' ? tr('Nhỏ hơn 1600×200, có thể bị mờ', 'Smaller than 1600×200, may be blurry') : undefined}
+                              >
+                                {issue && <AlertTriangle size={11} />}
+                                {size[0]}×{size[1]}
+                              </span>
+                            )}
+                          </div>
                           <div className="flex-1 min-w-0 space-y-1">
                             <input value={b.name} onChange={(e) => patchBanner(b.id, { name: e.target.value })} placeholder={tr('Tên banner', 'Banner name')} className={`${erp.inputFull} h-7 text-[12px]`} />
                             <input value={b.link} onChange={(e) => patchBanner(b.id, { link: e.target.value })} placeholder={tr('Link khi bấm vào banner (tuỳ chọn) — https://...', 'Link when the banner is clicked (optional) — https://...')} className={`${erp.inputFull} h-7 text-[12px]`} />
                           </div>
                           <div className="flex flex-col items-end gap-1 shrink-0">
                             <span className="flex items-center gap-1.5">
-                              {size && size[0] > 0 && (
-                                <span
-                                  className={`text-[11px] tabular-nums inline-flex items-center gap-0.5 ${issue ? 'text-amber-700' : 'text-slate-400'}`}
-                                  title={issue === 'ratio' ? tr('Không đúng tỉ lệ 32:5 (khuyến nghị 1600×250)', 'Not 32:5 (recommended 1600×250)') : issue === 'small' ? tr('Nhỏ hơn 1600×250, có thể bị mờ', 'Smaller than 1600×250, may be blurry') : undefined}
-                                >
-                                  {issue && <AlertTriangle size={11} />}
-                                  {size[0]}×{size[1]}
-                                </span>
-                              )}
                               <span className="text-[11px] text-slate-500">{i + 1}</span>
                               <span className="text-[11px] text-slate-500">{b.active ? tr('Đang hiển thị', 'Visible') : tr('Đang ẩn', 'Hidden')}</span>
                               <Switch on={b.active} onChange={(v) => patchBanner(b.id, { active: v })} />
                             </span>
                             {tools}
                           </div>
+                         </div>
+                         {effectPicker(s)}
                         </div>
                       );
                     })}
@@ -1214,7 +1316,14 @@ const BoxEditor: React.FC<{ toast: (m: string) => void }> = ({ toast }) => {
         >
           {target === 'home' ? (
             draft.showOnHome ? (
-              <BirthdayBox preview simulateEmpty={simulateEmpty} simulateNoNewcomers={simulateNoNewcomers} cfg={draft} />
+              <BirthdayBox
+                preview
+                simulateEmpty={simulateEmpty}
+                simulateNoNewcomers={simulateNoNewcomers}
+                cfg={draft}
+                replay={replay}
+                onReplayMissing={() => toast(tr('Slide này đang không hiển thị (đang tắt / không có người) — bật lên để xem thử hiệu ứng', 'This slide is not shown (off / nobody) — turn it on to try the effect'))}
+              />
             ) : (
               <div className="border border-dashed border-slate-300 rounded-[4px] bg-slate-50 py-8 text-center text-[12px] text-slate-400">{tr('Đang tắt hiển thị trên trang chủ iMIS.', 'Display on the iMIS home page is off.')}</div>
             )

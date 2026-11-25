@@ -1,19 +1,6 @@
-[Prototype Timesheet] Báo cáo hiệu quả dự án — mở lại Chi tiết theo dự án, tính mã con .2.x vào chi phí sản xuất · Đóng dự án — Kế toán nhập CP tài chính / quản lý / khác, đánh giá tốc độ dòng tiền về · Mục tiêu kinh doanh — khớp số liệu mẫu
+[Prototype Timesheet] Danh sách dự án › Đóng dự án — Báo cáo tổng kết bỏ dòng Lợi nhuận gộp và Tỷ suất lợi nhuận gộp
 
-THÊM MỚI
-- Báo cáo hiệu quả dự án (tab Tổng quan cả khối / công ty): mở lại khung "Chi tiết theo dự án" — bảng Kế hoạch / Thực tế / Chênh lệch (%) từng dự án theo Doanh thu, Chi phí, Dòng tiền thu, Khối lượng công việc; lọc theo Sức khoẻ (Tất cả / Tốt / Cần chú ý / Theo dõi / Chưa phát sinh); dòng Tổng cộng; bấm dòng để xem Tổng quan dự án, bấm số thực tế để xem sổ kế toán.
-- Báo cáo hiệu quả dự án › tab Chi phí vận hành chung: cột "Chi phí mã SX (.2 + .2.x) trong tháng" hiện thêm dòng nhỏ "trong đó mã con …: số tiền" khi dự án có chi phí hạch toán vào mã con.
+XOÁ / BỎ
+- Danh sách dự án › Đóng dự án › Báo cáo tổng kết (bảng Kế hoạch – Thực tế, mục A): bỏ dòng "Lợi nhuận gộp" và "Tỷ suất lợi nhuận gộp". Mục A còn: Doanh thu · Tổng chi phí (SX, KD, Chi phí chung) · 3 dòng Kế toán nhập (CP tài chính / quản lý / khác) · Lợi nhuận trước thuế (= Doanh thu − Tổng chi phí − 3 khoản Kế toán nhập) · Tỷ suất lợi nhuận trước thuế; ghi chú cuối bảng sửa theo công thức này.
 
-- Danh sách dự án › Đóng dự án (bước Kế toán duyệt): bảng Tổng kết Kế hoạch – Thực tế thêm 3 dòng Kế toán nhập dưới Tổng chi phí — Chi phí tài chính, Chi phí quản lý, Chi phí khác. Bắt buộc nhập đủ khi bấm Duyệt (không có thì nhập 0; gõ được 12,500,000 · 12.5tr · 1.2 tỷ); Chi phí quản lý điền sẵn theo sổ CP quản lý phân bổ. Số nhập cộng ngay vào Tổng chi phí, Lợi nhuận gộp, Tỷ suất LN gộp, Tiền chi ra, Dòng tiền thuần (CP quản lý nhập thay cho sổ CP quản lý phân bổ); ghi vào nhật ký dự án. BOD và khi xem lại báo cáo thấy 3 dòng này (chỉ xem).
-
-- Danh sách dự án › Đóng dự án › Báo cáo tổng kết: thêm đánh giá "Tốc độ dòng tiền về" (Nhanh / Chậm). Mỗi tháng có số thực tế: % = Tiền thu luỹ kế thực tế ÷ Tiền thu luỹ kế kế hoạch đến hết tháng (tháng KH luỹ kế = 0 không tính); lấy trung bình cộng các tháng: ≥ 100% ⇒ Nhanh, < 100% ⇒ Chậm. Hiển thị: ô KPI "Tốc độ dòng tiền về" (bấm để xem chi tiết), dòng cuối mục B. Dòng tiền, tab mới "Tốc độ dòng tiền về" (từng tháng: thu trong tháng KH / TT, luỹ kế KH / TT, %, Nhanh / Chậm; dòng trung bình cộng + số tháng nhanh / chậm). Ô KPI xếp 2 hàng × 3 ô.
-- Dữ liệu mẫu: dự án 022.061 và 061.015 thu tiền nhanh hơn kế hoạch để minh hoạ đánh giá Nhanh.
-
-THAY ĐỔI
-- Danh sách dự án › Đóng dự án › Báo cáo tổng kết (bảng Kế hoạch – Thực tế): đổi nhãn dòng "Lãi / (Lỗ) gộp" thành "Lợi nhuận gộp".
-- Danh sách dự án › Đóng dự án › Báo cáo tổng kết: cột Chênh lệch của dòng Tỷ suất lợi nhuận gộp hiện theo % (vd −13.0%) thay cho "điểm".
-- Import sổ kế toán › Chi thực tế + Phân bổ chi phí vận hành chung: ngoài Mã SX (.2), các mã con của nó (.2.x, vd 022.061.2.2 — gồm cả mã outsource) cũng được ghép vào dự án và tính là chi phí sản xuất: tính lại số thực tế dự án, mẫu số tỉ lệ phân bổ VHC, xem khoản chi, xoá theo lần import theo dự án. Nhãn / công thức đổi thành "mã .2 + .2.x".
-- Dữ liệu mẫu Chi thực tế: dự án 010.530, 022.061, 022.070, 061.020 hạch toán khoản "Thuê ngoài gia công phần mềm" vào mã con .2.2 (tổng không đổi).
-- Dữ liệu mẫu Mục tiêu kinh doanh (khớp với dự án): hồ sơ 2026 đã duyệt của 6 khối lấy đúng giá trị HĐ của các dự án tương ứng (vd Nền tảng chuyển đổi số quốc gia 16 tỷ, ERP Tập đoàn 022 5 tỷ); tổng mỗi khối = mục tiêu ký HĐ trên Tổng quan / Lập kế hoạch khối (G1 30,5 tỷ · G2 4,65 · G3 2,5 · G4 3,7 · BFSI 11,06 · GPDV 1 tỷ; toàn công ty 53,41 tỷ). Hồ sơ 2027 (nháp / chờ duyệt) giảm cùng cỡ. LN gộp giữ nguyên tỉ lệ %.
-
-File chính: src/components/ProjectCloseModal.tsx, src/business/projectClose.ts, src/components/BusinessProjectPage.tsx, src/components/BizReportPage.tsx, src/components/LedgerImportModal.tsx, src/components/LedgerDetailModal.tsx, src/components/BizTargetPage.tsx, src/business/BusinessProjectContext.tsx
+File chính: src/business/projectClose.ts, src/components/ProjectCloseModal.tsx

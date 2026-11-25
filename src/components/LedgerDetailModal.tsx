@@ -4,7 +4,7 @@
  * Liệt kê các dòng sổ kế toán tạo nên con số đó, đúng các cột của file kế toán:
  *  • Doanh thu thực tế (sổ chi tiết các tài khoản): Ngày hạch toán · Diễn giải · Số tiền · Tên đối tượng · Mã công trình · Tên công trình
  *  • Dòng tiền thu (sổ tiền gửi ngân hàng): như trên + Mã đơn vị · Tên đơn vị
- *  • Chi thực tế: Mã công trình · Tháng · Chi sản xuất · Chi kinh doanh · Chi phí chung · Diễn giải (Tổng chi phí ghi kèm CP quản lý + CP vận hành chung)
+ *  • Chi thực tế: Mã công trình · Tháng · Chi sản xuất · Chi kinh doanh · Diễn giải (chi phí chung tách sang sheet Chi phí vận hành chung) (Tổng chi phí ghi kèm CP quản lý + CP vận hành chung)
  *    (gộp 3 sổ "Chi thực tế", "Chi phí quản lý", "Chi phí vận hành chung" — Chi phí thực tế của dự án = tổng các cột)
  *  • Chi phí vận hành chung (tab riêng trong Chi phí): bảng phân bổ theo khối + tháng và các khoản chi chi tiết của khối
  *      Tháng · Khối · Diễn giải · Số tiền · Tên đối tượng · Tên nhân viên · Phân bổ cho dự án (= số tiền × tỉ lệ phân bổ)
@@ -71,10 +71,11 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
         .sort((a, b) => a.month.localeCompare(b.month) || a.projectCode.localeCompare(b.projectCode)),
     [ledger.cost, ledger.opex, ledger.mgmt, codes, from, to, needle, hideZero, part],
   );
-  // Bảng Tổng hợp chỉ liệt kê sổ Chi thực tế (SX · KD · Chi phí chung); CP quản lý / CP vận hành chung chỉ cộng vào tổng
-  // (CP vận hành chung xem ở tab riêng; CP quản lý chỉ hiện cột khi mở từ con số CP quản lý)
+  // Bảng Tổng hợp: sổ Chi thực tế (SX · KD) + Chi phí chung (phân bổ từ sheet Chi phí chung riêng); CP quản lý chỉ cộng vào tổng
+  // (CP quản lý chỉ hiện cột khi mở từ con số CP quản lý; chi tiết Chi phí chung của khối xem ở tab riêng)
   const showMgmt = part === 'mgmt';
-  const cost = useMemo(() => costAll.filter((e) => (showMgmt ? e.mgmt : !e.mgmt && !e.alloc)), [costAll, showMgmt]);
+  const cost = useMemo(() => costAll.filter((e) => (showMgmt ? e.mgmt : !e.mgmt)), [costAll, showMgmt]);
+  const chungOf = (e: CostRow) => e.alloc + e.chung; // Chi phí chung = phân bổ từ sheet riêng (+ số cũ của cột Chi phí chung nếu còn)
 
   // ---- Chi phí vận hành chung: bảng phân bổ + dòng chi tiết của khối, quy về phần của (các) dự án đang xem
   type VhcGroup = { sheet: VhcSheet; allocs: VhcSheet['alloc']; share: number; base: number };
@@ -125,8 +126,8 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
       : kind === 'cashIn'
         ? 'BÁO CÁO DÒNG TIỀN THU TRONG KỲ'
         : isVhc
-          ? 'CHI PHÍ VẬN HÀNH CHUNG'
-          : `CHI PHÍ THỰC TẾ${part === 'sx' ? ' — CHI SẢN XUẤT' : part === 'kd' ? ' — CHI KINH DOANH' : part === 'chung' ? ' — CHI PHÍ CHUNG' : part === 'alloc' ? ' — CHI PHÍ VẬN HÀNH CHUNG' : part === 'mgmt' ? ' — CHI PHÍ QUẢN LÝ' : ''}`;
+          ? 'CHI PHÍ CHUNG'
+          : `CHI PHÍ THỰC TẾ${part === 'sx' ? ' — CHI SẢN XUẤT' : part === 'kd' ? ' — CHI KINH DOANH' : part === 'chung' ? ' — CHI PHÍ CHUNG' : part === 'alloc' ? ' — CHI PHÍ CHUNG' : part === 'mgmt' ? ' — CHI PHÍ QUẢN LÝ' : ''}`;
   const Icon = kind === 'revenue' ? TrendingUp : kind === 'cashIn' ? Landmark : isVhc ? PieChart : Receipt;
   const iconCls = kind === 'cost' ? 'text-rose-600' : 'text-emerald-600';
 
@@ -177,8 +178,8 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
               showMgmt
                 ? ['Mã công trình', 'Tháng', 'Chi phí quản lý', 'Diễn giải']
                 : ['Mã công trình', 'Tháng', 'Chi sản xuất', 'Chi kinh doanh', 'Chi phí chung', 'Diễn giải'],
-              ...cost.map((e) => (showMgmt ? [e.projectCode, fmtMonth(e.month), e.mgmt, e.note] : [e.projectCode, fmtMonth(e.month), e.sx, e.kd, e.chung, e.note])),
-              ...(showMgmt ? [] : [['Tổng chi phí', '', totalCost, `gồm CP quản lý ${fmt(totalMgmt)} · CP vận hành chung ${fmt(totalAlloc)}`]]),
+              ...cost.map((e) => (showMgmt ? [e.projectCode, fmtMonth(e.month), e.mgmt, e.note] : [e.projectCode, fmtMonth(e.month), e.sx, e.kd, chungOf(e), e.note])),
+              ...(showMgmt ? [] : [['Tổng chi phí', '', totalCost, '', '', `gồm Chi phí chung ${fmt(totalAlloc + totalChung)} · CP quản lý ${fmt(totalMgmt)}`]]),
             ];
     const ws = XLSX.utils.aoa_to_sheet(rows);
     ws['!cols'] = (kind === 'revenue' ? [12, 60, 16, 40, 14, 36] : kind === 'cashIn' ? [12, 60, 16, 40, 14, 36, 10, 16] : [16, 12, 18, 18, 18, 18, 18, 60]).map((wch) => ({ wch }));
@@ -207,7 +208,7 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
             <p className="text-[12px] text-slate-600 font-semibold mt-0.5">{title}</p>
             <p className="text-[11px] text-slate-500">
               {periodText(from, to)} · ĐVT: VNĐ · Nguồn: sổ kế toán import
-              {isVhc ? ' (file chi phí vận hành chung theo khối, phân bổ theo tỉ lệ chi phí dự án trong tháng)' : kind === 'cost' ? ' (Chi thực tế + Chi phí quản lý + Chi phí vận hành chung)' : ''}
+              {isVhc ? ' (sheet Chi phí chung theo khối, phân bổ theo tỉ lệ chi phí sản xuất của dự án trong tháng)' : kind === 'cost' ? ' (Chi thực tế + Chi phí chung (sheet riêng) + Chi phí quản lý)' : ''}
             </p>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-700 cursor-pointer">
@@ -220,7 +221,7 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
             {(
               [
                 ['sum', 'Tổng hợp chi phí', Receipt],
-                ['vhc', 'Chi phí vận hành chung', PieChart],
+                ['vhc', 'Chi phí chung (chi tiết khối)', PieChart],
               ] as const
             ).map(([k, label, I]) => (
               <button
@@ -326,7 +327,7 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
                       <>
                     <th className={`${th} text-right ${part && part !== 'sx' ? 'opacity-40' : ''}`}>Chi sản xuất</th>
                     <th className={`${th} text-right ${part && part !== 'kd' ? 'opacity-40' : ''}`}>Chi kinh doanh</th>
-                    <th className={`${th} text-right ${part && part !== 'chung' ? 'opacity-40' : ''}`} title="Cột Chi phí chung của sổ Chi thực tế">Chi phí chung</th>
+                    <th className={`${th} text-right ${part && part !== 'chung' ? 'opacity-40' : ''}`} title="Phân bổ từ sheet Chi phí chung (file Kế toán theo khối + tháng)">Chi phí chung</th>
                       </>
                     )}
                     {showMgmt && <th className={`${th} text-right`} title="Sổ Chi phí quản lý (Kế toán phân bổ theo dự án)">Chi phí quản lý</th>}
@@ -338,7 +339,7 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
                     <tr key={e.id} className={erp.tr}>
                       <td className={`${td} font-mono text-blue-600`}>{e.projectCode}</td>
                       <td className={`${td} font-mono`}>{fmtMonth(e.month)}</td>
-                      {(showMgmt ? [e.mgmt] : [e.sx, e.kd, e.chung]).map((v, j) => (
+                      {(showMgmt ? [e.mgmt] : [e.sx, e.kd, chungOf(e)]).map((v, j) => (
                         <td key={j} className={`${td} text-right font-mono ${v ? 'font-bold text-rose-700' : 'text-slate-400'}`}>{fmt(v)}</td>
                       ))}
                       <td className={`${td} text-slate-600`}>{e.note || <span className="text-slate-300">—</span>}</td>
@@ -361,14 +362,10 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
                         <>
                           <td className={`${td} text-right font-mono`}>{fmt(totalSx)}</td>
                           <td className={`${td} text-right font-mono`}>{fmt(totalKd)}</td>
-                          <td className={`${td} text-right font-mono`}>{fmt(totalChung)}</td>
+                          <td className={`${td} text-right font-mono`}>{fmt(totalAlloc + totalChung)}</td>
                           <td className={`${td} text-slate-500 font-semibold`}>
                             Tổng chi phí: {fmt(totalCost)}
-                            {(totalMgmt > 0 || totalAlloc > 0) && (
-                              <span className="block text-[11px] font-normal">
-                                gồm CP quản lý {fmt(totalMgmt)} · CP vận hành chung {fmt(totalAlloc)}
-                              </span>
-                            )}
+                            {totalMgmt > 0 && <span className="block text-[11px] font-normal">gồm CP quản lý {fmt(totalMgmt)}</span>}
                           </td>
                         </>
                       )}

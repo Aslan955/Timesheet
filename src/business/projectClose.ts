@@ -20,6 +20,8 @@ export interface CloseLine {
   noRatio?: boolean;
   /** Khoản Kế toán nhập ở bước duyệt đóng dự án */
   extra?: CloseExtraKey;
+  /** Kế toán chưa nhập (đang hiện số tạm: CP quản lý = sổ CP quản lý phân bổ, còn lại 0) */
+  pendingExtra?: boolean;
 }
 export interface CloseMonth {
   month: string;
@@ -62,6 +64,9 @@ export interface CloseSummary {
   lastActualMonth: string;
   revenue: { plan: number; actual: number };
   cost: { plan: number; actual: number };
+  /** Lợi nhuận gộp = Doanh thu − Tổng chi phí (SX + KD + Chi phí chung) */
+  gross: { plan: number; actual: number };
+  /** Lợi nhuận trước thuế = LN gộp − CP tài chính − CP quản lý − CP khác */
   profit: { plan: number; actual: number };
   margin: { plan: number | null; actual: number | null };
   net: { plan: number; actual: number };
@@ -95,25 +100,29 @@ export const closeSummary = (p: BizProject, asOf = iso(), extraIn?: Partial<Pick
   const aMg = sum('costMgmt');
   const aAl = sum('costAlloc');
   const ex = extra ? { finance: extra.finance || 0, mgmt: extra.mgmt || 0, other: extra.other || 0 } : null;
-  const ac = aSx + aKd + aCh + aAl + (ex ? ex.finance + ex.mgmt + ex.other : aMg);
+  // Chưa có số Kế toán nhập ⇒ tạm tính: CP quản lý = sổ CP quản lý phân bổ, CP tài chính / khác = 0
+  const exV = ex || { finance: 0, mgmt: aMg, other: 0 };
+  const exT = exV.finance + exV.mgmt + exV.other;
+  const aChung = aCh + aAl; // Chi phí chung = phân bổ từ sheet Chi phí chung riêng (+ số cũ của cột Chi phí chung nếu còn)
+  const direct = aSx + aKd + aChung; // Tổng chi phí (trước 3 khoản Kế toán nhập)
+  const gross = ar - direct; // Lợi nhuận gộp
+  const pbt = gross - exT; // Lợi nhuận trước thuế = LN gộp − CP tài chính − CP quản lý − CP khác
+  const ac = direct + exT; // tổng tiền chi ra
   const aCash = sumRows(a, 'cashIn');
   const m = (x: number, rev: number) => (rev ? (x / rev) : null);
+  const pending = !ex;
 
   const lines: CloseLine[] = [
     { key: 'rev', group: 'pl', label: 'Doanh thu', plan: pr, actual: ar, level: 0, bold: true },
-    { key: 'cost', group: 'pl', label: 'Tổng chi phí', plan: pc, actual: ac, level: 0, bold: true, lowerBetter: true },
+    { key: 'cost', group: 'pl', label: 'Tổng chi phí', plan: pc, actual: direct, level: 0, bold: true, lowerBetter: true },
     { key: 'sx', group: 'pl', label: 'Chi phí sản xuất (mã SX .2)', plan: pSx, actual: aSx, level: 1, lowerBetter: true },
     { key: 'kd', group: 'pl', label: 'Chi phí kinh doanh (mã KD .1)', plan: pKd, actual: aKd, level: 1, lowerBetter: true },
-    { key: 'chung', group: 'pl', label: 'Chi phí chung', plan: null, actual: aCh, level: 1, lowerBetter: true },
-    ...(ex
-      ? ([
-          { key: 'finance', group: 'pl', label: 'Chi phí tài chính', plan: null, actual: ex.finance, level: 1, lowerBetter: true, extra: 'finance' },
-          { key: 'mgmt', group: 'pl', label: 'Chi phí quản lý', plan: null, actual: ex.mgmt, level: 1, lowerBetter: true, extra: 'mgmt' },
-          { key: 'other', group: 'pl', label: 'Chi phí khác', plan: null, actual: ex.other, level: 1, lowerBetter: true, extra: 'other' },
-        ] as CloseLine[])
-      : []),
-    { key: 'profit', group: 'pl', label: 'Lợi nhuận gộp', plan: pr - pc, actual: ar - ac, level: 0, bold: true, noRatio: true },
-    { key: 'margin', group: 'pl', label: 'Tỷ suất lợi nhuận gộp', plan: m(pr - pc, pr), actual: m(ar - ac, ar) ?? 0, level: 0, pct: true },
+    { key: 'chung', group: 'pl', label: 'Chi phí chung (phân bổ từ sheet Chi phí chung)', plan: null, actual: aChung, level: 1, lowerBetter: true },
+    { key: 'finance', group: 'pl', label: 'Chi phí tài chính', plan: null, actual: exV.finance, level: 1, lowerBetter: true, extra: 'finance', pendingExtra: pending },
+    { key: 'mgmt', group: 'pl', label: 'Chi phí quản lý', plan: null, actual: exV.mgmt, level: 1, lowerBetter: true, extra: 'mgmt', pendingExtra: pending },
+    { key: 'other', group: 'pl', label: 'Chi phí khác', plan: null, actual: exV.other, level: 1, lowerBetter: true, extra: 'other', pendingExtra: pending },
+    { key: 'pbt', group: 'pl', label: 'Lợi nhuận trước thuế', plan: pr - pc, actual: pbt, level: 0, bold: true, noRatio: true },
+    { key: 'pbtMargin', group: 'pl', label: 'Tỷ suất lợi nhuận trước thuế', plan: m(pr - pc, pr), actual: m(pbt, ar) ?? 0, level: 0, pct: true },
     { key: 'in', group: 'cash', label: 'Tiền thu về', plan: pCash, actual: aCash, level: 0 },
     { key: 'out', group: 'cash', label: 'Tiền chi ra', plan: pc, actual: ac, level: 0, lowerBetter: true },
     { key: 'net', group: 'cash', label: 'Dòng tiền thuần (Thu − Chi)', plan: pCash - pc, actual: aCash - ac, level: 0, bold: true, noRatio: true },
@@ -177,9 +186,10 @@ export const closeSummary = (p: BizProject, asOf = iso(), extraIn?: Partial<Pick
     time,
     lastActualMonth: a.reduce((mm, r) => (r.month > mm ? r.month : mm), ''),
     revenue: { plan: pr, actual: ar },
-    cost: { plan: pc, actual: ac },
-    profit: { plan: pr - pc, actual: ar - ac },
-    margin: { plan: m(pr - pc, pr), actual: m(ar - ac, ar) },
+    cost: { plan: pc, actual: direct },
+    gross: { plan: pr - pc, actual: gross },
+    profit: { plan: pr - pc, actual: pbt },
+    margin: { plan: m(pr - pc, pr), actual: m(pbt, ar) },
     mgmtLedger: aMg,
     hasExtra: !!ex,
     net: { plan: pCash - pc, actual: aCash - ac },

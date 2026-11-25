@@ -1316,9 +1316,8 @@ const FIN_ROWS: FinRow[] = [
   { label: { plan: 'Chi dự kiến', actual: 'Chi thực tế' }, get: (r) => totalCost(r), labelCls: 'text-rose-800', drill: { kind: 'cost' } },
   { label: { plan: 'Chi cho dự án sản xuất (SX)', actual: 'Chi cho dự án sản xuất (SX)' }, get: (r) => r.costSx, labelCls: 'text-rose-700', sub: true, drill: { kind: 'cost', part: 'sx' } },
   { label: { plan: 'Chi cho dự án kinh doanh (KD)', actual: 'Chi cho dự án kinh doanh (KD)' }, get: (r) => r.costKd, labelCls: 'text-rose-700', sub: true, drill: { kind: 'cost', part: 'kd' } },
-  { label: { plan: 'Chi phí chung', actual: 'Chi phí chung' }, get: (r) => r.costChung || 0, labelCls: 'text-rose-700', sub: true, drill: { kind: 'cost', part: 'chung' }, only: 'actual' },
   { label: { plan: 'Chi phí quản lý', actual: 'Chi phí quản lý' }, get: (r) => r.costMgmt || 0, labelCls: 'text-rose-700', sub: true, drill: { kind: 'cost', part: 'mgmt' }, only: 'actual' },
-  { label: { plan: 'Chi phí vận hành chung', actual: 'Chi phí vận hành chung' }, get: (r) => r.costAlloc || 0, labelCls: 'text-rose-700', sub: true, drill: { kind: 'cost', part: 'alloc' }, only: 'actual' },
+  { label: { plan: 'Chi phí chung', actual: 'Chi phí chung' }, get: (r) => r.costAlloc || 0, labelCls: 'text-rose-700', sub: true, drill: { kind: 'cost', part: 'alloc' }, only: 'actual' },
   { label: { plan: 'Khối lượng công việc (SP)', actual: 'Khối lượng công việc (SP)' }, get: (r) => r.workload, labelCls: 'text-indigo-800' },
 ];
 

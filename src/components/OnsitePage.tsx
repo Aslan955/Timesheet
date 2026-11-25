@@ -14,8 +14,8 @@ import {
   Plane, Briefcase, CalendarCheck, Clock, HeartHandshake, Columns3, RotateCcw,
 } from 'lucide-react';
 import { canCreateOnsite, creatableProjects,
-  EMPLOYEES, HCNS_MAIL, HODS, HOD_LABEL, LEAVES, OnsiteRec, PROJECTS, Slot, USERS, ZONE_SHORT, emp, endDate, fmtD, fmtDT, log, money, monthOf, nowIso, overlap, proj,
-  recRate, startDate,
+  EMPLOYEES, HCNS_MAIL, HODS, HOD_LABEL, LEAVES, OnsiteRec, PROJECTS, Slot, USERS, emp, endDate, fmtD, fmtDT, log, money, monthOf, nowIso, overlap, proj,
+  startDate,
 } from '../onsite/onsiteData';
 import { useOnsite } from '../onsite/OnsiteContext';
 import { Badge, ConfirmModal, FormData, HistoryModal, IconBtn, OnsiteFormModal, RejectModal, RoleSwitcher, Toast, closingLabel } from './onsite/OnsiteUi';
@@ -219,7 +219,7 @@ export const OnsiteRequestPanel: React.FC<{ embedded?: boolean; initialScope?: S
     const mail = mailText(data.hodId, data.projectId);
     const mailLog = submit ? [log(t, me.name, 'Gửi mail', `${mail} (Phụ lục 03 – bước 1)`)] : [];
     if (data.base) {
-      update(data.base.id, (x) => ({ ...x, projectId: data.projectId, address: data.address, zone: data.zone, regType: data.regType, description: data.description, hodId: data.hodId, attachment: data.attachment, slots: data.slots,
+      update(data.base.id, (x) => ({ ...x, projectId: data.projectId, regType: data.regType, description: data.description, hodId: data.hodId, attachment: data.attachment, slots: data.slots,
         hodStatus: newHod, history: [...x.history, log(t, me.name, 'Sửa', submit ? 'Sửa và gửi yêu cầu (chờ HOD)' : 'Sửa và lưu nháp'), ...mailLog] }));
     } else {
       setRecords((rs) => {
@@ -229,7 +229,7 @@ export const OnsiteRequestPanel: React.FC<{ embedded?: boolean; initialScope?: S
           return {
             id: 'r' + Math.random().toString(36).slice(2, 8), code: `ONS_${ymd}_${String(n).padStart(4, '0')}`, projectId: data.projectId, employeeId: eid,
             hodStatus: newHod, status: null, createdAt: t, createdBy: me.name, creatorId: me.id, isLocked: false,
-            address: data.address, zone: data.zone, regType: data.regType, description: data.description, hodId: data.hodId, attachment: data.attachment, slots: data.slots,
+            regType: data.regType, description: data.description, hodId: data.hodId, attachment: data.attachment, slots: data.slots,
             history: [log(t, me.name, submit ? 'Gửi yêu cầu' : 'Lưu nháp', submit ? 'Tạo đơn và gửi yêu cầu (chờ HOD duyệt)' : 'Tạo bản nháp'), ...mailLog],
           } as OnsiteRec;
         });
@@ -394,7 +394,7 @@ export const OnsiteRequestPanel: React.FC<{ embedded?: boolean; initialScope?: S
                   <tr className="bg-gray-50 text-gray-600">
                     <th rowSpan={2} className="px-2 border-r border-b border-gray-200 w-8"><input type="checkbox" checked={allChecked} onChange={() => setSelected(allChecked ? [] : rows.map((r) => r.id))} /></th>
                     <th rowSpan={2} className="px-2 border-r border-b border-gray-200 w-8">#</th>
-                    {['Mã đơn', 'Mã dự án', 'Tên dự án', 'Tháng', 'Ngày bắt đầu', 'Ngày kết thúc', 'Nhân viên đi onsite', 'Mã nhân viên', 'Mức hỗ trợ', 'Ngày tạo', 'Người tạo'].map((h) => (
+                    {['Mã đơn', 'Mã dự án', 'Tên dự án', 'Tháng', 'Ngày bắt đầu', 'Ngày kết thúc', 'Nhân viên đi onsite', 'Mã nhân viên', 'Ngày tạo', 'Người tạo'].map((h) => (
                       <th key={h} rowSpan={2} className="px-3 py-2 text-left font-semibold border-r border-b border-gray-200 whitespace-nowrap"><span className="flex items-center justify-between gap-2">{h}<Filter size={10} className="text-gray-400" /></span></th>
                     ))}
                     <th colSpan={3} className="px-3 py-1 font-semibold border-r border-b border-gray-200 bg-blue-50">HOD</th>
@@ -406,10 +406,10 @@ export const OnsiteRequestPanel: React.FC<{ embedded?: boolean; initialScope?: S
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.length === 0 && <tr><td colSpan={18} className="text-center text-gray-400 py-8">Không có dữ liệu</td></tr>}
+                  {rows.length === 0 && <tr><td colSpan={17} className="text-center text-gray-400 py-8">Không có dữ liệu</td></tr>}
                   {rows.map((r, i) => {
                     const p = proj(r.projectId), e = emp(r.employeeId);
-                    const owner = ownerBranch(r), lock = closed(r), rt = recRate(r);
+                    const owner = ownerBranch(r), lock = closed(r);
                     return (
                       <tr key={r.id} className={`border-b border-gray-200 hover:bg-blue-50 ${selected.includes(r.id) ? 'bg-blue-50/60' : ''}`}>
                         <td className="px-2 text-center border-r border-gray-200"><input type="checkbox" checked={selected.includes(r.id)} onChange={() => setSelected(selected.includes(r.id) ? selected.filter((x) => x !== r.id) : [...selected, r.id])} /></td>
@@ -425,11 +425,6 @@ export const OnsiteRequestPanel: React.FC<{ embedded?: boolean; initialScope?: S
                         <td className="px-3 border-r border-gray-200 text-center">{fmtD(endDate(r))}</td>
                         <td className="px-3 border-r border-gray-200 whitespace-nowrap">{e.name}</td>
                         <td className="px-3 border-r border-gray-200">{e.code}</td>
-                        <td className="px-3 border-r border-gray-200 whitespace-nowrap">
-                          {rt.rate > 0
-                            ? <span title={rt.why}><span className="text-gray-500">{ZONE_SHORT[r.zone]}</span> · <b>{money(rt.rate)}</b></span>
-                            : <span title={rt.why} className="text-amber-700 underline decoration-dotted cursor-help">Không hưởng</span>}
-                        </td>
                         <td className="px-3 border-r border-gray-200 whitespace-nowrap">{fmtDT(r.createdAt)}</td>
                         <td className="px-3 border-r border-gray-200 whitespace-nowrap">{r.createdBy}</td>
                         <td className="px-3 border-r border-gray-200 whitespace-nowrap">{r.hodApprovedBy || ''}</td>
@@ -524,12 +519,12 @@ const RuleNote: React.FC = () => (
         <div>
           <div className="font-semibold">Thay đổi trên màn này</div>
           <ul className="list-disc ml-4 space-y-0.5">
-            <li>Form thêm trường bắt buộc <b>Địa bàn / khoảng cách từ trụ sở</b> (để trống khi tạo mới). Form hiện ngay mức hưởng theo từng nhân viên.</li>
+            <li><b>Một đơn nhiều địa điểm</b>: bảng lịch trình có cột bắt buộc <b>Địa điểm làm việc</b> + <b>Khoảng cách từ trụ sở</b> cho từng ngày (thay cho 1 địa điểm / 1 khoảng cách của cả đơn); mức hỗ trợ tính theo khoảng cách của từng ngày. Thanh <b>Địa điểm chung</b>: dòng mới và lịch tự sinh theo tuần / tháng tự lấy, ngày ở nơi khác thì bấm "Áp cho ngày…" chọn các ngày đó (hoặc sửa riêng). <b>Thêm ngày</b> chép giờ, địa điểm, khoảng cách của dòng trước.</li>
             <li><b>Quyền tạo đơn</b>: chỉ <b>PM dự án</b> (dự án mình quản lý), <b>HOD</b> (dự án thuộc khối, hoặc dự án khối khác mà mình làm PM), <b>HR</b>, <b>Admin</b>. Nhân viên thường và PMO không tạo được; PMO vẫn duyệt như code (code hiện cho cả PMO tạo và chọn mọi dự án).</li>
             <li>Chip nhân viên hiện loại HĐ; HĐ thực tập / cộng tác viên có cảnh báo vàng nhưng <b>vẫn cho đăng ký</b> (đơn không được tính phụ cấp).</li>
-            <li>Grid thêm cột <b>Mức hỗ trợ</b> (địa bàn + số tiền, hoặc "Không hưởng" kèm lý do khi rê chuột) và <b>Chốt onsite</b>.</li>
+            <li>Grid thêm cột <b>Chốt onsite</b>. Mức hỗ trợ không hiện trên grid — xem trong chi tiết đơn (theo từng khoảng cách) và ở Báo cáo Onsite.</li>
             <li><b>Gửi yêu cầu</b> (từ form hoặc nút trên grid) = bước B1: mô phỏng gửi mail cho HOD, cc {HCNS_MAIL}, ghi vào lịch sử đơn.</li>
-            <li>Việc <b>chốt onsite</b> chuyển sang màn <b>Báo cáo Onsite</b>: HCNS chốt từng dòng / nhiều dòng (gắn kỳ chốt cho đơn, bỏ chốt được khi kỳ chưa hoàn tất) rồi hoàn tất chốt tháng. Payroll chỉ đọc số đã hoàn tất chốt.</li>
+            <li>Việc <b>chốt onsite</b> chuyển sang màn <b>Báo cáo Onsite</b>: HCNS chốt từng dòng / nhiều dòng (gắn kỳ chốt cho đơn) — chốt là số vào Payroll ngay, không có bước hoàn tất tháng. Bỏ chốt được đến khi kỳ lương cùng tháng được duyệt.</li>
             <li><b>Đơn đã chốt bị khoá</b>: không còn Sửa / Xoá / Gửi yêu cầu / Duyệt / Từ chối trên grid và popup, chỉ còn Xem + Lịch sử. Duyệt / Từ chối hàng loạt bỏ qua đơn đã chốt và báo số đơn bị bỏ qua.</li>
           </ul>
         </div>

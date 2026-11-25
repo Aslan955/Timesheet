@@ -174,7 +174,7 @@ export const ProjectCloseModal: React.FC<{
             <KpiBox label="Doanh thu thực tế" value={money(s.revenue.actual)} valueText={money(s.revenue.actual)} badge={s.revenue.plan ? pct1(s.revenue.actual / s.revenue.plan) : undefined} tone={s.revenue.actual >= s.revenue.plan ? 'good' : 'bad'} sub={`Kế hoạch ${money(s.revenue.plan)}`} />
             <KpiBox label="Chi phí thực tế" value={money(s.cost.actual)} valueText={money(s.cost.actual)} badge={s.cost.plan ? pct1(s.cost.actual / s.cost.plan) : undefined} tone={s.cost.actual <= s.cost.plan ? 'good' : 'bad'} sub={`Kế hoạch ${money(s.cost.plan)}`} />
             <KpiBox
-              label={lossy ? 'Lỗ thực tế' : 'Lãi thực tế'}
+              label={lossy ? 'Lỗ trước thuế thực tế' : 'Lợi nhuận trước thuế thực tế'}
               value={<span className={lossy ? 'text-rose-600' : 'text-emerald-700'}>{signed(s.profit.actual)}</span>}
               valueText={signed(s.profit.actual)}
               badge={pct1(s.margin.actual)}
@@ -242,7 +242,7 @@ export const ProjectCloseModal: React.FC<{
               </p>
             )}
             <p className="px-3 py-1.5 border-t border-slate-200 text-[11.5px] text-slate-500">
-              Kế hoạch: {s.planSource === 'monthly' ? 'kế hoạch theo tháng đã import' : 'PAKD đã duyệt (chưa có kế hoạch tháng)'} · Thực tế: số Kế toán import{s.lastActualMonth ? ` đến tháng ${mmyy(s.lastActualMonth)}` : ''} · Đơn vị: VNĐ. Chi phí chung{s.hasExtra ? ', chi phí tài chính / quản lý / khác (Kế toán nhập)' : ''} không có trong kế hoạch; Tổng chi phí thực tế đã gồm chi phí vận hành chung phân bổ và {s.hasExtra ? 'các khoản Kế toán nhập' : 'chi phí quản lý phân bổ'}.
+              Kế hoạch: {s.planSource === 'monthly' ? 'kế hoạch theo tháng đã import' : 'PAKD đã duyệt (chưa có kế hoạch tháng)'} · Thực tế: số Kế toán import{s.lastActualMonth ? ` đến tháng ${mmyy(s.lastActualMonth)}` : ''} · Đơn vị: VNĐ. Chi phí chung, chi phí tài chính / quản lý / khác không có trong kế hoạch; Chi phí chung = phân bổ từ sheet Chi phí chung riêng; Lợi nhuận trước thuế = Doanh thu − Tổng chi phí − CP tài chính − CP quản lý − CP khác{s.hasExtra ? '' : ' (chưa có số Kế toán nhập: CP quản lý tạm lấy sổ CP quản lý phân bổ, CP tài chính / khác = 0)'}; Tổng chi phí = SX + KD + Chi phí chung; Tiền chi ra gồm cả 3 khoản Kế toán nhập.
             </p>
           </div>
 
@@ -370,12 +370,12 @@ const CompareTable: React.FC<{ lines: CloseLine[]; time: ReturnType<typeof close
     const d = l.plan === null ? null : l.actual - l.plan;
     const neg = (n: number) => (n < 0 ? 'text-rose-600' : '');
     return (
-      <tr key={l.key} className={`${erp.tr} ${l.key === 'profit' || l.key === 'net' ? 'bg-[#fffbea]' : ''}`}>
+      <tr key={l.key} className={`${erp.tr} ${l.key === 'profit' || l.key === 'pbt' || l.key === 'net' ? 'bg-[#fffbea]' : ''}`}>
         <td className={`${erp.td} border-l-0 ${l.level ? 'pl-7 text-slate-600' : ''} ${l.bold ? 'font-bold text-slate-900' : ''}`}>
           {l.label}
           {l.extra && (
             <span className="ml-1.5 text-[10.5px] px-1 py-px rounded-[2px] border border-amber-300 bg-amber-50 text-amber-700 align-middle">
-              Kế toán nhập{edit ? ' *' : ''}
+              {l.pendingExtra && !edit ? 'Chờ Kế toán nhập' : `Kế toán nhập${edit ? ' *' : ''}`}
             </span>
           )}
         </td>

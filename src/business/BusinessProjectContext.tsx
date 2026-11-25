@@ -729,7 +729,7 @@ const seedActual = (plan: BizMonthRow[], k: Ratios): BizMonthRow[] =>
         cashIn: wave(r.cashIn * k.cashIn),
         costSx: wave(r.costSx * k.cost),
         costKd: wave(r.costKd * k.cost),
-        costChung: wave(r.costSx * k.cost * 0.04), // chi phí chung ≈ 4% chi SX (điện nước, thuê VP, văn phòng phẩm)
+        costChung: 0, // chi phí chung đã tách sang sheet Chi phí vận hành chung — sổ Chi thực tế không còn cột này
         // Kế toán tính ngoài và import theo dự án: CP vận hành khối phân bổ ≈ 3%, CP quản lý ≈ 2% chi trực tiếp
         costAlloc: Math.round((wave(r.costSx * k.cost) + wave(r.costKd * k.cost)) * 0.03 / 1000) * 1000,
         costMgmt: Math.round((wave(r.costSx * k.cost) + wave(r.costKd * k.cost)) * 0.02 / 1000) * 1000,
@@ -1267,7 +1267,7 @@ const seedLedger = (projects: BizProject[]): Ledger => {
   projects.forEach((p) =>
     p.actual.forEach((r, i) => {
       const mm = `${+m0(r.month)}/${r.month.slice(0, 4)}`;
-      if (r.costAlloc) opex.push({ id: `OP-${p.id}-${r.month}`, ver: 4, projectCode: p.productionCode, month: r.month, value: r.costAlloc, note: `Phân bổ chi phí vận hành chung khối ${p.division} tháng ${mm}`, division: p.division });
+      if (r.costAlloc) opex.push({ id: `OP-${p.id}-${r.month}`, ver: 4, projectCode: p.productionCode, month: r.month, value: r.costAlloc, note: `Phân bổ chi phí chung khối ${p.division} tháng ${mm}`, division: p.division });
       if (r.costMgmt) mgmt.push({ id: `MG-${p.id}-${r.month}`, ver: 5, projectCode: p.productionCode, month: r.month, value: r.costMgmt, note: `Phân bổ chi phí quản lý tháng ${mm}` });
       const [y, m] = r.month.split('-');
       const prevM = +m === 1 ? `12.${+y - 1}` : `${+m - 1}.${y}`;
@@ -1990,7 +1990,7 @@ export const BusinessProjectProvider: React.FC<{ children: React.ReactNode }> = 
       projectCode: a.projectCode,
       month: sheet.month,
       value: a.value,
-      note: `Phân bổ chi phí vận hành chung khối ${sheet.division} tháng ${mm} (${(a.ratio * 100).toFixed(2)}% chi phí khối)`,
+      note: `Phân bổ chi phí chung khối ${sheet.division} tháng ${mm} (${(a.ratio * 100).toFixed(2)}% chi phí khối)`,
       division: sheet.division,
     }));
   };

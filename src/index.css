@@ -83,3 +83,76 @@ html {
 @media (prefers-reduced-motion: reduce) {
   .bday-marquee { animation: none !important; }
 }
+
+/* MarCom Box: hiệu ứng khi slide xuất hiện — chọn riêng cho từng slide (--fx-dur: thời lượng hiệu ứng, --slide-dur: thời gian slide) */
+.mbx-in { animation-duration: var(--fx-dur, 600ms); animation-timing-function: cubic-bezier(.22, .61, .36, 1); animation-fill-mode: both; }
+.mbx-fx-fade { animation-name: mbx-fade; }
+.mbx-fx-slide { animation-name: mbx-slide; }
+.mbx-fx-slide-up { animation-name: mbx-slide-up; }
+.mbx-fx-zoom { animation-name: mbx-zoom; }
+.mbx-fx-flip { animation-name: mbx-flip; backface-visibility: hidden; }
+.mbx-fx-kenburns { animation: mbx-fade var(--fx-dur, 600ms) ease both, mbx-kenburns var(--slide-dur, 5s) linear both; }
+.mbx-fx-none { animation: none; }
+[data-paused='1'] .mbx-fx-kenburns { animation-play-state: running, paused; }
+@keyframes mbx-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mbx-slide { from { opacity: .4; transform: translateX(100%); } to { opacity: 1; transform: none; } }
+@keyframes mbx-slide-up { from { opacity: .4; transform: translateY(100%); } to { opacity: 1; transform: none; } }
+@keyframes mbx-zoom { from { opacity: 0; transform: scale(1.15); } to { opacity: 1; transform: none; } }
+@keyframes mbx-flip { from { opacity: 0; transform: rotateY(-90deg); } to { opacity: 1; transform: none; } }
+@keyframes mbx-kenburns { from { transform: scale(1); } to { transform: scale(1.06); } }
+@media (prefers-reduced-motion: reduce) {
+  .mbx-in { animation: none !important; }
+}
+
+/* MarCom Box: hiệu ứng trên màn của slide (SlideOverlay.tsx) — hạt rơi / bay lên / lấp lánh / pháo hoa, không bắt chuột */
+.mbx-ov {
+  position: absolute; inset: 0; z-index: 3; overflow: hidden; pointer-events: none; border-radius: 1rem;
+  /* hạt hiện / tan dần ở mép trên, mép dưới */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 9%, #000 88%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 9%, #000 88%, transparent 100%);
+}
+.mbx-ov-back { z-index: 0; }
+.mbx-g { display: block; line-height: 1; font-style: normal; filter: drop-shadow(0 2px 3px rgba(15, 23, 42, .16)); }
+/* pháo giấy lật 3D như giấy thật (lớp trong lật, lớp ngoài lắc ngang) */
+.mbx-cf { display: block; animation: mbx-flutter var(--fl, 1.2s) linear infinite; }
+@keyframes mbx-flutter { from { transform: rotateX(0) rotateY(0); } to { transform: rotateX(360deg) rotateY(180deg); } }
+.mbx-p { position: absolute; top: -12%; animation: mbx-fall var(--d, 6s) linear var(--dl, 0s) infinite; }
+.mbx-p > i { display: block; animation: mbx-sway var(--sd, 3s) ease-in-out infinite alternate; }
+.mbx-p-rise { top: auto; bottom: -18%; animation-name: mbx-rise; }
+@keyframes mbx-fall { to { top: 112%; } }
+@keyframes mbx-rise { to { bottom: 118%; } }
+@keyframes mbx-sway {
+  from { transform: translateX(calc(var(--sx, 12px) * -1)) rotate(0deg); }
+  to { transform: translateX(var(--sx, 12px)) rotate(var(--rot, 0deg)); }
+}
+.mbx-tw { position: absolute; line-height: 1; animation: mbx-twinkle var(--d, 2s) ease-in-out var(--dl, 0s) infinite; }
+@keyframes mbx-twinkle { 0%, 100% { opacity: 0; transform: scale(.3) rotate(0deg); } 50% { opacity: 1; transform: scale(1) rotate(20deg); } }
+.mbx-fw { position: absolute; width: 0; height: 0; }
+.mbx-fw > i {
+  position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; border-radius: 50%;
+  animation: mbx-burst var(--d, 2s) cubic-bezier(.15, .7, .3, 1) var(--dl, 0s) infinite;
+}
+@keyframes mbx-burst {
+  0% { opacity: 0; transform: rotate(var(--a)) translateX(0) scale(1); }
+  8% { opacity: 1; }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: rotate(var(--a)) translateX(var(--r, 60px)) scale(.4); }
+}
+/* Đèn lồng treo dây đung đưa · bóng nảy mép dưới · bay ngang nhấp nhô */
+.mbx-hang { position: absolute; top: 0; display: flex; flex-direction: column; align-items: center; line-height: 1; transform-origin: 50% 0; animation: mbx-swing var(--d, 3s) ease-in-out var(--dl, 0s) infinite alternate; }
+.mbx-hang::before { content: ''; width: 1px; height: var(--len, 16px); background: rgba(120, 53, 15, .5); }
+@keyframes mbx-swing { from { transform: rotate(-9deg); } to { transform: rotate(9deg); } }
+.mbx-bn { position: absolute; bottom: 4%; line-height: 1; animation: mbx-bounce var(--d, 1.3s) var(--dl, 0s) infinite; }
+@keyframes mbx-bounce {
+  0%, 100% { transform: translateY(0) scale(1.15, .85); animation-timing-function: cubic-bezier(.2, .6, .4, 1); }
+  8% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(calc(var(--hgt, 100px) * -1)) rotate(180deg); animation-timing-function: cubic-bezier(.6, 0, .8, .4); }
+  96% { transform: translateY(0) rotate(360deg); }
+}
+.mbx-fly { position: absolute; left: -12%; line-height: 1; animation: mbx-fly var(--d, 8s) linear var(--dl, 0s) infinite; }
+.mbx-fly > i { display: block; font-style: normal; animation: mbx-wave 1.1s ease-in-out infinite alternate; }
+@keyframes mbx-fly { to { left: 112%; } }
+@keyframes mbx-wave { from { transform: translateY(-10px); } to { transform: translateY(10px); } }
+@media (prefers-reduced-motion: reduce) {
+  .mbx-ov { display: none; }
+}

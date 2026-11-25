@@ -2,8 +2,8 @@
  * PayRoll › Payroll (/Payroll) — mô phỏng ĐÚNG logic code hiện tại (nhánh plan/qa-ba-docs, 17/11/2026).
  * Nguồn: SalaryService.cs (SS), SalaryApprovalService.cs (SAS), MailService.cs (MS), Components/Salary/*.
  * Không đề xuất, không sửa bất thường — tái hiện nguyên hành vi. NGOẠI TRỪ onsite (ĐỀ XUẤT luồng mới):
- *  PC onsite lấy số đã chốt ở PayRoll › Báo cáo Onsite (Phụ lục 03, kho src/onsite/*); Payroll không tự tính / gắn đơn,
- *  và chỉ duyệt được kỳ lương khi kỳ chốt onsite cùng tháng đã hoàn tất.
+ *  PC onsite lấy số các dòng đã chốt ở PayRoll › Báo cáo Onsite (Phụ lục 03, kho src/onsite/*) — HR bấm Chốt là vào ngay;
+ *  Payroll không tự tính / gắn đơn. Duyệt kỳ lương ⇒ tháng onsite đó khoá, dòng chưa chốt chuyển sang kỳ sau.
  * NV onsite ↔ NV payroll map theo mã NV (EMPLOYEES.code = UserProfile.StaffId). Tên người, email, ngân hàng là giả.
  */
 import { ClosingLine, EMPLOYEES, INIT_CLOSINGS, OnsiteClosing, closingIdOf, payrollFromClosing } from '../../onsite/onsiteData';
@@ -447,8 +447,6 @@ export const MSG = {
   PeriodNotFound: 'Không tìm thấy kỳ lương.', // VI:2377
   ApproveError: 'Không duyệt được kỳ lương. Chưa có dữ liệu nào được lưu, vui lòng thử lại hoặc liên hệ quản trị viên.', // VI:2379
   RejectError: 'Không từ chối được kỳ lương. Dữ liệu chưa bị thay đổi, vui lòng thử lại hoặc liên hệ quản trị viên.', // VI:2380
-  /** ĐỀ XUẤT: chặn duyệt / thu thập lại khi Báo cáo Onsite cùng tháng chưa hoàn tất chốt. */
-  OnsiteNotClosed: (m: number, y: number, action = 'duyệt lương') => `Báo cáo Onsite tháng ${pad(m)}/${y} chưa hoàn tất chốt — chốt onsite trước khi ${action}`,
   AbpAuth: (perms: string) => `Required permissions are not granted. At least one of these permissions must be granted: ${perms}`,
 };
 
@@ -596,23 +594,14 @@ export function mapClosingLines(users: UserProfile[], lines: ClosingLine[]): { b
 export const closingsOf = (ctx: { closings?: OnsiteClosing[] }) => ctx.closings ?? INIT_CLOSINGS;
 export interface OnsiteSourceInfo {
   closingId: string;
-  approved: boolean;
-  approvedAt: string | null;
-  approvedBy: string | null;
+  /** Số người / tiền của các dòng đã chốt ở Báo cáo Onsite. */
   lines: number;
   total: number;
 }
-/** Tình trạng kỳ chốt onsite của tháng (y, m) — hiển thị trên trang Detail. */
+/** Số onsite đã chốt của tháng (y, m) — hiển thị trên trang Detail. */
 export function onsiteSourceInfo(closings: OnsiteClosing[], y: number, m: number): OnsiteSourceInfo {
-  const { closing, lines } = payrollFromClosing(closings, y, m);
-  return {
-    closingId: closingIdOf(y, m),
-    approved: closing?.status === 'APPROVED',
-    approvedAt: closing?.approvedAt ?? null,
-    approvedBy: closing?.approvedBy ?? null,
-    lines: lines.length,
-    total: lines.reduce((t, l) => t + l.amount, 0),
-  };
+  const { lines } = payrollFromClosing(closings, y, m);
+  return { closingId: closingIdOf(y, m), lines: lines.length, total: lines.reduce((t, l) => t + l.amount, 0) };
 }
 
 /** Ứng viên lương (QuerySalaryCandidates, SS:689-717). */
@@ -631,7 +620,7 @@ const inPayrollWindow = (approve: string | null, statusId: number, date: string,
 
 /**
  * CreateSalaryRecordsCoreAsync — phần TÍNH (không guard, không ghi). Đúng thứ tự B1…B14 (SS:354-650).
- * @param closing kỳ chốt onsite của tháng (y, m) lấy từ kho onsite — chưa APPROVED ⇒ PC onsite = 0.
+ * @param closing kỳ chốt onsite của tháng (y, m) lấy từ kho onsite — PC onsite = số các dòng đã chốt (chưa chốt dòng nào ⇒ 0).
  * @param filterIds listEmployee — chỉ áp khi (isReCollect || isSendMail) và không rỗng.
  */
 export function calcPeriod(db: SalaryDb, year: number, month: number, now: string, closing: OnsiteClosing | null | undefined, filterIds?: string[] | null, isReCollect = false) {
@@ -652,7 +641,7 @@ export function calcPeriod(db: SalaryDb, year: number, month: number, now: strin
   const hourlyOTs = db.hourlyOTs.filter((h) => inPayrollWindow(h.HRApproveDate, h.HRStatusId, h.Date, startOfMonth, startOfNextMonth));
   const bonus = db.bonuses.filter((b) => b.Month === month && b.Year === year && b.PMOStatusId === OT_APPROVED);
   const backpay = db.backpays.filter((b) => !b.IsDeleted && b.Month === month && b.Year === year && b.StatusId === OT_APPROVED);
-  const onsiteLines = closing && closing.status === 'APPROVED' ? closing.saved || [] : [];
+  const onsiteLines = closing?.saved || [];
   const { byUser: onsite, unmapped: onsiteUnmapped } = mapClosingLines(db.users, onsiteLines);
   const holidays = db.holidays.filter((h) => !h.IsDeleted && h.HasHolidayBonus && !!h.BonusPaymentDate && Number(h.BonusPaymentDate.slice(0, 4)) === year && Number(h.BonusPaymentDate.slice(5, 7)) === month);
   const histories = db.histories.filter((h) => !h.IsDeleted);
@@ -839,8 +828,6 @@ export function createSalaryRecords(
     if (isLockedInDb(db0, year, month)) throw new ServiceError(MSG.PeriodLocked);
     if (isSendMail && !isApprove && !db0.periods.some((x) => !x.IsDeleted && x.Year === year && x.Month === month && x.StatusId === PAY_APPROVED))
       throw new ServiceError(MSG.SendMailNotApproved);
-    // ĐỀ XUẤT: thu thập lại ghi đè PC onsite ⇒ cần kỳ chốt đã hoàn tất (tránh ghi 0 khi kỳ chốt bị mở lại)
-    if (isReCollect && closingFor(ctx, year, month)?.status !== 'APPROVED') throw new ServiceError(MSG.OnsiteNotClosed(month, year, 'thu thập lại'));
   }
   const db = clone(db0);
   const yStr = String(year);
@@ -922,8 +909,6 @@ export function svcApprove(db0: SalaryDb, ctx: Ctx, id: number): { db: SalaryDb;
   ensureCanApprove(ctx.profile);
   const e0 = db0.periods.find((x) => x.Id === id && !x.IsDeleted);
   if (!e0 || (e0.StatusId !== PAY_REQUESTED && e0.StatusId !== PAY_REJECTED) || e0.IsLocked) return { db: db0, ok: false, reusedExisting: false };
-  // ĐỀ XUẤT: phải hoàn tất chốt Báo cáo Onsite cùng tháng rồi mới duyệt lương
-  if (closingFor(ctx, e0.Year, e0.Month)?.status !== 'APPROVED') throw new ServiceError(MSG.OnsiteNotClosed(e0.Month, e0.Year));
   // Duyệt lại kỳ Rejected khi đã có kỳ khác cùng tháng (≠ Rejected) ⇒ đâm unique index UX_SalaryApproval_Year_Month ⇒ rollback
   if (db0.periods.some((x) => x.Id !== id && !x.IsDeleted && x.Year === e0.Year && x.Month === e0.Month && x.StatusId !== PAY_REJECTED)) {
     throw new ServiceError(MSG.ApproveError);
@@ -1413,11 +1398,6 @@ export function baseDb(): SalaryDb {
 }
 
 export const HR_CTX = (now: string, closings?: OnsiteClosing[]): Ctx => ({ profile: profileOf('hr'), now, closings });
-/** Chỉ dùng khi dựng dữ liệu mẫu: kho onsite không có kỳ chốt 08/2026 ⇒ thêm kỳ chốt rỗng (đã chốt, không ai onsite) để duyệt được kỳ lương 08. */
-const SEED_CLOSINGS: OnsiteClosing[] = [
-  { id: closingIdOf(2026, 8), year: 2026, month: 8, status: 'APPROVED', approvedAt: '2026-09-04T16:00', approvedBy: 'Dữ liệu mẫu', saved: [] },
-  ...INIT_CLOSINGS,
-];
 
 /**
  * Dữ liệu ban đầu theo mục 8.3: 08/2026 Approved + khoá; 09/2026 Approved chưa khoá; 10/2026 Requested.
@@ -1425,7 +1405,7 @@ const SEED_CLOSINGS: OnsiteClosing[] = [
  */
 export function seedDb(): SalaryDb {
   let db = baseDb();
-  const step = (now: string, f: (d: SalaryDb, c: Ctx) => SalaryDb) => (db = f(db, HR_CTX(now, SEED_CLOSINGS)));
+  const step = (now: string, f: (d: SalaryDb, c: Ctx) => SalaryDb) => (db = f(db, HR_CTX(now, INIT_CLOSINGS)));
   step('2026-09-01T08:30:00', (d, c) => svcCreatePeriod(d, c, 2026, 8).db);
   step('2026-09-05T09:00:00', (d, c) => svcApprove(d, c, 1).db);
   step('2026-09-10T17:00:00', (d, c) => svcLock(d, c, 1).db);

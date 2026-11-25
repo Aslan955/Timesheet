@@ -6,8 +6,8 @@
  *  • Dòng tiền thu — "BÁO CÁO DÒNG TIỀN THU TRONG KỲ" (sổ tiền gửi ngân hàng)
  *      Ngày hạch toán | Diễn giải | Số tiền | Tên đối tượng | Mã công trình | Tên công trình | Mã đơn vị | Tên đơn vị
  *  • Chi thực tế — "BÁO CÁO CHI TIẾT LÃI LỖ THEO CÔNG TRÌNH" (tháng lấy ở dòng "Tháng M năm YYYY" đầu file)
- *      Mã công trình | Diễn giải | Sản xuất | CP bán hàng | Chi phí chung
- *      Chi thực tế của dự án = Sản xuất + CP bán hàng + Chi phí chung (file cũ không có cột Chi phí chung → coi = 0)
+ *      Mã công trình | Diễn giải | Sản xuất | CP bán hàng
+ *      Chi thực tế của dự án = Sản xuất + CP bán hàng. Chi phí chung tách sang sheet Chi phí vận hành chung — file cũ còn cột Chi phí chung thì bỏ qua cột đó.
  *      (vẫn nhận mẫu cũ: Mã dự án | Tháng (MM/yyyy) | Chi sản xuất | Chi kinh doanh | Ghi chú)
  *  • Chi phí vận hành chung (VHC) — mẫu "IP chi phí VHC", 1 file = 1 khối × 1 tháng:
  *      "CHI PHÍ VẬN HÀNH CHUNG" · "Khối: G1" · "Tháng 9 năm 2026": Diễn giải | Số tiền | Tên đối tượng | Tên nhân viên … dòng "Cộng" (= tổng đem phân bổ)
@@ -133,10 +133,10 @@ const KINDS: { key: LedgerKind; label: string; icon: React.ElementType; title: s
     title: 'BÁO CÁO CHI TIẾT LÃI LỖ THEO CÔNG TRÌNH',
     sheet: 'BÁO CÁO CHI TIẾT LÃI LỖ',
     file: 'Mau_chi_thuc_te.xlsx',
-    head: ['Mã công trình', 'Diễn giải', 'Sản xuất', 'CP bán hàng', 'Chi phí chung'],
-    sample: ['022.061.2', 'Chi phí thuê nhân sự tháng 8.2026', 27000000, 0, 1500000],
-    cols: [16, 80, 18, 18, 18],
-    amounts: ['Chi sản xuất', 'Chi kinh doanh', 'Chi phí chung'],
+    head: ['Mã công trình', 'Diễn giải', 'Sản xuất', 'CP bán hàng'],
+    sample: ['022.061.2', 'Chi phí thuê nhân sự tháng 8.2026', 27000000, 0],
+    cols: [16, 80, 18, 18],
+    amounts: ['Chi sản xuất', 'Chi kinh doanh'],
     single: 'Chi phí',
   },
   {
@@ -272,7 +272,7 @@ const parseVhc = (wb: XLSX.WorkBook, fileName: string, projects: BizProject[], c
     projectCode: a.projectCode,
     month: m,
     value: a.value,
-    note: `Phân bổ chi phí vận hành chung khối ${div} tháng ${mm} (${(a.ratio * 100).toFixed(2)}% chi phí khối)`,
+    note: `Phân bổ chi phí chung khối ${div} tháng ${mm} (${(a.ratio * 100).toFixed(2)}% chi phí khối)`,
     division: div,
   }));
   return {
@@ -366,13 +366,14 @@ const parseWorkbook = (wb: XLSX.WorkBook, fileName: string, projects: BizProject
       chung: alloc ? -1 : col('chi phi chung', 'cp chung', 'chung'),
       note: col('ghi chu', 'dien giai'),
     };
-    const [aName, bName, cName] = kindOf(kind).amounts || ['Số tiền', '', ''];
+    const [aName, bName] = kindOf(kind).amounts || ['Số tiền', ''];
     // Không có cột Tháng → lấy kỳ ở dòng "Tháng M năm YYYY" phía trên tiêu đề
     const period = aoa.slice(0, hi).map(parsePeriodLine).find((m): m is string => !!m) || null;
     if (c.month < 0 && !period) return fail('Không xác định được tháng: file cần dòng "Tháng M năm YYYY" ở đầu (như báo cáo kế toán) hoặc cột "Tháng (MM/yyyy)".');
     if (c.sx < 0) return fail(`Thiếu cột "${aName}".`);
     if (!alloc && c.kd < 0) issues.push({ row: hi + 1, level: 'warn', msg: `Không có cột "${bName}" — coi ${bName} = 0.` });
-    if (!alloc && c.chung < 0) issues.push({ row: hi + 1, level: 'warn', msg: `Không có cột "${cName}" — coi ${cName} = 0.` });
+    // Chi phí chung đã tách sang sheet Chi phí vận hành chung ⇒ file còn cột này thì bỏ qua
+    if (!alloc && c.chung >= 0) issues.push({ row: hi + 1, level: 'warn', msg: 'File có cột "Chi phí chung" — bỏ qua (chi phí chung import ở tab Chi phí vận hành chung).' });
     aoa.slice(hi + 1).forEach((r, i) => {
       const row = hi + 2 + i;
       if (r.every((x) => String(x).trim() === '')) return;
@@ -381,16 +382,15 @@ const parseWorkbook = (wb: XLSX.WorkBook, fileName: string, projects: BizProject
       const month = c.month >= 0 ? parseMonth(r[c.month]) || period : period;
       const sx = parseNum(r[c.sx]);
       const kd = c.kd >= 0 ? parseNum(r[c.kd]) : 0;
-      const chung = c.chung >= 0 ? parseNum(r[c.chung]) : 0;
       if (!month) return void issues.push({ row, level: 'error', msg: `Tháng "${r[c.month]}" không hợp lệ (dùng MM/yyyy).` });
-      if (sx === null || kd === null || chung === null) return void issues.push({ row, level: 'error', msg: `${alloc ? aName : `${aName} / ${bName} / ${cName}`} không phải số.` });
+      if (sx === null || kd === null) return void issues.push({ row, level: 'error', msg: `${alloc ? aName : `${aName} / ${bName}`} không phải số.` });
       if (!code) {
-        if (sx || kd || chung) issues.push({ row, level: 'warn', msg: `Dòng không có mã công trình (${fmt(sx + kd + chung)}) — lưu vào sổ, không tính vào dự án.` });
+        if (sx || kd) issues.push({ row, level: 'warn', msg: `Dòng không có mã công trình (${fmt(sx + kd)}) — lưu vào sổ, không tính vào dự án.` });
         noCode++;
       } else track(code);
       const note = c.note >= 0 ? String(r[c.note] ?? '').trim() : '';
       if (alloc) entries.push({ id: `${prefix}-${stamp}-${i}`, ver: 0, projectCode: code, month, value: sx, note });
-      else entries.push({ id: `${prefix}-${stamp}-${i}`, ver: 0, projectCode: code, month, costSx: sx, costKd: kd, costChung: chung, note });
+      else entries.push({ id: `${prefix}-${stamp}-${i}`, ver: 0, projectCode: code, month, costSx: sx, costKd: kd, costChung: 0, note });
     });
   }
 
@@ -559,7 +559,7 @@ export const LedgerImportModal: React.FC<{ onClose: () => void; onDone: (summary
             <p className="mt-2 text-[11.5px] text-slate-500">
               <b>{k.title}</b> · cột: {k.head.join(' · ')}.{' '}
               {kind === 'cost'
-                ? 'Tháng lấy ở dòng "Tháng M năm YYYY" đầu file; Sản xuất → Chi SX, CP bán hàng → Chi KD, Chi phí chung → Chi phí chung; Chi thực tế = tổng 3 cột.'
+                ? 'Tháng lấy ở dòng "Tháng M năm YYYY" đầu file; Sản xuất → Chi SX, CP bán hàng → Chi KD; Chi thực tế = Sản xuất + CP bán hàng. Chi phí chung không import ở đây (đã tách sang tab Chi phí vận hành chung).'
                 : kind === 'opex'
                   ? 'Mỗi file = 1 khối × 1 tháng ("Khối: …", "Tháng M năm YYYY" ở đầu sheet), tổng ở dòng "Cộng". Hệ thống tự phân bổ cho các dự án của khối: Tỉ lệ = Chi phí mã sản xuất (.2, gồm mã con .2.x) của dự án trong tháng ÷ Tổng chi phí mã sản xuất của các dự án trong khối (sổ Chi thực tế; không tính mã kinh doanh .1); Phân bổ = Tỉ lệ × Tổng chi phí vận hành chung. Dự án không phát sinh chi phí trong tháng → 0 đ. Import lại Chi thực tế của tháng → tự phân bổ lại. Import lại cùng khối + tháng sẽ thay dữ liệu cũ.'
                 : kind === 'mgmt'
@@ -667,7 +667,6 @@ export const LedgerImportModal: React.FC<{ onClose: () => void; onDone: (summary
                             {k.amounts && (
                               <>
                                 <td className={`${erp.td} ${erp.num}`}>{fmt(b)}</td>
-                                <td className={`${erp.td} ${erp.num}`}>{fmt(c)}</td>
                                 <td className={`${erp.td} ${erp.num} border-r-0 font-semibold`}>{fmt(a + b + c)}</td>
                               </>
                             )}
@@ -681,7 +680,6 @@ export const LedgerImportModal: React.FC<{ onClose: () => void; onDone: (summary
                             {k.amounts && (
                               <>
                                 <td className={`${erp.td} ${erp.num}`}>{fmt(unassigned.b)}</td>
-                                <td className={`${erp.td} ${erp.num}`}>{fmt(unassigned.c)}</td>
                                 <td className={`${erp.td} ${erp.num} border-r-0`}>{fmt(unassigned.a + unassigned.b + unassigned.c)}</td>
                               </>
                             )}
@@ -696,7 +694,6 @@ export const LedgerImportModal: React.FC<{ onClose: () => void; onDone: (summary
                           {k.amounts && (
                             <>
                               <td className={`${erp.td} ${erp.num}`}>{fmt([...byProject.values()].reduce((s, x) => s + x.b, unassigned.b))}</td>
-                              <td className={`${erp.td} ${erp.num}`}>{fmt([...byProject.values()].reduce((s, x) => s + x.c, unassigned.c))}</td>
                               <td className={`${erp.td} ${erp.num} border-r-0`}>{fmt([...byProject.values()].reduce((s, x) => s + x.a + x.b + x.c, unassigned.a + unassigned.b + unassigned.c))}</td>
                             </>
                           )}
@@ -778,7 +775,6 @@ const LedgerList: React.FC<{ kind: LedgerKind; projects: BizProject[]; by: strin
           { h: 'Diễn giải', get: noteOf },
           { h: 'Sản xuất', num: true, get: amt(0) },
           { h: 'CP bán hàng', num: true, get: amt(1) },
-          { h: 'Chi phí chung', num: true, get: amt(2) },
         ]
       : kind === 'opex' || kind === 'mgmt'
       ? [{ h: 'Mã công trình', get: codeOf }, { h: 'Diễn giải', get: noteOf }, { h: 'Số tiền', num: true, get: amt(0) }]
@@ -920,7 +916,7 @@ const LedgerList: React.FC<{ kind: LedgerKind; projects: BizProject[]; by: strin
                     <td className={`${erp.td} max-w-[420px] truncate`} title={e.note}>
                       {e.note || <span className="text-slate-300">—</span>}
                     </td>
-                    {entryAmounts(e).slice(0, 'value' in e ? 1 : 3).map((v, j) => (
+                    {entryAmounts(e).slice(0, 'value' in e ? 1 : 2).map((v, j) => (
                       <td key={j} className={`${erp.td} ${erp.num} ${v ? 'font-semibold text-rose-700' : 'text-slate-400'}`}>{fmt(v)}</td>
                     ))}
                   </>

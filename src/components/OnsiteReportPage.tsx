@@ -1,14 +1,14 @@
 /**
- * PayRoll › Báo cáo Onsite (/OnsiteReport) — ĐỀ XUẤT: HCNS chốt onsite từng dòng / nhiều dòng rồi hoàn tất chốt tháng tại đây (Phụ lục 03).
- * Chốt xong: lưu bảng chốt (OnsiteClosing.saved) + gắn closingId cho đơn; Payroll chỉ đọc số đã chốt.
+ * PayRoll › Báo cáo Onsite (/OnsiteReport) — ĐỀ XUẤT: HCNS chốt onsite từng dòng / nhiều dòng tại đây (Phụ lục 03).
+ * Chốt = gắn closingId cho đơn ⇒ số vào Payroll ngay (không có bước hoàn tất tháng). Duyệt kỳ lương cùng tháng ⇒ tháng onsite khoá.
  * Dữ liệu lấy từ kho onsite dùng chung (đơn sửa / duyệt ở Quản lý Đơn từ hiện ngay ở đây).
  */
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, BookOpen, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Download, Eye, Filter, Lock, RefreshCw, Search, Table2, Unlock } from 'lucide-react';
 import {
-  ClosingDay, ClosingLine, EMPLOYEES, PROJECTS, OLD_RATE, OnsiteClosing, OnsiteRec, Period, RULE_FROM, USERS, ZONE_LABEL, ZONE_SHORT,
+  ClosingDay, ClosingLine, EMPLOYEES, PROJECTS, OLD_RATE, OnsiteClosing, OnsiteRec, RULE_FROM, USERS, ZONE_LABEL, ZONE_SHORT,
   canCloseOnsite, closingIdOf, closingName, computeClosing, dow, emp, evalClosing, fmtD, fmtDT, log, money, nowIso,
-  periodName, proj, rateOf, recMonth, reportStatus, RoleKey,
+  proj, rateOf, recMonth, reportStatus, RoleKey, slotOf,
 } from '../onsite/onsiteData';
 import { useOnsite } from '../onsite/OnsiteContext';
 import { Badge, ConfirmModal } from './onsite/OnsiteUi';
@@ -46,19 +46,6 @@ const ord = (c: { year: number; month: number }) => c.year * 12 + c.month;
 const PENDING_HOD = ['REQUESTED', 'APPROVED_PM'];
 
 // ───────────────────────── Logic chốt (hàm thuần — test được ngoài React) ─────────────────────────
-/** Chặn chốt khi còn kỳ chốt tháng trước đang mở (chốt theo thứ tự tháng). */
-export function closeGuard(closings: OnsiteClosing[], y: number, m: number): string | null {
-  const prev = closings.filter((c) => c.status === 'OPEN' && ord(c) < y * 12 + m).sort((a, b) => ord(a) - ord(b))[0];
-  return prev ? `Còn kỳ chốt ${closingName(prev)} đang mở — phải chốt tháng ${closingName(prev)} trước (chốt theo thứ tự tháng).` : null;
-}
-/** Chặn mở lại khi kỳ lương cùng tháng đã duyệt hoặc kỳ chốt tháng sau đã chốt. */
-export function reopenGuard(closings: OnsiteClosing[], periods: Period[], y: number, m: number): string | null {
-  const p = periods.find((x) => x.year === y && x.month === m && x.status === 'APPROVED');
-  if (p) return `Kỳ lương ${periodName(p)} đã duyệt — không mở lại chốt onsite của tháng đã trả lương. Đơn duyệt muộn tự tính vào kỳ sau; đơn duyệt nhầm không điều chỉnh.`;
-  const later = closings.filter((c) => c.status === 'APPROVED' && ord(c) > y * 12 + m).sort((a, b) => ord(a) - ord(b))[0];
-  if (later) return `Kỳ chốt ${closingName(later)} đã chốt — phải mở lại kỳ ${closingName(later)} trước.`;
-  return null;
-}
 const upsertClosing = (closings: OnsiteClosing[], c: OnsiteClosing) =>
   (closings.some((x) => x.id === c.id) ? closings.map((x) => (x.id === c.id ? c : x)) : [...closings, c]).sort((a, b) => ord(a) - ord(b));
 
@@ -79,7 +66,7 @@ export function applyCloseRecords(records: OnsiteRec[], closings: OnsiteClosing[
   const nextClosings = closings.some((c) => c.id === id) ? closings : upsertClosing(closings, { id, year: y, month: m, status: 'OPEN' });
   return { records: nextRecords, closings: nextClosings, count: nextRecords.filter((r, i) => r !== records[i]).length };
 }
-/** Bỏ chốt các đơn đã chọn (khi kỳ chưa hoàn tất): gỡ closingId, đơn mở khoá ở màn Đơn từ. */
+/** Bỏ chốt các đơn đã chọn (khi kỳ lương cùng tháng chưa duyệt): gỡ closingId, đơn mở khoá ở màn Đơn từ. */
 export function applyUncloseRecords(records: OnsiteRec[], ids: string[], y: number, m: number, by: string, at: string) {
   const id = closingIdOf(y, m);
   const nextRecords = records.map((r) => (!ids.includes(r.id) || r.closingId !== id ? r : {
@@ -87,22 +74,9 @@ export function applyUncloseRecords(records: OnsiteRec[], ids: string[], y: numb
   }));
   return { records: nextRecords, count: nextRecords.filter((r, i) => r !== records[i]).length };
 }
-/** Hoàn tất chốt tháng: lưu bảng chốt từ các đơn ĐÃ CHỐT; đơn chưa chốt chuyển sang kỳ chốt tháng sau (bổ sung). */
-export function applyFinalize(records: OnsiteRec[], closings: OnsiteClosing[], y: number, m: number, by: string, at: string) {
-  const id = closingIdOf(y, m);
-  const saved = computeClosing(records.filter((r) => r.closingId === id), closings, y, m);
-  const base = closings.find((c) => c.id === id) || { id, year: y, month: m, status: 'OPEN' as const };
-  return { closings: upsertClosing(closings, { ...base, status: 'APPROVED', approvedAt: at, approvedBy: by, saved }), saved };
-}
-/** Mở lại kỳ đã hoàn tất: về đang chốt, xoá số đã lưu; giữ các đơn đã chốt (HR bỏ chốt từng dòng nếu cần). */
-export function applyReopen(closings: OnsiteClosing[], y: number, m: number) {
-  const id = closingIdOf(y, m);
-  return closings.map((c) => (c.id !== id ? c : { ...c, status: 'OPEN' as const, saved: undefined, approvedAt: undefined, approvedBy: undefined }));
-}
-
 // ───────────────────────── Màn hình ─────────────────────────
 export const OnsiteReportPage: React.FC = () => {
-  const { records, setRecords, periods, closings, setClosings, role, setRole } = useOnsite();
+  const { records, setRecords, closings, setClosings, role, setRole } = useOnsite();
   // Giá trị trên thanh lọc — chỉ áp khi bấm Tìm kiếm / Enter (ExecuteSearch)
   const [fSearch, setFSearch] = useState('');
   const [fMonth, setFMonth] = useState(NOW.m);
@@ -144,7 +118,7 @@ export const OnsiteReportPage: React.FC = () => {
   const canClose = canCloseOnsite(role);
   const me = USERS[role].name;
 
-  // Nguồn số: kỳ đã chốt đọc bảng đã lưu, chưa chốt thì tính thử
+  // Nguồn số: tháng đã khoá (kỳ lương đã duyệt) đọc số đã chốt, còn mở thì tính thử cả dòng chưa chốt
   const allLines: ClosingLine[] = useMemo(
     () => (isClosed ? closing?.saved || [] : computeClosing(records, closings, y, m)),
     [isClosed, closing, records, closings, y, m],
@@ -171,7 +145,7 @@ export const OnsiteReportPage: React.FC = () => {
     carryUnits: rsum((x) => x.carryUnits), carryAmount: rsum((x) => x.carryAmount), pending: rsum((x) => x.pending), pendingRecs: rsum((x) => x.pendingRecs), rejectedRecs: rsum((x) => x.rejectedRecs), rejectedDays: rsum((x) => x.rejectedDays), amount: rsum((x) => x.amount),
   };
 
-  /** Đơn được xét / đã chốt của từng dòng (khi kỳ chưa hoàn tất). */
+  /** Đơn được xét / đã chốt của từng dòng (khi tháng chưa khoá). */
   const eligOf = (x: ReportRow) => (isClosed ? [] : rowEligible(x, records, closings, y, m));
   const stampedOf = (x: ReportRow) => eligOf(x).filter((r) => r.closingId === cid);
   const canAct = canClose && !isClosed;
@@ -196,9 +170,8 @@ export const OnsiteReportPage: React.FC = () => {
   const drafts = inMonth.filter((r) => r.hodStatus === 'DRAFT');
 
   const deptList = [...new Set(EMPLOYEES.map((e) => e.dept))].sort();
-  const blockClose = !isClosed ? closeGuard(closings, y, m) : null;
 
-  // ── Hành động chốt: chọn từng dòng / nhiều dòng để chốt, rồi Hoàn tất chốt tháng ──
+  // ── Hành động chốt: chọn từng dòng / nhiều dòng để chốt — chốt là vào Payroll ngay ──
   const selectable = rows.filter((x) => eligOf(x).length > 0);
   const selRows = rows.filter((x) => selected.includes(x.key));
   const toggle = (k: string) => setSelected((cur) => (cur.includes(k) ? cur.filter((v) => v !== k) : [...cur, k]));
@@ -206,17 +179,15 @@ export const OnsiteReportPage: React.FC = () => {
   const sumRows = (xs: ReportRow[]) => ({ units: xs.reduce((t, x) => t + x.paid + x.carryUnits, 0), amount: xs.reduce((t, x) => t + x.amount + x.carryAmount, 0) });
 
   const closeRows = (xs: ReportRow[]) => {
-    const g = closeGuard(closings, y, m);
-    if (g) { showToast(g, true); return; }
     const ids = xs.flatMap((x) => eligOf(x).filter((r) => r.closingId !== cid).map((r) => r.id));
     if (!ids.length) { showToast('Các dòng đã chọn không còn đơn nào để chốt (đã chốt hoặc chưa được HOD duyệt).', true); return; }
     const t = sumRows(xs);
     setConfirm({
-      text: `Chốt ${xs.length} dòng (${ids.length} đơn): ${n2(t.units)} ngày công, ${money(t.amount)} đ.\nĐơn đã chốt bị khoá ở màn Đơn từ. Khi chốt hết các dòng cần thiết, bấm "Hoàn tất chốt tháng" để Payroll đọc số.`,
+      text: `Chốt ${xs.length} dòng (${ids.length} đơn): ${n2(t.units)} ngày công, ${money(t.amount)} đ.\nSố chốt vào Payroll ${name} ngay; đơn đã chốt bị khoá ở màn Đơn từ.`,
       onOk: () => {
         const res = applyCloseRecords(records, closings, ids, y, m, me, nowIso());
         setRecords(res.records); setClosings(res.closings); setSelected([]);
-        showToast(`Đã chốt ${xs.length} dòng (${res.count} đơn) vào kỳ ${name}.`);
+        showToast(`Đã chốt ${xs.length} dòng (${res.count} đơn) vào kỳ ${name} — Payroll ${name} đã nhận số.`);
       },
     });
   };
@@ -224,39 +195,12 @@ export const OnsiteReportPage: React.FC = () => {
     const ids = xs.flatMap((x) => stampedOf(x).map((r) => r.id));
     if (!ids.length) { showToast('Các dòng đã chọn chưa có đơn nào được chốt.', true); return; }
     setConfirm({
-      text: `Bỏ chốt ${xs.length} dòng (${ids.length} đơn) khỏi kỳ ${name}? Đơn được mở khoá ở màn Đơn từ.`,
+      text: `Bỏ chốt ${xs.length} dòng (${ids.length} đơn) khỏi kỳ ${name}? Số bị gỡ khỏi Payroll ${name} ngay; đơn được mở khoá ở màn Đơn từ.`,
       onOk: () => {
         const res = applyUncloseRecords(records, ids, y, m, me, nowIso());
         setRecords(res.records); setSelected([]);
-        showToast(`Đã bỏ chốt ${res.count} đơn.`);
+        showToast(`Đã bỏ chốt ${res.count} đơn — đã gỡ khỏi Payroll ${name}.`);
       },
-    });
-  };
-  const askFinalize = () => {
-    const g = closeGuard(closings, y, m);
-    if (g) { showToast(g, true); return; }
-    const done = rows.filter((x) => stampedOf(x).length > 0);
-    if (!done.length) { showToast('Chưa chốt dòng nào — chọn dòng và bấm Chốt trước khi hoàn tất.', true); return; }
-    const notDone = allRows.filter((x) => rowEligible(x, records, closings, y, m).some((r) => r.closingId !== cid));
-    const saved = computeClosing(records.filter((r) => r.closingId === cid), closings, y, m);
-    const amount = saved.reduce((t, l) => t + l.amount, 0), units = saved.reduce((t, l) => t + l.units, 0);
-    setConfirm({
-      text: `Hoàn tất chốt onsite tháng ${name}: ${saved.length} nhân viên, ${n2(units)} ngày công, ${money(amount)} đ (chỉ tính các đơn ĐÃ CHỐT). Payroll ${name} sẽ đọc số này.`
-        + (notDone.length ? `\n⚠ Còn ${notDone.length} dòng chưa chốt — các đơn này chuyển sang kỳ chốt tháng sau (cột "Bổ sung tháng trước").` : '')
-        + (pendingHod.length ? `\n⚠ Còn ${pendingHod.length} đơn chờ HOD duyệt — nếu duyệt sau sẽ vào kỳ chốt tháng sau.` : ''),
-      onOk: () => {
-        const res = applyFinalize(records, closings, y, m, me, nowIso());
-        setClosings(res.closings); setSelected([]);
-        showToast(`Đã hoàn tất chốt onsite tháng ${name}: ${res.saved.length} nhân viên, ${money(res.saved.reduce((t, l) => t + l.amount, 0))} đ. Payroll ${name} đọc số này.`);
-      },
-    });
-  };
-  const askReopen = () => {
-    const g = reopenGuard(closings, periods, y, m);
-    if (g) { showToast(g, true); return; }
-    setConfirm({
-      text: `Mở lại kỳ chốt onsite tháng ${name}? Số đã lưu bị xoá, kỳ quay về trạng thái đang chốt; các đơn đã chốt vẫn giữ (bỏ chốt từng dòng nếu cần).`,
-      onOk: () => { setClosings(applyReopen(closings, y, m)); showToast(`Đã mở lại kỳ chốt onsite tháng ${name}.`); },
     });
   };
   const closedAmount = useMemo(() => computeClosing(records.filter((r) => r.closingId === cid), closings, y, m).reduce((t, l) => t + l.amount, 0), [records, closings, cid, y, m]);
@@ -277,13 +221,13 @@ export const OnsiteReportPage: React.FC = () => {
   const PIN_EDGE_R = 'shadow-[inset_1px_0_0_#94a3b8]';
   const HEAD_BG = '#e8edf4';
   const doneRows = rows.filter((x) => stampedOf(x).length > 0).length;
-  const exportXlsx = () => showToast(`Đã xuất BaoCaoOnsite_${y}_${String(m).padStart(2, '0')}.xlsx (giả lập) — ${isClosed ? 'số đã chốt' : 'số tính thử, chưa hoàn tất chốt'}`);
+  const exportXlsx = () => showToast(`Đã xuất BaoCaoOnsite_${y}_${String(m).padStart(2, '0')}.xlsx (giả lập) — ${isClosed ? 'số đã chốt' : 'gồm cả dòng chưa chốt (tính thử)'}`);
 
   return (
     <ErpPage>
       <ErpTitleBar
         crumbs={['PayRoll', 'Báo cáo Onsite']}
-        title={<>Báo cáo Onsite <Tag cls={isClosed ? TAG.done : TAG.wait} icon={isClosed ? CheckCircle2 : Eye}>{isClosed ? 'Đã hoàn tất chốt' : 'Đang chốt'}</Tag></>}
+        title={<>Báo cáo Onsite <Tag cls={isClosed ? TAG.done : TAG.wait} icon={isClosed ? CheckCircle2 : Eye}>{isClosed ? 'Đã khoá — kỳ lương đã duyệt' : 'Đang chốt'}</Tag></>}
         actions={
           <>
             <label className="flex items-center gap-1.5 text-[12px] text-slate-600">
@@ -293,29 +237,25 @@ export const OnsiteReportPage: React.FC = () => {
               </select>
             </label>
             <Btn icon={Download} onClick={exportXlsx}>Xuất Excel</Btn>
-            {canClose && (isClosed
-              ? <Btn icon={Unlock} onClick={askReopen}>Mở lại chốt</Btn>
-              : <Btn variant="success" icon={Lock} onClick={askFinalize}>Hoàn tất chốt tháng</Btn>)}
           </>
         }
         meta={[
           { label: 'Tháng công', value: name },
           { label: 'Kỳ chốt', value: <span className="font-mono">{cid}</span> },
-          { label: isClosed ? 'Hoàn tất lúc' : 'Đã chốt', value: isClosed ? `${fmtDT(closing?.approvedAt)} · ${closing?.approvedBy}` : `${doneRows}/${selectable.length} dòng · ${money(closedAmount)} đ` },
+          { label: isClosed ? 'Khoá lúc' : 'Đã chốt (đã vào Payroll)', value: isClosed ? `${fmtDT(closing?.approvedAt)} · duyệt kỳ lương ${name}` : `${doneRows}/${selectable.length} dòng · ${money(closedAmount)} đ` },
           { label: 'Người được chốt', value: 'HCNS, Admin' },
         ]}
         notice={
-          blockClose ? <div className="px-4 py-1.5 bg-rose-50 text-rose-700 text-[12px] flex items-center gap-1.5"><AlertTriangle size={13} />{blockClose}</div>
-            : !canClose ? <div className="px-4 py-1.5 bg-slate-50 text-slate-600 text-[12px]">Vai trò <b>{USERS[role].label}</b> chỉ xem. Chỉ HCNS / Admin được chốt, hoàn tất hoặc mở lại chốt onsite.</div>
-              : isClosed ? <div className="px-4 py-1.5 bg-emerald-50 text-emerald-800 text-[12px]">Đã hoàn tất chốt — Payroll {name} đọc số này. Đơn HOD duyệt sau thời điểm chốt sẽ tính vào kỳ chốt kế tiếp.</div>
-                : <div className="px-4 py-1.5 bg-[#eaf2fc] text-[#1e3a5f] text-[12px]">Tích chọn dòng (hoặc bấm <b>Chốt</b> trên dòng) để chốt; chốt xong bấm <b>Hoàn tất chốt tháng</b>. Payroll {name} chỉ đọc số đã hoàn tất.</div>
+          !canClose ? <div className="px-4 py-1.5 bg-slate-50 text-slate-600 text-[12px]">Vai trò <b>{USERS[role].label}</b> chỉ xem. Chỉ HCNS / Admin được chốt / bỏ chốt onsite.</div>
+            : isClosed ? <div className="px-4 py-1.5 bg-emerald-50 text-emerald-800 text-[12px]">Kỳ lương {name} đã duyệt — onsite tháng này đã khoá, không chốt / bỏ chốt được. Đơn HOD duyệt sau sẽ tính vào kỳ kế tiếp.</div>
+              : <div className="px-4 py-1.5 bg-[#eaf2fc] text-[#1e3a5f] text-[12px]">Tích chọn dòng (hoặc bấm <b>Chốt</b> trên dòng) để chốt — số vào <b>Payroll {name} ngay</b>. Bỏ chốt được đến khi kỳ lương {name} được duyệt; dòng chưa chốt lúc duyệt lương chuyển sang kỳ sau.</div>
         }
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiBox label="Nhân sự có phụ cấp" value={`${lines.filter((x) => x.amount > 0).length} người`} sub={`${lines.length} nhân sự có ngày onsite được xét`} />
         <KpiBox label="Tổng ngày công ghi nhận" value={n2(tot.units)} tone="good" sub={`Gồm ${n2(tot.carryU)} ngày công bổ sung tháng trước`} />
-        <KpiBox label="Tổng thành tiền (VNĐ)" value={money(tot.amount)} valueText={money(tot.amount)} sub={isClosed ? 'Số đã chốt — trả cùng lương tháng này' : `Đã chốt ${money(closedAmount)} · còn lại tính thử`} />
+        <KpiBox label="Tổng thành tiền (VNĐ)" value={money(tot.amount)} valueText={money(tot.amount)} sub={isClosed ? 'Số đã chốt — trả cùng lương tháng này' : `Đã chốt (vào Payroll) ${money(closedAmount)} · còn lại tính thử`} />
         <KpiBox label="Đơn chờ HOD duyệt" value={`${pendingHod.length} đơn`} tone={pendingHod.length ? 'bad' : 'neutral'} sub={`Trong tháng ${name} — không vào kỳ chốt này`} />
       </div>
 
@@ -335,7 +275,7 @@ export const OnsiteReportPage: React.FC = () => {
           <details>
             <summary className="cursor-pointer select-none font-semibold text-[#1e3a5f]">Giải thích các cột</summary>
             <ul className="mt-1.5 grid grid-cols-2 gap-x-6 gap-y-0.5 list-disc ml-4 leading-relaxed text-slate-600">
-              <li><b>Onsite trong tháng</b>: ngày của đơn đã duyệt. Số ngày &lt; 30km / ≥ 30km chỉ đếm onsite làm việc tại Hà Nội.</li>
+              <li><b>Onsite trong tháng</b>: ngày của đơn đã duyệt. <b>Ngày công &lt; 30km / ≥ 30km</b> = ngày công được hưởng, phân theo khoảng cách của từng ngày (khớp Payroll); tổng hai cột = Được hưởng (trừ ngày ngoài Hà Nội trước {RULE_FROM.slice(5)}/{RULE_FROM.slice(0, 4)} vẫn hưởng mức cũ).</li>
               <li><b>Được hưởng</b>: ngày công được tính tiền. <b>Không hưởng</b>: chưa đủ 1 ngày công, ngoài Hà Nội, HĐ không áp dụng.</li>
               <li><b>Bổ sung tháng trước</b>: đơn tháng trước duyệt muộn, tính vào kỳ chốt đầu tiên sau khi HOD duyệt.</li>
               <li><b>Ghi nhận trong kỳ này</b>: Tổng onsite = Được hưởng + Bổ sung tháng trước; Thành tiền trả cùng lương tháng này.</li>
@@ -375,8 +315,8 @@ export const OnsiteReportPage: React.FC = () => {
                 {canAct && <th rowSpan={2} style={pinRight(HEAD_BG)} className={`${th} border-t-0 border-r-0 ${PIN_EDGE_R}`}>Thao tác</th>}
               </tr>
               <tr>
-                <th className={`${th} font-medium`} title="Ngày onsite làm việc tại Hà Nội, cách trụ sở dưới 30km">Số ngày &lt; 30km{unit('ngày')}</th>
-                <th className={`${th} font-medium`} title="Ngày onsite làm việc tại Hà Nội, cách trụ sở từ 30km">Số ngày ≥ 30km{unit('ngày')}</th>
+                <th className={`${th} font-medium`} title="Ngày công được hưởng tại Hà Nội, cách trụ sở dưới 30km — khớp cột 'Ngày công onsite < 30km' ở Payroll">&lt; 30km{unit('ngày công')}</th>
+                <th className={`${th} font-medium`} title="Ngày công được hưởng tại Hà Nội, cách trụ sở từ 30km — khớp cột 'Ngày công onsite ≥ 30km' ở Payroll">≥ 30km{unit('ngày công')}</th>
                 <th className={`${th} font-medium`} title="Ngày công được tính tiền trong tháng">Được hưởng{unit('ngày công')}</th>
                 <th className={`${th} font-medium`} title="Chưa đủ 1 ngày công, ngoài Hà Nội, HĐ không áp dụng">Không hưởng{unit('ngày')}</th>
                 <th className={`${th} font-medium`}>Ngày công{unit('ngày công')}</th>
@@ -468,19 +408,19 @@ export const OnsiteReportPage: React.FC = () => {
             <li>Áp dụng HĐ <b>thử việc</b> và <b>chính thức</b>. Onsite ngoài Hà Nội không được hưởng. Đi họp tại nơi làm việc của khách hàng không thuộc diện onsite — không đăng ký đơn.</li>
             <li>Mức: <b>&lt; 30km 100.000 đ</b>, <b>≥ 30km 180.000 đ</b> / ngày công. Ngày onsite trước {RULE_FROM.slice(5)}/{RULE_FROM.slice(0, 4)} tính mức cũ {money(OLD_RATE)} đ.</li>
             <li>Ngày công = giờ onsite trong ngày (gộp các đơn) trừ giờ phép: <b>đủ 8h = 1 ngày công</b>; <b>chưa đủ 1 ngày công thì không tính tiền</b> — áp cho mọi ngày. Một ngày có nhiều đơn khác mức ⇒ lấy mức cao nhất.</li>
-            <li>Chỉ đơn <b>HOD đã duyệt</b> được chốt. Đơn chờ HOD / nháp không vào kỳ; duyệt sau khi tháng đã chốt ⇒ <b>chốt bổ sung vào kỳ sau</b>.</li>
-            <li>HCNS <b>chốt từng dòng</b> hoặc <b>chọn nhiều dòng</b> để chốt: đơn của dòng gắn kỳ chốt và bị khoá ở màn Đơn từ. Bỏ chốt được khi kỳ chưa hoàn tất.</li>
-            <li>Chốt xong bấm <b>Hoàn tất chốt tháng</b>: lưu bảng chốt từ các đơn đã chốt; dòng chưa chốt chuyển sang kỳ sau. Phải hoàn tất theo thứ tự tháng.</li>
+            <li>Chỉ đơn <b>HOD đã duyệt</b> được chốt. Đơn chờ HOD / nháp không vào kỳ; duyệt sau khi kỳ lương tháng đó đã duyệt ⇒ <b>chốt bổ sung vào kỳ sau</b>.</li>
+            <li>HCNS <b>chốt từng dòng</b> hoặc <b>chọn nhiều dòng</b>: đơn của dòng gắn kỳ chốt, bị khoá ở màn Đơn từ, và <b>số vào Payroll ngay</b> — không có bước hoàn tất tháng.</li>
+            <li><b>Bỏ chốt</b> được đến khi kỳ lương cùng tháng được duyệt; bỏ chốt là số gỡ khỏi Payroll ngay.</li>
+            <li><b>Duyệt kỳ lương</b> ⇒ onsite tháng đó khoá; dòng chưa chốt lúc đó chuyển sang kỳ sau (cột "Bổ sung tháng trước"). Từ chối kỳ lương ⇒ mở khoá lại.</li>
             <li>Payroll tháng đó <b>chỉ đọc số đã chốt</b>, trả vào kỳ lương của tháng; HCNS gửi mail xác nhận cùng bảng lương.</li>
-            <li><b>Mở lại chốt</b>: chỉ khi kỳ lương cùng tháng <b>chưa duyệt</b> và kỳ sau chưa hoàn tất; các dòng đã chốt giữ nguyên.</li>
           </ul>
         </Panel>
         <Panel title="Đã xác nhận (17/11/2026)" icon={CheckCircle2}>
           <ul className="list-disc ml-4 text-slate-700 space-y-1">
             <li>Phụ lục 03 áp dụng cho ngày onsite từ <b>01/{RULE_FROM.slice(5)}/{RULE_FROM.slice(0, 4)}</b>; ngày trước đó tính mức cũ {money(OLD_RATE)} đ.</li>
-            <li>Mức hỗ trợ <b>chọn trên từng đơn</b> (địa bàn / khoảng cách), HOD duyệt cùng đơn.</li>
-            <li><b>HCNS và Admin</b> được chốt / bỏ chốt dòng, hoàn tất và mở lại chốt (quyền mới Report_Onsite.Approve).</li>
-            <li>Đơn bổ sung / duyệt muộn: tính vào <b>kỳ chốt onsite đầu tiên diễn ra sau khi HOD duyệt</b>. VD đơn tháng 8: HOD duyệt trước lúc HR chốt tháng 9 (≈ 10/10) ⇒ lương tháng 9; duyệt sau ⇒ lương tháng 10.</li>
+            <li>Mức hỗ trợ theo <b>khoảng cách của từng ngày</b> trong lịch trình đơn (một đơn đi được nhiều địa điểm), HOD duyệt cùng đơn.</li>
+            <li><b>HCNS và Admin</b> được chốt / bỏ chốt dòng (quyền mới Report_Onsite.Approve).</li>
+            <li>Đơn bổ sung / duyệt muộn: tính vào <b>kỳ đầu tiên còn mở sau khi HOD duyệt</b>. VD đơn tháng 8 (kỳ lương 8 đã duyệt): HOD duyệt trước khi duyệt kỳ lương tháng 9 ⇒ lương tháng 9; duyệt sau ⇒ lương tháng 10.</li>
             <li>Danh sách <b>1 dòng / nhân viên × dự án</b>; HR chọn từng dòng hoặc nhiều dòng để chốt.</li>
             <li>Duyệt (chốt) ở Báo cáo Onsite là <b>số cuối, vào thẳng lương</b> — Payroll không có bước duyệt / chốt riêng cho onsite.</li>
             <li>Một ngày có 2 đơn khác mức ⇒ cả ngày tính theo <b>mức cao</b>. Xác nhận của khách hàng: <b>chỉ cần HOD duyệt</b>.</li>
@@ -534,8 +474,9 @@ export function buildRows(records: OnsiteRec[], closings: OnsiteClosing[], y: nu
     recs.forEach((r) => row.recIds.add(r.id));
     row.days.push(d);
     if (d.carry) { if (d.amount > 0) { row.carryUnits += d.unit; row.carryAmount += d.amount; } return; }
-    if (main.zone === 'HN_LT30') row.lt30 += 1;
-    else if (main.zone === 'HN_GE30') row.ge30 += 1;
+    // Cùng cách tính với kỳ chốt / Payroll: ngày công được hưởng, phân theo khoảng cách của ngày
+    if (d.zone === 'HN_LT30') row.lt30 += d.unit;
+    else if (d.zone === 'HN_GE30') row.ge30 += d.unit;
     if (d.amount > 0) { row.paid += d.unit; row.amount += d.amount; } else row.noPay += 1;
   }));
   records.filter((r) => recMonth(r) === ym && r.hodStatus !== 'DRAFT' && !included.has(r.id)).forEach((r) => {
@@ -570,7 +511,7 @@ export const RowDetail: React.FC<{ row: ReportRow; records: OnsiteRec[]; closing
       const st = reportStatus(r.status, r.hodStatus);
       const e = evalClosing(r, closings, y, m);
       const note = st === 'Rejected' ? 'Đơn bị từ chối — không tính onsite, không tính tiền'
-        : st === 'Approved' ? (isClosed && e.ok ? 'HOD duyệt sau khi đã chốt — chưa ghi nhận, sẽ chốt bổ sung vào kỳ sau' : e.why)
+        : st === 'Approved' ? (isClosed && e.ok ? 'Chưa chốt khi kỳ lương đã duyệt — chuyển sang kỳ sau (bổ sung)' : e.why)
           : 'Chờ HOD duyệt — chưa ghi nhận trong kỳ này';
       return { date: sl.date, recs: [r], hours: sl.hours, note, tone: st === 'Rejected' ? 'rej' : 'wait' };
     })),
@@ -583,7 +524,7 @@ export const RowDetail: React.FC<{ row: ReportRow; records: OnsiteRec[]; closing
     <table className={`${erp.table} text-[12px] bg-white`}>
       <thead>
         <tr>
-          {['Ngày', 'Thứ', 'Mã đơn', 'Địa điểm làm việc', 'Địa bàn', 'Trạng thái', 'Giờ onsite', 'Giờ phép', 'Giờ hợp lệ', 'Ngày công', 'Mức (đ)', 'Thành tiền (đ)', 'Ghi chú'].map((h) => <th key={h} className={`${erp.th} text-left`}>{h}</th>)}
+          {['Ngày', 'Thứ', 'Mã đơn', 'Địa điểm làm việc', 'Khoảng cách', 'Trạng thái', 'Giờ onsite', 'Giờ phép', 'Giờ hợp lệ', 'Ngày công', 'Mức (đ)', 'Thành tiền (đ)', 'Ghi chú'].map((h) => <th key={h} className={`${erp.th} text-left`}>{h}</th>)}
         </tr>
       </thead>
       <tbody>
@@ -594,8 +535,8 @@ export const RowDetail: React.FC<{ row: ReportRow; records: OnsiteRec[]; closing
               <td className={`${c} py-1 whitespace-nowrap`}>{fmtD(it.date)}</td>
               <td className={`${c} ${['T7', 'CN'].includes(dow(it.date)) ? 'text-amber-700 font-semibold' : ''}`}>{dow(it.date)}</td>
               <td className={`${c} ${erp.code} whitespace-nowrap`}>{it.recs.map((r) => r.code).join(', ')}</td>
-              <td className={c}>{[...new Set(it.recs.map((r) => r.address))].join('; ')}</td>
-              <td className={`${c} whitespace-nowrap`} title={main ? ZONE_LABEL[main.zone] : ''}>{[...new Set(it.recs.map((r) => ZONE_SHORT[r.zone]))].join(', ')}</td>
+              <td className={c}>{[...new Set(it.recs.map((r) => slotOf(r, it.date)?.address || ''))].join('; ')}</td>
+              <td className={`${c} whitespace-nowrap`} title={[...new Set(it.recs.map((r) => slotOf(r, it.date)?.zone).filter(Boolean).map((z) => ZONE_LABEL[z!]))].join('; ')}>{[...new Set(it.recs.map((r) => slotOf(r, it.date)?.zone).filter(Boolean).map((z) => ZONE_SHORT[z!]))].join(', ')}</td>
               <td className={c}>{main && <Badge v={reportStatus(main.status, main.hodStatus)} />}</td>
               <td className={`${c} text-right`}>{n2(it.hours)}</td>
               <td className={`${c} text-right ${it.leave ? 'text-amber-700 font-semibold' : 'text-slate-300'}`}>{num(it.leave)}</td>

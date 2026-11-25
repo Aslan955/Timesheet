@@ -1,13 +1,16 @@
 /** Thành phần giao diện onsite dùng chung: badge, modal xác nhận / từ chối / lịch sử, form đơn (OnsiteCRUComponent). */
 import React, { useState } from 'react';
-import { AlertTriangle, Ban, Check, Lock, Paperclip, Plus, Send, Trash2, UserCircle2, X } from 'lucide-react';
+import { AlertTriangle, Ban, Check, Copy, Info, Lock, Paperclip, Plus, Send, Trash2, UserCircle2, X } from 'lucide-react';
 import {
-  ELIGIBLE_CONTRACTS, EMPLOYEES, HODS, closingIdOf, closingName, creatableProjects, OnsiteRec, PROJECTS, RoleKey, SiteZone, Slot, USERS, ZONE_LABEL,
-  calcHours, dow, emp, endDate, fmtD, fmtDT, money, proj, rateOf, recRate, startDate, toMin,
+  ELIGIBLE_CONTRACTS, EMPLOYEES, HODS, closingIdOf, closingName, creatableProjects, OnsiteRec, PROJECTS, RATE, RoleKey, SiteZone, Slot, USERS, ZONE_LABEL, ZONE_SHORT,
+  calcHours, dow, emp, endDate, fmtD, fmtDT, money, proj, recAddresses, recRates, startDate, toMin,
 } from '../../onsite/onsiteData';
 import { useOnsite } from '../../onsite/OnsiteContext';
 
-const full = (d: string, s = '08:00', e = '17:30'): Slot => ({ date: d, start: s, end: e, ...calcHours(s, e) });
+/** Dòng lịch trình đang nhập: khoảng cách có thể chưa chọn. */
+type FSlot = Omit<Slot, 'zone'> & { zone: SiteZone | '' };
+const full = (d: string, s = '08:00', e = '17:30', site: { address: string; zone: SiteZone | '' } = { address: '', zone: '' }): FSlot =>
+  ({ date: d, start: s, end: e, ...calcHours(s, e), ...site });
 
 /** "OC-2026-10" → "T10/2026" */
 export const closingLabel = (id: string) => `T${id.slice(8, 10)}/${id.slice(3, 7)}`;
@@ -48,9 +51,9 @@ export const IconBtn: React.FC<{ t: string; c: string; onClick: () => void; chil
 
 // ───────────────────────── Form tạo / sửa / xem ─────────────────────────
 export interface FormData {
-  base?: OnsiteRec; employeeIds: string[]; projectId: string; address: string; regType: 0 | 1 | 2; description: string; hodId: string; attachment?: string; slots: Slot[];
-  /** Đề xuất Phụ lục 03 */
-  zone: SiteZone;
+  base?: OnsiteRec; employeeIds: string[]; projectId: string; regType: 0 | 1 | 2; description: string; hodId: string; attachment?: string;
+  /** Mỗi dòng có địa điểm + khoảng cách riêng (Phụ lục 03) */
+  slots: Slot[];
 }
 
 export function weeksOfMonth(ym: string) {
@@ -73,8 +76,6 @@ export const OnsiteFormModal: React.FC<{
   canApprove: boolean; canReject: boolean; onApprove: () => void; onReject: () => void; onRequest?: () => void;
 }> = ({ mode, rec, role, me, onClose, onSave, canApprove, canReject, onApprove, onReject, onRequest }) => {
   const [projectId, setProjectId] = useState(rec?.projectId || '');
-  const [address, setAddress] = useState(rec?.address || '');
-  const [zone, setZone] = useState<SiteZone | ''>(rec?.zone || '');
   const [regType, setRegType] = useState<0 | 1 | 2>(rec?.regType ?? 0);
   const [month, setMonth] = useState((rec ? startDate(rec) : '2026-11-01').slice(0, 7));
   const [week, setWeek] = useState(0);
@@ -83,10 +84,12 @@ export const OnsiteFormModal: React.FC<{
   const [warn, setWarn] = useState('');
   const [description, setDescription] = useState(rec?.description || '');
   const [attachment, setAttachment] = useState(rec?.attachment || '');
-  const [slots, setSlots] = useState<Slot[]>(rec?.slots || []);
+  const [slots, setSlots] = useState<FSlot[]>(rec?.slots || []);
   const [errors, setErrors] = useState<string[]>([]);
+  /** Địa điểm chung: dòng mới / lịch tự sinh lấy theo; "Áp dụng" điền vào ô còn trống. Sửa đơn thì lấy theo dòng đầu. */
+  const [defSite, setDefSite] = useState<{ address: string; zone: SiteZone | '' }>(rec?.slots[0] ? { address: rec.slots[0].address, zone: rec.slots[0].zone } : { address: '', zone: '' });
   const view = mode === 'view';
-  // Tháng của lịch đã chốt onsite ⇒ đơn tính bổ sung vào kỳ chốt đầu tiên diễn ra sau khi HOD duyệt (gần nhất: kỳ chưa hoàn tất kế tiếp)
+  // Tháng của lịch đã khoá (kỳ lương đã duyệt) ⇒ đơn tính bổ sung vào kỳ đầu tiên còn mở sau khi HOD duyệt
   const { closings } = useOnsite();
   const isFinal = (yy: number, mm: number) => closings.some((c) => c.id === closingIdOf(yy, mm) && c.status === 'APPROVED');
   const closedMonth = (() => {
@@ -100,10 +103,6 @@ export const OnsiteFormModal: React.FC<{
   })();
   const p = PROJECTS.find((x) => x.id === projectId);
   const total = slots.reduce((s, x) => s + x.hours, 0);
-  // Gợi ý mức hưởng (Phụ lục 03): rateOf theo ngày onsite đầu tiên (chưa có lịch thì đầu tháng đang chọn)
-  const rateDate = [...slots].map((s) => s.date).sort()[0] || `${month}-01`;
-  const rateLines = zone ? employeeIds.map((eid) => ({ eid, text: rateText(rateOf({ ...(rec as OnsiteRec), employeeId: eid, zone }, rateDate)) })) : [];
-  const sameRate = rateLines.length > 0 && rateLines.every((l) => l.text === rateLines[0].text);
   const ineligible = employeeIds.filter((eid) => !eligible(eid));
   const weeks = weeksOfMonth(month);
   const monthOptions = Array.from({ length: 13 }, (_, i) => { const d = new Date(2026, 10 + i - 6, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; });
@@ -119,23 +118,41 @@ export const OnsiteFormModal: React.FC<{
     setEmployeeIds([]);
   };
 
+  const hasDef = !!(defSite.address.trim() || defSite.zone);
+  const withDefault = (x: FSlot) => ({ ...x, address: x.address.trim() ? x.address : defSite.address, zone: x.zone || defSite.zone });
+  const canApply = hasDef && slots.some((x) => { const y = withDefault(x); return y.address !== x.address || y.zone !== x.zone; });
+  /** "Áp cho ngày…": mở bảng chọn ngày ngay tại nút, áp Địa điểm chung GHI ĐÈ cho các ngày đã chọn (ngày ngoại lệ / khối ngày). */
+  const [pickOpen, setPickOpen] = useState(false);
+  const [sel, setSel] = useState<string[]>([]);
+  const picked = slots.filter((x) => sel.includes(x.date));
+  const allPicked = slots.length > 0 && picked.length === slots.length;
+  const toggle = (d: string) => setSel(sel.includes(d) ? sel.filter((x) => x !== d) : [...sel, d]);
+  const closePick = () => { setPickOpen(false); setSel([]); };
+  const applyPicked = () => {
+    setSlots(slots.map((x) => (sel.includes(x.date) ? { ...x, address: defSite.address.trim() ? defSite.address : x.address, zone: defSite.zone || x.zone } : x)));
+    closePick();
+  };
+
   const gen = (type: 0 | 1 | 2, ym: string, wk: number) => {
     if (type === 0) { setSlots([]); return; } // SetRegistrationType: đổi hình thức là xoá lịch, Theo ngày thì để trống
     const ws = weeksOfMonth(ym);
     const days = type === 1 ? ws[Math.min(wk, ws.length - 1)] || [] : ws.flat();
-    setSlots(days.map((d) => full(d)));
+    // Lịch tự sinh lấy Địa điểm chung (chưa nhập thì giữ theo dòng đầu cũ)
+    const site = hasDef ? defSite : slots[0] ? { address: slots[0].address, zone: slots[0].zone } : undefined;
+    setSlots(days.map((d) => full(d, undefined, undefined, site)));
   };
-  const setRow = (i: number, patch: Partial<Slot>) => {
+  const setRow = (i: number, patch: Partial<FSlot>) => {
     const others = slots.filter((_, j) => j !== i);
     const n = { ...slots[i], ...patch };
     // OnDateRowChanged / OnStartTimeChanged / OnEndTimeChanged: nhận giá trị mới rồi cảnh báo (toastr.warning)
     if (patch.date && others.some((x) => x.date === patch.date)) setWarn('Ngày onsite bị trùng lặp trong danh sách.');
     else if (patch.date && others.length && others[0].date.slice(0, 7) !== patch.date.slice(0, 7)) setWarn('Lịch onsite không được thuộc hai tháng khác nhau.');
     else if ((patch.start || patch.end) && (!n.start || !n.end || toMin(n.end) <= toMin(n.start))) setWarn('Thời gian kết thúc phải lớn hơn thời gian bắt đầu.');
-    else setWarn('');
+    else if (patch.date || patch.start || patch.end) setWarn('');
     setSlots(slots.map((s, j) => (j === i ? { ...n, ...calcHours(n.start, n.end) } : s)));
   };
-  /** AddScheduleRow: ngày kế sau dòng cuối (rỗng thì từ hôm nay), bỏ qua T7/CN, 08:00–17:30; không cho sang tháng khác. */
+  /** AddScheduleRow: ngày kế sau dòng cuối (rỗng thì từ hôm nay), bỏ qua T7/CN; không cho sang tháng khác.
+   *  ĐỀ XUẤT: chép giờ bắt đầu / kết thúc, địa điểm, khoảng cách của dòng trước; ô nào dòng trước trống (hoặc chưa có dòng) thì lấy Địa điểm chung. */
   const addDay = () => {
     const sorted = [...slots].sort((a, b) => a.date.localeCompare(b.date));
     const d = sorted.length ? new Date(sorted[sorted.length - 1].date + 'T00:00') : new Date();
@@ -144,15 +161,18 @@ export const OnsiteFormModal: React.FC<{
     const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     if (sorted.length && ds.slice(0, 7) !== sorted[0].date.slice(0, 7)) { setWarn('Lịch onsite không được thuộc hai tháng khác nhau.'); return; }
     setWarn('');
-    setSlots([...sorted, full(ds)]);
+    const prev = sorted[sorted.length - 1];
+    const row = prev ? full(ds, prev.start, prev.end, { address: prev.address, zone: prev.zone }) : full(ds);
+    setSlots([...sorted, withDefault(row)]);
   };
 
   /** HandleValidSubmit: bắt buộc + lịch rỗng → giờ sai → TRÙNG NGÀY (mỗi ngày một dòng) → khác tháng; dừng ở lỗi đầu tiên. */
   const validate = () => {
     let e: string | null = null;
-    // DataAnnotations: Địa điểm, HOD (ApprovalById), Nhân viên (ApprovalForId) bắt buộc — ProjectId không gắn [Required]; Địa bàn: đề xuất Phụ lục 03
-    if (!address.trim() || !zone || !hodId || !employeeIds.length) e = 'Vui lòng kiểm tra lại các trường thông tin bắt buộc!';
+    // DataAnnotations: HOD (ApprovalById), Nhân viên (ApprovalForId) bắt buộc — ProjectId không gắn [Required]; Địa điểm + Khoảng cách bắt buộc theo từng dòng lịch trình (đề xuất)
+    if (!hodId || !employeeIds.length) e = 'Vui lòng kiểm tra lại các trường thông tin bắt buộc!';
     else if (!slots.length) e = 'Vui lòng thêm ít nhất một ngày đi onsite trong lịch trình.';
+    else if (slots.some((s) => !s.address.trim() || !s.zone)) e = 'Vui lòng nhập Địa điểm làm việc và chọn Khoảng cách cho từng ngày trong lịch trình.';
     else if (slots.some((s) => !s.start || !s.end || toMin(s.end) <= toMin(s.start))) e = 'Thời gian kết thúc phải lớn hơn thời gian bắt đầu.';
     else if (new Set(slots.map((s) => s.date)).size < slots.length) e = 'Ngày onsite bị trùng lặp trong danh sách.';
     else if (new Set(slots.map((s) => s.date.slice(0, 7))).size > 1) e = 'Lịch onsite không được thuộc hai tháng khác nhau.';
@@ -161,7 +181,8 @@ export const OnsiteFormModal: React.FC<{
   };
   const submit = (send: boolean) => {
     if (!validate()) return;
-    onSave({ base: rec, employeeIds, projectId, address, zone: zone as SiteZone, regType, description, hodId, attachment: attachment || undefined, slots: [...slots].sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start)) }, send);
+    const done = slots.map((s) => ({ ...s, address: s.address.trim(), zone: s.zone as SiteZone }));
+    onSave({ base: rec, employeeIds, projectId, regType, description, hodId, attachment: attachment || undefined, slots: done.sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start)) }, send);
   };
 
   const title = mode === 'create' ? 'Tạo đơn đăng ký đi onsite' : mode === 'edit' ? 'Sửa đơn đăng ký đi onsite' : 'Chi tiết đơn đăng ký đi onsite';
@@ -184,13 +205,18 @@ export const OnsiteFormModal: React.FC<{
                   ['Mã dự án', proj(rec.projectId).code], ['Tháng', String(Number(startDate(rec).slice(5, 7)))],
                   ['Tên dự án', proj(rec.projectId).name], ['Ngày bắt đầu', fmtD(startDate(rec))],
                   ['Quản lý dự án', proj(rec.projectId).pmName], ['Ngày kết thúc', fmtD(endDate(rec))],
-                  ['Địa điểm làm việc', rec.address], ['HOD', HODS.find((h) => h.id === rec.hodId)?.name || ''],
+                  ['Địa điểm làm việc', `${recAddresses(rec).length} địa điểm — chi tiết theo ngày ở lịch trình`], ['HOD', HODS.find((h) => h.id === rec.hodId)?.name || ''],
                   ['Hình thức đăng ký', ['Theo ngày', 'Theo tuần', 'Theo tháng'][rec.regType]], ['Nhân viên đi onsite', `${emp(rec.employeeId).name} (HĐ ${emp(rec.employeeId).contract})`],
-                  ['Địa bàn', ZONE_LABEL[rec.zone]],
                 ].map(([k, v]) => <div key={k} className="flex"><span className="font-bold w-40 shrink-0">{k}</span><span className="w-3">:</span><span>{v}</span></div>)}
               </div>
               <div className="flex mt-1.5"><span className="font-bold w-40 shrink-0">Mức hưởng</span><span className="w-3">:</span>
-                <span className={recRate(rec).rate > 0 ? 'text-emerald-700 font-semibold' : 'text-amber-700'}>{rateText(recRate(rec))}</span></div>
+                <span className="flex flex-col">
+                  {recRates(rec).map((x) => (
+                    <span key={`${x.zone}|${x.rate}`} className={x.rate > 0 ? 'text-emerald-700 font-semibold' : 'text-amber-700'}>
+                      {ZONE_LABEL[x.zone]} · {x.days} ngày — {rateText(x)}
+                    </span>
+                  ))}
+                </span></div>
               <div className="flex mt-1.5"><span className="font-bold w-40 shrink-0">Mô tả công việc</span><span className="w-3">:</span><span>{rec.description}</span></div>
               {rec.closingId && (
                 <div className="mt-3 p-2 bg-emerald-50 border border-emerald-300 rounded text-emerald-800 flex items-center gap-1.5">
@@ -212,26 +238,9 @@ export const OnsiteFormModal: React.FC<{
                 </select>
                 <div className="text-[10px] text-gray-500 mt-1">{role === 'pm' ? 'PM chỉ chọn được dự án mình quản lý.' : role === 'hod' ? 'HOD chọn được dự án thuộc khối mình, hoặc dự án khối khác mà mình làm PM.' : 'HR / Admin chọn được mọi dự án còn hoạt động.'}</div>
               </div>
-              <div>
-                <label className={lbl}>Địa điểm làm việc <span className="text-red-500">*</span></label>
-                <input className={inp} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Địa điểm làm việc" />
-              </div>
-              <div>
-                <label className={lbl}>Địa bàn / khoảng cách từ trụ sở <span className="text-red-500">*</span></label>
-                <select className={inp} value={zone} onChange={(e) => setZone(e.target.value as SiteZone | '')}>
-                  <option value="">Chọn địa bàn</option>
-                  {(Object.keys(ZONE_LABEL) as SiteZone[]).map((z) => <option key={z} value={z}>{ZONE_LABEL[z]}</option>)}
-                </select>
-              </div>
-              <div className="text-[11px] self-end pb-2">
-                {!zone ? <span className="text-gray-400 italic">Chọn địa bàn để xem mức hỗ trợ (Phụ lục 03).</span>
-                  : !rateLines.length ? <span className="text-gray-500 italic">Chọn nhân viên để xem mức hỗ trợ.</span>
-                  : sameRate ? <span className={rateLines[0].text.startsWith('Mức') ? 'text-emerald-700 font-semibold' : 'text-amber-700'}>{rateLines[0].text}</span>
-                  : (
-                    <ul className="space-y-0.5">
-                      {rateLines.map((l) => <li key={l.eid} className={l.text.startsWith('Mức') ? 'text-emerald-700' : 'text-amber-700'}><b>{emp(l.eid).name}</b>: {l.text}</li>)}
-                    </ul>
-                  )}
+              <div className="text-[11px] self-end p-2 border border-gray-200 bg-gray-50 rounded text-gray-600">
+                <b>Địa điểm làm việc</b> và <b>Khoảng cách</b> nhập theo <b>từng ngày</b> ở bảng lịch trình bên dưới ⇒ một đơn đi được nhiều địa điểm.
+                Mức hỗ trợ (Phụ lục 03) tính theo khoảng cách của từng ngày: &lt; 30km {money(RATE.HN_LT30)} đ · ≥ 30km {money(RATE.HN_GE30)} đ · ngoài Hà Nội không hỗ trợ.
               </div>
 
               <div className="col-span-2 border border-emerald-200 bg-emerald-50/40 rounded p-3">
@@ -320,27 +329,91 @@ export const OnsiteFormModal: React.FC<{
           <div className="mt-4">
             <div className="flex items-center justify-between mb-2">
               <h5 className="font-bold text-emerald-700 text-[12px]">CHI TIẾT LỊCH TRÌNH ĐI ONSITE</h5>
-              {!view && regType === 0 && <button type="button" onClick={addDay} className="px-2 py-1 border border-emerald-400 text-emerald-700 rounded flex items-center gap-1"><Plus size={12} />Thêm ngày</button>}
+              <div className="flex gap-2">
+                {!view && regType === 0 && <button type="button" onClick={addDay} title="Dòng mới chép giờ, địa điểm, khoảng cách của dòng trước; ngày = ngày làm việc kế tiếp" className="px-2 py-1 border border-emerald-400 text-emerald-700 rounded flex items-center gap-1"><Plus size={12} />Thêm ngày</button>}
+              </div>
             </div>
+            {!view && (
+              <div className="mb-3 px-3 py-2.5 bg-slate-50 border border-gray-200 rounded">
+                <div className="flex items-end gap-2">
+                  <div className="flex-1 min-w-0">
+                    <label className={lbl}>Địa điểm chung</label>
+                    <input className={`${inp} h-8 bg-white`} value={defSite.address} onChange={(e) => setDefSite({ ...defSite, address: e.target.value })} placeholder="Nhập địa điểm làm việc" />
+                  </div>
+                  <div className="w-[150px] shrink-0">
+                    <label className={lbl}>Khoảng cách</label>
+                    <select className={`${inp} h-8 bg-white`} value={defSite.zone} onChange={(e) => setDefSite({ ...defSite, zone: e.target.value as SiteZone | '' })} title={defSite.zone ? ZONE_LABEL[defSite.zone] : 'Chọn khoảng cách'}>
+                      <option value="">Chọn khoảng cách</option>
+                      {(Object.keys(ZONE_LABEL) as SiteZone[]).map((z) => <option key={z} value={z}>{ZONE_SHORT[z]}</option>)}
+                    </select>
+                  </div>
+                  <button type="button" disabled={!canApply} onClick={() => setSlots(slots.map(withDefault))} title="Điền vào các ô Địa điểm / Khoảng cách còn trống, không ghi đè dòng đã nhập"
+                    className="h-8 w-[140px] shrink-0 px-3 border border-blue-500 text-blue-700 bg-white rounded flex items-center justify-center gap-1.5 font-semibold hover:bg-blue-50 disabled:opacity-40 disabled:hover:bg-white"><Copy size={13} />Điền dòng trống</button>
+                  <div className="relative shrink-0">
+                    <button type="button" disabled={!hasDef || !slots.length} onClick={() => (pickOpen ? closePick() : setPickOpen(true))} title="Chọn các ngày cần ghi đè bằng địa điểm chung"
+                      className="h-8 w-[140px] px-3 border border-blue-600 bg-blue-600 text-white rounded flex items-center justify-center gap-1.5 font-semibold hover:bg-blue-700 disabled:opacity-40 disabled:hover:bg-blue-600"><Check size={13} />Áp cho ngày…</button>
+                  {pickOpen && (
+                    <div className="absolute right-0 top-full mt-1 z-20 w-[440px] max-w-[80vw] bg-white border border-gray-300 rounded shadow-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-bold text-[11px]">Chọn ngày áp địa điểm chung <span className="font-normal text-gray-500">(ghi đè)</span></span>
+                        <label className="flex items-center gap-1 text-[11px] cursor-pointer"><input type="checkbox" checked={allPicked} onChange={() => setSel(allPicked ? [] : slots.map((x) => x.date))} />Chọn tất cả</label>
+                      </div>
+                      <div className="grid grid-cols-5 gap-1 max-h-[220px] overflow-y-auto">
+                        {[...slots].sort((a, b) => a.date.localeCompare(b.date)).map((x) => {
+                          const on = sel.includes(x.date);
+                          return (
+                            <button key={x.date} type="button" onClick={() => toggle(x.date)} title={x.address ? `${x.address}${x.zone ? ` · ${ZONE_SHORT[x.zone]}` : ''}` : 'Chưa nhập địa điểm'}
+                              className={`px-1 py-1 rounded border text-[10px] leading-tight text-center ${on ? 'bg-blue-600 text-white border-blue-600' : x.address.trim() ? 'border-gray-300 text-gray-700' : 'border-dashed border-gray-300 text-gray-400'}`}>
+                              <div className="font-semibold">{fmtD(x.date).slice(0, 5)}</div><div className="opacity-80">{dow(x.date)}{x.zone ? ` · ${ZONE_SHORT[x.zone]}` : ''}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="text-[10px] text-gray-500 mt-2 truncate">Áp: <b>{defSite.address.trim() || '(giữ địa điểm)'}</b> · {defSite.zone ? ZONE_SHORT[defSite.zone] : '(giữ khoảng cách)'}</div>
+                      <div className="flex justify-end gap-2 mt-2">
+                        <button type="button" onClick={closePick} className="px-3 py-1 border border-gray-300 rounded">Huỷ</button>
+                        <button type="button" disabled={!picked.length} onClick={applyPicked} className="px-3 py-1 bg-blue-600 text-white rounded disabled:opacity-40">Áp cho {picked.length} ngày</button>
+                      </div>
+                    </div>
+                  )}
+                  </div>
+                </div>
+                <div className="mt-1.5 flex items-start gap-1 text-[10px] text-gray-500">
+                  <Info size={11} className="mt-px shrink-0" />
+                  <span>Dòng mới tự lấy địa điểm chung · <b>Điền dòng trống</b>: chỉ điền ô còn trống · <b>Áp cho ngày…</b>: chọn ngày để ghi đè (ngày đi nơi khác).</span>
+                </div>
+              </div>
+            )}
             <table className="w-full border-collapse text-[11px]">
               <thead><tr className="bg-gray-50">
-                {['STT', 'Ngày onsite', 'Giờ bắt đầu', 'Giờ kết thúc', 'Số giờ', 'Hệ số', ...(view ? [] : [''])].map((h, i) => <th key={i} className="border border-gray-200 px-2 py-1.5 text-left">{h}</th>)}
+                {['STT', 'Ngày onsite', 'Giờ bắt đầu', 'Giờ kết thúc', 'Địa điểm làm việc *', 'Khoảng cách *', 'Số giờ', 'Hệ số', ...(view ? [] : [''])].map((h, i) => <th key={i} className="border border-gray-200 px-2 py-1.5 text-left whitespace-nowrap">{h}</th>)}
               </tr></thead>
               <tbody>
-                {slots.length === 0 && <tr><td colSpan={7} className="text-center text-gray-400 py-3 border border-gray-200">Vui lòng thêm hoặc chọn lịch trình.</td></tr>}
+                {slots.length === 0 && <tr><td colSpan={view ? 8 : 9} className="text-center text-gray-400 py-3 border border-gray-200">Vui lòng thêm hoặc chọn lịch trình.</td></tr>}
                 {slots.map((s, i) => {
                   const we = ['T7', 'CN'].includes(dow(s.date));
                   const dup = slots.some((x, j) => j !== i && x.date === s.date);
                   return (
-                    <tr key={i} className={dup ? 'bg-red-50' : we ? 'bg-amber-50' : ''}>
+                    <tr key={i} className={dup ? 'bg-red-50' : sel.includes(s.date) ? 'bg-blue-50' : we ? 'bg-amber-50' : ''}>
                       <td className="border border-gray-200 px-2">{i + 1}</td>
                       <td className="border border-gray-200 px-2 py-1">
                         {view || regType !== 0 ? <span>{fmtD(s.date)} <span className="text-gray-400">({dow(s.date)})</span></span>
-                          : <input type="date" className="border border-gray-300 rounded px-1" value={s.date} onChange={(e) => setRow(i, { date: e.target.value })} />}
+                          : <input type="date" className="h-7 border border-gray-300 rounded px-1" value={s.date} onChange={(e) => setRow(i, { date: e.target.value })} />}
                       </td>
-                      <td className="border border-gray-200 px-2">{view ? s.start : <input type="time" className="border border-gray-300 rounded px-1" value={s.start} onChange={(e) => setRow(i, { start: e.target.value })} />}</td>
-                      <td className="border border-gray-200 px-2">{view ? s.end : <input type="time" className="border border-gray-300 rounded px-1" value={s.end} onChange={(e) => setRow(i, { end: e.target.value })} />}</td>
-                      <td className="border border-gray-200 px-2 font-bold">{s.hours.toFixed(1)} giờ</td>
+                      <td className="border border-gray-200 px-2">{view ? s.start : <input type="time" className="h-7 border border-gray-300 rounded px-1" value={s.start} onChange={(e) => setRow(i, { start: e.target.value })} />}</td>
+                      <td className="border border-gray-200 px-2">{view ? s.end : <input type="time" className="h-7 border border-gray-300 rounded px-1" value={s.end} onChange={(e) => setRow(i, { end: e.target.value })} />}</td>
+                      <td className="border border-gray-200 px-2 min-w-[180px]">
+                        {view ? s.address : <input className={`h-7 w-full border rounded px-1.5 ${s.address.trim() || !errors.length ? 'border-gray-300' : 'border-red-400'}`} value={s.address} onChange={(e) => setRow(i, { address: e.target.value })} placeholder="Địa điểm làm việc" />}
+                      </td>
+                      <td className="border border-gray-200 px-2 whitespace-nowrap">
+                        {view ? <span title={s.zone ? ZONE_LABEL[s.zone] : ''}>{s.zone ? ZONE_SHORT[s.zone] : ''}</span> : (
+                          <select className={`h-7 w-full border rounded px-1 ${s.zone || !errors.length ? 'border-gray-300' : 'border-red-400'}`} value={s.zone} onChange={(e) => setRow(i, { zone: e.target.value as SiteZone | '' })} title={s.zone ? ZONE_LABEL[s.zone] : 'Chọn khoảng cách'}>
+                            <option value="">Chọn khoảng cách</option>
+                            {(Object.keys(ZONE_LABEL) as SiteZone[]).map((z) => <option key={z} value={z}>{ZONE_SHORT[z]}</option>)}
+                          </select>
+                        )}
+                      </td>
+                      <td className="border border-gray-200 px-2 font-bold whitespace-nowrap">{s.hours.toFixed(1)} giờ</td>
                       <td className="border border-gray-200 px-2 font-bold">{s.coef.toFixed(2)}</td>
                       {!view && <td className="border border-gray-200 px-2 text-center"><button type="button" onClick={() => setSlots(slots.filter((_, j) => j !== i))}><Trash2 size={12} className="text-red-500" /></button></td>}
                     </tr>
@@ -348,17 +421,17 @@ export const OnsiteFormModal: React.FC<{
                 })}
               </tbody>
             </table>
-            <div className="flex items-center justify-between mt-2">
-              <span className="text-[10px] text-gray-500">Số giờ = giờ kết thúc − giờ bắt đầu, trừ nghỉ trưa 12:00–13:30 · Hệ số = Số giờ / 8 (tối đa 1) · Mỗi ngày một dòng (dòng đỏ = trùng ngày). Dòng vàng = thứ 7 / chủ nhật (chỉ nhập tay được, lịch tự sinh bỏ qua). Phụ cấp (đề xuất): mỗi ngày sau khi trừ giờ phép đủ 8 giờ = 1 ngày công; chưa đủ 1 ngày công thì không tính tiền — HCNS chốt theo tháng ở Báo cáo Onsite.</span>
-              <span className="text-xs">TỔNG SỐ GIỜ ONSITE: <b>{total.toFixed(1)} giờ</b></span>
+            <div className="flex items-start justify-between gap-6 mt-2">
+              <span className="text-[10px] text-gray-500">Số giờ = giờ kết thúc − giờ bắt đầu, trừ nghỉ trưa 12:00–13:30 · Hệ số = Số giờ / 8 (tối đa 1) · Mỗi ngày một dòng (dòng đỏ = trùng ngày), mỗi dòng một địa điểm + khoảng cách; Thêm ngày chép giờ / địa điểm / khoảng cách của dòng trước (trống thì lấy Địa điểm chung). Dòng vàng = thứ 7 / chủ nhật (chỉ nhập tay được, lịch tự sinh bỏ qua). Phụ cấp (đề xuất): mỗi ngày sau khi trừ giờ phép đủ 8 giờ = 1 ngày công; chưa đủ 1 ngày công thì không tính tiền — HCNS chốt theo tháng ở Báo cáo Onsite.</span>
+              <span className="text-xs whitespace-nowrap shrink-0">TỔNG SỐ GIỜ ONSITE: <b>{total.toFixed(1)} giờ</b></span>
             </div>
           </div>
 
           {!view && closedMonth && (
             <div className="mt-2 p-2 bg-sky-50 border border-sky-300 rounded text-[11px] text-sky-800">
-              ⓘ Tháng <b>{closedMonth.own}</b> đã chốt onsite. Đơn này được tính <b>bổ sung vào kỳ chốt onsite đầu tiên sau khi HOD duyệt</b>:
-              nếu HOD duyệt <b>trước</b> lúc HR chốt onsite tháng <b>{closedMonth.next}</b> thì trả cùng lương tháng {closedMonth.next};
-              duyệt <b>sau</b> lúc đó thì chuyển tiếp sang kỳ chốt tháng kế tiếp. Hiện ở cột "Bổ sung tháng trước" của kỳ được tính.
+              ⓘ Kỳ lương tháng <b>{closedMonth.own}</b> đã duyệt (onsite tháng đó đã khoá). Đơn này được tính <b>bổ sung vào kỳ đầu tiên còn mở sau khi HOD duyệt</b>:
+              nếu HOD duyệt <b>trước</b> khi duyệt kỳ lương tháng <b>{closedMonth.next}</b> thì trả cùng lương tháng {closedMonth.next};
+              duyệt <b>sau</b> lúc đó thì chuyển tiếp sang tháng kế tiếp. Hiện ở cột "Bổ sung tháng trước" của kỳ được tính.
             </div>
           )}
           {slots.some((x) => x.hours > 0 && x.hours < 8) && (

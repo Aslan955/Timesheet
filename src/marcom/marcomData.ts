@@ -51,16 +51,73 @@ export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 export const IMAGE_ACCEPT = 'image/png,image/jpeg,image/webp';
 export const isAllowedImage = (f: File) => IMAGE_ACCEPT.split(',').includes(f.type) && f.size > 0 && f.size <= MAX_IMAGE_BYTES;
 
-// đồng bộ code iMIS 05/11 — MarcomRules: banner trang chủ khung 4:1, cảnh báo (không chặn) lệch > 10% hoặc rộng < 1600px
+// đồng bộ code iMIS 18/11 — MarcomImageRules: banner trang chủ nhận thêm GIF động ≤ 10MB và video ngắn MP4/WebM ≤ 20MB (tự chạy, tắt tiếng, lặp)
+export const MAX_GIF_BYTES = 10 * 1024 * 1024;
+export const MAX_VIDEO_BYTES = 20 * 1024 * 1024;
+export const BANNER_ACCEPT = `${IMAGE_ACCEPT},image/gif,video/mp4,video/webm`;
+export const isVideoType = (type: string) => type === 'video/mp4' || type === 'video/webm';
+export const isAllowedBanner = (f: File) => {
+  if (!BANNER_ACCEPT.split(',').includes(f.type) || f.size <= 0) return false;
+  const max = isVideoType(f.type) ? MAX_VIDEO_BYTES : f.type === 'image/gif' ? MAX_GIF_BYTES : MAX_IMAGE_BYTES;
+  return f.size <= max;
+};
+
+// đồng bộ code iMIS 18/11 — MarcomRules: khung banner 8:1 (từ 11/11, trước là 4:1), cảnh báo (không chặn) lệch > 10% hoặc rộng < 1600px
 export const BANNER_FITS = ['contain', 'cover', 'fill', 'scale-down', 'none'] as const;
 export type BannerFit = (typeof BANNER_FITS)[number];
-/** Khung banner trang chủ: tỉ lệ 32:5 (chuẩn 1600×250, nét hơn 3200×500). */
-export const BANNER_RATIO = 32 / 5;
+/** Khung banner trang chủ: tỉ lệ 8:1 (khuyến nghị 3200×400, tối thiểu 1600×200). */
+export const BANNER_RATIO = 8;
 export const bannerSizeIssue = (w: number, h: number): 'ratio' | 'small' | null => {
   if (w <= 0 || h <= 0) return null;
   if (Math.abs(w / h - BANNER_RATIO) / BANNER_RATIO > 0.1) return 'ratio';
   return w < 1600 ? 'small' : null;
 };
+/** Hiệu ứng khi slide xuất hiện — MarCom chọn riêng cho từng slide (banner, Sinh nhật, Chào mừng). Mặc định fade = như code hiện tại. */
+export const SLIDE_EFFECTS = ['fade', 'slide', 'slide-up', 'zoom', 'flip', 'kenburns', 'none'] as const;
+export type SlideEffect = (typeof SLIDE_EFFECTS)[number];
+export const SLIDE_EFFECT_LABEL: Record<SlideEffect, [string, string]> = {
+  fade: ['Mờ dần', 'Fade'],
+  slide: ['Trượt ngang', 'Slide in'],
+  'slide-up': ['Trượt lên', 'Slide up'],
+  zoom: ['Phóng to', 'Zoom in'],
+  flip: ['Lật', 'Flip'],
+  kenburns: ['Phóng chậm (Ken Burns)', 'Slow zoom (Ken Burns)'],
+  none: ['Không hiệu ứng', 'None'],
+};
+/** Hiệu ứng trên màn (chạy suốt lúc slide hiển thị) — riêng từng slide, mặc định không có; chia nhóm theo dịp. */
+export const SLIDE_OVERLAY_GROUPS = [
+  { key: 'basic', label: ['Cơ bản', 'Basic'], items: ['none', 'confetti', 'snow', 'petals', 'hearts', 'balloons', 'sparkles', 'fireworks'] },
+  { key: 'sport', label: ['Thể thao', 'Sports'], items: ['football', 'balls', 'medals'] },
+  { key: 'vn', label: ['Ngày lễ Việt Nam', 'Vietnamese holidays'], items: ['tet', 'mid-autumn', 'national-day', 'teachers', 'women'] },
+  { key: 'intl', label: ['Ngày quốc tế', 'International days'], items: ['new-year', 'christmas', 'halloween', 'children', 'earth'] },
+] as const;
+export type SlideOverlay = (typeof SLIDE_OVERLAY_GROUPS)[number]['items'][number];
+export const SLIDE_OVERLAYS: readonly SlideOverlay[] = SLIDE_OVERLAY_GROUPS.flatMap((g) => g.items);
+export const SLIDE_OVERLAY_LABEL: Record<SlideOverlay, [string, string]> = {
+  none: ['Không', 'None'],
+  confetti: ['🎊 Pháo giấy rơi', '🎊 Confetti'],
+  snow: ['❄️ Tuyết rơi', '❄️ Snow'],
+  petals: ['🌸 Hoa đào rơi', '🌸 Petals'],
+  hearts: ['💖 Tim bay', '💖 Hearts'],
+  balloons: ['🎈 Bóng bay', '🎈 Balloons'],
+  sparkles: ['✨ Lấp lánh', '✨ Sparkles'],
+  fireworks: ['🎆 Pháo hoa', '🎆 Fireworks'],
+  football: ['⚽ Bóng đá', '⚽ Football'],
+  balls: ['🏀 Bóng các môn', '🏀 Sports balls'],
+  medals: ['🏆 Huy chương & cúp', '🏆 Medals & trophy'],
+  tet: ['🧧 Tết Nguyên đán', '🧧 Lunar New Year'],
+  'mid-autumn': ['🏮 Trung thu', '🏮 Mid-Autumn'],
+  'national-day': ['⭐ Quốc khánh 2/9 · 30/4', '⭐ National Day 2/9 · 30/4'],
+  teachers: ['📚 Nhà giáo 20/11', '📚 Teachers’ Day 20/11'],
+  women: ['💐 Phụ nữ 8/3 · 20/10', '💐 Women’s Day 8/3 · 20/10'],
+  'new-year': ['🎆 Năm mới 1/1', '🎆 New Year 1/1'],
+  christmas: ['🎄 Giáng sinh', '🎄 Christmas'],
+  halloween: ['🎃 Halloween', '🎃 Halloween'],
+  children: ['🧸 Thiếu nhi 1/6', '🧸 Children’s Day 1/6'],
+  earth: ['🌱 Ngày Trái Đất 22/4', '🌱 Earth Day 22/4'],
+};
+export const normalizeOverlay = (o?: string | null): SlideOverlay => ((SLIDE_OVERLAYS as readonly string[]).includes(o || '') ? (o as SlideOverlay) : 'none');
+export const normalizeEffect = (e?: string | null): SlideEffect => ((SLIDE_EFFECTS as readonly string[]).includes(e || '') ? (e as SlideEffect) : 'fade');
 /** Thời gian mỗi slide (giây) — đồng bộ code iMIS 05/11. */
 export const SLIDE_SECONDS = [1, 2, 3, 5, 7, 10, 15];
 

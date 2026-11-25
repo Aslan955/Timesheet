@@ -229,8 +229,8 @@ export const SalaryDetailPage: React.FC<{
 
   const crumbs = ['Trang chủ', 'PayRoll', 'Payroll', `Detail ${periodLabel(year, month)}`];
   const os = st.onsite;
-  // Kỳ chưa duyệt đang tính tạm ⇒ cảnh báo khi Báo cáo Onsite cùng tháng chưa hoàn tất chốt
-  const onsiteWarn = f.canRead && st.hasPeriod && st.status !== PAY_APPROVED && !os.approved;
+  // Kỳ chưa duyệt đang tính tạm ⇒ nhắc PC onsite lấy theo các dòng đã chốt ở Báo cáo Onsite
+  const onsiteWarn = f.canRead && st.hasPeriod && st.status !== PAY_APPROVED;
   const totals = { 'Thực nhận': 0, 'Lương lần 1': 0, 'Lương lần 2': 0 } as Record<string, number>;
   rows.forEach((r) => {
     totals['Thực nhận'] += r.NetReceived;
@@ -253,7 +253,7 @@ export const SalaryDetailPage: React.FC<{
           { label: 'Phạm vi dòng', value: SCOPE_LABEL[scopeOf(ctx.profile)] },
           {
             label: 'Onsite (Báo cáo Onsite)',
-            value: os.approved ? `Đã chốt ${fmtDT(os.approvedAt)} · ${os.lines} người · ${fmtCurrency(os.total)}` : 'Chưa hoàn tất chốt ⇒ PC onsite = 0',
+            value: os.lines ? `Đã chốt ${os.lines} người · ${fmtCurrency(os.total)}` : 'Chưa chốt dòng nào ⇒ PC onsite = 0',
           },
         ]}
       />
@@ -268,8 +268,8 @@ export const SalaryDetailPage: React.FC<{
         <div className="flex items-start gap-2 bg-amber-50 border border-amber-300 text-amber-800 rounded-[4px] px-3 py-2 text-[12.5px]">
           <AlertTriangle size={15} className="shrink-0 mt-0.5" />
           <div>
-            <p className="font-bold">{`Báo cáo Onsite tháng ${periodLabel(year, month)} chưa hoàn tất chốt`}</p>
-            <p className="text-[11.5px]">PC onsite trong bảng đang = 0. HCNS chốt và bấm "Hoàn tất chốt tháng" ở PayRoll › Báo cáo Onsite — số vào bảng lương ngay; kỳ lương chỉ duyệt được sau khi chốt.</p>
+            <p className="font-bold">{`PC onsite = số các dòng đã chốt ở Báo cáo Onsite tháng ${periodLabel(year, month)} (${os.lines} người · ${fmtCurrency(os.total)})`}</p>
+            <p className="text-[11.5px]">HCNS bấm Chốt / Bỏ chốt ở PayRoll › Báo cáo Onsite là số trong bảng cập nhật ngay. Duyệt kỳ lương sẽ khoá onsite tháng này — dòng chưa chốt lúc đó chuyển sang kỳ sau.</p>
           </div>
         </div>
       )}

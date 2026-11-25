@@ -58,9 +58,9 @@ const fmtMonth = (m: string) => (m ? `${m.slice(5, 7)}/${m.slice(0, 4)}` : '—'
 const dmy = (iso: string) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—');
 const isMoney = (k: ChartMetric) => CHART_METRICS.find((m) => m.key === k)!.money;
 const val = (_k: ChartMetric, n: number) => Math.round(n).toLocaleString('en-US');
-/** Tooltip tách Chi phí thực tế = Chi thực tế import (SX + KD + Chi phí chung) + CP phân bổ khối + CP quản lý (Kế toán import theo dự án). */
+/** Tooltip tách Chi phí thực tế = Chi thực tế import (SX + KD) + CP phân bổ khối + CP quản lý (Kế toán import theo dự án). */
 const costTipOf = (c: CostParts) =>
-  `Chi thực tế import (SX + KD + Chi phí chung): ${val('cost', c.direct)}\n+ CP quản lý: ${val('cost', c.mgmt)}\n+ CP vận hành chung: ${val('cost', c.alloc)}\n= Chi phí thực tế: ${val('cost', c.direct + c.alloc + c.mgmt)}`;
+  `Chi thực tế import (SX + KD): ${val('cost', c.direct)}\n+ CP quản lý: ${val('cost', c.mgmt)}\n+ CP vận hành chung: ${val('cost', c.alloc)}\n= Chi phí thực tế: ${val('cost', c.direct + c.alloc + c.mgmt)}`;
 const pct = (r: number | null, digits = 0) => (r === null ? '—' : `${(r * 100).toFixed(digits)}%`);
 const unitOf = (k: ChartMetric) => (isMoney(k) ? 'VNĐ' : 'SP');
 
@@ -968,7 +968,7 @@ const OverviewTab: React.FC<{ projects: BizProject[]; cutoff: string; onOpenProj
                 {TABLE_METRICS.map((m) => (
                   <React.Fragment key={m.key}>
                     <th className={`${erp.th} text-center font-medium`}>Kế hoạch</th>
-                    <th className={`${erp.th} text-center font-medium`} title={m.key === 'cost' ? 'Chi phí thực tế = Chi thực tế import (SX + KD + Chi phí chung) + CP quản lý + CP vận hành chung' : undefined}>
+                    <th className={`${erp.th} text-center font-medium`} title={m.key === 'cost' ? 'Chi phí thực tế = Chi thực tế import (SX + KD) + CP quản lý + CP vận hành chung' : undefined}>
                       Thực tế
                     </th>
                     <th className={`${erp.th} text-center font-medium`}>Chênh lệch (%)</th>
@@ -1246,7 +1246,7 @@ const ProjectTab: React.FC<{ projects: BizProject[]; cutoff: string; projectId: 
                 {['Tháng', 'Kế hoạch', ...(isCost ? ['CP quản lý', 'CP vận hành chung'] : []), 'Thực tế', 'Chênh lệch', '+/- %', 'Luỹ kế kế hoạch', 'Luỹ kế thực tế', '% luỹ kế'].map((h, i) => (
                   <th
                     key={h}
-                    title={isCost && h === 'Thực tế' ? 'Chi phí thực tế = Chi thực tế import (SX + KD + Chi phí chung) + CP quản lý + CP vận hành chung' : undefined}
+                    title={isCost && h === 'Thực tế' ? 'Chi phí thực tế = Chi thực tế import (SX + KD) + CP quản lý + CP vận hành chung' : undefined}
                     className={`${erp.th} ${i ? 'text-right' : 'text-left'} border-t-0 first:border-l-0 last:border-r-0`}
                   >
                     {h}

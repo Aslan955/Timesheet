@@ -30,7 +30,7 @@ const NOTES_BACKEND: [string, string][] = [
   ['Xoá kỳ xoá mềm MỌI dòng Salary theo Year/Month chuỗi ⇒ xoá kỳ Rejected cũ cũng xoá dòng của kỳ mới cùng tháng; không xoá bảng import', 'SAS:409'],
   ['Khoá kỳ không kiểm trạng thái (khoá được kỳ Requested ⇒ không duyệt được); khoá tự từ chối đơn nghỉ chờ duyệt, mở khoá không hoàn tác', 'SAS:313-338; LeaveRequestService.cs:1210'],
   ['Import: xem tạm lấy dòng import Id LỚN nhất, upsert lấy Id NHỎ nhất; kỳ đã có dòng ⇒ chỉ RecalculateSalary (không tính lại công/OT, giữ PC onsite đã lưu)', 'SS:1396, 1518, 1594-1614'],
-  ['Onsite: ĐỀ XUẤT luồng mới — lấy số đã chốt ở Báo cáo Onsite (Phụ lục 03), Payroll không tự tính / gắn đơn. PC Onsite = tiền đã chốt (gồm bổ sung tháng trước); kỳ chốt chưa hoàn tất ⇒ onsite = 0 và chặn Duyệt / Re-Collect', 'Đề xuất — onsiteData.payrollFromClosing'],
+  ['Onsite: ĐỀ XUẤT luồng mới — lấy số đã chốt ở Báo cáo Onsite (Phụ lục 03), Payroll không tự tính / gắn đơn. PC Onsite = tiền các dòng HR đã bấm Chốt (gồm bổ sung tháng trước), vào ngay không chờ hoàn tất tháng; duyệt kỳ lương ⇒ khoá onsite tháng đó, dòng chưa chốt sang kỳ sau', 'Đề xuất — onsiteData.payrollFromClosing'],
   ['Mail: dòng 8 hiện SỐ GIỜ OT dưới nhãn tiền; T13 luôn 0; "Các khoản trừ khác" đọc 2 trường không bao giờ có giá trị; hạn phản hồi ddMMyyyy', 'MS:404-457, 388-398'],
 ];
 const NOTES_UI: [string, string][] = [
