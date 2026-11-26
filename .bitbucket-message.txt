@@ -1,6 +1,11 @@
-[Prototype Timesheet] Danh sách dự án › Đóng dự án — Báo cáo tổng kết bỏ dòng Lợi nhuận gộp và Tỷ suất lợi nhuận gộp
+[Prototype Timesheet] Danh sách dự án › Đóng dự án — bỏ dòng Lợi nhuận gộp / Tỷ suất LN gộp · Hợp đồng lao động — đếm số lần in hợp đồng
+
+THÊM MỚI
+- Human Resources › Contracts (Danh sách hợp đồng lao động): cột "Số lần in" (hiện mặc định; lọc, sắp xếp, có trong Xuất Excel); rê chuột xem lần in cuối (thời gian, người in).
+- Contracts › Chi tiết hợp đồng: dòng "Số lần in" ở Thông tin hợp đồng (số lần + lần cuối + nút Xem lịch sử in) và thẻ "Lịch sử in (n)": từng lần in — thời gian, người in, văn bản đã tạo (mẫu HĐ / phụ lục / văn bản kèm theo NDA / bản in mặc định).
+- Contracts: mỗi lần In (popup In hợp đồng từ danh sách, xem nhanh, chi tiết — in 1 hay nhiều HĐ) khi tải file Word / mở bản in thì mỗi hợp đồng được +1 lần in và ghi vào Lịch sử thay đổi "In hợp đồng (lần n)". Sao chép hợp đồng không chép số lần in. Dữ liệu mẫu: các HĐ đã ký có 1–3 lần in.
 
 XOÁ / BỎ
 - Danh sách dự án › Đóng dự án › Báo cáo tổng kết (bảng Kế hoạch – Thực tế, mục A): bỏ dòng "Lợi nhuận gộp" và "Tỷ suất lợi nhuận gộp". Mục A còn: Doanh thu · Tổng chi phí (SX, KD, Chi phí chung) · 3 dòng Kế toán nhập (CP tài chính / quản lý / khác) · Lợi nhuận trước thuế (= Doanh thu − Tổng chi phí − 3 khoản Kế toán nhập) · Tỷ suất lợi nhuận trước thuế; ghi chú cuối bảng sửa theo công thức này.
 
-File chính: src/business/projectClose.ts, src/components/ProjectCloseModal.tsx
+File chính: src/components/ContractsPage.tsx, src/business/projectClose.ts, src/components/ProjectCloseModal.tsx

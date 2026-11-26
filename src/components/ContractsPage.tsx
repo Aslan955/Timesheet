@@ -122,6 +122,12 @@ interface CLog {
   action: string;
   changes?: string[];
 }
+/** 1 lần in hợp đồng: thời điểm, người in, các văn bản đã tạo (mẫu HĐ / phụ lục / văn bản kèm theo / bản in mặc định). */
+export interface PrintLog {
+  at: string;
+  by: string;
+  docs: string[];
+}
 export interface Contract {
   id: string;
   workerId: string;
@@ -162,6 +168,8 @@ export interface Contract {
   ended?: { date: string; reason: string } | null;
   /** Người ký chọn từ Danh mục người ký (theo công ty ký HĐ) */
   signerId?: string;
+  /** Các lần in hợp đồng (popup In / In nhanh) — đếm số lần in */
+  prints?: PrintLog[];
 }
 interface SignerSetting {
   id: string;
@@ -509,7 +517,18 @@ const buildSeed = () => {
     const base = fitIncome(c);
     return addAppendix(base, { effectiveDate: d6, income: incomeOf(base) + 3_000_000, baseSalary: c.baseSalary, note: 'Điều chỉnh thu nhập sau đánh giá 6 tháng' }, ME, `${d6}T02:00:00.000Z`);
   });
-  return { workers, contracts: withApp };
+  // Mẫu số lần in: HĐ đã ký được in 1–3 lần (lần đầu ngày ký)
+  const printed = withApp.map((c, i) => {
+    if (c.from > now0 || i % 4 === 3) return c;
+    const n = 1 + (i % 3);
+    const prints: PrintLog[] = Array.from({ length: n }, (_, k) => ({
+      at: `${addDays(c.signDate, k * 7)}T0${2 + k}:30:00.000Z`,
+      by: ME,
+      docs: [k === 0 ? `Mẫu: ${c.type}` : k === 1 ? 'Bản in mặc định' : `Mẫu: ${c.type} (in lại bản ký)`],
+    })).filter((p) => p.at.slice(0, 10) <= now0); // không sinh lần in ở tương lai
+    return { ...c, prints, history: [...c.history, ...prints.map((p, k) => ({ at: p.at, by: p.by, action: `In hợp đồng (lần ${k + 1})`, changes: p.docs }))].sort((a, b) => a.at.localeCompare(b.at)) };
+  });
+  return { workers, contracts: printed };
 };
 
 // ==========================================================================
@@ -810,6 +829,27 @@ const printJobs = async (jobs: PrintJob[], src: Map<string, { w: Worker; c: Cont
     if (files.length === 1) downloadBytes(files[0].data, files[0].name);
     else if (files.length) downloadBytes(zip(files), `In_hop_dong_${today().replace(/-/g, '')}.zip`, 'application/zip');
     if (html.length) printHtml(html);
+    // Ghi nhận số lần in: mỗi hợp đồng trong lần in = +1 lần (kèm tên các văn bản đã tạo)
+    const at = nowIso();
+    const logs = new Map<string, PrintLog>(
+      jobs.map((j) => [
+        j.item.id,
+        {
+          at,
+          by: ME,
+          docs: j.main ? [`${j.main.kind === 'PL' ? 'Phụ lục' : 'Mẫu'}: ${j.main.name}${j.app ? ` (${j.app.name})` : ''}`, ...j.extras.map((t) => `Kèm theo: ${t.name}`)] : ['Bản in mặc định'],
+        },
+      ]),
+    );
+    update((x) => ({
+      ...x,
+      contracts: x.contracts.map((c) => {
+        const lg = logs.get(c.id);
+        if (!lg) return c;
+        const n = (c.prints?.length || 0) + 1;
+        return { ...c, prints: [...(c.prints || []), lg], history: [...c.history, { at, by: ME, action: `In hợp đồng (lần ${n})`, changes: lg.docs }] };
+      }),
+    }));
     const kt = word.reduce((n, j) => n + j.extras.length, 0);
     const edited = word.reduce((n, j) => n + j.edited.length, 0);
     const msg = [
@@ -942,6 +982,26 @@ const COLS: Col[] = [
   { key: 'perf', label: 'Thưởng HQ (tạm tính)', width: 140, align: 'right', sort: (r) => r.c.perfBonus || 0, cell: (r) => money(r.c.perfBonus) || '—', xlsx: (r) => r.c.perfBonus || '' },
   { key: 'phone', label: 'Số điện thoại', width: 120, sort: (r) => r.w.phone, cell: (r) => r.w.phone || '—', xlsx: (r) => r.w.phone },
   { key: 'allow', label: 'Hỗ trợ', width: 104, align: 'right', sort: (r) => allowTotal(r.c), cell: (r) => money(allowTotal(r.c)) || '—', xlsx: (r) => allowTotal(r.c) || '' },
+  {
+    key: 'prints',
+    label: 'Số lần in',
+    width: 92,
+    align: 'center',
+    def: true,
+    sort: (r) => r.c.prints?.length || 0,
+    cell: (r) => {
+      const p = r.c.prints || [];
+      const last = p[p.length - 1];
+      return p.length ? (
+        <span className="inline-flex items-center gap-1 font-semibold text-[#1f5fa8]" title={`In ${p.length} lần · lần cuối ${fmtAt(last.at)} (${last.by})`} data-testid={`prints-${r.c.no}`}>
+          <Printer size={12} /> {p.length}
+        </span>
+      ) : (
+        <span className="text-slate-400" data-testid={`prints-${r.c.no}`}>0</span>
+      );
+    },
+    xlsx: (r) => r.c.prints?.length || 0,
+  },
   { key: 'status', label: 'Trạng thái', width: 118, def: true, sort: (r) => r.st.text, cell: (r) => <StateTag st={r.st} />, xlsx: (r) => r.st.text },
   { key: 'company', label: 'Công ty ký HĐ', width: 170, sort: (r) => companyById(r.c.companyId)?.shortName || '', cell: (r) => companyById(r.c.companyId)?.shortName || '—', xlsx: (r) => companyById(r.c.companyId)?.name || '' },
   { key: 'signer', label: 'Người ký', width: 170, def: true, sort: (r) => r.c.signer, cell: (r) => r.c.signer || '—', xlsx: (r) => r.c.signer },
@@ -958,7 +1018,7 @@ const COL_GETTERS: Record<string, (r: Row) => string> = Object.fromEntries(
     },
   ]),
 );
-const COLS_KEY = 'contracts-visible-cols-v2';
+const COLS_KEY = 'contracts-visible-cols-v3';
 const loadCols = (): string[] => {
   try {
     const v = JSON.parse(localStorage.getItem(COLS_KEY) || 'null');
@@ -1761,6 +1821,7 @@ const ContractDetail: React.FC<{
         to: endOf(src.type, src.term, f),
         files: [],
         history: [],
+        prints: [],
         allowances: normSupports(src.allowances),
       };
     }
@@ -1768,7 +1829,7 @@ const ContractDetail: React.FC<{
   };
   const [d, setD] = useState<Contract>(init);
   const [editing, setEditing] = useState(isNew || (mode.kind === 'detail' && !!mode.edit));
-  const [tab, setTab] = useState<'info' | 'chain' | 'history'>('info');
+  const [tab, setTab] = useState<'info' | 'chain' | 'history' | 'prints'>('info');
   const [tried, setTried] = useState(false);
   const [signerTouched, setSignerTouched] = useState(!isNew);
   const [confirmDel, setConfirmDel] = useState(false);
@@ -1778,6 +1839,11 @@ const ContractDetail: React.FC<{
   const [wi, setWi] = useState<WorkerInfo>(() => infoOf(s.workers.find((x) => x.id === (orig?.workerId || (mode.kind === 'new' ? mode.workerId : '')))));
   const [noTouched, setNoTouched] = useState(!isNew);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // In từ màn chi tiết → số lần in / lịch sử cập nhật trong kho; đồng bộ vào bản đang xem (không đụng phần đang sửa)
+  useEffect(() => {
+    if (orig && (orig.prints !== d.prints || orig.history !== d.history)) setD((o) => ({ ...o, prints: orig.prints, history: editing ? o.history : orig.history }));
+  }, [orig?.prints, orig?.history]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (mode.kind === 'detail' && !orig)
     return (
@@ -1876,6 +1942,7 @@ const ContractDetail: React.FC<{
       setTried(false);
       return flash('Không có thay đổi');
     }
+    c.prints = orig!.prints;
     c.history = [
       ...orig!.history,
       ...(changes.length ? [{ at: nowIso(), by: ME, action: 'Cập nhật hợp đồng', changes }] : []),
@@ -2088,6 +2155,28 @@ const ContractDetail: React.FC<{
     { label: 'Nơi làm việc', value: ed ? sel(d.workplace, (v) => set({ workplace: v }), WORKPLACES.map((x) => <option key={x}>{x}</option>)) : d.workplace },
     { label: 'Thời gian làm việc', value: ed ? sel(d.workTime, (v) => set({ workTime: v }), WORK_TIMES.map((x) => <option key={x}>{x}</option>)) : d.workTime },
     { label: 'Nơi ký', value: ed ? <input value={d.signPlace} onChange={(e) => set({ signPlace: e.target.value })} className={INPUT} /> : d.signPlace },
+    ...(isNew
+      ? []
+      : [
+          {
+            label: 'Số lần in',
+            value: (() => {
+              const p = d.prints || [];
+              const last = p[p.length - 1];
+              return (
+                <span className="flex flex-wrap items-center gap-2" data-testid="print-count">
+                  <b>{p.length} lần</b>
+                  {last && <span className="text-[11.5px] text-slate-500">lần cuối {fmtAt(last.at)} · {last.by}</span>}
+                  {p.length > 0 && !ed && (
+                    <button type="button" onClick={() => setTab('prints')} className={btn.link}>
+                      Xem lịch sử in
+                    </button>
+                  )}
+                </span>
+              );
+            })(),
+          },
+        ]),
     { label: 'Công việc phải làm', value: ed ? <textarea value={d.jobDesc} rows={2} onChange={(e) => set({ jobDesc: e.target.value })} className={`${INPUT} h-auto py-1.5 resize-y`} /> : <span className="whitespace-pre-wrap">{d.jobDesc}</span> },
     {
       label: 'Trạng thái hợp đồng',
@@ -2370,6 +2459,7 @@ const ContractDetail: React.FC<{
           tabs={[
             { key: 'info', label: 'Thông tin hợp đồng', icon: LayoutList },
             { key: 'chain', label: `Quá trình hợp đồng (${others.length})`, icon: ListOrdered },
+            { key: 'prints', label: `Lịch sử in (${d.prints?.length || 0})`, icon: Printer },
             { key: 'history', label: `Lịch sử (${d.history.length})`, icon: History },
           ]}
           value={tab}
@@ -2585,6 +2675,42 @@ const ContractDetail: React.FC<{
                   </td>
                 </tr>
               ))}
+            </tbody>
+          </table>
+        </Panel>
+      )}
+
+      {tab === 'prints' && (
+        <Panel title={`Lịch sử in hợp đồng — ${d.prints?.length || 0} lần`} icon={Printer} noPad>
+          <table className={erp.table} data-testid="print-log">
+            <thead>
+              <tr>
+                {['Lần', 'Thời gian in', 'Người in', 'Văn bản đã tạo'].map((h, i, arr) => (
+                  <th key={h} className={`${erp.th} text-left border-t-0 ${i === 0 ? 'border-l-0 w-14 text-center' : ''} ${i === 1 ? 'w-40' : ''} ${i === arr.length - 1 ? 'border-r-0' : ''}`}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {(d.prints || [])
+                .map((p, i) => ({ p, n: i + 1 }))
+                .reverse()
+                .map(({ p, n }) => (
+                  <tr key={n} className={erp.tr}>
+                    <td className={`${erp.td} border-l-0 text-center font-semibold`}>{n}</td>
+                    <td className={`${erp.td} whitespace-nowrap`}>{fmtAt(p.at)}</td>
+                    <td className={erp.td}>{p.by}</td>
+                    <td className={`${erp.td} border-r-0`}>{p.docs.join(' · ')}</td>
+                  </tr>
+                ))}
+              {!(d.prints || []).length && (
+                <tr>
+                  <td colSpan={4} className={`${erp.td} border-x-0 py-6 text-center text-slate-400`}>
+                    Hợp đồng chưa được in lần nào.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </Panel>
