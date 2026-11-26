@@ -304,7 +304,7 @@ export interface Salary {
   OvertimePay: number;
   OvertimePayPackage: number;
   /** ĐỀ XUẤT: 6 trường onsite chép từ dòng kỳ chốt (ClosingLine) — số cuối, không tự tính. */
-  OnsiteDays: number; // số ngày trong detail
+  OnsiteDays: number; // số ngày được hưởng tiền (gồm bổ sung tháng trước)
   OnsiteShiftsWithCoef1: number; // = units — "Ngày công onsite được hưởng"
   OnsiteAllowance: number; // = amount (đã gồm bổ sung tháng trước)
   OnsiteUnitsLT30: number;
@@ -771,7 +771,7 @@ export function calcPeriod(db: SalaryDb, year: number, month: number, now: strin
     s.OvertimePayPackage = packageOTs.filter((p) => p.EmployeeId === user.Id).reduce((t, p) => t + p.PackageAmount, 0);
     // B12 onsite — ĐỀ XUẤT: chép số đã chốt ở Báo cáo Onsite
     const os = onsite.get(user.Id);
-    s.OnsiteDays = os?.detail.length ?? 0;
+    s.OnsiteDays = os?.detail.filter((d) => d.amount > 0).length ?? 0;
     s.OnsiteShiftsWithCoef1 = os?.units ?? 0;
     s.OnsiteAllowance = os?.amount ?? 0;
     s.OnsiteUnitsLT30 = os?.unitsLT30 ?? 0;
@@ -925,7 +925,7 @@ export function svcApprove(db0: SalaryDb, ctx: Ctx, id: number): { db: SalaryDb;
     pushLog(
       db,
       ctx.now,
-      `Duyệt kỳ ${periodLabel(e.Year, e.Month)}: ${r.reusedExisting ? `kỳ ĐÃ có ${r.rows.length} dòng Salary ⇒ giữ nguyên, không tính` : `ghi ${db.salaries.filter((s) => !s.IsDeleted && s.Month === monthStr(e.Year, e.Month)).length} dòng Salary`}; PC onsite lấy từ kỳ chốt ${src.closingId} (${src.lines} người, ${src.total.toLocaleString('vi-VN')} đ) — không gắn đơn`,
+      `Duyệt kỳ ${periodLabel(e.Year, e.Month)}: ${r.reusedExisting ? `kỳ ĐÃ có ${r.rows.length} dòng Salary ⇒ giữ nguyên, không tính` : `ghi ${db.salaries.filter((s) => !s.IsDeleted && s.Month === monthStr(e.Year, e.Month)).length} dòng Salary`}; Tiền onsite lấy từ kỳ chốt ${src.closingId} (${src.lines} người, ${src.total.toLocaleString('vi-VN')} đ) — không gắn đơn`,
     );
     return { db, ok: true, reusedExisting: r.reusedExisting };
   } catch (err) {

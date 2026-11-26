@@ -252,8 +252,9 @@ const payslipLines = (r: MailItem['row']): [string, string][] => {
     ['Lương theo ngày công', n0(r.SalaryBasedOnWorkDays)],
     ['Tiền lương OT theo giờ', r.OvertimeHours.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })],
     ['Tiền OT theo giờ', n0(r.OvertimePay)],
-    // ĐỀ XUẤT: số đã chốt ở Báo cáo Onsite — kèm ngày công theo mức và tiền bổ sung tháng trước
-    [`Tiền lương Onsite (ngày công < 30km: ${n2(r.OnsiteUnitsLT30)} · ≥ 30km: ${n2(r.OnsiteUnitsGE30)} · bổ sung tháng trước: ${n0(r.OnsiteCarryAmount)})`, n0(r.OnsiteAllowance)],
+    // ĐỀ XUẤT: số đã chốt ở Báo cáo Onsite (tiền gồm < 30km, ≥ 30km, bổ sung tháng trước)
+    ['Số ngày Onsite', n2(r.OnsiteDays)],
+    ['Tiền onsite', n0(r.OnsiteAllowance)],
     ['Thưởng khác', n0(r.OtherBonuses)],
     ['Tiền thưởng Lễ, tết', n0(r.HolidayBonus)],
     ['Tiền lương T13', n0(r.YearEndBonus)],

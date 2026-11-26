@@ -1,6 +1,6 @@
 /**
  * Trang B — /Payroll/Detail?month=&year= (SalaryDetailComponent → SalarySumarryListComponent).
- * Lưới 73 cột theo thứ tự SSL:114-379 (+3 cột onsite đề xuất), ghim 4 cột trái (checkbox, STT, Mã NV, Họ tên) bằng đo độ rộng thật.
+ * Lưới 69 cột theo thứ tự SSL:114-379 (cụm onsite gộp còn 2 cột), ghim 4 cột trái (checkbox, STT, Mã NV, Họ tên) bằng đo độ rộng thật.
  */
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ChevronDown, ChevronUp, FileSpreadsheet, Loader2, Recycle, Search, Send, Upload } from 'lucide-react';
@@ -21,7 +21,7 @@ interface Col {
   title?: string;
 }
 const c = (label: string, w: number, kind: Kind, get: Col['get'], extra: Partial<Col> = {}): Col => ({ label, w, kind, get, ...extra });
-/** 71 cột dữ liệu (sau checkbox + STT), nhãn theo VI:2304-2374; cụm onsite theo đề xuất (số đã chốt ở Báo cáo Onsite). */
+/** 67 cột dữ liệu (sau checkbox + STT), nhãn theo VI:2304-2374; onsite chỉ 2 cột: Số ngày Onsite + Tiền onsite (số đã chốt ở Báo cáo Onsite). */
 export const DATA_COLS: Col[] = [
   c('Mã NV', 120, 'text', (r) => r.StaffId),
   c('Họ tên', 180, 'text', (r) => r.FullName),
@@ -54,12 +54,8 @@ export const DATA_COLS: Col[] = [
   c('Giờ OT', 100, 'n2', (r) => r.OvertimeHours),
   c('Tiền OT', 120, 'money', (r) => r.OvertimePay),
   c('Tiền OT theo gói', 150, 'money', (r) => r.OvertimePayPackage),
-  c('PC Onsite', 120, 'money', (r) => r.OnsiteAllowance, { title: 'Số đã chốt ở Báo cáo Onsite — gồm tiền bổ sung tháng trước' }),
   c('Số ngày Onsite', 120, 'n2', (r) => r.OnsiteDays),
-  c('Ngày công onsite được hưởng', 170, 'n2', (r) => r.OnsiteShiftsWithCoef1),
-  c('Ngày công onsite < 30km', 150, 'n2', (r) => r.OnsiteUnitsLT30),
-  c('Ngày công onsite ≥ 30km', 150, 'n2', (r) => r.OnsiteUnitsGE30),
-  c('Tiền onsite bổ sung tháng trước', 190, 'money', (r) => r.OnsiteCarryAmount),
+  c('Tiền onsite', 120, 'money', (r) => r.OnsiteAllowance, { title: 'Số đã chốt ở Báo cáo Onsite — gồm < 30km, ≥ 30km và tiền bổ sung tháng trước' }),
   c('PC thiết bị', 120, 'money', (r) => r.DeviceAllowance),
   c('PC gửi xe', 120, 'money', (r) => r.ParkingAllowance),
   c('PC khác', 120, 'money', (r) => r.OtherAllowances),
@@ -253,7 +249,7 @@ export const SalaryDetailPage: React.FC<{
           { label: 'Phạm vi dòng', value: SCOPE_LABEL[scopeOf(ctx.profile)] },
           {
             label: 'Onsite (Báo cáo Onsite)',
-            value: os.lines ? `Đã chốt ${os.lines} người · ${fmtCurrency(os.total)}` : 'Chưa chốt dòng nào ⇒ PC onsite = 0',
+            value: os.lines ? `Đã chốt ${os.lines} người · ${fmtCurrency(os.total)}` : 'Chưa chốt dòng nào ⇒ Tiền onsite = 0',
           },
         ]}
       />
@@ -268,7 +264,7 @@ export const SalaryDetailPage: React.FC<{
         <div className="flex items-start gap-2 bg-amber-50 border border-amber-300 text-amber-800 rounded-[4px] px-3 py-2 text-[12.5px]">
           <AlertTriangle size={15} className="shrink-0 mt-0.5" />
           <div>
-            <p className="font-bold">{`PC onsite = số các dòng đã chốt ở Báo cáo Onsite tháng ${periodLabel(year, month)} (${os.lines} người · ${fmtCurrency(os.total)})`}</p>
+            <p className="font-bold">{`Tiền onsite = số các dòng đã chốt ở Báo cáo Onsite tháng ${periodLabel(year, month)} (${os.lines} người · ${fmtCurrency(os.total)})`}</p>
             <p className="text-[11.5px]">HCNS bấm Chốt / Bỏ chốt ở PayRoll › Báo cáo Onsite là số trong bảng cập nhật ngay. Duyệt kỳ lương sẽ khoá onsite tháng này — dòng chưa chốt lúc đó chuyển sang kỳ sau.</p>
           </div>
         </div>

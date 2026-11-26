@@ -217,7 +217,7 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
         </div>
 
         {kind === 'cost' && part !== 'alloc' && (
-          <div className="px-4 pt-2 border-b border-slate-200 flex gap-1" role="tablist">
+          <div className="mx-4 mt-1 border-b border-slate-200 flex gap-5" role="tablist">
             {(
               [
                 ['sum', 'Tổng hợp chi phí', Receipt],
@@ -230,12 +230,12 @@ export const LedgerDetailModal: React.FC<LedgerDrill & { onClose: () => void }> 
                 role="tab"
                 aria-selected={view === k}
                 onClick={() => setView(k)}
-                className={`-mb-px flex items-center gap-1.5 px-3 py-1.5 text-[12.5px] font-semibold border border-b-0 rounded-t-[4px] cursor-pointer ${
-                  view === k ? 'bg-white border-slate-200 text-[#1e3a5f]' : 'bg-slate-50 border-transparent text-slate-500 hover:text-slate-700'
+                className={`-mb-px inline-flex items-center gap-2 px-0.5 py-2 text-[13.5px] font-semibold border-b-2 cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300 ${
+                  view === k ? 'border-[#1f5fa8] text-[#1f5fa8]' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
                 }`}
                 data-testid={`cost-view-${k}`}
               >
-                <I size={13} /> {label}
+                <I size={13} className={view === k ? 'text-[#1f5fa8]' : 'text-slate-400'} /> {label}
               </button>
             ))}
           </div>

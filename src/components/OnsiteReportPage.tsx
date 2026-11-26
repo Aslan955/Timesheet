@@ -11,6 +11,7 @@ import {
   proj, rateOf, recMonth, reportStatus, RoleKey, slotOf,
 } from '../onsite/onsiteData';
 import { useOnsite } from '../onsite/OnsiteContext';
+import * as XLSX from 'xlsx';
 import { Badge, ConfirmModal } from './onsite/OnsiteUi';
 import { Btn, ErpPage, ErpTitleBar, KpiBox, Panel, Tag, erp } from './erp/Erp';
 
@@ -151,17 +152,21 @@ export const OnsiteReportPage: React.FC = () => {
   const canAct = canClose && !isClosed;
 
   /** Trạng thái chốt của HR cho một dòng (NV × dự án). */
-  const hrState = (x: ReportRow) => {
-    const pill = (t: string, c: string, icon: React.ElementType, sub?: string) => <span className="inline-flex flex-col gap-0.5"><Tag cls={c} icon={icon}>{t}</Tag>{sub && <span className="text-[10.5px] text-slate-500">{sub}</span>}</span>;
+  const hrStateOf = (x: ReportRow): { t: string; c: string; icon: React.ElementType; sub?: string } => {
+    const none = { t: 'Không xét', c: TAG.none, icon: CircleDashed, sub: 'chưa có đơn được duyệt' };
     if (isClosed) {
-      if (x.days.length) return pill('Đã chốt', TAG.done, CheckCircle2, x.pending ? `còn ${n2(x.pending)} ngày chưa ghi nhận` : undefined);
-      return x.lateApproved ? pill('Chưa chốt', TAG.wait, Eye, 'chuyển sang kỳ sau') : pill('Không xét', TAG.none, CircleDashed, 'chưa có đơn được duyệt');
+      if (x.days.length) return { t: 'Đã chốt', c: TAG.done, icon: CheckCircle2, sub: x.pending ? `còn ${n2(x.pending)} ngày chưa ghi nhận` : undefined };
+      return x.lateApproved ? { t: 'Chưa chốt', c: TAG.wait, icon: Eye, sub: 'chuyển sang kỳ sau' } : none;
     }
     const el = eligOf(x), st = stampedOf(x);
-    if (!el.length) return pill('Không xét', TAG.none, CircleDashed, 'chưa có đơn được duyệt');
-    if (st.length === el.length) return pill('Đã chốt', TAG.done, CheckCircle2);
-    if (st.length) return pill('Chốt một phần', TAG.part, Lock, `${st.length}/${el.length} đơn`);
-    return pill('Chưa chốt', TAG.wait, Eye);
+    if (!el.length) return none;
+    if (st.length === el.length) return { t: 'Đã chốt', c: TAG.done, icon: CheckCircle2 };
+    if (st.length) return { t: 'Chốt một phần', c: TAG.part, icon: Lock, sub: `${st.length}/${el.length} đơn` };
+    return { t: 'Chưa chốt', c: TAG.wait, icon: Eye };
+  };
+  const hrState = (x: ReportRow) => {
+    const h = hrStateOf(x);
+    return <span className="inline-flex flex-col gap-0.5"><Tag cls={h.c} icon={h.icon}>{h.t}</Tag>{h.sub && <span className="text-[10.5px] text-slate-500">{h.sub}</span>}</span>;
   };
 
   // Đơn trong tháng chưa qua HOD / nháp — không vào kỳ chốt này
@@ -221,7 +226,61 @@ export const OnsiteReportPage: React.FC = () => {
   const PIN_EDGE_R = 'shadow-[inset_1px_0_0_#94a3b8]';
   const HEAD_BG = '#e8edf4';
   const doneRows = rows.filter((x) => stampedOf(x).length > 0).length;
-  const exportXlsx = () => showToast(`Đã xuất BaoCaoOnsite_${y}_${String(m).padStart(2, '0')}.xlsx (giả lập) — ${isClosed ? 'số đã chốt' : 'gồm cả dòng chưa chốt (tính thử)'}`);
+  // Xuất Excel theo bộ lọc đang áp: sheet Tổng hợp (như lưới) + sheet Chi tiết từng khung giờ onsite
+  const exportXlsx = () => {
+    if (!rows.length) { showToast('Không có dữ liệu để xuất.', true); return; }
+    const fileName = `BaoCaoOnsite_${y}_${String(m).padStart(2, '0')}.xlsx`;
+    const head = [
+      [`BÁO CÁO ONSITE THÁNG ${name}`],
+      [`Kỳ chốt: ${cid} · ${isClosed ? `Đã khoá (kỳ lương đã duyệt ${fmtDT(closing?.approvedAt)})` : 'Đang chốt — gồm cả dòng chưa chốt (tính thử)'}`],
+      [`Xuất lúc ${fmtDT(nowIso())} bởi ${me}${applied.search || applied.dept || applied.project ? ` · Lọc: ${[applied.search && `"${applied.search}"`, applied.dept && `BP ${applied.dept}`, applied.project && `dự án ${proj(applied.project).code}`].filter(Boolean).join(', ')}` : ''}`],
+      [],
+    ];
+    const sum = [
+      ...head,
+      ['#', 'Mã NV', 'Họ và tên', 'Bộ phận', 'Mã dự án', 'Tên dự án', 'Trạng thái chốt (HR)', 'Ngày công < 30km', 'Ngày công ≥ 30km', 'Được hưởng (ngày công)', 'Không hưởng (ngày)',
+        'Bổ sung tháng trước — ngày công', 'Bổ sung tháng trước — tiền (VNĐ)', 'Tổng onsite (ngày công)', 'Thành tiền (VNĐ)', 'Đơn chưa duyệt', 'Đơn bị từ chối', 'Ngày chưa ghi nhận'],
+      ...rows.map((x, i) => {
+        const e = emp(x.employeeId), p = proj(x.projectId), h = hrStateOf(x);
+        return [i + 1, e.code, e.name, e.dept, p.code, p.name, h.sub ? `${h.t} (${h.sub})` : h.t, x.lt30, x.ge30, x.paid, x.noPay,
+          x.carryUnits, x.carryAmount, x.paid + x.carryUnits, x.amount + x.carryAmount, x.pendingRecs, x.rejectedRecs, x.pending];
+      }),
+      ['', '', `Tổng (${rows.length} dòng)`, '', '', '', '', rt.lt30, rt.ge30, rt.paid, rt.noPay, rt.carryUnits, rt.carryAmount, rt.paid + rt.carryUnits, rt.amount + rt.carryAmount, rt.pendingRecs, rt.rejectedRecs, rt.pending],
+    ];
+    // Mỗi khung giờ (đơn × ngày) một dòng; số ngày công / tiền tính theo cả ngày nên chỉ ghi ở dòng đầu của ngày
+    const det: (string | number)[][] = [
+      ...head,
+      ['#', 'Mã NV', 'Họ và tên', 'Bộ phận', 'Mã dự án (dòng báo cáo)', 'Ngày', 'Thứ', 'Mã đơn', 'Dự án của đơn', 'Từ giờ', 'Đến giờ', 'Giờ onsite', 'Địa điểm làm việc', 'Khoảng cách',
+        'Trạng thái đơn', 'Giờ phép (ngày)', 'Giờ hợp lệ (ngày)', 'Ngày công', 'Mức (đ)', 'Thành tiền (đ)', 'Ghi chú'],
+    ];
+    let k = 0, tUnit = 0, tAmount = 0;
+    rows.forEach((x) => {
+      const e = emp(x.employeeId);
+      detailItems(x, records, closings, y, m, isClosed, cid).forEach((it) => {
+        if (it.amount) { tUnit += it.unit || 0; tAmount += it.amount; }
+        it.recs.forEach((r, j) => {
+          const sl = slotOf(r, it.date);
+          const day = j === 0;
+          det.push([++k, e.code, e.name, e.dept, proj(x.projectId).code, fmtD(it.date), dow(it.date), r.code, proj(r.projectId).code,
+            sl?.start || '', sl?.end || '', sl ? sl.hours : '', sl?.address || '', sl ? ZONE_SHORT[sl.zone] : '', reportStatus(r.status, r.hodStatus),
+            day && it.leave !== undefined ? it.leave : '', day && it.valid !== undefined ? it.valid : '', day && it.unit !== undefined ? it.unit : '',
+            day && it.rate !== undefined ? it.rate : '', day && it.amount !== undefined ? it.amount : '', day ? it.note : 'Tính chung ngày với dòng trên']);
+        });
+      });
+    });
+    det.push(['', '', 'Tổng', '', '', '', '', '', '', '', '', '', '', '', '', '', '', tUnit, '', tAmount, 'Ngày công tính tiền / thành tiền của các ngày được hưởng']);
+    const sheet = (aoa: (string | number)[][], widths: number[]) => {
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws['!cols'] = widths.map((wch) => ({ wch }));
+      ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: head.length, c: 0 }, e: { r: aoa.length - 2, c: widths.length - 1 } }) };
+      return ws;
+    };
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, sheet(sum, [5, 10, 22, 14, 12, 28, 26, 10, 10, 12, 12, 14, 16, 14, 16, 10, 10, 12]), 'Tổng hợp');
+    XLSX.utils.book_append_sheet(wb, sheet(det, [5, 10, 22, 14, 14, 11, 5, 14, 12, 8, 8, 9, 36, 10, 11, 10, 10, 9, 10, 12, 60]), 'Chi tiết thời gian onsite');
+    XLSX.writeFile(wb, fileName);
+    showToast(`Đã xuất ${fileName} — ${rows.length} dòng, ${k} khung giờ onsite${isClosed ? '' : ' (gồm cả dòng chưa chốt, tính thử)'}`);
+  };
 
   return (
     <ErpPage>
@@ -315,8 +374,8 @@ export const OnsiteReportPage: React.FC = () => {
                 {canAct && <th rowSpan={2} style={pinRight(HEAD_BG)} className={`${th} border-t-0 border-r-0 ${PIN_EDGE_R}`}>Thao tác</th>}
               </tr>
               <tr>
-                <th className={`${th} font-medium`} title="Ngày công được hưởng tại Hà Nội, cách trụ sở dưới 30km — khớp cột 'Ngày công onsite < 30km' ở Payroll">&lt; 30km{unit('ngày công')}</th>
-                <th className={`${th} font-medium`} title="Ngày công được hưởng tại Hà Nội, cách trụ sở từ 30km — khớp cột 'Ngày công onsite ≥ 30km' ở Payroll">≥ 30km{unit('ngày công')}</th>
+                <th className={`${th} font-medium`} title="Ngày công được hưởng tại Hà Nội, cách trụ sở dưới 30km">&lt; 30km{unit('ngày công')}</th>
+                <th className={`${th} font-medium`} title="Ngày công được hưởng tại Hà Nội, cách trụ sở từ 30km">≥ 30km{unit('ngày công')}</th>
                 <th className={`${th} font-medium`} title="Ngày công được tính tiền trong tháng">Được hưởng{unit('ngày công')}</th>
                 <th className={`${th} font-medium`} title="Chưa đủ 1 ngày công, ngoài Hà Nội, HĐ không áp dụng">Không hưởng{unit('ngày')}</th>
                 <th className={`${th} font-medium`}>Ngày công{unit('ngày công')}</th>
@@ -493,9 +552,11 @@ export function buildRows(records: OnsiteRec[], closings: OnsiteClosing[], y: nu
 }
 
 /** Chi tiết một dòng: mỗi ngày onsite một dòng — thông tin đơn + cách tính ngày công / tiền + kết quả chốt. */
-export const RowDetail: React.FC<{ row: ReportRow; records: OnsiteRec[]; closings: OnsiteClosing[]; y: number; m: number; isClosed: boolean; cid: string }> = ({ row, records, closings, y, m, isClosed, cid }) => {
+export type DetailItem = { date: string; recs: OnsiteRec[]; hours: number; leave?: number; valid?: number; unit?: number; rate?: number; amount?: number; note: string; tone: 'ok' | 'nopay' | 'carry' | 'wait' | 'rej' };
+/** Các ngày onsite của một dòng (dùng cho bảng chi tiết và xuất Excel). */
+export function detailItems(row: ReportRow, records: OnsiteRec[], closings: OnsiteClosing[], y: number, m: number, isClosed: boolean, cid: string): DetailItem[] {
+  type Item = DetailItem;
   const recOf = (id: string) => records.find((r) => r.id === id);
-  type Item = { date: string; recs: OnsiteRec[]; hours: number; leave?: number; valid?: number; unit?: number; rate?: number; amount?: number; note: string; tone: 'ok' | 'nopay' | 'carry' | 'wait' | 'rej' };
   const covered = new Set(row.days.flatMap((d) => d.recIds));
   const items: Item[] = [
     ...row.days.map((d): Item => {
@@ -516,6 +577,11 @@ export const RowDetail: React.FC<{ row: ReportRow; records: OnsiteRec[]; closing
       return { date: sl.date, recs: [r], hours: sl.hours, note, tone: st === 'Rejected' ? 'rej' : 'wait' };
     })),
   ].sort((a, b) => a.date.localeCompare(b.date));
+  return items;
+}
+export const RowDetail: React.FC<{ row: ReportRow; records: OnsiteRec[]; closings: OnsiteClosing[]; y: number; m: number; isClosed: boolean; cid: string }> = ({ row, records, closings, y, m, isClosed, cid }) => {
+  type Item = DetailItem;
+  const items = detailItems(row, records, closings, y, m, isClosed, cid);
   const toneCls: Record<Item['tone'], string> = { ok: 'bg-white', carry: 'bg-[#eaf2fc]', nopay: 'bg-rose-50/70', wait: 'bg-amber-50/70', rej: 'bg-slate-100 text-slate-500' };
   const noteCls: Record<Item['tone'], string> = { ok: 'text-slate-500', carry: 'text-[#1f5fa8]', nopay: 'text-rose-700', wait: 'text-amber-700', rej: 'text-slate-500' };
   const c = erp.td;

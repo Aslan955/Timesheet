@@ -1,11 +1,18 @@
-[Prototype Timesheet] Danh sách dự án › Đóng dự án — bỏ dòng Lợi nhuận gộp / Tỷ suất LN gộp · Hợp đồng lao động — đếm số lần in hợp đồng
+[Prototype Timesheet] Mục tiêu kinh doanh — kế hoạch theo kỳ nhiều năm (Từ tháng – Đến tháng)
 
 THÊM MỚI
-- Human Resources › Contracts (Danh sách hợp đồng lao động): cột "Số lần in" (hiện mặc định; lọc, sắp xếp, có trong Xuất Excel); rê chuột xem lần in cuối (thời gian, người in).
-- Contracts › Chi tiết hợp đồng: dòng "Số lần in" ở Thông tin hợp đồng (số lần + lần cuối + nút Xem lịch sử in) và thẻ "Lịch sử in (n)": từng lần in — thời gian, người in, văn bản đã tạo (mẫu HĐ / phụ lục / văn bản kèm theo NDA / bản in mặc định).
-- Contracts: mỗi lần In (popup In hợp đồng từ danh sách, xem nhanh, chi tiết — in 1 hay nhiều HĐ) khi tải file Word / mở bản in thì mỗi hợp đồng được +1 lần in và ghi vào Lịch sử thay đổi "In hợp đồng (lần n)". Sao chép hợp đồng không chép số lần in. Dữ liệu mẫu: các HĐ đã ký có 1–3 lần in.
+- Quản trị dự án & Tài chính › Mục tiêu kinh doanh: màn ngoài là DANH SÁCH kế hoạch mục tiêu (mỗi dòng 1 kế hoạch theo kỳ của 1 khối). Ô tổng quan: số kế hoạch theo trạng thái, chờ tôi duyệt, mục tiêu năm nay đã duyệt, đã ký HĐ năm nay + %. Bộ lọc Khối / Trạng thái (có "Chờ tôi duyệt" cho CFO, BOD) / Kỳ có năm / tìm kiếm. Cột: Khối, Kỳ kế hoạch, Số tháng, Trạng thái — phiên bản, Số dự án, Giá trị mục tiêu, % LN gộp, LN gộp, giá trị từng năm, Đã ký trong kỳ, % hoàn thành (so mục tiêu đã duyệt), Người lập, Cập nhật; dòng Tổng. Bấm dòng ⇒ màn chi tiết (nút "Danh sách kế hoạch" để quay lại); nút "Lập kế hoạch kỳ mới" (GĐK), "Xem tổng hợp theo khoảng thời gian".
+- Quản trị dự án & Tài chính › Mục tiêu kinh doanh: khung "Mục tiêu theo năm trong kỳ" (ở màn lập và màn phê duyệt) — mỗi năm của kỳ: tháng trong kỳ, số dự án, giá trị mục tiêu, % LN gộp, LN gộp, tỉ trọng; dòng Cả kỳ; cảnh báo dòng có tháng Ký HĐ ngoài kỳ.
+
+THAY ĐỔI
+- Quản trị dự án & Tài chính › Mục tiêu kinh doanh: lập kế hoạch theo KỲ NHIỀU NĂM thay cho 1 năm. Chế độ "Lập hồ sơ theo năm" đổi thành "Lập kế hoạch theo kỳ": chọn Khối + Kỳ kế hoạch (danh sách kế hoạch của khối kèm trạng thái, hoặc "+ Kế hoạch kỳ mới…" — mặc định nối tiếp kỳ cuối, 24 tháng). Kỳ = Từ tháng – Đến tháng (MM/YYYY), sửa được khi đang soạn (ghi lịch sử "Kỳ kế hoạch A → B", lên phiên bản mới như sửa dòng). Các kỳ của cùng 1 khối không được chồng nhau (báo lỗi khi lưu / gửi). Ký HĐ phải thuộc kỳ; Ra thầu được trước kỳ nhưng không sau tháng Ký HĐ / cuối kỳ.
+- Mục tiêu kinh doanh › Xem theo khoảng thời gian: cột "Năm kế hoạch" đổi thành "Kỳ kế hoạch"; cột nguồn dòng "Khối · Kỳ kế hoạch"; bấm mở đúng kế hoạch của kỳ.
+- Mục tiêu kinh doanh › Chi tiết kế hoạch: CFO / BOD duyệt hoặc từ chối ngay trong màn chi tiết (khung Phê duyệt hồ sơ); bỏ công tắc chế độ và ô chọn khối / kỳ ở màn chi tiết (chọn từ danh sách).
+- Mục tiêu kinh doanh: BOD duyệt ⇒ ghi mục tiêu chính thức TỪNG NĂM của khối (= Σ Giá trị các dòng có Ký HĐ trong năm, trên mọi kế hoạch đã duyệt của khối) cho Tổng quan, Lập kế hoạch khối, Sổ theo dõi dự án. Phiên bản đã duyệt lưu kèm kỳ của nó (hiện ở dòng "Mục tiêu chính thức — Phiên bản …").
+- Tổng quan › Mục tiêu đã xác lập / Kế hoạch năm: kế hoạch năm lấy theo các dòng có Ký HĐ trong năm của các kế hoạch có kỳ chứa năm đó (trước đây theo hồ sơ năm).
+- Dữ liệu mẫu Mục tiêu kinh doanh: mỗi khối 1 kế hoạch kỳ 01/2026 – 12/2027 (gộp hồ sơ năm 2026 đã duyệt + đăng ký năm 2027): G1 Bản nháp V3, G2 Chờ CFO V2, G3 Chờ BOD V2, G4 Đã rút V3 (bản đã duyệt kỳ 2026 vẫn là mục tiêu chính thức); BFSI, GPDV Đã duyệt.
 
 XOÁ / BỎ
-- Danh sách dự án › Đóng dự án › Báo cáo tổng kết (bảng Kế hoạch – Thực tế, mục A): bỏ dòng "Lợi nhuận gộp" và "Tỷ suất lợi nhuận gộp". Mục A còn: Doanh thu · Tổng chi phí (SX, KD, Chi phí chung) · 3 dòng Kế toán nhập (CP tài chính / quản lý / khác) · Lợi nhuận trước thuế (= Doanh thu − Tổng chi phí − 3 khoản Kế toán nhập) · Tỷ suất lợi nhuận trước thuế; ghi chú cuối bảng sửa theo công thức này.
+- Mục tiêu kinh doanh: bỏ 2 tab "GĐK lập mục tiêu" / "Phê duyệt" — thay bằng màn danh sách (lọc "Chờ tôi duyệt") + màn chi tiết.
 
-File chính: src/components/ContractsPage.tsx, src/business/projectClose.ts, src/components/ProjectCloseModal.tsx
+File chính: src/components/BizTargetPage.tsx, src/components/OverviewPage.tsx

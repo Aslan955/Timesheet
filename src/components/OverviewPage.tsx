@@ -483,7 +483,7 @@ export const OverviewPage: React.FC = () => {
   const thisYear = String(new Date().getFullYear());
 
   const years = useMemo(() => {
-    const s = new Set<string>([thisYear, ...Object.keys(targets), ...plans.map((p) => String(p.year))]);
+    const s = new Set<string>([thisYear, ...Object.keys(targets), ...plans.flatMap((p) => p.rows.map((r) => r.signMonth.slice(0, 4)))]);
     projects.forEach((p) => {
       const y = signYear(p);
       if (y) s.add(y);
@@ -506,11 +506,12 @@ export const OverviewPage: React.FC = () => {
 
   // ---- 1. Mục tiêu / Kế hoạch năm -------------------------------------------------
   const goal = useMemo(() => {
-    const yPlans = plans.filter((p) => String(p.year) === year && p.status !== 'Từ chối');
+    // Kế hoạch nhiều năm: mục tiêu năm = Σ các dòng có tháng Ký HĐ trong năm, của các kế hoạch có kỳ chứa năm đó
+    const yPlans = plans.filter((p) => p.from.slice(0, 4) <= year && year <= p.to.slice(0, 4) && p.status !== 'Từ chối');
     const planByDiv: Record<string, number> = {};
     let source: string;
     if (yPlans.length) {
-      yPlans.forEach((p) => (planByDiv[p.division] = (planByDiv[p.division] || 0) + p.rows.reduce((s, r) => s + (r.value || 0), 0)));
+      yPlans.forEach((p) => (planByDiv[p.division] = (planByDiv[p.division] || 0) + p.rows.filter((r) => r.signMonth.startsWith(`${year}-`)).reduce((s, r) => s + (r.value || 0), 0)));
       source = 'Theo hồ sơ màn Mục tiêu kinh doanh';
     } else {
       Object.entries(targets[year] || ({} as Record<string, number>)).forEach(([d, v]) => (planByDiv[d] = Number(v)));
